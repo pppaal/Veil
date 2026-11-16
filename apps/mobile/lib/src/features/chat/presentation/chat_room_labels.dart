@@ -25,35 +25,6 @@ String conversationTitle(AppLocalizations l10n, ConversationPreview conversation
   return others.isEmpty ? l10n.conversationsGroupMark : others.join(', ');
 }
 
-String networkRecoveryMessage({
-  required AppLocalizations l10n,
-  required int failedCount,
-  required int queuedCount,
-  required int uploadingCount,
-  required DateTime? nextRetryAt,
-}) {
-  final retryLabel = nextRetryAt == null
-      ? l10n.chatRetryResumes
-      : l10n.chatRetryNextIn(formatRetryCountdown(l10n, nextRetryAt));
-  if (failedCount > 0) {
-    return l10n.chatNetworkRecoveryFailed(failedCount, retryLabel);
-  }
-  if (uploadingCount > 0) {
-    return l10n.chatNetworkRecoveryUploading(uploadingCount, retryLabel);
-  }
-  return l10n.chatNetworkRecoveryQueued(queuedCount, retryLabel);
-}
-
-/// How long until [nextRetryAt], in whole seconds under a minute and in
-/// minutes and seconds from there: "45s", "2m 5s".
-String formatRetryCountdown(AppLocalizations l10n, DateTime nextRetryAt) {
-  final seconds = nextRetryAt.difference(DateTime.now()).inSeconds;
-  if (seconds < 60) return l10n.chatCountdownSeconds(seconds < 0 ? 0 : seconds);
-  final minutes = seconds ~/ 60;
-  final rest = seconds - minutes * 60;
-  return rest == 0 ? l10n.chatCountdownMinutes(minutes) : l10n.chatCountdownMinutesSeconds(minutes, rest);
-}
-
 String messageDeliveryLabel(AppLocalizations l10n, ChatMessage message) {
   switch (message.deliveryState) {
     case MessageDeliveryState.pending:
@@ -115,8 +86,14 @@ String attachmentLabel(AppLocalizations l10n, String contentType) {
   if (contentType.startsWith('image/')) return l10n.chatAttachmentKindPhoto;
   if (contentType.startsWith('video/')) return l10n.chatAttachmentKindVideo;
   if (contentType.startsWith('audio/')) return l10n.chatAttachmentKindAudio;
-  if (contentType.contains('pdf')) return l10n.chatAttachmentKindDocument;
   return l10n.chatAttachmentKindFile;
+}
+
+/// The type of an attachment as a file card names it: "PDF" for a PDF (its
+/// subtype, as WhatsApp's card says it), otherwise the kind of file.
+String attachmentTypeLabel(AppLocalizations l10n, String contentType) {
+  if (contentType.contains('pdf')) return contentType.split('/').last.toUpperCase();
+  return attachmentLabel(l10n, contentType);
 }
 
 String formatFileSize(int bytes) {

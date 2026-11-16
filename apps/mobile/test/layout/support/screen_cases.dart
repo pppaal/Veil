@@ -856,13 +856,12 @@ Future<void> _searchChat(WidgetTester tester) async {
   await pumpFrames(tester, frames: 4);
 }
 
-// The search as it stands once the keyboard is put away: the matches have
-// the whole height.
+// The search as it stands once the keyboard is put away: every message
+// stays, the newest hit is marked, and the bar under them counts the hits.
 Future<void> _searchChatForHits(WidgetTester tester) async {
   await _searchChat(tester);
   expect(find.byType(MessageBubble), findsWidgets, reason: 'the search found no message');
-  expect(find.byType(MessageBubble).evaluate().length, lessThan(chatLineCount - 1),
-      reason: 'the search did not narrow the messages');
+  expect(find.textContaining(' of '), findsOneWidget, reason: 'the search bar does not count the hits');
 }
 
 Future<void> _expectGroupMessages(WidgetTester tester) async {
@@ -985,7 +984,7 @@ Future<void> _openGroupMessageReportSheet(WidgetTester tester) async {
 
 Future<void> _expectBlockedLine(WidgetTester tester) async {
   final en = lookupAppLocalizations(const Locale('en'));
-  expect(find.text(en.blockedComposerLine), findsOneWidget, reason: 'the blocked chat shows its composer');
+  expect(find.text(en.blockedComposerLine(peerHandle)), findsOneWidget, reason: 'the blocked chat shows its composer');
 }
 
 Future<void> _expectBlockedAccounts(WidgetTester tester) async {
@@ -1018,10 +1017,12 @@ Future<void> _openBlockedMessageSheet(WidgetTester tester) async {
 
 Future<void> _fileRefusedReport(WidgetTester tester) async {
   await _openReportSheet(tester);
+  // A reason closes the sheet and asks in a dialog, "Also block" ticked.
   await tester.tap(find.byKey(const ValueKey('report-reason-spam')));
+  await pumpFrames(tester, frames: 4);
   await tester.tap(find.byKey(const ValueKey('report-also-block')));
   await pumpFrames(tester, frames: 2);
-  await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.byType(FilledButton)));
+  await tester.tap(find.byKey(const ValueKey('report-confirm')));
   await pumpFrames(tester, frames: 6);
   expect(find.byType(SnackBarAction), findsOneWidget, reason: 'the refused report showed no Retry');
 }

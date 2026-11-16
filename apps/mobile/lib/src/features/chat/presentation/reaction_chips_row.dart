@@ -4,11 +4,13 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
+import '../../reactions/presentation/reaction_picker_widget.dart';
 
-/// The reactions under a message, one chip per emoji with its count, the
-/// most used first. A chip this user added to is highlighted, and a tap on
-/// one adds or withdraws this user's reaction. Each chip takes a tap over
-/// 44 px, more than the pill it draws.
+/// The reactions on a message, one chip per emoji, the most used first,
+/// with its count from two up (WhatsApp, Signal). A chip this user added to
+/// is highlighted, and a tap on one adds or withdraws this user's reaction.
+/// Each chip takes a tap over 44 px, more than the pill it draws, and a
+/// ring of the page colour sets it off the bubble it overlaps.
 class ReactionChipsRow extends StatelessWidget {
   const ReactionChipsRow({
     super.key,
@@ -72,6 +74,7 @@ class _ReactionChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final background = mine ? palette.primarySoft : palette.surfaceAlt;
+    final showCount = count > 1;
     final textColor = mine ? palette.primaryStrong : palette.textMuted;
     final countStyle = Theme.of(context).textTheme.labelMedium?.copyWith(color: textColor);
     return Semantics(
@@ -94,14 +97,20 @@ class _ReactionChip extends StatelessWidget {
               child: Container(
                 height: 28,
                 margin: const EdgeInsets.symmetric(horizontal: 2),
-                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xs),
-                decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(14)),
+                padding: EdgeInsets.symmetric(horizontal: showCount ? VeilSpace.xs : 6),
+                decoration: BoxDecoration(
+                  color: background,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: palette.canvas, width: 2),
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(emoji, style: const TextStyle(fontSize: 14, height: 1.2)),
-                    const SizedBox(width: VeilSpace.xxs),
-                    Text('$count', style: countStyle),
+                    Text(emoji, style: const TextStyle(fontSize: 14, height: 1.2, fontFamilyFallback: emojiFontFallback)),
+                    if (showCount) ...[
+                      const SizedBox(width: VeilSpace.xxs),
+                      Text('$count', style: countStyle),
+                    ],
                   ],
                 ),
               ),

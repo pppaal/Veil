@@ -148,12 +148,10 @@ class ChatAttention {
 
   /// How many of the chat's warnings come with an action: reviewing the
   /// identity change (in this chat, or the one that waits in the group),
-  /// releasing the held account, retrying failed sends.
+  /// releasing the held account. Failed sends are retried from their own
+  /// bubbles, with no banner.
   int get warningActionCount =>
-      (identityChanged ? 1 : 0) +
-      (identityChangedInGroup ? 1 : 0) +
-      (accountHeld ? 1 : 0) +
-      (failedSends > 0 ? 1 : 0);
+      (identityChanged ? 1 : 0) + (identityChangedInGroup ? 1 : 0) + (accountHeld ? 1 : 0);
 }
 
 class LayoutWorld {

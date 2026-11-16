@@ -138,7 +138,7 @@ void main() {
     await replacement.signIn();
     await settle();
 
-    expect(row(replacement), 'Encrypted message');
+    expect(row(replacement), 'Message');
     expect(replacement.controller.lastMessagePreviewFor(conv), isNull);
   });
 }

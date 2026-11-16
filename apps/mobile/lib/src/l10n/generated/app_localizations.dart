@@ -940,29 +940,11 @@ abstract class AppLocalizations {
   /// **'No messages yet'**
   String get chatEmptyTitle;
 
-  /// No description provided for @chatEmptyEncrypted.
-  ///
-  /// In en, this message translates to:
-  /// **'Messages are end-to-end encrypted.'**
-  String get chatEmptyEncrypted;
-
-  /// No description provided for @chatEmptyVerifyAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Compare safety numbers'**
-  String get chatEmptyVerifyAction;
-
   /// No description provided for @chatLoadFailedTitle.
   ///
   /// In en, this message translates to:
   /// **'Couldn\'t load messages'**
   String get chatLoadFailedTitle;
-
-  /// No description provided for @chatLoadFailedBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Try again in a moment.'**
-  String get chatLoadFailedBody;
 
   /// No description provided for @chatComposeHint.
   ///
@@ -993,12 +975,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Chat'**
   String get chatTitleFallback;
-
-  /// No description provided for @chatSubtitleOnline.
-  ///
-  /// In en, this message translates to:
-  /// **'Online'**
-  String get chatSubtitleOnline;
 
   /// No description provided for @chatGroupUnknownSender.
   ///
@@ -1036,53 +1012,11 @@ abstract class AppLocalizations {
   /// **'Search'**
   String get chatSearchTooltip;
 
-  /// No description provided for @chatSearchMatchCount.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =0{No matches} =1{1 match} other{{count} matches}}'**
-  String chatSearchMatchCount(int count);
-
   /// No description provided for @chatSearchSearching.
   ///
   /// In en, this message translates to:
   /// **'Searching…'**
   String get chatSearchSearching;
-
-  /// No description provided for @chatBannerRelayReconnecting.
-  ///
-  /// In en, this message translates to:
-  /// **'Connecting…'**
-  String get chatBannerRelayReconnecting;
-
-  /// No description provided for @chatBannerQueuedLocally.
-  ///
-  /// In en, this message translates to:
-  /// **'Sending…'**
-  String get chatBannerQueuedLocally;
-
-  /// No description provided for @chatBannerFailedSends.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 message wasn\'t sent.} other{{count} messages weren\'t sent.}}'**
-  String chatBannerFailedSends(int count);
-
-  /// No description provided for @chatBannerUploadingAttachments.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 attachment is} other{{count} attachments are}} being encrypted and uploaded.'**
-  String chatBannerUploadingAttachments(int count);
-
-  /// No description provided for @chatBannerQueuedMessages.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 message is} other{{count} messages are}} waiting to be sent.'**
-  String chatBannerQueuedMessages(int count);
-
-  /// No description provided for @chatRetryFailedSendsAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Retry now'**
-  String get chatRetryFailedSendsAction;
 
   /// No description provided for @chatLoadOlder.
   ///
@@ -1099,14 +1033,26 @@ abstract class AppLocalizations {
   /// No description provided for @chatSearchEmptyTitle.
   ///
   /// In en, this message translates to:
-  /// **'No messages found'**
+  /// **'No results'**
   String get chatSearchEmptyTitle;
 
-  /// No description provided for @chatSearchEmptyBody.
+  /// No description provided for @chatSearchPosition.
   ///
   /// In en, this message translates to:
-  /// **'Only messages on this phone are searched.'**
-  String get chatSearchEmptyBody;
+  /// **'{index} of {count}'**
+  String chatSearchPosition(int index, int count);
+
+  /// No description provided for @chatSearchOlderTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous result'**
+  String get chatSearchOlderTooltip;
+
+  /// No description provided for @chatSearchNewerTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Next result'**
+  String get chatSearchNewerTooltip;
 
   /// No description provided for @chatTtlSheetTitle.
   ///
@@ -1117,7 +1063,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatTtlSheetFooter.
   ///
   /// In en, this message translates to:
-  /// **'The timer starts when a message is sent.'**
+  /// **'New messages disappear this long after they\'re sent.'**
   String get chatTtlSheetFooter;
 
   /// No description provided for @chatTtlOff.
@@ -1156,11 +1102,11 @@ abstract class AppLocalizations {
   /// **'1 day'**
   String get chatTtl1d;
 
-  /// No description provided for @chatTtlCustom.
+  /// No description provided for @chatTtl1w.
   ///
   /// In en, this message translates to:
-  /// **'Custom'**
-  String get chatTtlCustom;
+  /// **'1 week'**
+  String get chatTtl1w;
 
   /// No description provided for @chatTtlDisabledLabel.
   ///
@@ -1171,13 +1117,13 @@ abstract class AppLocalizations {
   /// No description provided for @chatAttachmentTicketTitle.
   ///
   /// In en, this message translates to:
-  /// **'File not downloaded'**
+  /// **'Can\'t open this file'**
   String get chatAttachmentTicketTitle;
 
   /// No description provided for @chatAttachmentTicketBody.
   ///
   /// In en, this message translates to:
-  /// **'The server would send this file, but this version can\'t download or open it yet.\n\n{summary}'**
+  /// **'This version can\'t download files yet.\n\n{summary}'**
   String chatAttachmentTicketBody(String summary);
 
   /// No description provided for @chatAttachmentTicketFailed.
@@ -1207,8 +1153,14 @@ abstract class AppLocalizations {
   /// No description provided for @chatAttachmentCannotOpen.
   ///
   /// In en, this message translates to:
-  /// **'This version can\'t open attachments.'**
+  /// **'Can\'t open in this version'**
   String get chatAttachmentCannotOpen;
+
+  /// No description provided for @chatAttachmentTypeSize.
+  ///
+  /// In en, this message translates to:
+  /// **'{type} · {size}'**
+  String chatAttachmentTypeSize(String type, String size);
 
   /// No description provided for @chatAttachmentKindPhoto.
   ///
@@ -1228,12 +1180,6 @@ abstract class AppLocalizations {
   /// **'Audio'**
   String get chatAttachmentKindAudio;
 
-  /// No description provided for @chatAttachmentKindDocument.
-  ///
-  /// In en, this message translates to:
-  /// **'Document'**
-  String get chatAttachmentKindDocument;
-
   /// No description provided for @chatAttachmentKindFile.
   ///
   /// In en, this message translates to:
@@ -1246,17 +1192,17 @@ abstract class AppLocalizations {
   /// **'More reactions'**
   String get reactionsMoreTooltip;
 
-  /// No description provided for @chatScreenshotToast.
-  ///
-  /// In en, this message translates to:
-  /// **'You took a screenshot. Screenshots can\'t be blocked on this phone, so a notice is being sent to the other person.'**
-  String get chatScreenshotToast;
-
   /// No description provided for @chatScreenshotSystemNotice.
   ///
   /// In en, this message translates to:
-  /// **'Someone in this chat took a screenshot.'**
-  String get chatScreenshotSystemNotice;
+  /// **'@{handle} took a screenshot'**
+  String chatScreenshotSystemNotice(String handle);
+
+  /// No description provided for @chatScreenshotSelfNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'You took a screenshot'**
+  String get chatScreenshotSelfNotice;
 
   /// No description provided for @chatDecryptingEnvelope.
   ///
@@ -1279,25 +1225,31 @@ abstract class AppLocalizations {
   /// No description provided for @chatDecryptAwaitingKey.
   ///
   /// In en, this message translates to:
-  /// **'Waiting for the sender\'s key'**
+  /// **'Waiting for this message'**
   String get chatDecryptAwaitingKey;
 
   /// No description provided for @chatDecryptSessionMissing.
   ///
   /// In en, this message translates to:
-  /// **'Waiting for a secure session'**
+  /// **'Waiting for this message'**
   String get chatDecryptSessionMissing;
 
   /// No description provided for @chatDecryptIdentityRejected.
   ///
   /// In en, this message translates to:
-  /// **'Held back: the sender\'s safety number changed'**
+  /// **'Locked until you review the new safety number'**
   String get chatDecryptIdentityRejected;
+
+  /// No description provided for @notificationNewMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'New message'**
+  String get notificationNewMessage;
 
   /// No description provided for @chatLegacySenderLine.
   ///
   /// In en, this message translates to:
-  /// **'Sent from an older version; not verified'**
+  /// **'Sent from an older app, not verified'**
   String get chatLegacySenderLine;
 
   /// No description provided for @chatNotSentTapToRetry.
@@ -1321,32 +1273,56 @@ abstract class AppLocalizations {
   /// No description provided for @chatNoticeIdentityChanged.
   ///
   /// In en, this message translates to:
-  /// **'A contact\'s safety number changed. Review it before trusting it again.'**
+  /// **'Safety number changed'**
   String get chatNoticeIdentityChanged;
 
   /// No description provided for @chatNoticeIdentityNewDevice.
   ///
   /// In en, this message translates to:
-  /// **'This contact started using a new device.'**
+  /// **'A new device was added'**
   String get chatNoticeIdentityNewDevice;
 
   /// No description provided for @chatNoticeSenderKeysKept.
   ///
   /// In en, this message translates to:
-  /// **'The server listed this group without its keys. This phone keeps using the ones it has.'**
+  /// **'Group keys didn\'t update. This phone kept the ones it has'**
   String get chatNoticeSenderKeysKept;
 
   /// No description provided for @chatNoticeGroupMemberAdded.
   ///
   /// In en, this message translates to:
-  /// **'Someone was added to this group. They can read messages sent from now on. Check the members in Safety number.'**
+  /// **'A member was added and can read new messages'**
   String get chatNoticeGroupMemberAdded;
 
   /// No description provided for @chatNoticeGroupMemberRemoved.
   ///
   /// In en, this message translates to:
-  /// **'Someone left this group or was removed from it.'**
+  /// **'A member left or was removed'**
   String get chatNoticeGroupMemberRemoved;
+
+  /// No description provided for @chatNoticeTimerSetByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You set disappearing messages to {duration}'**
+  String chatNoticeTimerSetByYou(String duration);
+
+  /// No description provided for @chatNoticeTimerOffByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You turned off disappearing messages'**
+  String get chatNoticeTimerOffByYou;
+
+  /// No description provided for @chatNoticeTimerSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Disappearing messages set to {duration}'**
+  String chatNoticeTimerSet(String duration);
+
+  /// No description provided for @chatNoticeTimerOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Disappearing messages turned off'**
+  String get chatNoticeTimerOff;
 
   /// No description provided for @chatIdentityChangedTitle.
   ///
@@ -1369,14 +1345,8 @@ abstract class AppLocalizations {
   /// No description provided for @chatIdentityChangedElsewhereTitle.
   ///
   /// In en, this message translates to:
-  /// **'Safety number changed in another chat'**
+  /// **'Safety number changed in a group you share'**
   String get chatIdentityChangedElsewhereTitle;
-
-  /// No description provided for @chatIdentityChangedElsewhereBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Their safety number changed in a group you share. Until you review it there, they aren\'t shown as verified.'**
-  String get chatIdentityChangedElsewhereBody;
 
   /// No description provided for @chatAccountHoldOtherTitle.
   ///
@@ -1387,31 +1357,31 @@ abstract class AppLocalizations {
   /// No description provided for @chatAccountHoldOtherBody.
   ///
   /// In en, this message translates to:
-  /// **'This chat is listed as @{handle}, but it isn\'t the account you talked to as @{handle} before. Nothing is sent or opened here until you confirm you want to talk to this account.'**
+  /// **'This isn\'t the @{handle} you talked to before. Nothing is sent or shown until you confirm.'**
   String chatAccountHoldOtherBody(String handle);
 
   /// No description provided for @chatAccountHoldUnissuedTitle.
   ///
   /// In en, this message translates to:
-  /// **'A name the server never gives out'**
+  /// **'A handle no account can have'**
   String get chatAccountHoldUnissuedTitle;
 
   /// No description provided for @chatAccountHoldUnissuedBody.
   ///
   /// In en, this message translates to:
-  /// **'This chat is listed under a name no server issues, so it may only look like someone you know. Nothing is sent or opened here until you confirm you want to talk to this account.'**
+  /// **'It may only look like someone you know. Nothing is sent or shown until you confirm.'**
   String get chatAccountHoldUnissuedBody;
 
   /// No description provided for @chatAccountHoldOwnTitle.
   ///
   /// In en, this message translates to:
-  /// **'Another account under your name'**
+  /// **'Another account under your handle'**
   String get chatAccountHoldOwnTitle;
 
   /// No description provided for @chatAccountHoldOwnBody.
   ///
   /// In en, this message translates to:
-  /// **'This chat is listed under your own name, @{handle}, but with another account. No one else can have your name, so the list this phone received was altered, perhaps to pass someone off as you. Nothing is sent or opened here until you confirm you want to talk to this account.'**
+  /// **'No one else can have @{handle}, so the list this phone got was changed. Nothing is sent or shown until you confirm.'**
   String chatAccountHoldOwnBody(String handle);
 
   /// No description provided for @chatAccountHoldOwnConfirmTitle.
@@ -1423,7 +1393,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatAccountHoldOwnConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'No other account can have your name, yet the server showed this one under it. Continue only if you confirmed another way, in person or on a call, whose account this is.'**
+  /// **'Continue only if you\'ve checked in person or on a call whose account this is.'**
   String get chatAccountHoldOwnConfirmBody;
 
   /// No description provided for @chatAccountHoldAcknowledge.
@@ -1611,54 +1581,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **' {state}.'**
   String chatSemanticsStateSegment(String state);
-
-  /// No description provided for @chatNetworkRecoveryFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 message wasn\'t sent.} other{{count} messages weren\'t sent.}} {retryLabel}'**
-  String chatNetworkRecoveryFailed(int count, String retryLabel);
-
-  /// No description provided for @chatNetworkRecoveryUploading.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 attachment is waiting.} other{{count} attachments are waiting.}} {retryLabel}'**
-  String chatNetworkRecoveryUploading(int count, String retryLabel);
-
-  /// No description provided for @chatNetworkRecoveryQueued.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 message is waiting.} other{{count} messages are waiting.}} {retryLabel}'**
-  String chatNetworkRecoveryQueued(int count, String retryLabel);
-
-  /// No description provided for @chatRetryResumes.
-  ///
-  /// In en, this message translates to:
-  /// **'They\'ll be sent when you\'re back online.'**
-  String get chatRetryResumes;
-
-  /// No description provided for @chatRetryNextIn.
-  ///
-  /// In en, this message translates to:
-  /// **'Next try in {countdown}.'**
-  String chatRetryNextIn(String countdown);
-
-  /// No description provided for @chatCountdownSeconds.
-  ///
-  /// In en, this message translates to:
-  /// **'{seconds}s'**
-  String chatCountdownSeconds(int seconds);
-
-  /// No description provided for @chatCountdownMinutes.
-  ///
-  /// In en, this message translates to:
-  /// **'{minutes}m'**
-  String chatCountdownMinutes(int minutes);
-
-  /// No description provided for @chatCountdownMinutesSeconds.
-  ///
-  /// In en, this message translates to:
-  /// **'{minutes}m {seconds}s'**
-  String chatCountdownMinutesSeconds(int minutes, int seconds);
 
   /// No description provided for @chatDurationDays.
   ///
@@ -3625,19 +3547,19 @@ abstract class AppLocalizations {
   /// No description provided for @muteDoneFor.
   ///
   /// In en, this message translates to:
-  /// **'Notifications off for {duration}'**
+  /// **'Muted for {duration}'**
   String muteDoneFor(String duration);
 
   /// No description provided for @muteDoneAlways.
   ///
   /// In en, this message translates to:
-  /// **'Notifications off'**
+  /// **'Muted'**
   String get muteDoneAlways;
 
   /// No description provided for @muteUndone.
   ///
   /// In en, this message translates to:
-  /// **'Notifications on'**
+  /// **'Unmuted'**
   String get muteUndone;
 
   /// No description provided for @muteFailed.
@@ -3663,6 +3585,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Report @{handle}'**
   String reportTitle(String handle);
+
+  /// No description provided for @reportConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Report @{handle}?'**
+  String reportConfirmTitle(String handle);
 
   /// No description provided for @reportReasonSpam.
   ///
@@ -3715,19 +3643,19 @@ abstract class AppLocalizations {
   /// No description provided for @reportFooterMessage.
   ///
   /// In en, this message translates to:
-  /// **'The report includes your account, theirs, the reason and which chat and message, but not what it says.'**
+  /// **'We get both accounts, the reason and which message, but not what it says. They won\'t be told.'**
   String get reportFooterMessage;
 
   /// No description provided for @reportFooterChat.
   ///
   /// In en, this message translates to:
-  /// **'The report includes your account, theirs, the reason and which chat, but no messages.'**
+  /// **'We get both accounts, the reason and which chat, but no messages. They won\'t be told.'**
   String get reportFooterChat;
 
   /// No description provided for @reportFooterAccount.
   ///
   /// In en, this message translates to:
-  /// **'The report includes your account, theirs and the reason, but no messages.'**
+  /// **'We get both accounts and the reason, but no messages. They won\'t be told.'**
   String get reportFooterAccount;
 
   /// No description provided for @reportSent.
@@ -3775,7 +3703,7 @@ abstract class AppLocalizations {
   /// No description provided for @blockConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'They can\'t message you directly or add you to a group. They aren\'t told, but their direct messages to you will fail, and in groups you share you\'ll both still see each other\'s messages.'**
+  /// **'Their messages to you will show as not sent, and they can\'t add you to groups. They won\'t be told, and in groups you share, you\'ll still see each other\'s messages.'**
   String get blockConfirmBody;
 
   /// No description provided for @blockDone.
@@ -3805,8 +3733,8 @@ abstract class AppLocalizations {
   /// No description provided for @blockedComposerLine.
   ///
   /// In en, this message translates to:
-  /// **'You blocked this account.'**
-  String get blockedComposerLine;
+  /// **'You blocked @{handle}.'**
+  String blockedComposerLine(String handle);
 
   /// No description provided for @blockedAccountsTitle.
   ///

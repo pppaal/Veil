@@ -98,7 +98,8 @@ void main() {
     });
   });
 
-  testWidgets('searches from the bar: the field replaces the title, and back closes it', (tester) async {
+  testWidgets('searches from the bar: the field replaces the title, the hits are counted under the messages, and back closes it',
+      (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
       await tester.tap(find.byTooltip('Search'));
       await pumpFrames(tester, frames: 2);
@@ -111,18 +112,26 @@ void main() {
       // Typed where the focus is: opening the search moved it to the bar.
       tester.testTextInput.enterText('lease');
       await pumpFrames(tester, frames: 4);
-      expect(find.text('2 matches'), findsOneWidget);
+      // In the composer's place: which hit is shown, and the arrows.
+      expect(find.text('2 of 2'), findsOneWidget);
+      expect(find.byType(ChatComposerBar), findsNothing);
+      expect(find.byTooltip('Previous result'), findsOneWidget);
       // The clear button is as tall as the field: nothing moves under it.
       expect(find.byTooltip('Clear search'), findsOneWidget);
       expect(tester.getSize(searchField).height, emptyHeight);
-      expect(find.text(_first), findsOneWidget);
-      expect(find.text(_latest), findsNothing);
+      // The older hit is one arrow away.
+      await tester.tap(find.byTooltip('Previous result'));
+      await pumpFrames(tester, frames: 6);
+      expect(find.text('1 of 2'), findsOneWidget);
+      expect(find.textContaining(_first.substring(0, 20), findRichText: true), findsOneWidget);
 
       await tester.tap(find.byTooltip('Back'));
       await pumpFrames(tester, frames: 4);
       expect(find.byType(ChatRoomScreen), findsOneWidget, reason: 'back closed the search, not the chat');
       expect(find.text('Sam Rivera'), findsOneWidget);
-      expect(find.text(_latest), findsOneWidget);
+      // The chat stays where the search left it, under the composer again.
+      expect(find.byType(ChatComposerBar), findsOneWidget);
+      expect(find.text('2 of 2'), findsNothing);
       expect(find.textContaining('on this device'), findsNothing);
     });
   });
@@ -178,7 +187,8 @@ void main() {
         () => world.trust.admit(chatConversationId, peer.userId, peer.deviceId, identities.self.identityPublicKey),
       );
       await pumpFrames(tester, frames: 3);
-      expect(find.text('Safety number changed'), findsOneWidget);
+      // The banner, and the line in the chat where the change happened.
+      expect(find.widgetWithText(VeilNotice, 'Safety number changed'), findsOneWidget);
       expect(find.byTooltip('Verified'), findsNothing);
     });
 
@@ -189,7 +199,7 @@ void main() {
       location: _chat,
       attention: const ChatAttention(identityChanged: true),
       body: (world) async {
-        expect(find.text('Safety number changed'), findsOneWidget);
+        expect(find.widgetWithText(VeilNotice, 'Safety number changed'), findsOneWidget);
         expect(find.byTooltip('Verified'), findsNothing);
       },
     );
@@ -208,7 +218,7 @@ void main() {
     );
   });
 
-  testWidgets('keeps an identity change and failed sends above the messages, each with its action',
+  testWidgets('keeps an identity change above the messages with its action; failed sends say so on their bubbles',
       (tester) async {
     await withPhoneApp(
       tester,
@@ -216,11 +226,14 @@ void main() {
       location: _chat,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        // Failed sends are one line with no title over it.
-        for (final text in ['Safety number changed', 'Review', "2 messages weren't sent.", 'Retry now']) {
+        for (final text in ['Safety number changed', 'Review']) {
           final rect = onScreen(tester, find.text(text));
           expect(rect.height, greaterThan(0), reason: '"$text" is on screen');
         }
+        // As Signal does: no banner for them, the bubble is the retry.
+        expect(_fullNotices(), findsOneWidget);
+        expect(find.text('Not sent. Tap to retry.'), findsWidgets);
+        expect(find.text('Retry now'), findsNothing);
         expect(onScreen(tester, find.byType(ChatMessageList)).height, greaterThanOrEqualTo(96));
         expect(tester.takeException(), isNull);
 
@@ -236,15 +249,14 @@ void main() {
   // would not fit there, and a strip that scrolls them cuts the first one's
   // action off, which is the one thing the user must be able to reach.
   testWidgets('with the keyboard up, each warning keeps its title and its action on one row', (tester) async {
-    // A notice's title, or its one line when it has no title.
-    const titles = ['Safety number changed', "2 messages weren't sent."];
-    const actions = ['Review', 'Retry now'];
+    const titles = ['Safety number changed', 'A different account'];
+    const actions = ['Review', 'Talk to this account'];
     await withPhoneApp(
       tester,
       identities,
       location: _chat,
       keyboardHeight: 300,
-      attention: const ChatAttention(identityChanged: true, failedSends: 2),
+      attention: const ChatAttention(identityChanged: true, accountHeld: true),
       body: (world) async {
         expect(_denseNotices(), findsNWidgets(2));
         expect(_fullNotices(), findsNothing, reason: 'the full notices are not what is shown');
@@ -276,7 +288,7 @@ void main() {
       tester,
       identities,
       location: _chat,
-      attention: const ChatAttention(identityChanged: true, failedSends: 2),
+      attention: const ChatAttention(identityChanged: true, accountHeld: true),
       body: (world) async {
         expect(_fullNotices(), findsNWidgets(2));
         expect(_denseNotices(), findsNothing);
@@ -296,25 +308,22 @@ void main() {
     );
   });
 
-  testWidgets('more warnings than fit as rows scroll, with the most pressing whole at the top', (tester) async {
+  testWidgets('every warning stays whole with larger text and the keyboard up; failed sends add none',
+      (tester) async {
     await withPhoneApp(
       tester,
       identities,
       location: _chat,
       keyboardHeight: 300,
+      textScale: 1.3,
       attention: const ChatAttention(identityChanged: true, accountHeld: true, failedSends: 2),
       body: (world) async {
-        expect(_denseNotices(), findsNWidgets(3));
+        expect(_denseNotices(), findsNWidgets(2));
         Finder action(String label) => find.widgetWithText(TextButton, label);
         expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Review'))), isNull);
         expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Talk to this account'))), isNull);
-        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry now'))), isNotNull,
-            reason: 'three rows are more than this screen has room for');
+        expect(action('Retry now'), findsNothing);
         expect(onScreen(tester, find.byType(ChatMessageList)).height, greaterThanOrEqualTo(96));
-
-        await tester.ensureVisible(action('Retry now'));
-        await pumpFrames(tester, frames: 2);
-        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry now'))), isNull);
         expect(tester.takeException(), isNull);
       },
     );
@@ -329,7 +338,7 @@ void main() {
       body: (world) async {
         expect(onScreen(tester, find.text('A different account')).height, greaterThan(0));
         expect(onScreen(tester, find.text('Talk to this account')).height, greaterThan(0));
-        expect(find.textContaining('Nothing is sent or opened here'), findsOneWidget);
+        expect(find.textContaining('Nothing is sent or shown until you confirm'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

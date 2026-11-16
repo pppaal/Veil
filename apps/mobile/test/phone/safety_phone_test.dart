@@ -95,9 +95,10 @@ void main() {
   Future<void> reportSpam(WidgetTester tester) async {
     await openMenu(tester, 'report');
     await tester.tap(find.text(en.reportReasonSpam));
+    await pumpFrames(tester, frames: 4);
     await tester.tap(find.byKey(const ValueKey('report-also-block')));
     await pumpFrames(tester, frames: 2);
-    await tester.tap(inSheet(find.byType(FilledButton)));
+    await tester.tap(find.byKey(const ValueKey('report-confirm')));
     await pumpFrames(tester, frames: 6);
   }
 
@@ -114,7 +115,7 @@ void main() {
       await pumpFrames(tester, frames: 4);
 
       expect(world.relay.blocks['user-$selfHandle']?.keys, ['user-$peerHandle']);
-      expect(find.text(en.blockedComposerLine), findsOneWidget);
+      expect(find.text(en.blockedComposerLine(peerHandle)), findsOneWidget);
       expect(find.byType(ChatComposerBar), findsNothing, reason: 'the server refuses what is sent to a blocked account');
       await tester.tap(find.byTooltip(en.chatMenuTooltip));
       await pumpFrames(tester, frames: 3);
@@ -129,7 +130,7 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, en.unblockAction));
       await pumpFrames(tester, frames: 4);
       expect(world.relay.blocks['user-$selfHandle'], isEmpty);
-      expect(find.text(en.blockedComposerLine), findsNothing);
+      expect(find.text(en.blockedComposerLine(peerHandle)), findsNothing);
       expect(find.byType(ChatComposerBar), findsOneWidget);
 
       await send(tester, 'delivered');
@@ -165,7 +166,7 @@ void main() {
       expect(world.relay.blocks['user-$selfHandle']?.keys, ['user-$peerHandle'], reason: 'tapping Block unblocked');
       expect(find.text(en.unblockDone(peerHandle)), findsNothing);
       expect(find.byType(AlertDialog), findsNothing);
-      expect(find.text(en.blockedComposerLine), findsOneWidget);
+      expect(find.text(en.blockedComposerLine(peerHandle)), findsOneWidget);
     });
   });
 
@@ -195,14 +196,20 @@ void main() {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
       await openMenu(tester, 'report');
       expect(find.text(en.reportTitle(peerHandle)), findsOneWidget);
-      expect(find.text(en.reportFooterChat), findsOneWidget);
-      // Nothing goes until a reason is picked.
-      expect(tester.widget<FilledButton>(inSheet(find.byType(FilledButton))).onPressed, isNull);
-      expect(tester.widget<Switch>(inSheet(find.byType(Switch))).value, isTrue, reason: 'Also block is on by default');
+      // The sheet is the reasons alone; a tap on one asks in a dialog.
+      expect(inSheet(find.byType(FilledButton)), findsNothing);
+      expect(inSheet(find.byType(Switch)), findsNothing);
 
       await tester.tap(find.text(en.reportReasonHarassment));
-      await pumpFrames(tester, frames: 2);
-      await tester.tap(inSheet(find.byType(FilledButton)));
+      await pumpFrames(tester, frames: 4);
+      expect(find.text(en.reportConfirmTitle(peerHandle)), findsOneWidget);
+      expect(find.text(en.reportFooterChat), findsOneWidget);
+      expect(
+        tester.widget<CheckboxListTile>(find.byKey(const ValueKey('report-also-block'))).value,
+        isTrue,
+        reason: 'Also block is ticked by default',
+      );
+      await tester.tap(find.byKey(const ValueKey('report-confirm')));
       await pumpFrames(tester, frames: 6);
 
       expect(world.relay.reports.single.fields, {
@@ -212,7 +219,7 @@ void main() {
       });
       expect(world.relay.blocks['user-$selfHandle']?.keys, ['user-$peerHandle']);
       expect(findCopy(en.reportSentAndBlocked(peerHandle)), findsOneWidget);
-      expect(find.text(en.blockedComposerLine), findsOneWidget);
+      expect(find.text(en.blockedComposerLine(peerHandle)), findsOneWidget);
     });
   });
 
@@ -229,12 +236,13 @@ void main() {
       await pumpFrames(tester, frames: 4);
       await tester.tap(find.byKey(const ValueKey('message-report')));
       await pumpFrames(tester, frames: 4);
-      expect(find.text(en.reportFooterMessage), findsOneWidget);
 
       await tester.tap(find.text(en.reportReasonScam));
+      await pumpFrames(tester, frames: 4);
+      expect(find.text(en.reportFooterMessage), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('report-also-block')));
       await pumpFrames(tester, frames: 2);
-      await tester.tap(inSheet(find.byType(FilledButton)));
+      await tester.tap(find.byKey(const ValueKey('report-confirm')));
       await pumpFrames(tester, frames: 6);
 
       final reported = world.messenger.messagesFor(chatConversationId).firstWhere(
@@ -275,11 +283,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('message-report')));
       await pumpFrames(tester, frames: 4);
       expect(find.text(en.reportTitle('priya')), findsOneWidget);
-      expect(find.byKey(const ValueKey('report-also-block')), findsNothing);
 
       await tester.tap(find.text(en.reportReasonOther));
+      await pumpFrames(tester, frames: 4);
+      expect(find.byKey(const ValueKey('report-also-block')), findsNothing);
       await pumpFrames(tester, frames: 2);
-      await tester.tap(inSheet(find.byType(FilledButton)));
+      await tester.tap(find.byKey(const ValueKey('report-confirm')));
       await pumpFrames(tester, frames: 6);
       final fields = world.relay.reports.single.fields;
       expect(fields['reportedUserId'], 'user-priya');
@@ -300,9 +309,10 @@ void main() {
       world.relay.refuseReports = 1;
       await openMenu(tester, 'report');
       await tester.tap(find.text(en.reportReasonSpam));
+      await pumpFrames(tester, frames: 4);
       await tester.tap(find.byKey(const ValueKey('report-also-block')));
       await pumpFrames(tester, frames: 2);
-      await tester.tap(inSheet(find.byType(FilledButton)));
+      await tester.tap(find.byKey(const ValueKey('report-confirm')));
       await pumpFrames(tester, frames: 6);
       expect(findCopy(en.reportFailed), findsOneWidget);
       expect(world.relay.reports, isEmpty);
@@ -495,11 +505,12 @@ void main() {
         await pumpFrames(tester, frames: 4);
         await tester.tap(find.byKey(const ValueKey('contact-report')));
         await pumpFrames(tester, frames: 6);
-        expect(find.text(en.reportFooterAccount), findsOneWidget);
         await tester.tap(find.text(en.reportReasonImpersonation));
+        await pumpFrames(tester, frames: 4);
+        expect(find.text(en.reportFooterAccount), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('report-also-block')));
         await pumpFrames(tester, frames: 2);
-        await tester.tap(inSheet(find.byType(FilledButton)));
+        await tester.tap(find.byKey(const ValueKey('report-confirm')));
         await pumpFrames(tester, frames: 6);
         expect(world.relay.reports.single.fields, {'reportedUserId': 'user-mia', 'reason': 'impersonation'});
       },

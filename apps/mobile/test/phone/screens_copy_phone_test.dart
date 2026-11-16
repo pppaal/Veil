@@ -255,36 +255,24 @@ void main() {
   group('an empty chat', () {
     const location = '/chat/$emptyChatConversationId';
 
-    // A compact empty state is its title and its button (design system
-    // 7.8): the line under the title and the icon wait for the whole screen.
-    testWidgets('above the keyboard shows its title and its button whole, without the icon', (tester) async {
-      await withPhoneApp(tester, identities, location: location, keyboardHeight: 300, body: (world) async {
-        final area = onScreen(tester, find.byType(ChatMessageList));
-        for (final finder in [
-          find.text('No messages yet'),
-          find.widgetWithText(OutlinedButton, 'Compare safety numbers'),
-        ]) {
-          final box = tester.renderObject<RenderBox>(finder);
+    // One muted line, as Telegram's "No messages here yet": no line on
+    // encryption, no button and no icon, with the keyboard up or not.
+    for (final keyboard in [0.0, 300.0]) {
+      testWidgets('shows "No messages yet" alone and whole (keyboard ${keyboard > 0 ? 'up' : 'down'})', (tester) async {
+        await withPhoneApp(tester, identities, location: location, keyboardHeight: keyboard, body: (world) async {
+          final area = onScreen(tester, find.byType(ChatMessageList));
+          final box = tester.renderObject<RenderBox>(find.text('No messages yet'));
           final rect = box.localToGlobal(Offset.zero) & box.size;
-          expect(rect.top, greaterThanOrEqualTo(area.top), reason: '$finder');
-          expect(rect.bottom, lessThanOrEqualTo(area.bottom), reason: '$finder');
-        }
-        expect(find.textContaining('end-to-end encrypted'), findsNothing);
-        // Neither the state's icon nor a padlock in the composer, which has none.
-        expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
-        expect(tester.takeException(), isNull);
+          expect(rect.top, greaterThanOrEqualTo(area.top));
+          expect(rect.bottom, lessThanOrEqualTo(area.bottom));
+          expect(find.textContaining('end-to-end encrypted'), findsNothing);
+          expect(find.text('Compare safety numbers'), findsNothing);
+          // No padlock, in the state or in the composer (design system 11.2).
+          expect(find.byIcon(Icons.lock_outline), findsNothing);
+          expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
       });
-    });
-
-    testWidgets('with the whole screen shows the line that messages are end-to-end encrypted too', (tester) async {
-      await withPhoneApp(tester, identities, location: location, body: (world) async {
-        expect(find.text('Messages are end-to-end encrypted.'), findsOneWidget);
-        // No padlock, in the state or in the composer (design system 11.2).
-        expect(find.byIcon(Icons.lock_outline), findsNothing);
-        expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
-        expect(find.text('No messages yet'), findsOneWidget);
-        expect(find.widgetWithText(OutlinedButton, 'Compare safety numbers'), findsOneWidget);
-      });
-    });
+    }
   });
 }

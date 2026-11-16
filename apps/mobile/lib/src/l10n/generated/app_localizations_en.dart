@@ -521,16 +521,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatEmptyTitle => 'No messages yet';
 
   @override
-  String get chatEmptyEncrypted => 'Messages are end-to-end encrypted.';
-
-  @override
-  String get chatEmptyVerifyAction => 'Compare safety numbers';
-
-  @override
   String get chatLoadFailedTitle => 'Couldn\'t load messages';
-
-  @override
-  String get chatLoadFailedBody => 'Try again in a moment.';
 
   @override
   String get chatComposeHint => 'Message';
@@ -546,9 +537,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatTitleFallback => 'Chat';
-
-  @override
-  String get chatSubtitleOnline => 'Online';
 
   @override
   String get chatGroupUnknownSender => 'Unknown sender';
@@ -579,61 +567,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSearchTooltip => 'Search';
 
   @override
-  String chatSearchMatchCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count matches',
-      one: '1 match',
-      zero: 'No matches',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String get chatSearchSearching => 'Searching…';
-
-  @override
-  String get chatBannerRelayReconnecting => 'Connecting…';
-
-  @override
-  String get chatBannerQueuedLocally => 'Sending…';
-
-  @override
-  String chatBannerFailedSends(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count messages weren\'t sent.',
-      one: '1 message wasn\'t sent.',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String chatBannerUploadingAttachments(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count attachments are',
-      one: '1 attachment is',
-    );
-    return '$_temp0 being encrypted and uploaded.';
-  }
-
-  @override
-  String chatBannerQueuedMessages(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count messages are',
-      one: '1 message is',
-    );
-    return '$_temp0 waiting to be sent.';
-  }
-
-  @override
-  String get chatRetryFailedSendsAction => 'Retry now';
 
   @override
   String get chatLoadOlder => 'Load older messages';
@@ -642,16 +576,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatLoadingOlder => 'Loading older messages…';
 
   @override
-  String get chatSearchEmptyTitle => 'No messages found';
+  String get chatSearchEmptyTitle => 'No results';
 
   @override
-  String get chatSearchEmptyBody => 'Only messages on this phone are searched.';
+  String chatSearchPosition(int index, int count) {
+    return '$index of $count';
+  }
+
+  @override
+  String get chatSearchOlderTooltip => 'Previous result';
+
+  @override
+  String get chatSearchNewerTooltip => 'Next result';
 
   @override
   String get chatTtlSheetTitle => 'Disappearing messages';
 
   @override
-  String get chatTtlSheetFooter => 'The timer starts when a message is sent.';
+  String get chatTtlSheetFooter =>
+      'New messages disappear this long after they\'re sent.';
 
   @override
   String get chatTtlOff => 'Off';
@@ -672,17 +615,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtl1d => '1 day';
 
   @override
-  String get chatTtlCustom => 'Custom';
+  String get chatTtl1w => '1 week';
 
   @override
   String get chatTtlDisabledLabel => 'Off';
 
   @override
-  String get chatAttachmentTicketTitle => 'File not downloaded';
+  String get chatAttachmentTicketTitle => 'Can\'t open this file';
 
   @override
   String chatAttachmentTicketBody(String summary) {
-    return 'The server would send this file, but this version can\'t download or open it yet.\n\n$summary';
+    return 'This version can\'t download files yet.\n\n$summary';
   }
 
   @override
@@ -698,8 +641,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatAttachmentStateBanner => 'Attachment';
 
   @override
-  String get chatAttachmentCannotOpen =>
-      'This version can\'t open attachments.';
+  String get chatAttachmentCannotOpen => 'Can\'t open in this version';
+
+  @override
+  String chatAttachmentTypeSize(String type, String size) {
+    return '$type · $size';
+  }
 
   @override
   String get chatAttachmentKindPhoto => 'Photo';
@@ -711,21 +658,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatAttachmentKindAudio => 'Audio';
 
   @override
-  String get chatAttachmentKindDocument => 'Document';
-
-  @override
   String get chatAttachmentKindFile => 'File';
 
   @override
   String get reactionsMoreTooltip => 'More reactions';
 
   @override
-  String get chatScreenshotToast =>
-      'You took a screenshot. Screenshots can\'t be blocked on this phone, so a notice is being sent to the other person.';
+  String chatScreenshotSystemNotice(String handle) {
+    return '@$handle took a screenshot';
+  }
 
   @override
-  String get chatScreenshotSystemNotice =>
-      'Someone in this chat took a screenshot.';
+  String get chatScreenshotSelfNotice => 'You took a screenshot';
 
   @override
   String get chatDecryptingEnvelope => 'Decrypting…';
@@ -737,17 +681,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatDecryptReplayed => 'Repeated or expired message';
 
   @override
-  String get chatDecryptAwaitingKey => 'Waiting for the sender\'s key';
+  String get chatDecryptAwaitingKey => 'Waiting for this message';
 
   @override
-  String get chatDecryptSessionMissing => 'Waiting for a secure session';
+  String get chatDecryptSessionMissing => 'Waiting for this message';
 
   @override
   String get chatDecryptIdentityRejected =>
-      'Held back: the sender\'s safety number changed';
+      'Locked until you review the new safety number';
 
   @override
-  String get chatLegacySenderLine => 'Sent from an older version; not verified';
+  String get notificationNewMessage => 'New message';
+
+  @override
+  String get chatLegacySenderLine => 'Sent from an older app, not verified';
 
   @override
   String get chatNotSentTapToRetry => 'Not sent. Tap to retry.';
@@ -759,24 +706,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatDayYesterday => 'Yesterday';
 
   @override
-  String get chatNoticeIdentityChanged =>
-      'A contact\'s safety number changed. Review it before trusting it again.';
+  String get chatNoticeIdentityChanged => 'Safety number changed';
 
   @override
-  String get chatNoticeIdentityNewDevice =>
-      'This contact started using a new device.';
+  String get chatNoticeIdentityNewDevice => 'A new device was added';
 
   @override
   String get chatNoticeSenderKeysKept =>
-      'The server listed this group without its keys. This phone keeps using the ones it has.';
+      'Group keys didn\'t update. This phone kept the ones it has';
 
   @override
   String get chatNoticeGroupMemberAdded =>
-      'Someone was added to this group. They can read messages sent from now on. Check the members in Safety number.';
+      'A member was added and can read new messages';
 
   @override
-  String get chatNoticeGroupMemberRemoved =>
-      'Someone left this group or was removed from it.';
+  String get chatNoticeGroupMemberRemoved => 'A member left or was removed';
+
+  @override
+  String chatNoticeTimerSetByYou(String duration) {
+    return 'You set disappearing messages to $duration';
+  }
+
+  @override
+  String get chatNoticeTimerOffByYou => 'You turned off disappearing messages';
+
+  @override
+  String chatNoticeTimerSet(String duration) {
+    return 'Disappearing messages set to $duration';
+  }
+
+  @override
+  String get chatNoticeTimerOff => 'Disappearing messages turned off';
 
   @override
   String get chatIdentityChangedTitle => 'Safety number changed';
@@ -789,34 +749,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatIdentityChangedElsewhereTitle =>
-      'Safety number changed in another chat';
-
-  @override
-  String get chatIdentityChangedElsewhereBody =>
-      'Their safety number changed in a group you share. Until you review it there, they aren\'t shown as verified.';
+      'Safety number changed in a group you share';
 
   @override
   String get chatAccountHoldOtherTitle => 'A different account';
 
   @override
   String chatAccountHoldOtherBody(String handle) {
-    return 'This chat is listed as @$handle, but it isn\'t the account you talked to as @$handle before. Nothing is sent or opened here until you confirm you want to talk to this account.';
+    return 'This isn\'t the @$handle you talked to before. Nothing is sent or shown until you confirm.';
   }
 
   @override
-  String get chatAccountHoldUnissuedTitle =>
-      'A name the server never gives out';
+  String get chatAccountHoldUnissuedTitle => 'A handle no account can have';
 
   @override
   String get chatAccountHoldUnissuedBody =>
-      'This chat is listed under a name no server issues, so it may only look like someone you know. Nothing is sent or opened here until you confirm you want to talk to this account.';
+      'It may only look like someone you know. Nothing is sent or shown until you confirm.';
 
   @override
-  String get chatAccountHoldOwnTitle => 'Another account under your name';
+  String get chatAccountHoldOwnTitle => 'Another account under your handle';
 
   @override
   String chatAccountHoldOwnBody(String handle) {
-    return 'This chat is listed under your own name, @$handle, but with another account. No one else can have your name, so the list this phone received was altered, perhaps to pass someone off as you. Nothing is sent or opened here until you confirm you want to talk to this account.';
+    return 'No one else can have @$handle, so the list this phone got was changed. Nothing is sent or shown until you confirm.';
   }
 
   @override
@@ -826,7 +781,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatAccountHoldOwnConfirmBody =>
-      'No other account can have your name, yet the server showed this one under it. Continue only if you confirmed another way, in person or on a call, whose account this is.';
+      'Continue only if you\'ve checked in person or on a call whose account this is.';
 
   @override
   String get chatAccountHoldAcknowledge => 'Talk to this account';
@@ -937,62 +892,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String chatSemanticsStateSegment(String state) {
     return ' $state.';
-  }
-
-  @override
-  String chatNetworkRecoveryFailed(int count, String retryLabel) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count messages weren\'t sent.',
-      one: '1 message wasn\'t sent.',
-    );
-    return '$_temp0 $retryLabel';
-  }
-
-  @override
-  String chatNetworkRecoveryUploading(int count, String retryLabel) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count attachments are waiting.',
-      one: '1 attachment is waiting.',
-    );
-    return '$_temp0 $retryLabel';
-  }
-
-  @override
-  String chatNetworkRecoveryQueued(int count, String retryLabel) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count messages are waiting.',
-      one: '1 message is waiting.',
-    );
-    return '$_temp0 $retryLabel';
-  }
-
-  @override
-  String get chatRetryResumes => 'They\'ll be sent when you\'re back online.';
-
-  @override
-  String chatRetryNextIn(String countdown) {
-    return 'Next try in $countdown.';
-  }
-
-  @override
-  String chatCountdownSeconds(int seconds) {
-    return '${seconds}s';
-  }
-
-  @override
-  String chatCountdownMinutes(int minutes) {
-    return '${minutes}m';
-  }
-
-  @override
-  String chatCountdownMinutesSeconds(int minutes, int seconds) {
-    return '${minutes}m ${seconds}s';
   }
 
   @override
@@ -2192,14 +2091,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String muteDoneFor(String duration) {
-    return 'Notifications off for $duration';
+    return 'Muted for $duration';
   }
 
   @override
-  String get muteDoneAlways => 'Notifications off';
+  String get muteDoneAlways => 'Muted';
 
   @override
-  String get muteUndone => 'Notifications on';
+  String get muteUndone => 'Unmuted';
 
   @override
   String get muteFailed => 'Couldn\'t change notifications';
@@ -2213,6 +2112,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String reportTitle(String handle) {
     return 'Report @$handle';
+  }
+
+  @override
+  String reportConfirmTitle(String handle) {
+    return 'Report @$handle?';
   }
 
   @override
@@ -2243,15 +2147,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reportFooterMessage =>
-      'The report includes your account, theirs, the reason and which chat and message, but not what it says.';
+      'We get both accounts, the reason and which message, but not what it says. They won\'t be told.';
 
   @override
   String get reportFooterChat =>
-      'The report includes your account, theirs, the reason and which chat, but no messages.';
+      'We get both accounts, the reason and which chat, but no messages. They won\'t be told.';
 
   @override
   String get reportFooterAccount =>
-      'The report includes your account, theirs and the reason, but no messages.';
+      'We get both accounts and the reason, but no messages. They won\'t be told.';
 
   @override
   String get reportSent => 'Report sent';
@@ -2282,7 +2186,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get blockConfirmBody =>
-      'They can\'t message you directly or add you to a group. They aren\'t told, but their direct messages to you will fail, and in groups you share you\'ll both still see each other\'s messages.';
+      'Their messages to you will show as not sent, and they can\'t add you to groups. They won\'t be told, and in groups you share, you\'ll still see each other\'s messages.';
 
   @override
   String blockDone(String handle) {
@@ -2305,7 +2209,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get blockedComposerLine => 'You blocked this account.';
+  String blockedComposerLine(String handle) {
+    return 'You blocked @$handle.';
+  }
 
   @override
   String get blockedAccountsTitle => 'Blocked accounts';

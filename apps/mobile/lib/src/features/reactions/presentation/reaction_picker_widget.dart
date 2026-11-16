@@ -8,6 +8,10 @@ import '../../../shared/presentation/veil_ui.dart';
 /// holds it. The "more" button appears only where
 /// [onExpandPressed] gives it something to open: with it the row is wider
 /// than a 360 px screen, so it scrolls sideways rather than overflow.
+/// The colour emoji fonts of the platforms, named so an emoji is drawn from
+/// one whatever the text font is.
+const emojiFontFallback = ['Apple Color Emoji', 'Noto Color Emoji'];
+
 class ReactionPickerWidget extends StatelessWidget {
   const ReactionPickerWidget({
     super.key,
@@ -91,7 +95,7 @@ class _ReactionButton extends StatelessWidget {
           child: Center(
             child: Text(
               emoji,
-              style: const TextStyle(fontSize: 24),
+              style: const TextStyle(fontSize: 24, fontFamilyFallback: emojiFontFallback),
             ),
           ),
         ),

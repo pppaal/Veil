@@ -76,18 +76,7 @@ mixin NavigationTargetJump<W extends ConsumerStatefulWidget> on ConsumerState<W>
       _highlightedMessageId = target.messageId;
     });
 
-    final targetContext = await _buildRowOf(target.messageId, superseded);
-    if (targetContext != null && targetContext.mounted) {
-      await Scrollable.ensureVisible(
-        targetContext,
-        duration: VeilMotion.normal,
-        curve: Curves.easeOutCubic,
-        // The list runs upwards from the composer, so its leading edge is
-        // the bottom: this leaves the message in the upper part of the
-        // list, with what was said after it below.
-        alignment: 0.82,
-      );
-    }
+    await _scrollTo(target.messageId, superseded);
     if (superseded()) {
       return;
     }
@@ -99,6 +88,28 @@ mixin NavigationTargetJump<W extends ConsumerStatefulWidget> on ConsumerState<W>
       }
       setState(() => _highlightedMessageId = null);
     });
+  }
+
+  /// Scrolls the list to [messageId], one of the messages it shows (a hit
+  /// of the chat's search), without marking it.
+  Future<void> scrollToMessage(String messageId) {
+    final serial = ++_jumpSerial;
+    return _scrollTo(messageId, () => !mounted || serial != _jumpSerial);
+  }
+
+  Future<void> _scrollTo(String messageId, bool Function() superseded) async {
+    final targetContext = await _buildRowOf(messageId, superseded);
+    if (targetContext != null && targetContext.mounted) {
+      await Scrollable.ensureVisible(
+        targetContext,
+        duration: VeilMotion.normal,
+        curve: Curves.easeOutCubic,
+        // The list runs upwards from the composer, so its leading edge is
+        // the bottom: this leaves the message in the upper part of the
+        // list, with what was said after it below.
+        alignment: 0.82,
+      );
+    }
   }
 
   BuildContext? _rowContext(String messageId) {

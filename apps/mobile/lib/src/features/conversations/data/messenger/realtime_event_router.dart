@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:ui' show Locale;
 
 import '../../../../core/config/veil_config.dart';
 import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/notifications/local_notification_service.dart';
 import '../../../../core/realtime/realtime_events.dart';
 import '../../../../core/realtime/realtime_service.dart';
+import '../../../../l10n/generated/app_localizations.dart';
 import 'conversation_crypto_router.dart';
 import 'conversation_sync_service.dart';
 import 'disappearing_messages_service.dart';
@@ -212,10 +214,12 @@ class RealtimeEventRouter {
     } else if (!message.isMine && message.envelope.messageKind != MessageKind.reaction) {
       // A reaction updates a message already seen. Trusting the relay's
       // label costs nothing: it could withhold the message.
+      // Names no one and quotes nothing: the app is English only, so the
+      // words are read without a context.
       unawaited(_notifications?.showMessageNotification(
         conversationId: conversationId,
         title: 'Veil',
-        body: 'New encrypted message',
+        body: lookupAppLocalizations(const Locale('en')).notificationNewMessage,
       ));
     }
     _sync.scheduleSyncHint(conversationId: conversationId);

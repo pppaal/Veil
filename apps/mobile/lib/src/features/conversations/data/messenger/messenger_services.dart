@@ -160,6 +160,7 @@ class MessengerServices {
       apiClient: apiClient,
       mapper: mapper,
       ops: ops,
+      writeNotice: notices.write,
       now: expiryClock,
     );
     sync = ConversationSyncService(

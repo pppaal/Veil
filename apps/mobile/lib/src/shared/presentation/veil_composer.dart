@@ -6,8 +6,9 @@ import 'veil_ui.dart';
 /// The strip at the bottom of a chat: the draft in a grey field (fill
 /// `surfaceAlt`, rounded by 18, 36dp tall in a 44dp row, up to five lines)
 /// with the hint in muted type, [leading] before it (attach) and [trailing]
-/// after it (the chat's send button, which keeps a 32dp slot while the
-/// draft is empty). The strip sits on the page with a hairline above it.
+/// after it (the chat's send button, which slides in once there is a draft
+/// and takes no room before). The strip sits on the page with a hairline
+/// above it.
 ///
 /// A composer that is not [enabled] shows its reason ([helper]) as the hint.
 class VeilComposer extends StatelessWidget {
@@ -107,8 +108,15 @@ class VeilComposer extends StatelessWidget {
               // More lines grow the field upward; the buttons stay at the
               // bottom, on its first line.
               Expanded(child: field),
-              const SizedBox(width: VeilSpace.xs),
-              trailing,
+              AnimatedSize(
+                duration: VeilMotion.fast,
+                curve: VeilMotion.emphasize,
+                alignment: AlignmentDirectional.centerStart,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(start: VeilSpace.xxs),
+                  child: trailing,
+                ),
+              ),
             ],
           ),
         ),

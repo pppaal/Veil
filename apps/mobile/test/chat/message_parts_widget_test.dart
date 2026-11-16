@@ -59,18 +59,20 @@ double? _progressValue(WidgetTester tester) =>
 
 void main() {
   group('MessageAttachmentCard', () {
-    testWidgets('in a build that cannot open attachments: the kind, the size and the line that says so',
+    testWidgets('in a build that cannot open attachments: the name, the type and size, and the line that says so',
         (tester) async {
       await tester.pumpWidget(_app(MessageAttachmentCard(
         attachment: _reference('application/pdf', 3 * 1024 * 1024),
+        name: 'lease-signed.pdf',
         resolving: false,
         downloadError: null,
         onResolve: null,
       )));
 
       expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
-      expect(find.text('Document'), findsOneWidget);
-      expect(find.text('3.0 MB'), findsOneWidget);
+      // One card says it all, as WhatsApp's file card does.
+      expect(find.text('lease-signed.pdf'), findsOneWidget);
+      expect(find.text('PDF · 3.0 MB'), findsOneWidget);
       expect(find.text(l10n.chatAttachmentCannotOpen), findsOneWidget);
       expect(find.byType(TextButton), findsNothing);
       // Nothing restates that the file is encrypted, and no pill or banner.
@@ -100,8 +102,7 @@ void main() {
         onResolve: () => resolved++,
       )));
 
-      expect(find.text('Photo'), findsOneWidget);
-      expect(find.text('512 B'), findsOneWidget);
+      expect(find.text('Photo · 512 B'), findsOneWidget);
       final resolve = tester.widget<TextButton>(find.widgetWithText(TextButton, l10n.chatAttachmentResolvingAction));
       expect(resolve.onPressed, isNull);
       expect(find.text(l10n.chatAttachmentTicketFailed), findsOneWidget);
@@ -248,22 +249,36 @@ void main() {
     }
 
     // The bubble is as wide as its widest line. On a short message that is
-    // the meta, which must then fit on the one line it was measured for.
+    // the meta, which must then fit on the one line it was measured for. A
+    // read message shows Signal's two filled circles, and no word.
     for (final body in ['ok', 'Yes', 'Sure, see you then']) {
-      testWidgets('a read "$body": "Read" sits on the line of the time', (tester) async {
+      testWidgets('a read "$body": its glyph sits on the line of the time, with no word', (tester) async {
         await pumpBubble(tester, body, message(state: MessageDeliveryState.read));
         final time = tester.getRect(find.text('09:17'));
-        final read = tester.getRect(find.text(l10n.chatDeliveryRead));
-        expect(read.center.dy, closeTo(time.center.dy, 1), reason: '"Read" wrapped under the time');
+        final read = tester.getRect(find.byIcon(Icons.check_circle).first);
+        expect(find.byIcon(Icons.check_circle), findsNWidgets(2));
+        expect(find.text(l10n.chatDeliveryRead), findsNothing);
+        expect(read.center.dy, closeTo(time.center.dy, 1), reason: 'the glyph wrapped under the time');
         expect(read.left, greaterThan(time.right));
       });
     }
 
-    // The bubble itself is the retry: there is no button in it.
+    testWidgets('sent, delivered and waiting each have their glyph', (tester) async {
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.sent));
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.delivered));
+      expect(find.byIcon(Icons.check_circle_outline), findsNWidgets(2));
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.pending));
+      expect(find.byIcon(Icons.schedule), findsOneWidget);
+    });
+
+    // The bubble itself is the retry: there is no button in it. It keeps
+    // its colour, with a red glyph beside it.
     testWidgets('a failed send says so under it, and a tap on the bubble retries it once', (tester) async {
       var retried = 0;
       await pumpBubble(tester, 'see you at 6', message(state: MessageDeliveryState.failed), onRetry: () => retried++);
       expect(find.text(l10n.chatNotSentTapToRetry), findsOneWidget);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
       expect(find.byType(TextButton), findsNothing);
       await tester.tap(find.text('see you at 6'));
       await tester.pump();
@@ -278,7 +293,7 @@ void main() {
     });
 
     for (final mine in [true, false]) {
-      testWidgets('a disappearing "ok" (${mine ? 'own' : 'theirs'}): the time left sits on the line of the time',
+      testWidgets('a disappearing "ok" (${mine ? 'own' : 'theirs'}): the timer glyph sits on the line of the time',
           (tester) async {
         await pumpBubble(
           tester,
@@ -313,7 +328,7 @@ void main() {
           ],
         );
 
-    testWidgets('groups reactions by emoji, most used first, and marks the ones this user added to',
+    testWidgets('groups reactions by emoji, most used first, counts from two, and marks this user\'s',
         (tester) async {
       final tapped = <String>[];
       await tester.pumpWidget(_app(ReactionChipsRow(
@@ -326,7 +341,8 @@ void main() {
           .widgetList<Text>(find.descendant(of: find.byType(Wrap), matching: find.byType(Text)))
           .map((text) => text.data)
           .toList();
-      expect(texts, ['❤️', '2', '👍', '1']);
+      // A single reaction shows its emoji alone, as WhatsApp's does.
+      expect(texts, ['❤️', '2', '👍']);
 
       final palette = tester.element(find.byType(Wrap)).veilPalette;
       Color? fillOf(String emoji) => (tester
@@ -372,19 +388,6 @@ void main() {
       expect(formatDurationLabel(l10n, const Duration(seconds: 10)), l10n.chatDurationSeconds(10));
       expect(formatDurationLabel(l10n, const Duration(minutes: 90)), l10n.chatDurationHours(1));
       expect(formatDurationLabel(l10n, const Duration(days: 2)), l10n.chatDurationDays(2));
-    });
-
-    test('with the relay down, the banner names what waits, failed sends first', () {
-      String recovery({int failed = 0, int queued = 0, int uploading = 0}) => networkRecoveryMessage(
-            l10n: l10n,
-            failedCount: failed,
-            queuedCount: queued,
-            uploadingCount: uploading,
-            nextRetryAt: null,
-          );
-      expect(recovery(failed: 1, queued: 2, uploading: 3), l10n.chatNetworkRecoveryFailed(1, l10n.chatRetryResumes));
-      expect(recovery(queued: 2, uploading: 3), l10n.chatNetworkRecoveryUploading(3, l10n.chatRetryResumes));
-      expect(recovery(queued: 2), l10n.chatNetworkRecoveryQueued(2, l10n.chatRetryResumes));
     });
   });
 }

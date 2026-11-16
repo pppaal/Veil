@@ -567,8 +567,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           ],
           codes(pin.identityKey),
         ],
-        // Only once there is a number: before any key was pinned there is no
-        // session to renew, and the button could only say so.
+        // Only with a number: before any pin there is no session to renew.
         if (data.isDirect && pin != null) ...[
           section,
           VeilButton(

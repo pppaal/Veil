@@ -10,6 +10,7 @@ import 'conversation_crypto_router.dart';
 import 'conversation_peer_bindings.dart';
 import 'decrypted_message_cache.dart';
 import 'disappearing_messages_service.dart';
+import 'group_names.dart';
 import 'local_notice.dart';
 import 'local_notice_writer.dart';
 import 'message_content_service.dart';
@@ -100,8 +101,6 @@ class ConversationSyncService {
   // unfetched, its frames too far ahead of their chain to open.
   final Map<String, int> _heldThrough = {};
   final Set<String> _queuedConversationIds = {};
-  // Groups whose name is on its way, so overlapping refreshes ask once.
-  final Set<String> _groupNamesLoading = {};
   bool _conversationRefreshQueued = false;
   bool _hintFlushInFlight = false;
   Timer? _hintDebounce;
@@ -245,47 +244,10 @@ class ConversationSyncService {
     }
     await _announceMemberChanges(stillCurrent);
     await _disappearing.reconcile();
-    await _fillGroupNames(session.accessToken, stillCurrent);
-    if (!stillCurrent()) return;
+    await fillGroupNames(_store, _apiClient, _mapper, session.accessToken, stillCurrent);
     // What the list names that this device never loaded is fetched now, so
     // each row can say what its last message is without its chat being opened.
     unawaited(_latest.loadUnheld(syncConversation, now: _apiClient.serverClock.boundedNow(), stillWanted: stillCurrent));
-  }
-
-  // Names the listed groups this device has no name for yet. The relay's
-  // conversation list names a group's members but not the group, so each
-  // such group is asked for once (GroupsService.getGroup); the name then
-  // stays on its preview across refreshes (mergeConversationPreviews) for
-  // as long as the app runs. A group whose answer fails keeps showing its
-  // members' names, and the next refresh asks again.
-  Future<void> _fillGroupNames(String accessToken, bool Function() stillCurrent) async {
-    final unnamed = [
-      for (final preview in _store.conversations)
-        if (preview.type == ConversationType.group && preview.groupMeta == null && _groupNamesLoading.add(preview.id))
-          preview.id,
-    ];
-    if (unnamed.isEmpty) return;
-    try {
-      final answers = await Future.wait([
-        for (final conversationId in unnamed)
-          _apiClient
-              .getGroup(accessToken, conversationId)
-              .then<GroupMeta?>(_mapper.groupMeta, onError: (Object _) => null),
-      ]);
-      if (!stillCurrent()) return;
-      for (final (index, conversationId) in unnamed.indexed) {
-        final meta = answers[index];
-        if (meta == null) continue;
-        _store.updateConversation(
-          conversationId,
-          (preview) => preview.type == ConversationType.group && preview.groupMeta == null
-              ? preview.copyWith(groupMeta: meta)
-              : preview,
-        );
-      }
-    } finally {
-      _groupNamesLoading.removeAll(unnamed);
-    }
   }
 
   // Finds which listed 1:1 conversations are held for their handle (see

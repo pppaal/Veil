@@ -45,7 +45,7 @@ ConversationPreview _mergePreview(ConversationPreview? local, ConversationPrevie
   }
   final keepBundle = _isEmptyBundle(incoming.recipientBundle) &&
       local.recipientBundle.userId == incoming.recipientBundle.userId;
-  // The list never names a group (see ConversationSyncService._fillGroupNames);
+  // The list never names a group (fillGroupNames asks for the name);
   // the name this device fetched for it stays.
   final keepGroupMeta = incoming.groupMeta == null &&
       incoming.type == ConversationType.group &&

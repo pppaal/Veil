@@ -7,6 +7,7 @@ const TYPING_SHOWN_MS = 6000;
 const TYPING_SWEEP_MS = 6500;
 const TYPING_RESEND_MS = 3000;
 const TYPING_IDLE_MS = 4000;
+const ENDS_NO_TYPING = new Set(['reaction', 'system']);
 
 // getIo() -> the socket.io client factory (window.io from socket.io.min.js),
 // or nothing when it did not load: then the app stays in polling mode.
@@ -35,12 +36,14 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
 
   // A message from the other side ends its "typing…" there and then, even
   // when no stop arrives: the server drops a stop that follows its start
-  // too closely, and a phone may not send one at all. A reaction is not
-  // what was being typed, so it ends nothing. A message summary names only
-  // the sending device, never its user, so the whole conversation's entry
-  // goes; only a direct chat shows typing at all.
+  // too closely, and a phone may not send one at all. A reaction or a
+  // system line (a phone's screenshot notice) is not what was being typed,
+  // so it ends nothing, as on the phone (realtime_event_router.dart
+  // _endsNoTyping). A message summary names only the sending device, never
+  // its user, so the whole conversation's entry goes; only a direct chat
+  // shows typing at all.
   function endTyping(convId, view) {
-    if (view?.kind === 'reaction') return;
+    if (ENDS_NO_TYPING.has(view?.kind)) return;
     if (state.typing.delete(convId)) store.notify('panels');
   }
 
@@ -59,8 +62,14 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
       outbox.drain();
       for (const convId of state.openTabs) history.refreshMessages(convId);
     });
-    // The bar's two words for a missing live connection (spec 12.2).
-    s.on('disconnect', (reason) => onStatus(reason === 'io server disconnect' ? 'offline' : 'connecting'));
+    // The bar's two words for a missing live connection (spec 12.2). With
+    // the channel down, polling stands in at its full pace again until the
+    // next connect slows it to the heartbeat: a socket the server closed
+    // (a revoked browser among them) is not retried on its own.
+    s.on('disconnect', (reason) => {
+      onStatus(reason === 'io server disconnect' ? 'offline' : 'connecting');
+      history.startPolling();
+    });
     s.on('connect_error', () => onStatus('offline'));
 
     // The typing line goes once the message is in the list, before the

@@ -130,6 +130,17 @@ void main() {
       expect(typingMemberTitle(group, 'omar_h', names), '@omar_h');
     });
 
+    test('who is typing in a group is the account the typing event names, not another under the handle in capitals', () {
+      final group = _group('grp', const [
+        GroupMember(userId: 'user-bob', handle: 'bob'),
+        GroupMember(userId: 'user-mallory', handle: 'Bob'),
+      ]);
+      final names = PeerNames({'bob': _of('bob', 'Bob Smith')});
+      expect(typingMemberTitle(group, 'Bob', names, userId: 'user-mallory'), '@Bob');
+      expect(typingMemberTitle(group, 'bob', names, userId: 'user-bob'), 'Bob Smith');
+      expect(typingMemberTitle(group, 'bob', names, userId: 'user-gone'), '@bob', reason: 'an account the group does not list');
+    });
+
     // Changed on purpose: a chat with no account used to get the nickname
     // of a handle bound to no account.
     test('a chat known only by its id is named by whom it is bound to, else by no one', () {

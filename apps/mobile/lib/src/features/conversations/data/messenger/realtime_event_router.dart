@@ -183,8 +183,8 @@ class RealtimeEventRouter {
         _receipts.apply(messageId, deliveredAt: deliveredAt);
       case MessageReadEvent(:final messageId, :final readAt):
         _receipts.apply(messageId, readAt: readAt);
-      case TypingEvent(started: true, :final conversationId, :final handle):
-        _presence.typingStarted(conversationId, handle);
+      case TypingEvent(started: true, :final conversationId, :final handle, :final userId):
+        _presence.typingStarted(conversationId, handle, userId: userId);
       case TypingEvent(started: false, :final conversationId):
         _presence.typingStopped(conversationId);
       case PresenceUpdateEvent(:final userId, :final online):

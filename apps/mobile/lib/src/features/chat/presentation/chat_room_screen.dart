@@ -244,12 +244,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       onReact: _showReactionPicker,
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
     );
-    final typing = PresenceSelector<String?>(
+    final typing = PresenceSelector<(String?, String?)>(
       presence: controller.presenceTyping,
-      select: (presence) => presence.typingHandleFor(widget.conversationId),
-      builder: (context, handle) => TypingIndicator(
-        handle: handle,
-        name: isDirect || handle == null || conversation == null ? null : typingMemberTitle(conversation, handle, names),
+      select: (presence) =>
+          (presence.typingHandleFor(widget.conversationId), presence.typingUserIdFor(widget.conversationId)),
+      builder: (context, typist) => TypingIndicator(
+        handle: typist.$1,
+        name: switch (typist) {
+          (final handle?, final userId) when !isDirect && conversation != null =>
+            typingMemberTitle(conversation, handle, names, userId: userId ?? ''),
+          _ => null,
+        },
       ),
     );
 

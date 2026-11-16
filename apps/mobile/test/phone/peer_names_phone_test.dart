@@ -125,10 +125,16 @@ void main() {
       }
       expect(find.text('@$peerHandle'), findsNothing);
 
-      // Who is typing is called the same.
-      world.messenger.presenceTyping.typingStarted(groupConversationId, peerHandle);
+      // Who is typing is called the same: the account the event names.
+      world.messenger.presenceTyping.typingStarted(groupConversationId, peerHandle, userId: 'user-$peerHandle');
       await pumpFrames(tester, frames: 2);
       expect(find.text(_en.chatTypingSuffix('Sam Rivera')), findsOneWidget);
+      world.messenger.presenceTyping.typingStopped(groupConversationId);
+      await pumpFrames(tester, frames: 2);
+      // An account the group does not list, under sam's handle, is not sam.
+      world.messenger.presenceTyping.typingStarted(groupConversationId, peerHandle, userId: 'user-mallory');
+      await pumpFrames(tester, frames: 2);
+      expect(find.text(_en.chatTypingSuffix('@$peerHandle')), findsOneWidget);
       world.messenger.presenceTyping.typingStopped(groupConversationId);
       await pumpFrames(tester, frames: 2);
     });

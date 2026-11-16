@@ -72,6 +72,16 @@ void main() {
     expect(notifications, 2);
   });
 
+  test('the account a typing event named goes with it, and is not kept for one that names none', () {
+    presence.typingStarted('conv-a', 'atlas', userId: 'user-atlas');
+    expect(presence.typingUserIdFor('conv-a'), 'user-atlas');
+    presence.typingStarted('conv-a', 'selene');
+    expect(presence.typingUserIdFor('conv-a'), isNull);
+    presence.typingStarted('conv-a', 'atlas', userId: 'user-atlas');
+    presence.typingStopped('conv-a');
+    expect(presence.typingUserIdFor('conv-a'), isNull);
+  });
+
   // It runs for every message a peer sends: one where nobody was typing
   // rebuilds nothing.
   test('a stop where nobody was typing notifies nobody', () {

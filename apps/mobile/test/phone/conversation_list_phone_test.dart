@@ -401,6 +401,43 @@ void main() {
     );
   });
 
+  // A hit whose chat this device lists no more is titled as a chat's row
+  // is: a peer with no nickname by the bare handle, as on every Chats row.
+  testWidgets('a message found in a chat no longer listed is titled by the bare handle', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/conversations',
+      prepare: (world) async {
+        world.cache.archiveHits = [
+          MessageSearchResult(
+            conversationId: 'conv-gone',
+            messageId: 'gone-hit',
+            peerHandle: 'kim_n',
+            peerDisplayName: null,
+            sentAt: DateTime.utc(2026, 4, 7, 9, 12),
+            messageKind: MessageKind.text,
+            isMine: false,
+            bodySnippet: 'the van is outside',
+          ),
+        ];
+        return null;
+      },
+      body: (world) async {
+        await tester.enterText(find.byType(TextField), 'van');
+        // The archive search waits 180 ms for the typing to stop.
+        await pumpFrames(tester, frames: 4);
+        final tile = find.byType(MessageSearchResultTile);
+        await tester.dragUntilVisible(tile, find.byType(ListView), const Offset(0, -200));
+        await pumpFrames(tester, frames: 2);
+
+        expect(find.descendant(of: tile, matching: find.text('kim_n')), findsOneWidget);
+        expect(find.descendant(of: tile, matching: find.text('@kim_n')), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
   // As the chat's row leads its preview: the user's own words found by a
   // search say so, someone else's do not.
   testWidgets('a message of the user\'s own found by search is led by "You: "', (tester) async {

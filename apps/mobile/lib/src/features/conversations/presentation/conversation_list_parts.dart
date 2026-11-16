@@ -142,8 +142,9 @@ class MessageSearchResultTile extends ConsumerWidget {
     final chat = conversation;
     final group = chat?.type == ConversationType.group;
     final sender = group ? _groupSender(ref) : null;
+    // Bare, as on a chat's row, also for a chat this device lists no more.
     final title = chat == null
-        ? names.directName(result.conversationId, result.peerHandle) ?? '@${result.peerHandle}'
+        ? names.directName(result.conversationId, result.peerHandle) ?? result.peerHandle
         : conversationRowTitle(l10n, chat, names, localUserId: localUserId);
     return Semantics(
       button: true,

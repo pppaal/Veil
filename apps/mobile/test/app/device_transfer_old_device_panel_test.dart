@@ -7,6 +7,8 @@ import 'package:veil_mobile/src/features/device_transfer/presentation/device_tra
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
+import '../layout/support/phone_layout_probe.dart' show loadTestFonts;
+
 // The old phone's half of a move, as Signal's: a start screen of three
 // plain numbered lines and "Get code"; then the code with "Copy code", how
 // long it holds, the new phone's code and "Approve". These are the states a
@@ -17,13 +19,14 @@ final _en = lookupAppLocalizations(const Locale('en'));
 final _now = DateTime(2026, 4, 2, 12);
 const _code = 'VEIL_TRANSFER::session-1::token-1';
 
-// What the box shows of it: no prefix, which no one reads.
-const _shown = 'session-1::token-1';
+// What the screen shows of it: no prefix, which no one reads, and the
+// session and the token on a line each.
+const _shown = 'session-1::\ntoken-1';
 
 // A code as the relay's ids make it: a session and a token, both UUIDs.
 const _realCode =
     'VEIL_TRANSFER::8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d::c47d2e19-8a3b-4f60-b915-2e7a0d6c3f84';
-const _realShown = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d::c47d2e19-8a3b-4f60-b915-2e7a0d6c3f84';
+const _realShown = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d::\nc47d2e19-8a3b-4f60-b915-2e7a0d6c3f84';
 
 // [expiresAt] null is a device that has no session open.
 Future<void> _pump(
@@ -156,7 +159,7 @@ void main() {
     // It wraps inside the screen rather than running off it or ending in "…".
     final rect = tester.getRect(shown);
     expect(rect.right, lessThanOrEqualTo(360));
-    expect(rect.height, greaterThan(bodyLarge.fontSize! * 2), reason: 'more than one line at 360');
+    expect(rect.height, greaterThan(bodyLarge.fontSize! * 2), reason: 'two lines at least');
     // "Copy code" stays, under it.
     final copy = find.widgetWithText(OutlinedButton, _en.deviceTransferCopyPayload);
     expect(copy, findsOneWidget);
@@ -311,5 +314,37 @@ void main() {
       await tester.pumpAndSettle();
       expect(await result, isTrue);
     });
+  });
+
+  // Wrapped wherever the line ran out, the code broke inside an id
+  // ("…4b5c6d::c4" over "7d2e19-…" at 360), which someone typing it off
+  // could not tell from the code. Real glyphs, so widths are a phone's.
+  group('on a phone', () {
+    setUpAll(loadTestFonts);
+
+    for (final width in [360.0, 390.0]) {
+      testWidgets('at $width the session and the token are a line each, neither broken', (tester) async {
+        await _pump(
+          tester,
+          status: const TransferTokenReady(),
+          expiresAt: _now.add(const Duration(minutes: 4)),
+          view: Size(width, 3000),
+          code: _realCode,
+        );
+        final shown = find.byKey(const ValueKey('transfer-code'));
+        final editable = tester.state<EditableTextState>(find.descendant(of: shown, matching: find.byType(EditableText)));
+        final text = editable.textEditingValue.text;
+        String lineAt(int offset) {
+          final line = editable.renderEditable.getLineAtOffset(TextPosition(offset: offset));
+          return text.substring(line.start, line.end).trimRight();
+        }
+
+        const session = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d';
+        const token = 'c47d2e19-8a3b-4f60-b915-2e7a0d6c3f84';
+        expect(lineAt(0), '$session::', reason: 'the first line is the session, whole');
+        expect(lineAt(text.length - 1), token, reason: 'the second line is the token, whole');
+        expect(tester.getRect(shown).right, lessThanOrEqualTo(width));
+      });
+    }
   });
 }

@@ -101,11 +101,13 @@ class TransferOldDevicePanel extends StatelessWidget {
         children: [
           Text(l10n.deviceTransferOldHandTitle, style: theme.textTheme.titleMedium),
           const SizedBox(height: VeilSpace.sm),
-          // The code the new phone takes, whole, in the body's own type and
-          // wrapping where it must, so it can be read off and typed in as
-          // well as copied; a long press selects it. "Copy code" copies all
-          // of it. It leaves out the prefix the copied code starts with,
-          // which the new phone takes with or without.
+          // The code the new phone takes, whole, in the body's own type:
+          // the session on one line and the token on the next, each a UUID
+          // that fits a phone's width, so neither breaks where it is read
+          // off and typed in; a long press selects it. "Copy code" copies
+          // all of it. It leaves out the prefix the copied code starts
+          // with, which the new phone takes with or without, and the new
+          // phone reads it with the line break or spaces typed in.
           SelectableText(
             transferCodeForDisplay(transferCode ?? ''),
             key: const ValueKey('transfer-code'),

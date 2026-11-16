@@ -12,24 +12,31 @@ class ParsedTransferCode {
   final String transferToken;
 }
 
-/// The code as the old phone's box shows it: `<session>::<token>`, without
-/// [transferCodePrefix], which means nothing to the person reading it.
-/// "Copy code" still copies the whole code.
-String transferCodeForDisplay(String code) =>
+/// [code] without [transferCodePrefix], which means nothing to the person
+/// reading it.
+String _withoutPrefix(String code) =>
     code.startsWith(transferCodePrefix) ? code.substring(transferCodePrefix.length) : code;
 
+/// The code as the old phone shows it: `<session>::` on one line and
+/// `<token>` on the next, without [transferCodePrefix]. Each is a UUID that
+/// fits a phone's width whole, so neither is broken across lines where it
+/// is read off. "Copy code" still copies the whole code, on one line.
+String transferCodeForDisplay(String code) => _withoutPrefix(code).replaceFirst('::', '::\n');
+
+final _whitespace = RegExp(r'\s');
+
 /// Reads a transfer code as the old device copies it
-/// (`VEIL_TRANSFER::<session>::<token>`), as its box shows it
-/// (`<session>::<token>`), or as two lines starting with "session" and
-/// "token"; null for anything else.
+/// (`VEIL_TRANSFER::<session>::<token>`), as it shows it (`<session>::` and
+/// `<token>` on two lines), or as typed off it with a space or a line break
+/// anywhere, since no id holds one; or as two lines starting with "session"
+/// and "token". Null for anything else.
 ParsedTransferCode? parseTransferCode(String raw) {
   if (raw.isEmpty) {
     return null;
   }
 
-  final bare = transferCodeForDisplay(raw);
-  final parts = bare.split('::');
-  if (parts.length == 2 && parts.every((part) => part.isNotEmpty && !part.contains(RegExp(r'\s')))) {
+  final parts = _withoutPrefix(raw.replaceAll(_whitespace, '')).split('::');
+  if (parts.length == 2 && parts.every((part) => part.isNotEmpty)) {
     return ParsedTransferCode(sessionId: parts[0], transferToken: parts[1]);
   }
 

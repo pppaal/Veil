@@ -442,8 +442,8 @@ void _leaveOutChatLines(FakeRelay relay) {
     ..addAll(kept);
 }
 
-// A reaction on Sam's last message, given the way a user gives one, while
-// Sam types the next.
+// A reaction on Sam's message, given the way a user gives one, while Sam
+// types the next.
 Future<void> _reactWhileTyping(WidgetTester tester) async {
   final theirs = find.byWidgetPredicate((widget) => widget is MessageBubble && !widget.message.isMine);
   await tester.longPress(find.descendant(of: theirs.first, matching: find.byType(VeilBubble)));

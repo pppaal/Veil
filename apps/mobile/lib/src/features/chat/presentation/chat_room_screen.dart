@@ -248,14 +248,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       presence: controller.presenceTyping,
       select: (presence) =>
           (presence.typingHandleFor(widget.conversationId), presence.typingUserIdFor(widget.conversationId)),
-      builder: (context, typist) => TypingIndicator(
-        handle: typist.$1,
-        name: switch (typist) {
-          (final handle?, final userId) when !isDirect && conversation != null =>
-            typingMemberTitle(conversation, handle, names, userId: userId ?? ''),
-          _ => null,
-        },
-      ),
+      builder: (context, typist) {
+        final (handle, userId) = typist;
+        if (handle == null || isDirect || conversation == null) return TypingIndicator(handle: handle);
+        // In a group, by its name; an account the group does not list is
+        // no member typing, and shows nothing.
+        final name = typingMemberTitle(conversation, handle, names, userId: userId ?? '');
+        return TypingIndicator(handle: name == null ? null : handle, name: name);
+      },
     );
 
     // The same chat on a phone and in the wide layout's second pane.

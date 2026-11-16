@@ -138,7 +138,9 @@ void main() {
       final names = PeerNames({'bob': _of('bob', 'Bob Smith')});
       expect(typingMemberTitle(group, 'Bob', names, userId: 'user-mallory'), '@Bob');
       expect(typingMemberTitle(group, 'bob', names, userId: 'user-bob'), 'Bob Smith');
-      expect(typingMemberTitle(group, 'bob', names, userId: 'user-gone'), '@bob', reason: 'an account the group does not list');
+      // Changed on purpose: an account the group does not list is no member
+      // typing, so nothing is shown for it (it was "@bob").
+      expect(typingMemberTitle(group, 'bob', names, userId: 'user-gone'), isNull, reason: 'an account the group does not list');
     });
 
     // Changed on purpose: a chat with no account used to get the nickname

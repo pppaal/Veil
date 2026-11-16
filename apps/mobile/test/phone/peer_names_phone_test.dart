@@ -139,10 +139,14 @@ void main() {
       expect(find.text(_en.chatTypingSuffix('Sam Rivera')), findsOneWidget);
       world.messenger.presenceTyping.typingStopped(groupConversationId);
       await pumpFrames(tester, frames: 2);
-      // An account the group does not list, under sam's handle, is not sam.
+      // An account the group does not list, under sam's handle, is not sam,
+      // nor any member: nothing says anyone is typing. Changed on purpose:
+      // it read "@sam is typing…" while Sam Rivera was in the group.
       world.messenger.presenceTyping.typingStarted(groupConversationId, peerHandle, userId: 'user-mallory');
       await pumpFrames(tester, frames: 2);
-      expect(find.text(_en.chatTypingSuffix('@$peerHandle')), findsOneWidget);
+      expect(find.text(_en.chatTypingSuffix('@$peerHandle')), findsNothing);
+      expect(find.text(_en.chatTypingSuffix('Sam Rivera')), findsNothing);
+      expect(find.text(_en.chatTypingUnnamed), findsNothing);
       world.messenger.presenceTyping.typingStopped(groupConversationId);
       await pumpFrames(tester, frames: 2);
     });

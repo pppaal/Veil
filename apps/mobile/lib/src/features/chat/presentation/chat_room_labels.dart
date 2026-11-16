@@ -33,15 +33,16 @@ String conversationTitle(
 }
 
 /// What a group calls the member typing under [handle], as its bubbles call
-/// them: their nickname, or the handle with its "@" (one the group does not
-/// list, too). The member is the account [userId] the typing event named;
-/// with none, the one listed under [handle] whatever its case.
-String typingMemberTitle(ConversationPreview group, String handle, PeerNames names, {String userId = ''}) {
+/// them: their nickname, or the handle with its "@". The member is the
+/// account [userId] the typing event named; with none, the one listed under
+/// [handle] whatever its case (or "@handle" when none is). Null for an
+/// account the group does not list: no member is typing, and nothing shows.
+String? typingMemberTitle(ConversationPreview group, String handle, PeerNames names, {String userId = ''}) {
   for (final member in group.members) {
     final typing = userId.isNotEmpty ? member.userId == userId : member.handle.toLowerCase() == handle.toLowerCase();
     if (typing) return names.memberTitle(member);
   }
-  return '@$handle';
+  return userId.isEmpty ? '@$handle' : null;
 }
 
 String messageDeliveryLabel(AppLocalizations l10n, ChatMessage message) {

@@ -6,6 +6,8 @@ import '../../../app/app_state.dart';
 import '../../../core/identity/issued_handle.dart';
 import '../../contacts/data/contact_names.dart';
 import '../../contacts/data/contact_nicknames.dart';
+import '../../safety/data/blocked_accounts.dart';
+import '../../safety/data/safety_providers.dart';
 import '../data/conversation_models.dart';
 import '../data/messenger/conversation_peer_bindings.dart';
 import '../data/veil_messenger_controller.dart';
@@ -31,11 +33,13 @@ class PeerNames {
     Map<String, ConversationPeer> bound = const {},
     bool Function(String conversationId)? isHeld,
     Iterable<ConversationPreview> listed = const [],
+    Iterable<BlockedAccount> blocked = const [],
     String? selfUserId,
   })  : _nicknames = {for (final MapEntry(:key, :value) in nicknames.entries) key.toLowerCase(): value},
         _bound = bound,
         _isHeld = isHeld,
         _listed = listed,
+        _blocked = blocked,
         _selfUserId = selfUserId {
     for (final peer in bound.values) {
       if (peer.userId.isEmpty) continue;
@@ -49,6 +53,7 @@ class PeerNames {
   final Map<String, ConversationPeer> _bound;
   final bool Function(String conversationId)? _isHeld;
   final Iterable<ConversationPreview> _listed;
+  final Iterable<BlockedAccount> _blocked;
   final String? _selfUserId;
   // The accounts each handle is bound to, and the handles each account is
   // bound under (lower case).
@@ -92,11 +97,11 @@ class PeerNames {
 
   /// The account each nickname that names none yet is to name, by handle:
   /// the account this phone bound exactly that handle to; with no binding,
-  /// the one account the chats listed now show under it (in a 1:1 not
-  /// held, or as a group member). Not an account bound or listed under
-  /// another handle too (an account has one handle), nor one bound or
-  /// listed only in a form no server issues; and a handle bound or listed
-  /// with two accounts gets none yet.
+  /// the one account the chats listed now (in a 1:1 not held, or as a
+  /// group member) and the Blocked accounts list show under it. Not an
+  /// account bound or listed under another handle too (an account has one
+  /// handle), nor one bound or listed only in a form no server issues; and
+  /// a handle bound or listed with two accounts gets none yet.
   Map<String, String> claims() {
     final unclaimed = {
       for (final MapEntry(:key, :value) in _nicknames.entries)
@@ -122,6 +127,9 @@ class PeerNames {
         }
       }
     }
+    for (final account in _blocked) {
+      list(account.userId, account.handle);
+    }
     // Bound under exactly the handle: a 1:1 the user let through under
     // 'Bob' is no binding of 'bob'.
     final boundUnder = <String, Set<String>>{};
@@ -139,13 +147,19 @@ class PeerNames {
   }
 }
 
-/// The names [messenger] shows, from [nicknames] and whom each 1:1 on this
-/// device is bound to.
-PeerNames peerNamesFor(VeilMessengerController messenger, Map<String, ContactNickname> nicknames) => PeerNames(
+/// The names [messenger] shows, from [nicknames], whom each 1:1 on this
+/// device is bound to, and the accounts the user [blocked].
+PeerNames peerNamesFor(
+  VeilMessengerController messenger,
+  Map<String, ContactNickname> nicknames, {
+  Iterable<BlockedAccount> blocked = const [],
+}) =>
+    PeerNames(
       nicknames,
       bound: messenger.boundPeers,
       isHeld: (conversationId) => messenger.peerAccountHoldFor(conversationId) != null,
       listed: messenger.conversations,
+      blocked: blocked,
       selfUserId: messenger.localUserId,
     );
 
@@ -156,15 +170,17 @@ Future<void> claimNicknameAccounts(ContactNameBook book, PeerNames names) async 
   if (claims.isNotEmpty) await book.claim(claims);
 }
 
-/// The names for the chats the messenger lists now, from the nicknames on
-/// this phone. Each time either changes, a nickname saved with no account
-/// (with a contact added, or before nicknames named accounts) is given the
-/// one this list shows under its handle; until that is written, a moment
-/// later, it names no one.
+/// The names for the chats the messenger lists now and the accounts the
+/// user blocked, from the nicknames on this phone. Each time any of them
+/// changes, a nickname saved with no account (with a contact added, or
+/// before nicknames named accounts) is given the one these lists show
+/// under its handle; until that is written, a moment later, it names no
+/// one.
 final peerNamesProvider = Provider<PeerNames>((ref) {
   final messenger = ref.watch(messengerControllerProvider);
   final book = ref.watch(contactNameBookProvider);
-  final names = peerNamesFor(messenger, book.nicknames);
+  final blocked = ref.watch(blockedAccountsProvider);
+  final names = peerNamesFor(messenger, book.nicknames, blocked: blocked.accounts);
   // Written after this build: the book tells its listeners once it has. A
   // keystore that refuses it leaves the nickname naming no one, and the
   // next change tries again.

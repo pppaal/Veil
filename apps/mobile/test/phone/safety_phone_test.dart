@@ -11,6 +11,7 @@ import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.d
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_widget.dart';
@@ -22,6 +23,7 @@ import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
 import '../support/copy_finder.dart';
+import '../support/fake_relay.dart';
 import 'phone_app.dart';
 
 // Blocking, reporting and muting on a phone, through the real routes and
@@ -496,6 +498,73 @@ void main() {
       await pumpFrames(tester, frames: 6);
       expect(world.relay.blocks['user-$selfHandle'], isEmpty);
       expect(findCopy(en.unblockDone('mia')), findsOneWidget);
+    });
+  });
+
+  // Blocked accounts is one more list that shows an account under a
+  // handle: a nickname that names no account yet takes the one it shows,
+  // as from the chats, so the person is called the same on every screen.
+  // Dana was added in Contacts as "Dana Park", and no chat lists her.
+  group('a contact with a nickname and no chat', () {
+    void addDana(FakeRelay relay) => relay.addParty(RelayParty(
+          handle: 'dana',
+          userId: 'user-dana',
+          deviceId: 'dev-dana',
+          identity: identities.peer,
+        ));
+
+    // As Contacts > Add saves her: the nickname with the contact, anew.
+    Future<Object?> saveDana(LayoutWorld world) async {
+      await ContactNicknames(world.storage.scoped(SecureScope.contacts)).write('dana', 'Dana Park', anew: true);
+      world.api.addedContacts.add('dana');
+      return null;
+    }
+
+    void expectNamedInBlockedAccounts() {
+      expect(find.byType(BlockedAccountsScreen), findsOneWidget);
+      final row = find.byKey(const ValueKey('blocked-dana'));
+      expect(find.descendant(of: row, matching: find.text('Dana Park')), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.text('@dana')), findsOneWidget);
+    }
+
+    testWidgets('blocked from her sheet, is called by her nickname in Blocked accounts', (tester) async {
+      await withPhoneApp(
+        tester,
+        identities,
+        location: '/contacts',
+        beforeSession: addDana,
+        prepare: saveDana,
+        body: (world) async {
+          await tester.tap(find.text('Dana Park'));
+          await pumpFrames(tester, frames: 4);
+          await tester.tap(find.byKey(const ValueKey('contact-block')));
+          await pumpFrames(tester, frames: 4);
+          await tester.tap(find.byKey(const ValueKey('block-confirm')));
+          await pumpFrames(tester, frames: 6);
+          expect(world.relay.blocks['user-$selfHandle']?.keys, ['user-dana']);
+
+          unawaited(GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/blocked-accounts'));
+          await pumpFrames(tester, frames: 6);
+          expectNamedInBlockedAccounts();
+        },
+      );
+    });
+
+    testWidgets('blocked before, is called by her nickname in Blocked accounts', (tester) async {
+      await withPhoneApp(
+        tester,
+        identities,
+        location: '/blocked-accounts',
+        beforeSession: (relay) {
+          addDana(relay);
+          relay.blocks['user-$selfHandle'] = {'user-dana': DateTime.utc(2026, 4, 7, 9)};
+        },
+        prepare: saveDana,
+        body: (world) async {
+          await pumpFrames(tester, frames: 6);
+          expectNamedInBlockedAccounts();
+        },
+      );
     });
   });
 

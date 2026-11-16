@@ -10,6 +10,7 @@ import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/peer_names.dart';
+import 'package:veil_mobile/src/features/safety/data/blocked_accounts.dart';
 
 import '../support/memory_secure_store.dart';
 
@@ -168,6 +169,19 @@ void main() {
         selfUserId: 'user-alice',
       );
       expect(inGroup.claims(), {'bob': 'user-bob'});
+    });
+
+    test('with no binding or chat, the account the Blocked accounts list shows under the handle', () {
+      final dana = BlockedAccount(userId: 'user-dana', handle: 'dana', blockedAt: DateTime.utc(2026, 4, 7));
+      const nickname = {'dana': ContactNickname('Dana Park')};
+      expect(PeerNames(nickname, blocked: [dana]).claims(), {'dana': 'user-dana'});
+      // Counted with the chats: another account in a chat under the handle
+      // makes two, and the blocked account under another handle too, two
+      // handles.
+      final twoAccounts = PeerNames(nickname, blocked: [dana], listed: [_direct('conv-x', 'dana', userId: 'user-x')]);
+      expect(twoAccounts.claims(), isEmpty);
+      final twoHandles = PeerNames(nickname, blocked: [dana], listed: [_direct('conv-d', 'dee', userId: 'user-dana')]);
+      expect(twoHandles.claims(), isEmpty);
     });
 
     test('none while the list shows no account, or two, under the handle', () {

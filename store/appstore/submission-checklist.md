@@ -1,6 +1,6 @@
 # App Store submission checklist
 
-A step-by-step, executable checklist for shipping Veil Messenger to the iOS App Store.
+A step-by-step, executable checklist for shipping Veil: Encrypted Messenger to the iOS App Store.
 Audience: an operator with a **Mac running Xcode** and an **Apple Developer Program account**.
 
 Bundle id: `io.veil.mobile` · Flutter project: `apps/mobile` · Listing package: `store/appstore`
@@ -49,13 +49,12 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
   boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS:
   Veil uses only standard published algorithms, so no CCATS/ERN is required.
 - [x] **Fix the subtitle (30-char limit).** Done: `store/appstore/metadata-en.txt` uses
-      "Encrypted messenger" (19 chars).
+      "Chat without a phone number" (27 chars).
 - [ ] **(Optional, cosmetic) Align CFBundleURLName.** `Info.plist` `CFBundleURLName` is
       `app.veil.messenger` but the bundle id is `io.veil.mobile`. Align or leave; not a blocker.
-- [ ] **Author the two missing source docs** referenced by this checklist (they do not exist yet):
-      - `store/appstore/screenshot-spec.md` — required device sizes, per-screen shot list, captions.
-      - `store/appstore/app-review-notes.md` — the no-account / no-recovery reviewer guide
-        (draft content suggested inline in Step 13 below).
+- [x] **Author the two source docs** referenced by this checklist. Done:
+      - `store/appstore/screenshot-spec.md` — required device sizes and the per-screen shot list.
+      - `store/appstore/app-review-notes.md` — the no-account / no-recovery reviewer guide.
 
 ---
 
@@ -102,7 +101,7 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
 
 - [ ] In **App Store Connect → Apps → +** → New App:
       - Platform: iOS
-      - Name: **Veil Messenger** (must be globally unique on the Store)
+      - Name: **Veil: Encrypted Messenger** (must be globally unique on the Store)
       - Primary language: English (U.S.)
       - Bundle ID: **`io.veil.mobile`**
       - SKU: e.g. `veil-mobile-ios`
@@ -152,7 +151,7 @@ Choose Xcode **or** fastlane.
 Transcribe from `store/appstore/metadata-en.txt` into App Store Connect → the version's
 **App Information** fields. The listing is English only; add no other localization:
 
-- [ ] Name, Subtitle (≤30 chars), Promotional Text, Description, Keywords (69 chars, under
+- [ ] Name, Subtitle (≤30 chars), Promotional Text, Description, Keywords (89 chars, under
       the 100 limit).
 - [ ] Support URL `https://veil.app/support`, Marketing URL `https://veil.app`,
       Privacy Policy URL `https://pppaal.github.io/Veil/`.

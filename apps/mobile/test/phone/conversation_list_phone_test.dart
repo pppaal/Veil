@@ -80,15 +80,15 @@ void main() {
         for (final row in tester.widgetList<ConversationRow>(find.byType(ConversationRow))) row.title: row.snippet,
       };
       expect(previews, hasLength(8));
-      expect(previews['Sam Rivera'], "Section 7 is fine. Let's sign tomorrow.");
-      expect(previews['Jonas Weber'], 'See you at nine.');
-      expect(previews['Mia Chen'], 'The second mock-up is closer, but the header still feels heavy to me.');
+      expect(previews['Sam Rivera'], latestChatLine);
+      expect(previews['Jonas Weber'], latestTimerChatLine);
+      expect(previews['Mia Chen'], 'can you send the photos from saturday?');
       // Only text is quoted: other kinds are named by what they are.
       expect(previews['Omar Haddad'], 'Photo');
       expect(previews['Alexandra Montgomery-Whitfield'], 'Voice message');
       expect(previews['Lena Fischer'], 'No messages yet');
       expect(previews.values, isNot(contains('Encrypted message')));
-      expect(find.text("Section 7 is fine. Let's sign tomorrow."), findsOneWidget, reason: 'drawn on its row');
+      expect(find.text(latestChatLine), findsOneWidget, reason: 'drawn on its row');
 
       expect(find.byType(ChatRoomScreen), findsNothing);
       expect(world.messenger.activeConversationId, isNull);
@@ -126,7 +126,7 @@ void main() {
         expect(find.byType(ConversationListScreen), findsNothing, reason: location);
         expect(find.byType(ChatRoomScreen), findsNothing, reason: location);
         expect(find.byType(ConversationRow), findsNothing, reason: location);
-        expect(find.textContaining('Section 7'), findsNothing, reason: location);
+        expect(find.textContaining(latestChatLine), findsNothing, reason: location);
         expect(find.text('Sam Rivera'), findsNothing, reason: location);
       }
       expect(tester.takeException(), isNull);
@@ -150,7 +150,7 @@ void main() {
       );
       expect(row.semanticLabel, 'Group chat with Sam Rivera, Priya Nair, Omar Haddad');
       // Led by who wrote it, as Signal, WhatsApp and Telegram do in a group.
-      expect(row.snippet, 'Omar: I can bring the van after six, if someone helps me carry the shelves down.');
+      expect(row.snippet, 'Omar: $latestGroupLine');
 
       await tester.tap(find.byType(ConversationRow).first);
       await pumpFrames(tester);

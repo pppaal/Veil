@@ -104,6 +104,8 @@ class ChatAttention {
   });
 
   /// The peer's identity key changed and the user has not reviewed it.
+  /// With [failedSends] the change came during the morning: the chat says
+  /// so where it happened, and our messages after it are the failed ones.
   final bool identityChanged;
 
   /// Messages of ours that did not go out.
@@ -116,8 +118,9 @@ class ChatAttention {
   /// The peer is typing while the chat is open.
   final bool peerTyping;
 
-  /// The peer's first message came on a legacy frame whose handshake never
-  /// authenticated its sender, so its bubble carries the badge saying so.
+  /// The peer's first message of the morning came on a legacy frame whose
+  /// handshake never authenticated its sender, so its bubble carries the
+  /// line saying so.
   final bool legacyMessage;
 
   /// The peer's identity key changed in the group they share with the
@@ -228,7 +231,12 @@ class LayoutWorld {
     _attention = attention;
     seedParties(relay, identities);
     if (account == LayoutAccount.signedIn || account == LayoutAccount.locked) {
-      await seedConversations(relay, cache, withGroup: withGroup);
+      await seedConversations(
+        relay,
+        cache,
+        withGroup: withGroup,
+        keyChange: attention.identityChanged && attention.failedSends > 0,
+      );
     }
     // A caller that shows less than the seed changes the relay here, before
     // this device's session loads anything from it.
@@ -474,9 +482,9 @@ class _LayoutMessenger extends VeilMessengerController {
   @override
   Future<DecryptedMessage> decryptMessage(ChatMessage message) async {
     final opened = await super.decryptMessage(message);
-    if (!attention.legacyMessage || !opened.isOk || message.isMine) return opened;
-    final first = super.messagesFor(chatConversationId).where((each) => !each.isMine).firstOrNull;
-    if (first?.id != message.id) return opened;
+    if (!attention.legacyMessage || !opened.isOk || message.isMine || opened.body != legacyMessageBody) {
+      return opened;
+    }
     return DecryptedMessage(
       body: opened.body,
       messageKind: opened.messageKind,

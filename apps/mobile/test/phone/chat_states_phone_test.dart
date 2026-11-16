@@ -72,13 +72,13 @@ void main() {
             .widget<MessageBubble>(find.ancestor(of: find.text(body), matching: find.byType(MessageBubble)))
             .senderName;
 
-        expect(nameOn('The movers can do the 14th or the 16th.'), 'Sam Rivera');
-        expect(nameOn('The 14th works for me.'), 'Priya Nair');
-        expect(nameOn("14th then. I'll book the lift for the morning."), isNull);
-        expect(nameOn('I can bring the van after six, if someone helps me carry the shelves down.'), 'Omar Haddad');
+        expect(nameOn('movers can do the 14th or 16th'), 'Sam Rivera');
+        expect(nameOn('14th works for me'), 'Priya Nair');
+        expect(nameOn("14th then, I'll book the lift"), isNull);
+        expect(nameOn(latestGroupLine), 'Omar Haddad');
         // Drawn, above the words, inside the bubble.
         final name = tester.getRect(find.text('Priya Nair'));
-        final words = tester.getRect(find.text('The 14th works for me.'));
+        final words = tester.getRect(find.text('14th works for me'));
         expect(name.bottom, lessThanOrEqualTo(words.top));
         expect(tester.takeException(), isNull);
       });
@@ -97,8 +97,7 @@ void main() {
         body: (world) async {
           MessageBubble bubble(String body) =>
               tester.widget<MessageBubble>(find.ancestor(of: find.text(body), matching: find.byType(MessageBubble)));
-          expect(bubble('I can bring the van after six, if someone helps me carry the shelves down.').senderName,
-              'Omar Haddad');
+          expect(bubble(latestGroupLine).senderName, 'Omar Haddad');
           expect(bubble('And the lamp.').senderName, isNull);
           expect(find.text('Omar Haddad'), findsOneWidget);
         },
@@ -325,8 +324,8 @@ Future<void> _injectGroupLine(LayoutWorld world, {required String from, required
   stored['serverReceivedAt'] = (at ?? DateTime.utc(2026, 4, 7, 11)).toIso8601String();
 }
 
-/// When the seed's last group line (Omar's) was sent: the seed sends a line
-/// every seven minutes from 08:00 (layout_seed.dart).
+/// When the seed's last group line (Omar's) was sent, as layout_seed.dart
+/// dates it.
 final _lastGroupLineAt = DateTime.utc(2026, 4, 7, 10, 13);
 
 /// The peer reacts to the newest message of the chat.

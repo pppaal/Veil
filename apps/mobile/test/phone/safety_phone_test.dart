@@ -226,13 +226,13 @@ void main() {
   testWidgets('a report from a message names it, and with Also block off blocks no one', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
       // Only someone else's message offers it.
-      await tester.longPress(find.text("Section 7 is fine. Let's sign tomorrow."));
+      await tester.longPress(find.text(latestOwnChatLine));
       await pumpFrames(tester, frames: 4);
       expect(find.byKey(const ValueKey('message-report')), findsNothing, reason: 'our own message offered a report');
       await tester.tapAt(const Offset(20, 20));
       await pumpFrames(tester, frames: 4);
 
-      await tester.longPress(find.textContaining('registry.example.org'));
+      await tester.longPress(find.text(latestChatLine));
       await pumpFrames(tester, frames: 4);
       await tester.tap(find.byKey(const ValueKey('message-report')));
       await pumpFrames(tester, frames: 4);
@@ -268,7 +268,7 @@ void main() {
       location: _chat,
       attention: const ChatAttention(peerBlocked: true),
       body: (world) async {
-        await tester.longPress(find.textContaining('registry.example.org'));
+        await tester.longPress(find.text(latestChatLine));
         await pumpFrames(tester, frames: 4);
         expect(find.byKey(const ValueKey('message-report')), findsOneWidget);
         expect(find.byType(ReactionPickerWidget), findsNothing);
@@ -278,7 +278,7 @@ void main() {
 
   testWidgets('a group message is reported as its writer\'s, with no offer to block', (tester) async {
     await withPhoneApp(tester, identities, withGroup: true, location: '/chat/$groupConversationId', body: (world) async {
-      await tester.longPress(find.text('The 14th works for me.'));
+      await tester.longPress(find.text('14th works for me'));
       await pumpFrames(tester, frames: 4);
       await tester.tap(find.byKey(const ValueKey('message-report')));
       await pumpFrames(tester, frames: 4);

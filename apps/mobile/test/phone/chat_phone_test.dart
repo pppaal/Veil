@@ -16,8 +16,11 @@ import 'phone_app.dart';
 // A chat on a phone: the messages have the screen, and everything the
 // header cards carried in the wide layout is still one tap away in the bar.
 
-const _latest = "Section 7 is fine. Let's sign tomorrow.";
-const _first = 'Did the signed lease come through on your side?';
+const _latest = latestChatLine;
+// The oldest message, from the evening before, and the first of the
+// morning, which a search for "lease" finds.
+const _oldest = 'the landlord wants two months up front';
+const _morning = legacyMessageBody;
 const _chat = '/chat/$chatConversationId';
 
 void main() {
@@ -46,7 +49,7 @@ void main() {
       final messages = onScreen(tester, find.byType(ChatMessageList));
       expect(messages.height / screenHeight(tester), greaterThan(0.6));
       expect(onScreen(tester, find.text(_latest)).height, greaterThan(0), reason: 'the newest message is in view');
-      expect(find.text(_first), findsNothing, reason: 'the oldest is above, not where the chat opens');
+      expect(find.textContaining(_oldest), findsNothing, reason: 'the oldest is above, not where the chat opens');
 
       final composer = tester.renderObject<RenderBox>(find.byType(ChatComposerBar));
       expect(onScreen(tester, find.byType(ChatComposerBar)).height, composer.size.height,
@@ -123,7 +126,7 @@ void main() {
       await tester.tap(find.byTooltip('Previous result'));
       await pumpFrames(tester, frames: 6);
       expect(find.text('1 of 2'), findsOneWidget);
-      expect(find.textContaining(_first.substring(0, 20), findRichText: true), findsOneWidget);
+      expect(find.textContaining(_morning, findRichText: true), findsOneWidget);
 
       await tester.tap(find.byTooltip('Back'));
       await pumpFrames(tester, frames: 4);

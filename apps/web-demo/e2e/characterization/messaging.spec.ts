@@ -349,3 +349,64 @@ test.describe('a direct conversation', () => {
     expectNoErrors(alice, bob);
   });
 });
+
+// What was being written is set aside while an edit is under way, and comes
+// back whether the edit is dropped (its ✕, Esc) or sent.
+test.describe('an edit and the unsent draft', () => {
+  const id = stamp();
+  let alice: Device;
+  let bob: Device;
+
+  test.beforeAll(async ({ browser }) => {
+    alice = await register(browser, `dalice${id}`);
+    bob = await register(browser, `dbob${id}`);
+    await startChat(alice, bob);
+    await send(alice, 'see you at 8');
+  });
+
+  test.afterAll(async () => {
+    await closeAll(alice, bob);
+  });
+
+  const box = () => alice.page.locator('.panel-input textarea');
+  const type = (text: string, { enter = false } = {}) =>
+    alice.page.evaluate(({ text, enter }) => {
+      const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
+      textarea.value = text;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      if (enter) textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    }, { text, enter });
+
+  test('comes back after the edit is dropped or sent', async () => {
+    await type('and bring the');
+
+    // Dropped with the bar's ✕.
+    await chooseAction(alice, 'see you at 8', 'Edit');
+    await expect(box()).toHaveValue('see you at 8');
+    await alice.page.locator('.edit-banner .reply-banner-close').click();
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(0);
+    await expect(box()).toHaveValue('and bring the');
+
+    // Dropped with Esc, with a reply quoted: both come back.
+    await chooseAction(alice, 'see you at 8', 'Reply');
+    await expect(alice.page.locator('.reply-banner')).toHaveCount(1);
+    await chooseAction(alice, 'see you at 8', 'Edit');
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(1);
+    await expect(alice.page.locator('.reply-banner:not(.edit-banner)')).toHaveCount(0);
+    await box().press('Escape');
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(0);
+    await expect(box()).toHaveValue('and bring the');
+    await expect(alice.page.locator('.reply-banner .reply-banner-meta')).toHaveText(`Reply to @${alice.handle}`);
+    await alice.page.locator('.reply-banner .reply-banner-close').click();
+
+    // Sent: the message changes on both sides, and the draft is back.
+    await chooseAction(alice, 'see you at 8', 'Edit');
+    await type('see you at 9', { enter: true });
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(0);
+    await expect(rowOf(alice, 'see you at 9').locator('.msg-edited')).toHaveText('(edited)');
+    await expect(rowOf(bob, 'see you at 9').locator('.msg-edited')).toHaveText('(edited)', { timeout: 15_000 });
+    await expect(box()).toHaveValue('and bring the');
+    await expect(alice.page.locator('.panel-input .send-btn')).toBeEnabled();
+    expectNoErrors(alice, bob);
+  });
+});

@@ -209,6 +209,7 @@ class LayoutWorld {
     required String locale,
     ChatAttention attention = const ChatAttention(),
     bool bootstrapping = false,
+    bool transferClaimed = false,
     bool transferStarted = false,
     bool withGroup = false,
     String? sessionError,
@@ -218,6 +219,7 @@ class LayoutWorld {
     await world._build(
       attention: attention,
       bootstrapping: bootstrapping,
+      transferClaimed: transferClaimed,
       transferStarted: transferStarted,
       withGroup: withGroup,
       beforeSession: beforeSession,
@@ -230,6 +232,7 @@ class LayoutWorld {
   Future<void> _build({
     required ChatAttention attention,
     required bool bootstrapping,
+    required bool transferClaimed,
     required bool transferStarted,
     required bool withGroup,
     void Function(FakeRelay relay)? beforeSession,
@@ -304,7 +307,27 @@ class LayoutWorld {
       await trust.admit(groupConversationId, peer.userId, peer.deviceId, identities.self.identityPublicKey);
     }
 
-    final session = _LayoutSession(storage, api, identities.adapter, _session, bootstrapping: bootstrapping);
+    final session = _LayoutSession(
+      storage,
+      api,
+      identities.adapter,
+      _session,
+      bootstrapping: bootstrapping,
+      // A new phone that claimed a move and waits for the old one, with
+      // the relay's ids as production has them: a UUID for the claim.
+      claimed: !transferClaimed
+          ? null
+          : PendingTransferRecord(
+              sessionId: layoutTransferSessionId,
+              transferToken: 'token',
+              claimId: layoutClaimId,
+              claimantFingerprint: layoutClaimFingerprint,
+              expiresAt: DateTime.now().add(const Duration(minutes: 4, seconds: 30)),
+              identity: identities.self,
+              authKey: const DeviceAuthKeyMaterial(publicKey: 'auth-pub', privateKey: 'auth'),
+              completionOutcomeUnknown: false,
+            ),
+    );
     container = ProviderContainer(overrides: [
       secureStorageProvider.overrideWithValue(storage),
       apiClientProvider.overrideWithValue(api),
@@ -406,6 +429,7 @@ class _LayoutSession extends AppSessionController {
     super.api,
     super.adapter,
     AppSessionState initial, {
+    this.claimed,
     required this.bootstrapping,
   }) {
     // A session still starting has no account yet, but may already have
@@ -414,6 +438,12 @@ class _LayoutSession extends AppSessionController {
   }
 
   final bool bootstrapping;
+
+  /// The claim this phone made, as start-up would have read it.
+  final PendingTransferRecord? claimed;
+
+  @override
+  PendingTransferRecord? get pendingTransfer => super.pendingTransfer ?? claimed;
 
   @override
   Future<void> bootstrap() => bootstrapping ? Completer<void>().future : super.bootstrap();

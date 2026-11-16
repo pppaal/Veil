@@ -8,6 +8,7 @@ import 'package:veil_mobile/src/core/security/device_step_up.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_new_device_panel.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -196,9 +197,13 @@ void _expectExpired(WidgetTester tester, {required String claimId}) {
   expect(find.byType(TransferStepResult), findsOneWidget, reason: 'one line says why');
   expect(_completeButton, findsNothing);
   expect(find.byKey(const ValueKey('transfer-claim-code')), findsNothing);
-  expect(find.text(claimId), findsNothing);
+  expect(_claimCode(claimId), findsNothing);
   expect(find.text(_en.deviceTransferNewCompleteBody), findsNothing);
 }
+
+// The claim code on the second screen, drawn in groups (TransferClaimCode).
+Finder _claimCode(String claimId) =>
+    find.byWidgetPredicate((widget) => widget is TransferClaimCode && widget.code == claimId);
 
 // Lets both the test's fake clock and real time move until [condition].
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
@@ -407,7 +412,7 @@ void main() {
     for (final part in [title, code, line, key]) {
       expect(part, findsOneWidget);
     }
-    expect(find.descendant(of: code, matching: find.text(claimId)), findsOneWidget);
+    expect(tester.widget<TransferClaimCode>(code).code, claimId);
     final order = [title, code, line, key, _completeButton];
     for (var i = 1; i < order.length; i++) {
       expect(tester.getRect(order[i - 1]).bottom, lessThanOrEqualTo(tester.getRect(order[i]).top));
@@ -434,7 +439,7 @@ void main() {
     _tallView(tester);
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
-    expect(find.text(claimId), findsOneWidget);
+    expect(_claimCode(claimId), findsOneWidget);
 
     // The first screen is behind it; "Change" goes back to paste a code.
     expect(find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel), findsNothing);
@@ -450,7 +455,7 @@ void main() {
     // The claim it holds is what comes next: nothing is registered again,
     // and the second screen is back.
     expect(find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel), findsNothing);
-    expect(find.text(claimId), findsOneWidget);
+    expect(_claimCode(claimId), findsOneWidget);
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
 
@@ -491,7 +496,7 @@ void main() {
     // Back to the claim it holds, which is finished from there.
     await tester.tap(find.text(_en.commonCancel));
     await tester.pump();
-    expect(find.text(claimId), findsOneWidget);
+    expect(_claimCode(claimId), findsOneWidget);
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
     await tester.tap(_completeButton);

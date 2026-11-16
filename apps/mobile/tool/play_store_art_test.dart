@@ -137,8 +137,8 @@ const _shots = <_Shot>[
       settle: _reactWhileTyping),
   // The old phone before it asks for a code: how a move goes, and the
   // button that starts it. Once asked, the screen shows the code itself, a
-  // long string in `monospace` that starts with VEIL_TRANSFER:: (its wire
-  // format), which is no picture for a listing.
+  // long string in `monospace` (the session and its token), which is no
+  // picture for a listing.
   _Shot('04-move-to-a-new-phone', screen: DeviceTransferScreen, location: '/device-transfer', from: '/settings'),
   _Shot('05-app-lock',
       screen: AppLockScreen, location: '/lock', account: LayoutAccount.locked, settle: _typePin),

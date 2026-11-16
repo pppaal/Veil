@@ -313,6 +313,7 @@ Future<LayoutFindings> _render(
     attention: screenCase.attention,
     bootstrapping: screenCase.bootstrapping,
     transferStarted: screenCase.transferStarted,
+    transferClaimed: screenCase.transferClaimed,
     withGroup: screenCase.withGroup,
   );
 

@@ -56,6 +56,7 @@ class ScreenCase {
     this.keyboardHeight = 0,
     this.bootstrapping = false,
     this.transferStarted = false,
+    this.transferClaimed = false,
     this.withGroup = false,
     this.textScale = 1,
     this.sizes = phoneSizes,
@@ -90,6 +91,10 @@ class ScreenCase {
 
   /// This device already opened a transfer session.
   final bool transferStarted;
+
+  /// This device, with no account, claimed a move and waits for the old
+  /// phone to approve it.
+  final bool transferClaimed;
 
   /// The account has a group conversation, the newest of its list.
   final bool withGroup;
@@ -177,6 +182,14 @@ const List<ScreenCase> screenCases = [
       location: '/device-transfer',
       account: _signedOut,
       primaryAction: _firstInput),
+  // Its second screen: the claim code (a UUID) to type on the old phone.
+  ScreenCase('device-transfer-new-device-approve',
+      screen: DeviceTransferScreen,
+      file: 'device_transfer_screen.dart',
+      location: '/device-transfer',
+      account: _signedOut,
+      transferClaimed: true,
+      primaryAction: _primaryButton),
   ScreenCase('app-lock',
       screen: AppLockScreen,
       file: 'app_lock_screen.dart',

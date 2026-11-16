@@ -17,6 +17,9 @@ final _en = lookupAppLocalizations(const Locale('en'));
 final _now = DateTime(2026, 4, 2, 12);
 const _code = 'VEIL_TRANSFER::session-1::token-1';
 
+// What the box shows of it: no prefix, which no one reads.
+const _shown = 'session-1::token-1';
+
 // [expiresAt] null is a device that has no session open.
 Future<void> _pump(
   WidgetTester tester, {
@@ -83,7 +86,7 @@ void main() {
     expect(tester.widget<FilledButton>(issue).onPressed, isNotNull);
     // A code nobody can use is not offered for copying, and nothing is
     // approved against it.
-    expect(find.text(_code), findsNothing);
+    expect(find.text(_shown), findsNothing);
     expect(find.byType(SelectableText), findsNothing);
     expect(find.text(_en.deviceTransferCopyPayload), findsNothing);
     expect(find.byType(TextField), findsNothing);
@@ -95,7 +98,7 @@ void main() {
     await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.add(const Duration(minutes: 4)));
 
     final heading = find.text(_en.deviceTransferOldHandTitle);
-    final code = find.text(_code);
+    final code = find.text(_shown);
     final copy = find.widgetWithText(OutlinedButton, _en.deviceTransferCopyPayload);
     final expiry = find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryInMinutes(4)));
     final field = find.byType(TextField);
@@ -111,6 +114,8 @@ void main() {
     }
     expect(tester.widget<TextField>(field).decoration!.labelText, _en.deviceTransferClaimInputLabel);
     expect(find.widgetWithText(FilledButton, _en.deviceTransferIssueToken), findsNothing);
+    // The copied code's prefix is for the parser, not the reader.
+    expect(find.textContaining('VEIL'), findsNothing);
     expect(find.text(_en.deviceTransferOldStep1), findsNothing, reason: 'the instructions were the start screen');
   });
 
@@ -119,7 +124,7 @@ void main() {
   testWidgets('the code is one line that ends in "…" when it does not fit', (tester) async {
     await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.add(const Duration(minutes: 4)), view: const Size(360, 3000));
 
-    final code = tester.widget<Text>(find.text(_code));
+    final code = tester.widget<Text>(find.text(_shown));
     expect(code.maxLines, 1);
     expect(code.softWrap, isFalse);
     expect(code.overflow, TextOverflow.ellipsis);

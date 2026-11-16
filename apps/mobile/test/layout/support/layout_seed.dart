@@ -293,8 +293,17 @@ Future<void> seedConversations(
   }
 }
 
-const _transferSessionId = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d';
-const _transferToken = 'vt_3QmZ8xT1uKcR7pLwN5sYhB2dJ9aFgE4o';
+const _transferSessionId = layoutTransferSessionId;
+
+/// The relay's ids for a move, shaped as production's (randomUUID).
+const layoutTransferSessionId = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d';
+const layoutClaimId = '3f2b9c7e-5a14-4d0b-9e2f-8c61a7d4b250';
+
+/// A claimant fingerprint as the relay writes it: SHA-256 in 16 groups of 4.
+const layoutClaimFingerprint = '9f2c 41ab 07de 5c33 e18a 6b40 d2f7 0c95 7a1e 33b8 c604 f5d9 28e1 b07c 4d6a 91f3';
+
+// The relay's transfer token is randomUUID() too.
+const _transferToken = 'c47d2e19-8a3b-4f60-b915-2e7a0d6c3f84';
 
 /// What a case types into a search field: a part of two names (Sam Rivera,
 /// Priya Nair) and of nothing else, and a word of two of Sam's messages

@@ -23,7 +23,7 @@ class TransferNotice {
 /// The new phone's half of a move, one screen per stage as Signal's: first
 /// the transfer code and this phone's name with one "Continue" that reads
 /// the code and registers the phone; then "Approve on your old phone" with
-/// the short code to enter there, large, and "Finish".
+/// the code to enter there, centred ([TransferClaimCode]), and "Finish".
 ///
 /// A claim that ran out goes back to the first stage. Its transfer session
 /// ran out with it (they share one window), so nothing can be finished on
@@ -143,17 +143,7 @@ class TransferNewDevicePanel extends StatelessWidget {
         children: [
           Text(l10n.deviceTransferNewCompleteTitle, style: theme.textTheme.titleLarge),
           const SizedBox(height: VeilSpace.xl),
-          Center(
-            child: SelectableText(
-              claimId!,
-              key: const ValueKey('transfer-claim-code'),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.displaySmall?.copyWith(
-                fontFeatures: const [FontFeature.tabularFigures()],
-                letterSpacing: 2,
-              ),
-            ),
-          ),
+          TransferClaimCode(claimId!, key: const ValueKey('transfer-claim-code')),
           const SizedBox(height: VeilSpace.sm),
           Text(l10n.deviceTransferNewCompleteBody, textAlign: TextAlign.center, style: theme.textTheme.bodyLarge),
           const SizedBox(height: VeilSpace.xl),
@@ -173,6 +163,41 @@ class TransferNewDevicePanel extends StatelessWidget {
           VeilButton(tone: VeilButtonTone.ghost, onPressed: onEditCode, label: l10n.deviceTransferNewCodeChange),
           if (result != null) ...[const SizedBox(height: VeilSpace.xs), result],
         ],
+      ),
+    );
+  }
+}
+
+/// The code the user types on the old phone: the relay's claim id, a UUID
+/// of 36 characters. It is set in monospace, as the old phone's code box,
+/// at headlineMedium with no tracking, centred, and wraps only after a
+/// hyphen, so no group of it is split across two lines (plain text would
+/// break "4d0b" in the middle on a 360dp phone). A screen reader reads it
+/// whole.
+class TransferClaimCode extends StatelessWidget {
+  const TransferClaimCode(this.code, {super.key});
+
+  final String code;
+
+  /// [code] cut after each hyphen: the pieces a line may end with.
+  static List<String> groupsOf(String code) =>
+      [for (final match in RegExp(r'[^-]*-|[^-]+$').allMatches(code)) match[0]!];
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.headlineMedium?.copyWith(
+      fontFamily: 'monospace',
+      fontWeight: FontWeight.w400,
+      letterSpacing: 0,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Semantics(
+      label: code,
+      child: ExcludeSemantics(
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          children: [for (final group in groupsOf(code)) Text(group, style: style)],
+        ),
       ),
     );
   }

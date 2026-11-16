@@ -103,7 +103,8 @@ class TransferOldDevicePanel extends StatelessWidget {
           const SizedBox(height: VeilSpace.sm),
           // The code the new phone takes, in one box of one line: no one
           // reads it, "Copy code" copies the whole of it (the web shows it
-          // the same way, in a one-line field).
+          // the same way, in a one-line field). The box leaves out the
+          // prefix the copied code starts with.
           DecoratedBox(
             key: const ValueKey('transfer-code'),
             decoration: BoxDecoration(
@@ -115,7 +116,7 @@ class TransferOldDevicePanel extends StatelessWidget {
               padding: const EdgeInsets.all(VeilSpace.sm),
               // Copied with the button under it: the box itself takes no tap.
               child: Text(
-                transferCode ?? '',
+                transferCodeForDisplay(transferCode ?? ''),
                 maxLines: 1,
                 softWrap: false,
                 overflow: TextOverflow.ellipsis,

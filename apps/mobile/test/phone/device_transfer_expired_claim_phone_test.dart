@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_new_device_panel.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
@@ -127,7 +128,7 @@ void main() {
     expect(transfer.relay.callsTo('POST /device-transfer/claim'), 2);
 
     // The second screen: the new claim's code, large, and one line.
-    expect(find.descendant(of: claimCode, matching: find.text(session.pendingTransfer!.claimId)), findsOneWidget);
+    expect(tester.widget<TransferClaimCode>(claimCode).code, session.pendingTransfer!.claimId);
     expect(findCopy(l10n.deviceTransferNewCompleteBody), findsOneWidget);
     expect(findCopy(l10n.deviceTransferCodeExpired, skipOffstage: false), findsNothing);
     expect(codeField, findsNothing);
@@ -148,7 +149,7 @@ void main() {
     await pumpFrames(tester, frames: 3);
 
     // Still live: the claim's code is shown, and the first screen is behind.
-    expect(find.text(session.pendingTransfer!.claimId), findsOneWidget);
+    expect(tester.widget<TransferClaimCode>(claimCode).code, session.pendingTransfer!.claimId);
     expect(codeField, findsNothing);
 
     // The user goes back to paste the code in again; then the window closes
@@ -202,7 +203,7 @@ void main() {
     expect(codeField, findsNothing);
     expect(find.text(l10n.deviceTransferPayloadInvalid, skipOffstage: false), findsNothing);
     expect(find.text(l10n.deviceTransferNewCodeChange), findsOneWidget);
-    expect(find.text(session.pendingTransfer!.claimId), findsOneWidget);
+    expect(tester.widget<TransferClaimCode>(claimCode).code, session.pendingTransfer!.claimId);
     expect(transfer.relay.callsTo('POST /device-transfer/claim'), 1);
 
     // Opened again later, the first screen does not repeat a refusal that

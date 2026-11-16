@@ -455,6 +455,18 @@ class LayoutRelayClient extends FakeRelayClient {
     return const {};
   }
 
+  /// What the next step-up challenge (the first step of Sign out and
+  /// Delete account) is refused with; unset, it goes to the network, which
+  /// a test does not reach.
+  Object? challengeError;
+
+  @override
+  Future<Map<String, dynamic>> challenge(Map<String, dynamic> body) {
+    final error = challengeError;
+    if (error != null) throw error;
+    return super.challenge(body);
+  }
+
   @override
   Future<Map<String, dynamic>> logoutAuth(String accessToken, {String? refreshToken}) async => const {};
 

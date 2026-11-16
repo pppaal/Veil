@@ -6,6 +6,7 @@ import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/app/router/app_router.dart';
 import 'package:veil_mobile/src/app/theme_mode_provider.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_adapter_registry.dart';
+import 'package:veil_mobile/src/core/network/veil_api_exception.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
@@ -335,6 +336,28 @@ void main() {
         expect(find.byType(ChooseHandleScreen), findsNothing);
         expect(find.byType(SettingsScreen), findsOneWidget);
         expect(findCopy(en.settingsLogoutFailed), findsOneWidget);
+      });
+    });
+
+    // The server answers that this phone is no longer on the account: the
+    // phone is erased all the same (handleSecurityException), so Sign out
+    // did what it said, and no "Couldn't sign out" follows it.
+    testWidgets('signing out of a phone the server already dropped erases it and says no failure', (tester) async {
+      await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
+        world.api.challengeError = VeilApiException('Device is not active', statusCode: 401, code: 'device_not_active');
+        final handle = world.container.read(appSessionProvider).handle!;
+        final logout = find.byKey(const ValueKey('settings-logout'));
+        await scrollTo(tester, logout);
+        await tester.tap(logout);
+        await pumpFrames(tester, frames: 3);
+        await tester.enterText(find.byType(TextField), handle);
+        await tester.pump();
+        await tester.tap(find.widgetWithText(TextButton, en.settingsLogout));
+        await pumpFrames(tester, frames: 8);
+
+        expect(world.container.read(appSessionProvider).isAuthenticated, isFalse, reason: 'the phone was erased');
+        expect(findCopy(en.settingsLogoutFailed, skipOffstage: false), findsNothing);
+        expect(find.byType(SettingsScreen), findsNothing);
       });
     });
 

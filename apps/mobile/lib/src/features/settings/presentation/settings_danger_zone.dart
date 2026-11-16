@@ -39,6 +39,13 @@ class SettingsDangerZone extends ConsumerWidget {
         if (context.mounted) context.go(thenGo);
       } catch (_) {
         if (!context.mounted) return;
+        // The server said this phone was no longer on the account
+        // (device_not_active): the phone was erased all the same, so
+        // nothing failed that the user could try again.
+        if (!ref.read(appSessionProvider).isAuthenticated) {
+          context.go(thenGo);
+          return;
+        }
         showVeilToast(context, failed);
       }
     }

@@ -187,7 +187,8 @@ test('each stale statement fails while its code stands', () => {
       '- Custom `CfThrottlerGuard` prefers `cf-connecting-ip`, falls back to `deviceId`',
     'web-protocol-in-superseded-spec':
       '- Web demo: its protocol status is tracked in `docs/envelope-v3-unified-spec.md`.',
-    'ipad-build-absent': 'Six shots, iPhone only (there is no iPad build), captured on the Simulator.',
+    'ipad-build-absent':
+      'Six shots, iPhone only (there is no iPad build), captured on the Simulator.',
   };
   assert.deepEqual(Object.keys(statements).sort(), STALE_STATEMENTS.map(({ id }) => id).sort());
   for (const [id, statement] of Object.entries(statements)) {
@@ -229,9 +230,13 @@ test('while the Xcode project builds for iPad, no document says there is no iPad
     'Six shots, iPhone only (there is no iPad build), captured on the iOS Simulator.',
   ];
   for (const sentence of said) {
-    const failures = failuresOf(RULES.staleStatement, { 'store/appstore/spec.md': `${sentence}\n` });
+    const failures = failuresOf(RULES.staleStatement, {
+      'store/appstore/spec.md': `${sentence}\n`,
+    });
     assert.ok(
-      failures.some((failure) => failure.startsWith(`[${RULES.staleStatement}] ipad-build-absent:`)),
+      failures.some((failure) =>
+        failure.startsWith(`[${RULES.staleStatement}] ipad-build-absent:`),
+      ),
       sentence,
     );
   }

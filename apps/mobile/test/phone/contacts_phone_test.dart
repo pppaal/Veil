@@ -261,4 +261,27 @@ void main() {
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, timerChatConversationId);
     });
   });
+
+  // M26: an account with no name is "@tom_walsh" wherever it is named
+  // outside a Chats row, as its row, the add toast and the block toast say.
+  testWidgets('a contact with no name is removed, and read out, as its @handle', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
+      final row = find.byWidgetPredicate((widget) => widget is ContactRow && widget.contact.handle == 'tom_walsh',
+          skipOffstage: false);
+      await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+      await pumpFrames(tester, frames: 2);
+      expect(find.bySemanticsLabel(en.contactsRowSemantics('@tom_walsh')), findsOneWidget);
+      expect(find.bySemanticsLabel(en.contactsRowSemantics('tom_walsh')), findsNothing);
+
+      await tester.tap(row);
+      await pumpFrames(tester, frames: 4);
+      await tester.tap(find.text(en.contactsRemove));
+      await pumpFrames(tester, frames: 6);
+      expect(world.api.removedContacts, {'tom_walsh'});
+      expect(findCopy(en.contactsRemoved('@tom_walsh')), findsOneWidget);
+      expect(findCopy(en.contactsRemoved('tom_walsh')), findsNothing);
+    });
+    semantics.dispose();
+  });
 }

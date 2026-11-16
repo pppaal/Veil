@@ -211,7 +211,7 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
     if (!context.mounted) return;
     showVeilToast(
       context,
-      removed ? l10n.contactsRemoved(contact.label) : l10n.contactsRemoveFailed,
+      removed ? l10n.contactsRemoved(contact.title) : l10n.contactsRemoveFailed,
     );
   }
 

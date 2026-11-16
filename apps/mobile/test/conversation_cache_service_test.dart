@@ -438,6 +438,9 @@ void main() {
       expect(fileResults.items.map((item) => item.messageId).toList(),
           ['msg-theirs-file']);
       expect(fileResults.items.single.isMine, isFalse);
+      // The device that sent it, by which a group's hit says who wrote it.
+      expect(fileResults.items.single.senderDeviceId, 'device-selene');
+      expect(mineResults.items.single.senderDeviceId, 'device-local');
       expect(
         fileResults.items.single.bodySnippet.toLowerCase(),
         contains('meeting'),

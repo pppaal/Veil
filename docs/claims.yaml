@@ -17,7 +17,7 @@ claims:
       - file: README.md
         quote: "Veil is an open-source, end-to-end encrypted messenger for phones and the web; you sign up with a handle, not a phone number or email."
       - file: docs/privacy-policy-en.md
-        quote: "VEIL (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
+        quote: "Veil (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
       - file: docs/privacy-policy-en.md
         quote: "End-to-end encrypted message payloads that the server cannot decrypt."
       - file: docs/privacy-policy-ko.md
@@ -25,7 +25,7 @@ claims:
       - file: site/index.html
         quote: "종단간 암호화된 메시지 페이로드(서버는 평문을 복호화할 수 없습니다)"
       - file: site/index.html
-        quote: "VEIL (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
+        quote: "Veil (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
       - file: site/index.html
         quote: "End-to-end encrypted message payloads that the server cannot decrypt."
       - file: store/appstore/app-privacy-answers.md
@@ -208,11 +208,13 @@ claims:
       - file: README.md
         quote: "This keeps the privacy invariants (no plaintext messages on the server, no recovery path, no admin override) from being silently stripped out of a hosted fork."
       - file: docs/privacy-policy-en.md
-        quote: "VEIL has no account recovery path by design."
+        quote: "No account recovery"
+      - file: docs/privacy-policy-en.md
+        quote: "Veil has no account recovery, and this is on purpose: it protects your privacy."
       - file: docs/privacy-policy-ko.md
         quote: "복구 불가 정책"
       - file: docs/privacy-policy-ko.md
-        quote: "VEIL은 설계상 계정 복구 경로가 없습니다."
+        quote: "Veil은 설계상 계정 복구 경로가 없습니다."
       - file: docs/privacy-policy-ko.md
         quote: "기기를 분실하거나 초기화하면 대화 내용은 복구할 수 없습니다."
       - file: docs/security-hardening-roadmap.md
@@ -220,11 +222,13 @@ claims:
       - file: site/index.html
         quote: "복구 불가 정책"
       - file: site/index.html
-        quote: "VEIL은 설계상 계정 복구 경로가 없습니다."
+        quote: "Veil은 설계상 계정 복구 경로가 없습니다."
       - file: site/index.html
         quote: "기기를 분실하거나 초기화하면 대화 내용은 복구할 수 없습니다."
       - file: site/index.html
-        quote: "VEIL has no account recovery path by design."
+        quote: "No account recovery"
+      - file: site/index.html
+        quote: "Veil has no account recovery, and this is on purpose: it protects your privacy."
       - file: store/appstore/app-review-notes.md
         quote: "Veil has no password, no phone number, no email and no account recovery; that is the expected behavior, not a bug."
       - file: store/appstore/app-review-notes.md

@@ -92,8 +92,7 @@ file and the Data safety form are amended together.
 
 ## Permissions
 
-Declared in `AndroidManifest.xml` (the app's own plus what its plugins merge
-in) and surfaced in Play Console:
+Declared in the app's `AndroidManifest.xml` and surfaced in Play Console:
 
 | Permission               | Used for                          | Runtime prompt?   |
 |--------------------------|-----------------------------------|-------------------|
@@ -102,6 +101,16 @@ in) and surfaced in Play Console:
 | VIBRATE                  | notification vibration            | no                |
 | WAKE_LOCK                | push wake-ups, once push is wired | no                |
 | USE_BIOMETRIC            | app lock                          | no (per-use)      |
+
+The plugins' own manifests add nothing to this: `flutter_local_notifications`
+declares `VIBRATE` and `POST_NOTIFICATIONS`, `local_auth_android`
+`USE_BIOMETRIC`, and the rest none. Libraries they depend on can add more:
+`local_auth_android` depends on `androidx.biometric`, whose manifest usually
+adds `USE_FINGERPRINT` (a normal permission, for the fingerprint API of
+Android 9 and older, with no prompt). This page was written without a Gradle
+build, so before submission read the merged manifest
+(`build/app/intermediates/merged_manifests/release/AndroidManifest.xml`) or
+the permissions Play Console lists for the bundle, and add any it shows here.
 
 No `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_*` or `READ_EXTERNAL_STORAGE`: the
 app sends text only (sending attachments is switched off by

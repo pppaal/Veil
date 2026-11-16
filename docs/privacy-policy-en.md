@@ -1,7 +1,7 @@
 # Veil privacy policy
 
 Effective: 2026-04-20
-Last updated: 2026-11-12
+Last updated: 2026-11-16
 
 Veil ("the service") collects the absolute minimum data required to operate an end-to-end encrypted messenger. This policy describes what we collect, why, how long we keep it, and the rights users hold. It is written to satisfy Korea's Personal Information Protection Act (PIPA) alongside general privacy expectations.
 

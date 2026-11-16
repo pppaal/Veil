@@ -21,6 +21,7 @@ import 'package:veil_mobile/src/features/onboarding/presentation/privacy_consent
 import 'package:veil_mobile/src/features/onboarding/presentation/splash_screen.dart';
 import 'package:veil_mobile/src/features/profile/presentation/profile_screen.dart';
 import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_widget.dart';
+import 'package:veil_mobile/src/features/safety/presentation/blocked_accounts_screen.dart';
 import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
@@ -191,6 +192,15 @@ const List<ScreenCase> screenCases = [
       location: '/lock',
       account: LayoutAccount.locked,
       primaryAction: _primaryButton),
+  // The PIN setup that Settings opens on a phone with no PIN: its bar has
+  // the back button that cancels it.
+  ScreenCase('app-lock-setup',
+      screen: AppLockScreen,
+      file: 'app_lock_screen.dart',
+      location: '/lock',
+      account: LayoutAccount.choosingPin,
+      primaryAction: _primaryButton,
+      settle: _expectCancellableSetup),
 
   // The conversation list, in the main shell with its bottom bar: with
   // conversations, with none, and while searching.
@@ -610,6 +620,84 @@ const List<ScreenCase> screenCases = [
     primaryExtent: conversationRowsExtent,
     minPrimaryShare: minPrimaryContentShare,
   ),
+
+  // Keeping someone out: the chat's menu, muting, reporting the peer, one
+  // of their messages or a group member's, blocking, a chat whose peer is
+  // blocked, the blocked accounts with and without any, muted chats in the
+  // list, and reporting a contact.
+  ScreenCase('chat-room-menu',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openChatMenu),
+  ScreenCase('chat-room-mute-sheet',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openMuteSheet),
+  ScreenCase('chat-room-report-sheet',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openReportSheet),
+  ScreenCase('chat-room-message-report-sheet',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openMessageReportSheet),
+  ScreenCase('chat-room-group-report-sheet',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: '/chat/$groupConversationId',
+      withGroup: true,
+      settle: _openGroupMessageReportSheet),
+  ScreenCase('chat-room-block-dialog',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openBlockDialog),
+  ScreenCase(
+    'chat-room-blocked',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(peerBlocked: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectBlockedLine,
+  ),
+  ScreenCase('blocked-accounts',
+      screen: BlockedAccountsScreen,
+      file: 'blocked_accounts_screen.dart',
+      location: '/blocked-accounts',
+      attention: ChatAttention(peerBlocked: true),
+      settle: _expectBlockedAccounts),
+  ScreenCase('blocked-accounts-empty',
+      screen: BlockedAccountsScreen, file: 'blocked_accounts_screen.dart', location: '/blocked-accounts'),
+  ScreenCase(
+    'conversation-list-muted',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    attention: ChatAttention(muted: true),
+    primaryExtent: conversationRowsExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectMutedRows,
+  ),
+  ScreenCase('contacts-report-sheet',
+      screen: ContactsScreen, file: 'contacts_screen.dart', location: '/contacts', settle: _openContactReportSheet),
+  // A blocked peer: the report offers no block, and a message's sheet holds
+  // Report alone (the server refuses a reaction). A refused report says so
+  // in a toast with Retry.
+  ScreenCase('chat-room-blocked-report-sheet',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: _chat,
+      attention: ChatAttention(peerBlocked: true),
+      settle: _openBlockedReportSheet),
+  ScreenCase('chat-room-blocked-menu',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: _chat,
+      attention: ChatAttention(peerBlocked: true),
+      settle: _openBlockedChatMenu),
+  ScreenCase('chat-room-blocked-message-sheet',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: _chat,
+      attention: ChatAttention(peerBlocked: true),
+      settle: _openBlockedMessageSheet),
+  ScreenCase('chat-room-report-failed',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: _chat,
+      attention: ChatAttention(reportRefused: true),
+      settle: _fileRefusedReport),
 ];
 
 const _wideSizes = [wideSmall, wideLarge];
@@ -666,6 +754,19 @@ const List<ScreenCase> wideCases = [
     account: LayoutAccount.signedInEmpty,
     sizes: _wideSizes,
   ),
+  // From 1024 px the three tabs are a rail at the start edge: beside the
+  // list on a tablet held upright (one pane, as on a phone), and beside a
+  // tab with no second pane.
+  ScreenCase(
+    'tablet-conversation-list',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    sizes: _tablet,
+    primaryExtent: conversationRowsExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase('wide-settings', screen: SettingsScreen, file: 'settings_screen.dart', location: '/settings', sizes: _wideSizes),
   ScreenCase(
     'tablet-chat',
     screen: ChatRoomScreen,
@@ -840,11 +941,103 @@ Future<void> _expectGroupPane(WidgetTester tester) async {
   await _expectGroupMessages(tester);
 }
 
-Future<void> _openTimerSheet(WidgetTester tester) async {
-  // A disappearing message carries the same icon: the bar's is the button.
-  await tester.tap(find.widgetWithIcon(IconButton, Icons.timer_outlined));
+Future<void> _expectCancellableSetup(WidgetTester tester) async {
+  expect(find.byType(TextField), findsNWidgets(2), reason: 'the PIN setup is not on screen');
+  expect(find.byKey(AppLockScreen.cancelKey), findsOneWidget, reason: 'the setup has no way back');
+}
+
+Future<void> _openTimerSheet(WidgetTester tester) => _openFromChatMenu(tester, 'timer', BottomSheet);
+
+// The chat's menu, open: the timer, muting, reporting and blocking. With
+// the peer blocked there is no timer, since nothing can be sent there.
+Future<void> _openChatMenu(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('chat-menu')));
+  await pumpFrames(tester, frames: 3);
+  final blocked = find.byKey(const ValueKey('chat-menu-unblock')).evaluate().isNotEmpty;
+  expect(find.byType(PopupMenuItem<String>), findsNWidgets(blocked ? 3 : 4), reason: 'the chat menu did not open');
+}
+
+Future<void> _openBlockedChatMenu(WidgetTester tester) async {
+  await _openChatMenu(tester);
+  expect(find.byKey(const ValueKey('chat-menu-unblock')), findsOneWidget, reason: 'the peer is not blocked');
+  expect(find.byKey(const ValueKey('chat-menu-timer')), findsNothing, reason: 'a blocked chat offered a timer');
+}
+
+Future<void> _openFromChatMenu(WidgetTester tester, String entry, Type opens) async {
+  await _openChatMenu(tester);
+  await tester.tap(find.byKey(ValueKey('chat-menu-$entry')));
   await pumpFrames(tester, frames: 4);
-  expect(find.byType(BottomSheet), findsOneWidget, reason: 'the timer sheet did not open');
+  expect(find.byType(opens), findsOneWidget, reason: 'the chat menu\'s $entry did not open');
+}
+
+Future<void> _openMuteSheet(WidgetTester tester) => _openFromChatMenu(tester, 'mute', BottomSheet);
+
+Future<void> _openReportSheet(WidgetTester tester) => _openFromChatMenu(tester, 'report', BottomSheet);
+
+Future<void> _openBlockDialog(WidgetTester tester) => _openFromChatMenu(tester, 'block', AlertDialog);
+
+// A message from the other side, long pressed, then Report under the
+// reactions: the report names that message.
+Future<void> _reportMessage(WidgetTester tester, Finder message) async {
+  await tester.longPress(message);
+  await pumpFrames(tester, frames: 4);
+  await tester.tap(find.byKey(const ValueKey('message-report')));
+  await pumpFrames(tester, frames: 4);
+  expect(find.byKey(const ValueKey('report-reason-spam')), findsOneWidget, reason: 'the report sheet did not open');
+}
+
+Future<void> _openMessageReportSheet(WidgetTester tester) =>
+    _reportMessage(tester, find.textContaining('registry.example.org'));
+
+// A group member's message: the report names its writer, and offers no
+// block, which would not keep them out of the group.
+Future<void> _openGroupMessageReportSheet(WidgetTester tester) async {
+  await _expectGroupMessages(tester);
+  await _reportMessage(tester, find.text('The 14th works for me.'));
+  expect(find.byKey(const ValueKey('report-also-block')), findsNothing, reason: 'a group report offered a block');
+}
+
+Future<void> _expectBlockedLine(WidgetTester tester) async {
+  final en = lookupAppLocalizations(const Locale('en'));
+  expect(find.text(en.blockedComposerLine), findsOneWidget, reason: 'the blocked chat shows its composer');
+}
+
+Future<void> _expectBlockedAccounts(WidgetTester tester) async {
+  await pumpFrames(tester, frames: 3);
+  expect(find.byType(BlockedAccountRow), findsNWidgets(2), reason: 'the blocked accounts did not load');
+}
+
+Future<void> _expectMutedRows(WidgetTester tester) async {
+  expect(find.byIcon(Icons.notifications_off_outlined), findsNWidgets(2), reason: 'the muted chats show no glyph');
+}
+
+Future<void> _openContactReportSheet(WidgetTester tester) async {
+  await _openContactActionsSheet(tester);
+  await tester.tap(find.byKey(const ValueKey('contact-report')));
+  await pumpFrames(tester, frames: 6);
+  expect(find.byKey(const ValueKey('report-reason-spam')), findsOneWidget, reason: 'the report sheet did not open');
+}
+
+Future<void> _openBlockedReportSheet(WidgetTester tester) async {
+  await _openReportSheet(tester);
+  expect(find.byKey(const ValueKey('report-also-block')), findsNothing, reason: 'the report offered to block them again');
+}
+
+Future<void> _openBlockedMessageSheet(WidgetTester tester) async {
+  await tester.longPress(find.textContaining('registry.example.org'));
+  await pumpFrames(tester, frames: 4);
+  expect(find.byKey(const ValueKey('message-report')), findsOneWidget, reason: 'the message sheet did not open');
+  expect(find.byType(ReactionPickerWidget), findsNothing, reason: 'a blocked peer\'s message offered reactions');
+}
+
+Future<void> _fileRefusedReport(WidgetTester tester) async {
+  await _openReportSheet(tester);
+  await tester.tap(find.byKey(const ValueKey('report-reason-spam')));
+  await tester.tap(find.byKey(const ValueKey('report-also-block')));
+  await pumpFrames(tester, frames: 2);
+  await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.byType(FilledButton)));
+  await pumpFrames(tester, frames: 6);
+  expect(find.byType(SnackBarAction), findsOneWidget, reason: 'the refused report showed no Retry');
 }
 
 Future<void> _openReactionSheet(WidgetTester tester) async {

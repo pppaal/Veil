@@ -25,6 +25,7 @@ messages and never sees what they say.
 - No phone number, no email and no address book upload. You pick a handle.
 - Your account lives on your phone. There is no cloud account.
 - Disappearing messages, with a timer on each chat.
+- Block or report someone from a chat or your contacts, and mute a chat.
 
 **What you don't get**
 - No ads and no analytics.
@@ -36,9 +37,9 @@ messages and never sees what they say.
 People who want to message without giving out a phone number, and who
 accept that a lost phone means a lost account.
 
-Not in the mobile build, so not in this listing: view-once messages,
-block, mute and report. The server has the endpoints; the app has no screen
-for any of them yet. Put a bullet back when its screen ships.
+Not in the mobile build, so not in this listing: view-once messages. The
+server has the endpoint; the app has no screen for it yet. Put a bullet back
+when its screen ships.
 
 ## Category
 
@@ -50,11 +51,12 @@ IARC rating questionnaire should be answered honestly:
 
 - User-generated content: YES (we ship a messenger)
 - Encrypted UGC not visible to the developer: YES
-- In-app reporting: NO in the current build. The server takes abuse reports
-  (`POST /safety/reports`), but the mobile app has no screen that files
-  one. Google Play expects in-app reporting and blocking in an app with
-  user-generated content: a launch blocker. Answer YES once the screen
-  exists.
+- In-app reporting: YES. A chat's menu, a message's long-press sheet and a
+  contact's sheet file a report (`POST /safety/reports`): the account, the
+  reason and which chat or message, never its text. The same chat menu and
+  contact sheet block an account, and Settings > Privacy > Blocked accounts
+  lists them. Google Play expects both in an app with user-generated
+  content.
 - Interactive features: chat only; no live video to strangers, no
   unmoderated public rooms
 
@@ -90,28 +92,35 @@ file and the Data safety form are amended together.
 
 ## Permissions
 
-Declared in `AndroidManifest.xml` and surfaced in Play Console:
+Declared in the app's `AndroidManifest.xml` and surfaced in Play Console:
 
-| Permission                   | Used for            | Runtime prompt? |
-|------------------------------|---------------------|-----------------|
-| INTERNET                     | network             | no              |
-| ACCESS_NETWORK_STATE         | reconnect logic     | no              |
-| POST_NOTIFICATIONS (33+)     | message wake only   | yes (Android 13+)|
-| CAMERA                       | attachments (switched off) | never asked |
-| RECORD_AUDIO                 | voice messages, calls (not in the app) | never asked |
-| READ_MEDIA_IMAGES/VIDEO/AUDIO (33+) | attachments (switched off) | never asked |
-| USE_BIOMETRIC                | app lock            | no (per-use)    |
+| Permission               | Used for                          | Runtime prompt?   |
+|--------------------------|-----------------------------------|-------------------|
+| INTERNET                 | network                           | no                |
+| POST_NOTIFICATIONS (33+) | message notifications             | yes (Android 13+) |
+| VIBRATE                  | notification vibration            | no                |
+| WAKE_LOCK                | push wake-ups, once push is wired | no                |
+| USE_BIOMETRIC            | app lock                          | no (per-use)      |
 
-No `READ_CONTACTS`, no `ACCESS_FINE_LOCATION`, no `QUERY_ALL_PACKAGES`.
+The plugins' own manifests add nothing to this: `flutter_local_notifications`
+declares `VIBRATE` and `POST_NOTIFICATIONS`, `local_auth_android`
+`USE_BIOMETRIC`, and the rest none. Libraries they depend on can add more:
+`local_auth_android` depends on `androidx.biometric`, whose manifest usually
+adds `USE_FINGERPRINT` (a normal permission, for the fingerprint API of
+Android 9 and older, with no prompt). This page was written without a Gradle
+build, so before submission read the merged manifest
+(`build/app/intermediates/merged_manifests/release/AndroidManifest.xml`) or
+the permissions Play Console lists for the bundle, and add any it shows here.
 
-Sending attachments is switched off in the mobile app (`kAttachmentsEnabled`
-in `apps/mobile/lib/src/features/attachments/attachments_feature.dart`), and
-the app has no voice messages or calls, so nothing in the build asks for the
-camera, the microphone or the media library at runtime. The
-manifest still declares those permissions. Remove them (and the matching
-usage strings in `ios/Runner/Info.plist`) before submitting a build that
-ships without those features: a store reviewer reads a declared permission
-as a feature.
+No `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_*` or `READ_EXTERNAL_STORAGE`: the
+app sends text only (sending attachments is switched off by
+`kAttachmentsEnabled` in
+`apps/mobile/lib/src/features/attachments/attachments_feature.dart`, and there
+are no voice messages or calls), and none of its plugins declares them. No
+`READ_CONTACTS`, no `ACCESS_FINE_LOCATION`, no `QUERY_ALL_PACKAGES`. A feature
+that needs one of these declares it in the change that makes the feature
+work, together with the matching usage string in `ios/Runner/Info.plist`
+(`test/platform/native_permissions_test.dart` pins both lists).
 
 ## Support & policy URLs
 
@@ -120,8 +129,11 @@ as a feature.
 
 ## Screenshot set
 
-Five screenshots, 16:9 landscape or 9:16 portrait. Same storyline as the
-App Store screenshots: reuse the assets.
+Six phone screenshots (1080 x 1920) and the 1024 x 500 feature graphic are
+in `store/play`. `store/play/screenshots/README.md` lists them and says how
+a Flutter test draws them from the app's screens. They follow the App Store
+shot list, but they are not the App Store images: those are captured on the
+iOS Simulator, since iOS draws a font the test cannot render.
 
 ## Google Play review notes
 

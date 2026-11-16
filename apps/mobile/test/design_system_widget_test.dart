@@ -935,6 +935,66 @@ void main() {
       expect(label.style?.color ?? DefaultTextStyle.of(tester.element(find.text('Settings'))).style.color,
           VeilPalette.light.primaryStrong);
     });
+
+    testWidgets('from 1024 wide is a NavigationRail with the bar\'s look, on its side', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/contacts',
+        routes: [
+          ShellRoute(
+            builder: (context, state, child) => MainTabShell(child: child),
+            routes: [
+              for (final path in ['/conversations', '/contacts', '/settings'])
+                GoRoute(path: path, builder: (context, state) => Center(child: Text(path))),
+            ],
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      tester.view.physicalSize = const Size(MainTabShell.railBreakpoint, 768);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp.router(
+        theme: VeilTheme.dark(fontFamily: layoutFontFamily),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: router,
+      ));
+      await tester.pumpAndSettle();
+
+      final rail = find.byType(NavigationRail);
+      expect(rail, findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.byType(NavigationRailDestination, skipOffstage: false), findsNothing,
+          reason: 'destinations are data, not widgets');
+      expect(tester.widget<NavigationRail>(rail).selectedIndex, 1);
+      expect(find.byIcon(Icons.people), findsOneWidget, reason: 'the active tab shows the filled glyph');
+      expect(Theme.of(tester.element(rail)).splashFactory, NoSplash.splashFactory);
+      final railTheme = Theme.of(tester.element(rail)).navigationRailTheme;
+      expect(railTheme.backgroundColor, VeilPalette.dark.canvas);
+      expect(railTheme.useIndicator, isFalse);
+      expect(railTheme.labelType, NavigationRailLabelType.all);
+      expect(railTheme.selectedLabelTextStyle?.color, VeilPalette.dark.primaryStrong);
+      expect(railTheme.unselectedLabelTextStyle?.color, VeilPalette.dark.textMuted);
+      // The page beside it starts where the rail ends, under a hairline
+      // painted over the rail's edge.
+      expect(tester.getRect(find.text('/contacts')).left, greaterThan(tester.getRect(rail).right));
+      final edgeBox = tester.widget<DecoratedBox>(find.ancestor(of: rail, matching: find.byType(DecoratedBox)).first);
+      expect(edgeBox.position, DecorationPosition.foreground);
+      final edge = (edgeBox.decoration as BoxDecoration).border! as Border;
+      expect((edge.right.width, edge.right.color), (0.5, VeilPalette.dark.stroke));
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.text('/settings'), findsOneWidget);
+      expect(tester.widget<NavigationRail>(rail).selectedIndex, 2);
+      expect(find.byType(InkSplash), findsNothing);
+      // Each tab is a target of 44 or more.
+      for (final tab in ['Chats', 'Contacts', 'Settings']) {
+        final target = find.ancestor(of: find.text(tab), matching: find.byWidgetPredicate((w) => w is InkResponse)).first;
+        expect(tester.getSize(target).width, greaterThanOrEqualTo(44), reason: tab);
+        expect(tester.getSize(target).height, greaterThanOrEqualTo(44), reason: tab);
+      }
+    });
   });
 }
 

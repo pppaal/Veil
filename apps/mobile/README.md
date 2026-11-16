@@ -94,6 +94,12 @@ it empty, so a screen that stops fitting is fixed, not listed. The gate
 fails for a listed case that passes, or fails another way, as it does for an
 unlisted one that fails.
 
+`flutter test tool/play_store_art_test.dart` draws the Google Play
+screenshots and feature graphic into `store/play` from the screens the gate
+opens (`store/play/screenshots/README.md` says what it draws). It sits under
+`tool/`, so `flutter test` does not run it; `test/store/play_listing_art_test.dart`,
+which it does run, holds the committed files to the sizes Play takes.
+
 ## UI strings gate
 
 `node scripts/mobile-ui-strings-check.mjs` (from the repository root; part
@@ -130,8 +136,9 @@ script, by file and literal:
 
 Under 1120 px the conversation list is the whole screen and a chat opens on
 top of it (`conversation_list_phone.dart`, `chat_phone_layout.dart`): content
-first, with the bar carrying the safety number, the search and the
-disappearing timer. From 1120 px the same list and the same chat sit side by
+first, with the bar carrying the safety number, the search and a menu (the
+disappearing timer, muting, and in a 1:1 reporting and blocking the peer).
+From 1120 px the same list and the same chat sit side by
 side, each under its own bar (`ChatPaneBar` in `chat_bar.dart`): the list in
 a 380 px pane with the open conversation's row marked, the chat in the rest,
 its messages and composer at most 760 px wide. Neither pane puts anything

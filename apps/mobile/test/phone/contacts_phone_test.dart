@@ -232,9 +232,10 @@ void main() {
     await withPhoneApp(tester, identities, location: '/contacts', body: (world) async {
       await tester.tap(find.text('Lena Fischer'));
       await pumpFrames(tester, frames: 4);
-      // Three rows under the contact, the last one red; nothing in the sheet
-      // pretends to a profile the server does not keep.
-      expect(inSheet(find.byType(VeilRow)), findsNWidgets(3));
+      // Five rows under the contact, Block and Remove in red; nothing in the
+      // sheet pretends to a profile the server does not keep.
+      expect(inSheet(find.byType(VeilRow)), findsNWidgets(5));
+      expect(tester.widget<VeilRow>(inSheet(find.widgetWithText(VeilRow, en.blockAction))).destructive, isTrue);
       expect(tester.widget<VeilRow>(inSheet(find.widgetWithText(VeilRow, en.contactsRemove))).destructive, isTrue);
       expect(inSheet(find.byType(FilledButton)), findsNothing);
       await tester.tap(find.text(en.contactsRemove));

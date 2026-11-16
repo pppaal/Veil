@@ -3,6 +3,7 @@
 // and block and report for a peer's message in a direct conversation. A
 // deleted text can be put back in the composer for a few seconds.
 
+import { t } from '../../../i18n/i18n.js';
 import { shownHandle } from '../../domain/handles.js';
 import { isTextKind } from '../../domain/ingest.js';
 import { isPendingId } from '../../domain/local-messages.js';
@@ -141,8 +142,8 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
 
   async function block(peer) {
     const ok = await confirm({
-      title: 'Block @' + shownHandle(peer.handle),
-      body: "You will no longer receive their messages, and they can't start a new chat with you. You can unblock them in Settings at any time.",
+      title: t('safety.blockTitle', { handle: shownHandle(peer.handle) }),
+      body: t('safety.blockBody'),
       okLabel: 'Block',
       destructive: true,
     });

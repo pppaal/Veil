@@ -75,7 +75,8 @@ class MessengerParty {
     required this.database,
     required this.attachmentDirectory,
     required this.maintainPrekeys,
-  });
+    required LocalNotificationService Function(RecordingNotifications recorder)? notificationsFor,
+  }) : _notificationsFor = notificationsFor;
 
   /// With [maintainPrekeys] the device publishes one-time prekeys and
   /// rotates its signed prekey whenever it signs in, as the app does. It is
@@ -86,6 +87,7 @@ class MessengerParty {
     required String userId,
     required String deviceId,
     bool maintainPrekeys = false,
+    LocalNotificationService Function(RecordingNotifications recorder)? notificationsFor,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     // The identity comes from the adapter this device first boots with, as
@@ -107,6 +109,7 @@ class MessengerParty {
       database: AppDatabase(NativeDatabase.memory()),
       attachmentDirectory: Directory.systemTemp.createTempSync('veil-party-$handle-'),
       maintainPrekeys: maintainPrekeys,
+      notificationsFor: notificationsFor,
     );
     party._boot(adapter);
     return party;
@@ -123,6 +126,11 @@ class MessengerParty {
       TrustedIdentityResolver(store: TrustedIdentityStore(keystore.scoped(SecureScope.identity)));
   final Map<String, Map<String, dynamic>> _ratchetSnapshots = {};
   final RecordingNotifications notifications = RecordingNotifications();
+
+  /// What the messenger raises notifications through, given what records
+  /// them (as the app wraps the platform service); the recorder itself
+  /// when unset.
+  final LocalNotificationService Function(RecordingNotifications recorder)? _notificationsFor;
 
   /// Ratchet snapshot writes to refuse, as a keychain does once its keys
   /// are evicted after the device locks.
@@ -240,7 +248,7 @@ class MessengerParty {
       attachmentTempFileStore: DefaultAttachmentTempFileStore(
         rootDirectoryFactory: () => attachmentDirectory,
       ),
-      notificationService: notifications,
+      notificationService: _notificationsFor?.call(notifications) ?? notifications,
       sessionSnapshotRestorer: () => lib.restoreSessionsFromSnapshots(
         Map<String, Map<String, dynamic>>.of(_ratchetSnapshots),
       ),

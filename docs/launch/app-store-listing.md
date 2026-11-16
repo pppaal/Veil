@@ -32,13 +32,15 @@ phone in a form the server can read.
   revoke a phone, it loses access.
 - **Disappearing messages.** Set a timer on a chat, and its messages are
   deleted from every device when the timer runs out.
+- **Block, report and mute.** Block or report someone from a chat or your
+  contacts, and mute a chat.
 
 Veil has no ads and no analytics, and there is no account recovery: if you
 lose your phone, you lose the account.
 
-Not in the mobile build, so not in this listing: view-once messages,
-block, mute and report. The server has the endpoints; the app has no screen
-for any of them yet. Put a bullet back when its screen ships.
+Not in the mobile build, so not in this listing: view-once messages. The
+server has the endpoint; the app has no screen for it yet. Put a bullet back
+when its screen ships.
 
 ## Keywords (100 chars, comma-separated)
 
@@ -53,9 +55,8 @@ for any of them yet. Put a bullet back when its screen ships.
 
 17+ (unrestricted web access not enabled, but user-generated content is
 end-to-end encrypted so we cannot moderate private content). The mobile app
-has no reporting or blocking screen yet, though the server takes abuse
-reports. App Review expects both in an app with user-generated content
-(guideline 1.2): a launch blocker.
+reports and blocks accounts from a chat, a message and a contact, as App
+Review expects in an app with user-generated content (guideline 1.2).
 
 ## Privacy nutrition label
 
@@ -104,19 +105,18 @@ Nothing you send is stored on our servers in a form we can read.
 
 ## Screenshot guide
 
-Ship 5 screenshots per device class (6.7" iPhone, 6.5" iPhone, 5.5"
-iPhone, 12.9" iPad, 11" iPad). Consistent visual order:
-
-1. Chats, with at least one disappearing-message timer visible. English
-   only.
-2. Safety number, the moment two people compare their numbers.
-3. A chat with the disappearing-message timer set.
-4. Settings: devices, app lock and privacy.
-5. Choose a handle: sign-up without a phone number.
+The shot list, the sizes and how to capture them are in
+[`store/appstore/screenshot-spec.md`](../../store/appstore/screenshot-spec.md):
+six shots per iPhone size, captured on the iOS Simulator. The Xcode project
+still builds for iPad as well (`TARGETED_DEVICE_FAMILY = "1,2"`), and App
+Store Connect asks for iPad screenshots for such a build: set the device
+family to iPhone before archiving, as the spec plans, or capture a 13" iPad
+set too. The shots cannot be rendered like the Google Play set
+(`store/play/screenshots/`), because iOS draws SF Pro, which the renderer
+does not have.
 
 Asset directory: `apps/mobile/ios/fastlane/screenshots/` (not yet
-configured). The shot list and sizes are in
-[`store/appstore/screenshot-spec.md`](../../store/appstore/screenshot-spec.md).
+configured).
 
 ## Review notes for Apple
 
@@ -176,9 +176,9 @@ English and Korean (`docs/privacy-policy-en.md`, `docs/privacy-policy-ko.md`).
 - [ ] No placeholders in Promotional text / Description
 - [ ] Screenshots exist for every required device class
 - [ ] Legal has reviewed "description" + "promotional text"
-- [ ] `NSCameraUsageDescription`, `NSMicrophoneUsageDescription`,
-      `NSPhotoLibraryUsageDescription` copy reviewed and matches actual
-      feature behavior
+- [ ] `Info.plist` asks only for what the build uses: today that is
+      `NSFaceIDUsageDescription` (app lock) alone. No camera, microphone or
+      photo library usage string while the app sends text only
 - [ ] Push entitlement only if push is actually wired to APNs for this
       build (otherwise reject-risk)
 - [ ] App Privacy answers transcribed from `store/appstore/app-privacy-answers.md`

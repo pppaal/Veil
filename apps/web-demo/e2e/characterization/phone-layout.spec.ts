@@ -40,6 +40,19 @@ function placeholderFits(textarea: Locator): Promise<boolean> {
   });
 }
 
+// Whether a select is as wide as its longest option needs: the width a copy
+// of it takes with nothing holding it in.
+function selectFits(select: Locator): Promise<boolean> {
+  return select.evaluate((node: HTMLSelectElement) => {
+    const copy = node.cloneNode(true) as HTMLSelectElement;
+    copy.style.cssText = 'position:absolute;visibility:hidden;max-width:none;width:auto';
+    node.parentElement?.append(copy);
+    const needed = copy.getBoundingClientRect().width;
+    copy.remove();
+    return node.getBoundingClientRect().width + 0.5 >= needed;
+  });
+}
+
 test.describe('phone-width layout', () => {
   const id = stamp();
   let phone: Device;
@@ -119,6 +132,30 @@ test.describe('phone-width layout', () => {
       // The buttons of a composer that sends nothing give their room to it.
       await expect(page.locator('.panel-input > button:visible')).toHaveCount(0);
       await expect(textarea).toBeDisabled();
+    }
+    expectNoErrors(phone);
+  });
+
+  test('no Settings choice is cut off', async () => {
+    const { page } = phone;
+    await page.reload({ waitUntil: 'networkidle' });
+    await expect(page.locator('#app')).toBeVisible();
+    for (const width of [390, 360]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.click('#menu-btn');
+      await page.locator('#menu [data-action="open-settings"]').click();
+      const dialog = page.locator('#settings-dialog');
+      await expect(dialog).toBeVisible();
+      const selects = dialog.locator('select');
+      await expect(selects).toHaveCount(2);
+      for (const select of await selects.all()) {
+        for (const value of await select.locator('option').evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))) {
+          await select.selectOption(value);
+          expect(await selectFits(select), `${width}px: ${value}`).toBe(true);
+        }
+      }
+      await dialog.locator('#settings-close').click();
+      await expect(dialog).toHaveCount(0);
     }
     expectNoErrors(phone);
   });

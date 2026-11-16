@@ -8,6 +8,8 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../app_lock/data/lock_request_provider.dart';
+import '../../safety/presentation/blocked_accounts_screen.dart';
 import '../data/trusted_devices.dart';
 import 'device_rows.dart';
 import 'settings_danger_zone.dart';
@@ -24,8 +26,10 @@ class SettingsScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final privacy = ref.watch(privacyPreferencesProvider);
     // Locking opens the lock screen, which asks for the PIN, or has one
-    // chosen while this phone has none; unlocking comes back here.
+    // chosen while this phone has none (and then can be cancelled, as the
+    // user asked for it here); unlocking comes back here.
     void lockNow() {
+      ref.read(lockRequestedInSettingsProvider.notifier).state = true;
       ref.read(appSessionProvider.notifier).lock();
       context.go('/lock');
     }
@@ -53,6 +57,7 @@ class SettingsScreen extends ConsumerWidget {
                 switchValue: privacy.sendTypingIndicators,
                 onSwitch: privacy.setSendTypingIndicators,
               ),
+              const BlockedAccountsSettingsRow(),
             ],
           ),
           VeilGroup(

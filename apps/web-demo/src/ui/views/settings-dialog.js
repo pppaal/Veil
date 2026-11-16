@@ -1,5 +1,5 @@
 // Settings: theme, sounds, browser notifications and their content level,
-// and the list of blocked users. Also the sound toggle the menu and
+// and the list of blocked accounts. Also the sound toggle the menu and
 // Ctrl/Cmd+Shift+S share.
 
 import { t } from '../../../i18n/i18n.js';
@@ -36,9 +36,14 @@ export function createSettingsDialog({ store, preferences, safety }) {
   // Filled in once the server has answered.
   function blockedSection() {
     const container = el('div', { class: 'blocked-list', id: 'blocked-list-container' });
+    const line = (key) => el('div', { class: 'blocked-empty' }, [t(key)]);
     safety.listBlocked().then((users) => {
+      if (users === null) {
+        container.replaceChildren(line('settings.blockedLoadFailed'));
+        return;
+      }
       if (users.length === 0) {
-        container.replaceChildren(el('div', { class: 'blocked-empty' }, ['No blocked users']));
+        container.replaceChildren(line('settings.blockedEmpty'));
         return;
       }
       container.replaceChildren(...users.map((user) => {
@@ -49,9 +54,10 @@ export function createSettingsDialog({ store, preferences, safety }) {
           unblock,
         ]);
         unblock.addEventListener('click', async () => {
-          await safety.unblock(user.userId ?? user.id, shownHandle(user.handle));
+          // A refused unblock keeps the row: the account is still blocked.
+          if (!(await safety.unblock(user.userId ?? user.id, shownHandle(user.handle)))) return;
           blockedRow.remove();
-          if (!container.querySelector('.blocked-row')) container.replaceChildren(el('div', { class: 'blocked-empty' }, ['No blocked users']));
+          if (!container.querySelector('.blocked-row')) container.replaceChildren(line('settings.blockedEmpty'));
         });
         return blockedRow;
       }));

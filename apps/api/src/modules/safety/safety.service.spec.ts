@@ -42,3 +42,32 @@ describe('SafetyService.isBlockedEitherWay', () => {
     expect(await svc.isBlockedEitherWay(ALICE, BOB)).toBe(true);
   });
 });
+
+// What MessagesService asks before it wakes a recipient's devices.
+describe('SafetyService.isConversationMutedForUser', () => {
+  const BOB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  const CONVERSATION = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  const withMute = (mute: { mutedUntil: Date | null } | null) =>
+    new SafetyService({
+      conversationMute: { findUnique: jest.fn(() => Promise.resolve(mute)) },
+    } as never);
+
+  it('is false with no mute, true with no end or an end ahead, false once it ended', async () => {
+    expect(await withMute(null).isConversationMutedForUser(BOB, CONVERSATION)).toBe(false);
+    expect(await withMute({ mutedUntil: null }).isConversationMutedForUser(BOB, CONVERSATION)).toBe(
+      true,
+    );
+    expect(
+      await withMute({ mutedUntil: new Date(Date.now() + 60_000) }).isConversationMutedForUser(
+        BOB,
+        CONVERSATION,
+      ),
+    ).toBe(true);
+    expect(
+      await withMute({ mutedUntil: new Date(Date.now() - 1_000) }).isConversationMutedForUser(
+        BOB,
+        CONVERSATION,
+      ),
+    ).toBe(false);
+  });
+});

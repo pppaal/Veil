@@ -5,7 +5,9 @@
 // KeysService.rotateSignedPrekey (contract C-SPK), PrekeysService.upload,
 // RegisterDto, FileAbuseReportDto and CreateUploadTicketDto under the global
 // ValidationPipe ({ whitelist, forbidNonWhitelisted }), MessagesService.markRead,
-// DeviceTransferService and SecretController.
+// SafetyService with the block rules of ConversationAccessService and
+// ConversationsService.createDirect, DeviceTransferService and
+// SecretController.
 
 import { spawn } from 'node:child_process';
 import { webcrypto } from 'node:crypto';
@@ -31,10 +33,10 @@ let identity;
 let handle;
 let deviceId;
 
-async function call(path, { method = 'GET', body, auth = true } = {}) {
+async function call(path, { method = 'GET', body, auth = true, as = token } = {}) {
   const response = await fetch(BASE + path, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${as}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return { status: response.status, date: response.headers.get('date'), body: await response.json() };
@@ -85,6 +87,19 @@ async function signIn(who, device, keys) {
 afterAll(() => {
   relay?.kill();
 });
+
+// A fresh account, signed in: { handle, userId, deviceId, token }.
+async function account(prefix) {
+  const keys = await generateIdentity(subtle);
+  const who = `${prefix}${webcrypto.randomUUID().slice(0, 8)}`;
+  const { body } = await call('/v1/auth/register', {
+    method: 'POST',
+    auth: false,
+    body: { handle: who, deviceName: WEB_DEVICE_NAME, platform: WEB_DEVICE_PLATFORM, ...(await publishedKeys(subtle, keys)) },
+  });
+  const signedIn = (await signIn(who, body.deviceId, keys)).body;
+  return { handle: who, userId: signedIn.userId, deviceId: body.deviceId, token: signedIn.accessToken };
+}
 
 describe('the mock relay refuses what the API refuses', () => {
   it('serves a Date header the client corrects its clock by', async () => {
@@ -171,6 +186,61 @@ describe('the mock relay refuses what the API refuses', () => {
   it('refuses a read receipt for a message the reader cannot see', async () => {
     expect(await call(`/v1/messages/${webcrypto.randomUUID()}/read`, { method: 'POST', body: {} }))
       .toMatchObject({ status: 404, body: { code: 'message_not_found' } });
+  });
+
+  // A block either way cuts a direct conversation off: sends are refused
+  // (ConversationAccessService, peer_unreachable) and opening it answers like
+  // an unknown handle (ConversationsService.createDirect). Unblocking undoes
+  // both.
+  it('blocks and unblocks as SafetyService does, and enforces a block', async () => {
+    const amy = await account('amy');
+    const ben = await account('ben');
+    const as = (who) => ({ as: who.token });
+    const open = (from, to) => call('/v1/conversations/direct', { method: 'POST', body: { peerHandle: to.handle }, ...as(from) });
+    const { body: { conversation } } = await open(amy, ben);
+    const sendFrom = (who) => call('/v1/messages', {
+      method: 'POST',
+      ...as(who),
+      body: {
+        conversationId: conversation.id,
+        clientMessageId: webcrypto.randomUUID(),
+        envelope: {
+          version: 'v2',
+          conversationId: conversation.id,
+          senderDeviceId: who.deviceId,
+          ciphertext: 'c2VhbGVk',
+          nonce: 'bm9uY2U',
+          messageType: 'text',
+        },
+      },
+    });
+    const block = (body) => call('/v1/safety/blocks', { method: 'POST', body, ...as(amy) });
+    const list = async (who) => (await call('/v1/safety/blocks', as(who))).body.items;
+
+    expect(await block({ userId: amy.userId })).toMatchObject({ status: 400, body: { code: 'validation_failed' } });
+    expect(await block({ userId: webcrypto.randomUUID() })).toMatchObject({ status: 404, body: { code: 'not_found' } });
+    expect(await block({ userId: 'ben' })).toMatchObject({ status: 400, body: { code: 'validation_failed' } });
+    expect(await block({ userId: ben.userId, note: 'x' })).toMatchObject({ status: 400, body: { code: 'validation_failed' } });
+    const first = await block({ userId: ben.userId });
+    expect(first).toMatchObject({ status: 200, body: { blocked: { userId: ben.userId, handle: ben.handle, blockedAt: expect.any(String) } } });
+    expect((await block({ userId: ben.userId })).body).toEqual(first.body);
+    expect(await list(amy)).toEqual([first.body.blocked]);
+    expect(await list(ben)).toEqual([]);
+
+    for (const who of [amy, ben]) {
+      expect(await sendFrom(who)).toMatchObject({ status: 403, body: { code: 'peer_unreachable' } });
+    }
+    expect(await open(ben, amy)).toMatchObject({ status: 404, body: { code: 'handle_not_found' } });
+    expect(await open(amy, ben)).toMatchObject({ status: 404, body: { code: 'handle_not_found' } });
+
+    const unblock = (userId) => call(`/v1/safety/blocks/${userId}`, { method: 'DELETE', ...as(amy) });
+    expect(await unblock('ben')).toMatchObject({ status: 400, body: { code: 'validation_failed' } });
+    for (let round = 0; round < 2; round += 1) {
+      expect(await unblock(ben.userId)).toMatchObject({ status: 200, body: { userId: ben.userId, unblocked: true } });
+    }
+    expect(await list(amy)).toEqual([]);
+    expect(await sendFrom(ben)).toMatchObject({ status: 200 });
+    expect(await open(ben, amy)).toMatchObject({ status: 200, body: { conversation: { id: conversation.id } } });
   });
 
   it('keeps a one-time secret for a single read', async () => {

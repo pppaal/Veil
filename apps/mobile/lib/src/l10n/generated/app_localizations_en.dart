@@ -1178,6 +1178,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'This file couldn\'t be sent. Attach it again.';
 
   @override
+  String get errorPeerUnreachable => 'Messages can\'t be sent to this account.';
+
+  @override
   String get conversationsNewChat => 'New chat';
 
   @override
@@ -2273,4 +2276,165 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get securityStatusPushPayloadsUnavailableDetail =>
       'No server address is configured, so there are no push notifications.';
+
+  @override
+  String get chatMenuTooltip => 'More options';
+
+  @override
+  String get muteTitle => 'Mute notifications';
+
+  @override
+  String get muteUnmute => 'Unmute';
+
+  @override
+  String get muteOneHour => '1 hour';
+
+  @override
+  String get muteEightHours => '8 hours';
+
+  @override
+  String get muteOneWeek => '1 week';
+
+  @override
+  String get muteAlways => 'Always';
+
+  @override
+  String muteDoneFor(String duration) {
+    return 'Notifications off for $duration';
+  }
+
+  @override
+  String get muteDoneAlways => 'Notifications off';
+
+  @override
+  String get muteUndone => 'Notifications on';
+
+  @override
+  String get muteFailed => 'Couldn\'t change notifications';
+
+  @override
+  String get conversationsMutedSemantics => 'Muted';
+
+  @override
+  String get reportAction => 'Report';
+
+  @override
+  String reportTitle(String handle) {
+    return 'Report @$handle';
+  }
+
+  @override
+  String get reportReasonSpam => 'Spam';
+
+  @override
+  String get reportReasonHarassment => 'Harassment';
+
+  @override
+  String get reportReasonImpersonation => 'Pretending to be someone';
+
+  @override
+  String get reportReasonCsam => 'Child sexual abuse';
+
+  @override
+  String get reportReasonViolence => 'Violence or threats';
+
+  @override
+  String get reportReasonScam => 'Scam or fraud';
+
+  @override
+  String get reportReasonOther => 'Something else';
+
+  @override
+  String reportAlsoBlock(String handle) {
+    return 'Also block @$handle';
+  }
+
+  @override
+  String get reportFooterMessage =>
+      'The report includes your account, theirs, the reason and which chat and message, but not what it says.';
+
+  @override
+  String get reportFooterChat =>
+      'The report includes your account, theirs, the reason and which chat, but no messages.';
+
+  @override
+  String get reportFooterAccount =>
+      'The report includes your account, theirs and the reason, but no messages.';
+
+  @override
+  String get reportSent => 'Report sent';
+
+  @override
+  String reportSentAndBlocked(String handle) {
+    return 'Report sent and @$handle blocked';
+  }
+
+  @override
+  String reportSentBlockFailed(String handle) {
+    return 'Report sent, but @$handle couldn\'t be blocked';
+  }
+
+  @override
+  String get reportFailed => 'Couldn\'t send the report';
+
+  @override
+  String get blockAction => 'Block';
+
+  @override
+  String get unblockAction => 'Unblock';
+
+  @override
+  String blockConfirmTitle(String handle) {
+    return 'Block @$handle?';
+  }
+
+  @override
+  String get blockConfirmBody =>
+      'They can\'t message you directly or add you to a group. They aren\'t told, but their direct messages to you will fail, and in groups you share you\'ll both still see each other\'s messages.';
+
+  @override
+  String blockDone(String handle) {
+    return '@$handle blocked';
+  }
+
+  @override
+  String blockFailed(String handle) {
+    return 'Couldn\'t block @$handle';
+  }
+
+  @override
+  String unblockDone(String handle) {
+    return '@$handle unblocked';
+  }
+
+  @override
+  String unblockFailed(String handle) {
+    return 'Couldn\'t unblock @$handle';
+  }
+
+  @override
+  String get blockedComposerLine => 'You blocked this account.';
+
+  @override
+  String get blockedAccountsTitle => 'Blocked accounts';
+
+  @override
+  String get blockedAccountsEmptyTitle => 'No blocked accounts';
+
+  @override
+  String get blockedAccountsEmptyBody =>
+      'You can block someone from a chat or from Contacts.';
+
+  @override
+  String get blockedAccountsLoadFailedTitle =>
+      'Couldn\'t load blocked accounts';
+
+  @override
+  String get blockedAccountsLoadFailedBody =>
+      'Check your connection and try again.';
+
+  @override
+  String safetyAccountNotFound(String handle) {
+    return 'Couldn\'t find @$handle';
+  }
 }

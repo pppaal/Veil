@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show ScaffoldMessengerState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -18,6 +19,7 @@ import '../../features/onboarding/presentation/onboarding_warning_screen.dart';
 import '../../features/onboarding/presentation/privacy_consent_screen.dart';
 import '../../features/onboarding/presentation/splash_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/safety/presentation/blocked_accounts_screen.dart';
 import '../../features/security/presentation/safety_numbers_screen.dart';
 import '../../features/security_status/presentation/security_status_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
@@ -79,6 +81,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Restoring re-runs the redirect, so the guard still has the last word.
       router.restore(interruptedStack);
     }
+  });
+  // A toast is drawn above the navigator, so it would stay on the lock
+  // screen, with whatever it names (a handle, a Retry). Locking or signing
+  // out takes it down with the screens it was about.
+  ref.listen<AppSessionState>(appSessionProvider, (previous, next) {
+    final wasOpen = previous != null && previous.isAuthenticated && !previous.locked;
+    if (!wasOpen || (next.isAuthenticated && !next.locked)) return;
+    final navigator = router.routerDelegate.navigatorKey.currentContext;
+    navigator?.findAncestorStateOfType<ScaffoldMessengerState>()
+      ?..clearSnackBars()
+      ..removeCurrentSnackBar();
   });
   ref.onDispose(() {
     router.dispose();
@@ -155,6 +168,10 @@ List<RouteBase> _buildRoutes() {
     GoRoute(
       path: '/trusted-devices',
       pageBuilder: (context, state) => _veilPushPage(state, const TrustedDevicesScreen()),
+    ),
+    GoRoute(
+      path: '/blocked-accounts',
+      pageBuilder: (context, state) => _veilPushPage(state, const BlockedAccountsScreen()),
     ),
     GoRoute(
       path: '/lock',

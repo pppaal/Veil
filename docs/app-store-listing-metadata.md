@@ -51,8 +51,8 @@ disappearing messages, and message search that stays on your phone.
 - Primary category: **Social Networking** (alt: Utilities).
 - Age rating: expect **17+** for unfiltered user-generated messaging. Answer the
   ITunes/Play content questionnaire truthfully (user communication, no
-  moderation of E2E content is possible by design; the mobile app has no
-  block or report screen yet, so claim none).
+  moderation of E2E content is possible by design; the mobile app blocks and
+  reports accounts, so say so).
 
 ## Privacy "nutrition label" (App Store Connect): answer precisely
 
@@ -120,9 +120,13 @@ voice messages are not part of this build.
 
 ## Screenshots checklist
 
-- iOS: 6.7" (iPhone 15/16 Pro Max) and 6.5"/5.5" fallback sets.
+- iOS: the 6.9" and 6.5" iPhone sets of `store/appstore/screenshot-spec.md`,
+  plus a 13" iPad set if the archived build still runs on iPad (the Xcode
+  project targets iPhone and iPad today).
 - Suggested shots: onboarding "no recovery" warning, a conversation, the
   safety number screen, settings/theme. Use fictional content and no real
   user data. Show nothing the build does not have: no call, voice message or
   attachment screen.
-- Google Play: phone + 7"/10" tablet if declared; feature graphic 1024×500.
+- Google Play: the phone screenshots and the 1024×500 feature graphic are in
+  `store/play` (`store/play/screenshots/README.md` says how they are made).
+  Play does not require tablet screenshots, and none are made.

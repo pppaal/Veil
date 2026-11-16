@@ -14,11 +14,13 @@ import 'package:veil_mobile/src/core/identity/trusted_identity_store.dart';
 import 'package:veil_mobile/src/core/security/app_lock_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/app_lock/data/lock_request_provider.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_providers.dart';
+import 'package:veil_mobile/src/features/safety/data/conversation_mutes.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../../support/fake_relay.dart';
@@ -79,6 +81,10 @@ enum LayoutAccount {
 
   /// Signed in, behind the app lock.
   locked,
+
+  /// Signed in with no PIN yet, behind the lock the user turned on in
+  /// Settings: the PIN setup, which can be cancelled.
+  choosingPin,
 }
 
 /// Things a chat can be asked to show on top of its messages.
@@ -92,6 +98,9 @@ class ChatAttention {
     this.identityChangedInGroup = false,
     this.loading = false,
     this.relayError = false,
+    this.peerBlocked = false,
+    this.muted = false,
+    this.reportRefused = false,
   });
 
   /// The peer's identity key changed and the user has not reviewed it.
@@ -124,6 +133,19 @@ class ChatAttention {
   /// error line: a chat and the list each say so.
   final bool relayError;
 
+  /// The user blocked the chat's peer, and before them one more account
+  /// (tom_walsh, who set no name): the chat shows the line that takes the
+  /// composer's place, and the blocked accounts list has two rows.
+  final bool peerBlocked;
+
+  /// The user muted the chat on this phone, with no end, and the chat with
+  /// the disappearing timer for a week: their rows in the list show it.
+  final bool muted;
+
+  /// The relay refuses the next report, as its throttle does: the chat says
+  /// so in a toast with Retry.
+  final bool reportRefused;
+
   /// How many of the chat's warnings come with an action: reviewing the
   /// identity change (in this chat, or the one that waits in the group),
   /// releasing the held account, retrying failed sends.
@@ -146,7 +168,9 @@ class LayoutWorld {
   final String? sessionError;
 
   final FakeRelay relay = FakeRelay();
-  final SecureStorageService storage = _PinSetStorage(MemorySecureStore());
+  late final SecureStorageService storage = account == LayoutAccount.choosingPin
+      ? SecureStorageService(MemorySecureStore())
+      : _PinSetStorage(MemorySecureStore());
   final LayoutMemoryCache cache = LayoutMemoryCache();
   late final LayoutRelayClient api;
   late final IdentityTrust trust;
@@ -166,7 +190,7 @@ class LayoutWorld {
             displayName: selfDisplayName,
             onboardingAccepted: true,
             privacyConsentAccepted: true,
-            locked: account == LayoutAccount.locked,
+            locked: account == LayoutAccount.locked || account == LayoutAccount.choosingPin,
             initializing: false,
             errorMessage: sessionError,
           ),
@@ -181,6 +205,7 @@ class LayoutWorld {
     bool transferStarted = false,
     bool withGroup = false,
     String? sessionError,
+    void Function(FakeRelay relay)? beforeSession,
   }) async {
     final world = LayoutWorld._(identities, account, locale, sessionError);
     await world._build(
@@ -188,6 +213,7 @@ class LayoutWorld {
       bootstrapping: bootstrapping,
       transferStarted: transferStarted,
       withGroup: withGroup,
+      beforeSession: beforeSession,
     );
     return world;
   }
@@ -199,13 +225,30 @@ class LayoutWorld {
     required bool bootstrapping,
     required bool transferStarted,
     required bool withGroup,
+    void Function(FakeRelay relay)? beforeSession,
   }) async {
     _attention = attention;
     seedParties(relay, identities);
     if (account == LayoutAccount.signedIn || account == LayoutAccount.locked) {
       await seedConversations(relay, cache, withGroup: withGroup);
     }
+    // A caller that shows less than the seed changes the relay here, before
+    // this device's session loads anything from it.
+    beforeSession?.call(relay);
     api = LayoutRelayClient(relay, relay.partiesByHandle[selfHandle]!);
+    if (attention.peerBlocked) {
+      relay.blocks['user-$selfHandle'] = {
+        'user-tom_walsh': DateTime.utc(2026, 3, 30, 18),
+        'user-$peerHandle': DateTime.utc(2026, 4, 7, 9),
+      };
+    }
+    if (attention.reportRefused) relay.refuseReports = 1;
+    if (attention.muted) {
+      await MuteStore(storage.scoped(SecureScope.notifications)).write({
+        chatConversationId: null,
+        timerChatConversationId: DateTime.now().add(const Duration(days: 7)),
+      });
+    }
 
     if (_hasAccount) {
       await storage.persistDeviceSecretRefs(
@@ -259,6 +302,7 @@ class LayoutWorld {
       identityTrustProvider.overrideWithValue(trust),
       conversationCacheProvider.overrideWith((ref) async => null),
       appLockServiceProvider.overrideWithValue(AppLockService(const _Biometrics(), storage)),
+      if (account == LayoutAccount.choosingPin) lockRequestedInSettingsProvider.overrideWith((ref) => true),
       localSecuritySnapshotProvider.overrideWith(
         (ref) async => const LocalSecuritySnapshot(
           hasDeviceSecretRefs: true,

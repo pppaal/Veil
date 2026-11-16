@@ -17,7 +17,7 @@ claims:
       - file: README.md
         quote: "Veil is an open-source, end-to-end encrypted messenger for phones and the web; you sign up with a handle, not a phone number or email."
       - file: docs/privacy-policy-en.md
-        quote: "VEIL (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
+        quote: "Veil (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
       - file: docs/privacy-policy-en.md
         quote: "End-to-end encrypted message payloads that the server cannot decrypt."
       - file: docs/privacy-policy-ko.md
@@ -25,7 +25,7 @@ claims:
       - file: site/index.html
         quote: "종단간 암호화된 메시지 페이로드(서버는 평문을 복호화할 수 없습니다)"
       - file: site/index.html
-        quote: "VEIL (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
+        quote: "Veil (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
       - file: site/index.html
         quote: "End-to-end encrypted message payloads that the server cannot decrypt."
       - file: store/appstore/app-privacy-answers.md
@@ -59,7 +59,7 @@ claims:
       - file: docs/app-store-listing-metadata.md
         quote: "Promotional text (iOS, ≤170 chars, updatable without review): End-to-end encrypted messages with no phone number, no email and no real name."
       - file: docs/app-store-listing-metadata.md
-        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app has no block or report screen yet, so claim none)."
+        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app blocks and reports accounts, so say so)."
       - file: docs/launch/app-store-listing.md
         quote: "End-to-end encrypted messages with no phone number, no email and no ads."
       - file: docs/launch/app-store-listing.md
@@ -208,11 +208,13 @@ claims:
       - file: README.md
         quote: "This keeps the privacy invariants (no plaintext messages on the server, no recovery path, no admin override) from being silently stripped out of a hosted fork."
       - file: docs/privacy-policy-en.md
-        quote: "VEIL has no account recovery path by design."
+        quote: "No account recovery"
+      - file: docs/privacy-policy-en.md
+        quote: "Veil has no account recovery, and this is on purpose: it protects your privacy."
       - file: docs/privacy-policy-ko.md
         quote: "복구 불가 정책"
       - file: docs/privacy-policy-ko.md
-        quote: "VEIL은 설계상 계정 복구 경로가 없습니다."
+        quote: "Veil은 설계상 계정 복구 경로가 없습니다."
       - file: docs/privacy-policy-ko.md
         quote: "기기를 분실하거나 초기화하면 대화 내용은 복구할 수 없습니다."
       - file: docs/security-hardening-roadmap.md
@@ -220,11 +222,13 @@ claims:
       - file: site/index.html
         quote: "복구 불가 정책"
       - file: site/index.html
-        quote: "VEIL은 설계상 계정 복구 경로가 없습니다."
+        quote: "Veil은 설계상 계정 복구 경로가 없습니다."
       - file: site/index.html
         quote: "기기를 분실하거나 초기화하면 대화 내용은 복구할 수 없습니다."
       - file: site/index.html
-        quote: "VEIL has no account recovery path by design."
+        quote: "No account recovery"
+      - file: site/index.html
+        quote: "Veil has no account recovery, and this is on purpose: it protects your privacy."
       - file: store/appstore/app-review-notes.md
         quote: "Veil has no password, no phone number, no email and no account recovery; that is the expected behavior, not a bug."
       - file: store/appstore/app-review-notes.md
@@ -404,3 +408,41 @@ claims:
     evidence:
       - test: apps/api/test/unit/app-config.service.spec.ts
         name: "production requires VEIL_AUDIT_REPORT_SHA256"
+  - id: mobile-block-report-mute
+    text: "The mobile app reports and blocks accounts and mutes chats. A report holds the reporter's account, the reported account, the reason and which chat or message, never what it says; the server refuses a 1:1 send across a block in either direction; a muted chat raises no notification on the phone, and the server is told so it wakes no device for it."
+    sources:
+      - file: README.md
+        quote: "Block, report and mute: from a chat's menu, a message's long-press sheet and a contact's sheet, with Settings > Privacy > Blocked accounts; a muted chat raises no notification on the phone"
+      - file: store/play/full-en.txt
+        quote: "Block or report someone, and mute a chat"
+      - file: store/appstore/metadata-en.txt
+        quote: "Block or report someone, and mute a chat"
+      - file: docs/launch/play-store-listing.md
+        quote: "Block or report someone from a chat or your contacts, and mute a chat."
+      - file: docs/launch/play-store-listing.md
+        quote: "A chat's menu, a message's long-press sheet and a contact's sheet file a report (POST /safety/reports): the account, the reason and which chat or message, never its text."
+      - file: docs/launch/app-store-listing.md
+        quote: "Block or report someone from a chat or your contacts, and mute a chat."
+      - file: docs/launch/app-store-listing.md
+        quote: "The mobile app reports and blocks accounts from a chat, a message and a contact, as App Review expects in an app with user-generated content (guideline 1.2)."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app blocks and reports accounts, so say so)."
+      - file: store/appstore/app-review-notes.md
+        quote: "A report sends B's account, the reason and which chat or message, not what it says."
+    evidence:
+      - test: apps/mobile/test/safety/safety_relay_test.dart
+        name: "a report carries the account, the reason and where it was filed from, nothing else"
+      - test: apps/mobile/test/safety/safety_relay_test.dart
+        name: "a block refuses sends both ways until it is lifted"
+      - test: apps/mobile/test/safety/safety_relay_test.dart
+        name: "a muted chat raises no notification until the mute ends"
+      - test: apps/mobile/test/safety/app_notification_filter_test.dart
+        name: "the app raises no notification for a muted chat or a 1:1 with someone blocked, and does for the rest"
+      - test: apps/mobile/test/transport/veil_api_client_transport_test.dart
+        name: "an abuse report carries the FileAbuseReportRequest fields and no text"
+      - test: apps/api/src/modules/messages/messages.service.spec.ts
+        name: "refuses to send to a peer blocked in either direction"
+      - test: apps/api/src/modules/messages/messages.service.spec.ts
+        name: "wakes no device of a recipient who muted the chat, until the mute ends"
+      - test: apps/api/src/modules/safety/safety.service.spec.ts
+        name: "is false with no mute, true with no end or an end ahead, false once it ended"

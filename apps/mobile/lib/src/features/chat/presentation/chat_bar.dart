@@ -112,27 +112,48 @@ class ChatBarTitle extends StatelessWidget {
   }
 }
 
+/// One entry of a chat's menu: what it says, its glyph, and what it does.
+/// A [destructive] one is drawn in the danger colour.
+class ChatMenuEntry {
+  const ChatMenuEntry({
+    required this.key,
+    required this.label,
+    required this.icon,
+    required this.onSelected,
+    this.destructive = false,
+  });
+
+  /// Names the entry, uniquely within a menu: 'timer', 'mute' or 'unmute',
+  /// 'report', 'block' or 'unblock'. The menu finds a tapped entry by it,
+  /// and tests find its item by the key 'chat-menu-' plus this.
+  final String key;
+  final String label;
+  final IconData icon;
+  final VoidCallback onSelected;
+  final bool destructive;
+}
+
 /// The actions of a chat's bar, plain icon buttons: the safety number (a
 /// 1:1 opens the peer's, a group the list of its members with each one's),
-/// the search, and the disappearing timer.
+/// the search, and a menu with the rest ([menu]: the disappearing timer,
+/// notifications, reporting and blocking).
 class ChatBarActions extends StatelessWidget {
   const ChatBarActions({
     super.key,
-    required this.timerLabel,
     required this.onOpenSafetyNumbers,
     required this.onOpenSearch,
-    required this.onPickTimer,
+    required this.menu,
   });
 
-  /// The disappearing timer in force, or null when messages stay.
-  final String? timerLabel;
   final VoidCallback onOpenSafetyNumbers;
   final VoidCallback onOpenSearch;
-  final VoidCallback onPickTimer;
+  final List<ChatMenuEntry> menu;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final palette = context.veilPalette;
+    final textStyle = Theme.of(context).textTheme.bodyLarge;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -146,10 +167,36 @@ class ChatBarActions extends StatelessWidget {
           onPressed: onOpenSearch,
           icon: const Icon(Icons.search),
         ),
-        IconButton(
-          tooltip: l10n.chatTimerTooltip(timerLabel ?? l10n.chatTtlOff),
-          onPressed: onPickTimer,
-          icon: const Icon(Icons.timer_outlined),
+        PopupMenuButton<String>(
+          key: const ValueKey('chat-menu'),
+          tooltip: l10n.chatMenuTooltip,
+          position: PopupMenuPosition.under,
+          color: palette.surfaceRaised,
+          icon: const Icon(Icons.more_vert_outlined),
+          // The items were built when the menu opened; this runs with the
+          // menu of the latest build. An entry is found by its key, so one
+          // that changed while the menu was open (Block turned Unblock, a
+          // mute ended) does nothing rather than what took its place.
+          onSelected: (key) {
+            for (final entry in menu) {
+              if (entry.key == key) return entry.onSelected();
+            }
+          },
+          itemBuilder: (context) => [
+            for (final entry in menu)
+              PopupMenuItem<String>(
+                key: ValueKey('chat-menu-${entry.key}'),
+                value: entry.key,
+                height: 44,
+                child: Row(
+                  children: [
+                    Icon(entry.icon, size: VeilIconSize.md, color: entry.destructive ? palette.danger : palette.textMuted),
+                    const SizedBox(width: VeilSpace.sm),
+                    Text(entry.label, style: textStyle?.copyWith(color: entry.destructive ? palette.danger : null)),
+                  ],
+                ),
+              ),
+          ],
         ),
       ],
     );

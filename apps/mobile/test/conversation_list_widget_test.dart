@@ -144,7 +144,7 @@ void main() {
     expect(find.text('Chats'), findsOneWidget);
     expect(find.byTooltip('New chat'), findsOneWidget);
     expect(find.byTooltip('Security'), findsNothing);
-    for (final tooltip in ['Safety number', 'Search', 'Disappearing: Off']) {
+    for (final tooltip in ['Safety number', 'Search', 'More options']) {
       expect(_inChatPane(find.byTooltip(tooltip)), findsOneWidget, reason: tooltip);
     }
 

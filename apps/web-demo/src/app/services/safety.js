@@ -23,21 +23,26 @@ export function createSafety({ store, stack, preferences, toast }) {
       }
     },
 
+    // Whether the server took the unblock.
     async unblock(userId, handle) {
       try {
         await authedApi(`/safety/blocks/${userId}`, { method: 'DELETE' });
         toast(t('safety.unblocked', { handle }), 'good');
+        return true;
       } catch (error) {
         toast(t('safety.unblockFailed', { error: error.message || 'unknown' }), 'error');
+        return false;
       }
     },
 
+    // The blocked accounts, or null when the server could not be asked (so
+    // a failure never reads as an empty list).
     async listBlocked() {
       try {
         const response = await authedApi('/safety/blocks');
         return Array.isArray(response?.items) ? response.items : (Array.isArray(response) ? response : []);
       } catch {
-        return [];
+        return null;
       }
     },
 

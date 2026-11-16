@@ -330,7 +330,18 @@ class VeilTheme {
         helperMaxLines: 3,
         errorStyle: bodySmall.copyWith(color: palette.danger),
         errorMaxLines: 3,
-        floatingLabelStyle: TextStyle(color: palette.primaryStrong),
+        // The label floats while the field is focused and while it holds
+        // text; only the focused one is brand text (rule 1), and a field
+        // with an error labels it in the error's colour.
+        floatingLabelStyle: WidgetStateTextStyle.resolveWith(
+          (states) => TextStyle(
+            color: states.contains(WidgetState.error)
+                ? palette.danger
+                : states.contains(WidgetState.focused)
+                    ? palette.primaryStrong
+                    : palette.textMuted,
+          ),
+        ),
         prefixStyle: TextStyle(color: palette.textMuted),
         prefixIconColor: palette.textMuted,
         suffixIconColor: palette.textMuted,
@@ -543,6 +554,21 @@ class VeilTheme {
             color: states.contains(WidgetState.selected) ? palette.primaryStrong : palette.textMuted,
           ),
         ),
+      ),
+      // The same three tabs on a tablet or a desktop window (MainTabShell):
+      // the bar's look turned on its side, at the top of the start edge.
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: palette.canvas,
+        elevation: 0,
+        useIndicator: false,
+        indicatorColor: Colors.transparent,
+        labelType: NavigationRailLabelType.all,
+        groupAlignment: -1,
+        minWidth: 80,
+        selectedIconTheme: IconThemeData(size: 24, color: palette.primaryStrong),
+        unselectedIconTheme: IconThemeData(size: 24, color: palette.textMuted),
+        selectedLabelTextStyle: labelSmall.copyWith(color: palette.primaryStrong),
+        unselectedLabelTextStyle: labelSmall.copyWith(color: palette.textMuted),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
         color: palette.primaryStrong,

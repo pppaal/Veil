@@ -125,6 +125,38 @@ class FakeRelay {
   /// Messages per history page; null serves the whole history at once.
   int? messagePageSize;
 
+  /// Blocks as SafetyService keeps them: each blocker's user id, then the
+  /// user ids they blocked with when, newest last.
+  final Map<String, Map<String, DateTime>> blocks = {};
+
+  /// The mutes each user sent (POST /safety/mutes/:conversationId): user
+  /// id, then conversation id and how many seconds, null for no end.
+  final Map<String, Map<String, int?>> mutes = {};
+
+  /// The abuse reports filed, each with the fields the client passed and
+  /// who filed it.
+  final List<({String reporterUserId, Map<String, String> fields})> reports = [];
+
+  /// Reports to refuse as the throttle does (six a minute) before any is
+  /// taken again.
+  int refuseReports = 0;
+
+  /// While set, a report waits for it before the relay answers, as a slow
+  /// network would.
+  Completer<void>? reportGate;
+
+  /// Whether either of two users blocked the other, as
+  /// SafetyService.isBlockedEitherWay answers it.
+  bool blockedEitherWay(String userIdA, String userIdB) =>
+      (blocks[userIdA]?.containsKey(userIdB) ?? false) || (blocks[userIdB]?.containsKey(userIdA) ?? false);
+
+  RelayParty? partyByUserId(String userId) {
+    for (final party in partiesByHandle.values) {
+      if (party.userId == userId) return party;
+    }
+    return null;
+  }
+
   int _messageCounter = 0;
   final DateTime _clockBase = DateTime.utc(2026, 4, 1, 9);
 
@@ -231,6 +263,17 @@ class FakeRelay {
     }
     if (conversation.useSenderKeys && body['groupEpoch'] != conversation.epoch) {
       throw VeilApiException('stale', statusCode: 409, code: 'group_epoch_stale');
+    }
+    // ConversationAccessService: a block in either direction makes the peer
+    // of a 1:1 unreachable for a new send; a retry of a stored one passed
+    // above.
+    if (conversation.type == 'direct') {
+      for (final handle in conversation.memberHandles) {
+        final member = partiesByHandle[handle];
+        if (member != null && member.userId != sender.userId && blockedEitherWay(sender.userId, member.userId)) {
+          throw VeilApiException('Peer is unreachable', statusCode: 403, code: 'peer_unreachable');
+        }
+      }
     }
 
     _messageCounter += 1;
@@ -448,10 +491,25 @@ class FakeRelayClient extends VeilApiClient {
     if (path.startsWith('/keys/')) {
       final handle = Uri.decodeComponent(path.substring('/keys/'.length));
       directoryLookups[handle] = (directoryLookups[handle] ?? 0) + 1;
+      // KeysService.getKeys: a block in either direction answers as an
+      // unknown handle does, and claims nothing. The group route does not.
+      final party = relay.partiesByHandle[handle];
+      if (party != null && relay.blockedEitherWay(me.userId, party.userId)) {
+        throw VeilApiException('User not found', statusCode: 404, code: 'handle_not_found');
+      }
       return relay._lookup(me, handle, query?['claim'] ?? 'active');
     }
     if (path == '/prekeys/count') {
       return {'available': relay.oneTimePrekeys[me.deviceId]?.length ?? 0};
+    }
+    // UsersService.getUserByHandle: a block in either direction answers as
+    // an unknown handle does.
+    if (path.startsWith('/users/')) {
+      final party = relay.partiesByHandle[Uri.decodeComponent(path.substring('/users/'.length))];
+      if (party == null || relay.blockedEitherWay(me.userId, party.userId)) {
+        throw VeilApiException('User not found', statusCode: 404, code: 'handle_not_found');
+      }
+      return {'id': party.userId, 'handle': party.handle, 'status': 'active'};
     }
     throw UnimplementedError('GET $path');
   }
@@ -520,6 +578,95 @@ class FakeRelayClient extends VeilApiClient {
     if (unreachable) throw VeilApiException('The server is unreachable.', code: 'network_unavailable');
     final stored = relay._accept(me, body);
     return {'message': relay.rewriteAck?.call(Map<String, dynamic>.of(stored)) ?? stored, 'idempotent': false};
+  }
+
+  // The safety routes, as SafetyService answers them.
+
+  @override
+  Future<Map<String, dynamic>> listBlockedUsers(String accessToken) async {
+    final blocked = relay.blocks[me.userId] ?? const <String, DateTime>{};
+    return {
+      'items': [
+        for (final MapEntry(key: userId, value: at) in blocked.entries.toList().reversed)
+          {'userId': userId, 'handle': relay.partyByUserId(userId)?.handle ?? '', 'blockedAt': at.toIso8601String()},
+      ],
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> blockUser(String accessToken, String userId) async {
+    if (userId == me.userId) throw VeilApiException('Cannot block yourself', statusCode: 400, code: 'validation_failed');
+    final target = relay.partyByUserId(userId) ??
+        (throw VeilApiException('User not found', statusCode: 404, code: 'not_found'));
+    final at = relay.blocks.putIfAbsent(me.userId, () => {}).putIfAbsent(userId, relay.now);
+    return {
+      'blocked': {'userId': userId, 'handle': target.handle, 'blockedAt': at.toIso8601String()},
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> unblockUser(String accessToken, String userId) async {
+    relay.blocks[me.userId]?.remove(userId);
+    return {'userId': userId, 'unblocked': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> setConversationMute(
+    String accessToken,
+    String conversationId, {
+    int? mutedForSeconds,
+    required bool unmute,
+  }) async {
+    final conversation = relay.conversations[conversationId];
+    if (conversation == null || !conversation.memberHandles.contains(me.handle)) {
+      throw VeilApiException('Conversation membership required', statusCode: 403, code: 'conversation_membership_required');
+    }
+    final mine = relay.mutes.putIfAbsent(me.userId, () => {});
+    if (unmute) {
+      mine.remove(conversationId);
+      return {'mute': null};
+    }
+    mine[conversationId] = mutedForSeconds;
+    final until = mutedForSeconds == null ? null : relay.now().add(Duration(seconds: mutedForSeconds));
+    return {
+      'mute': {'conversationId': conversationId, 'mutedUntil': until?.toIso8601String()},
+    };
+  }
+
+  /// Records which fields the client passed: the ones fileAbuseReport puts
+  /// in the request body.
+  @override
+  Future<Map<String, dynamic>> fileAbuseReport(
+    String accessToken, {
+    required String reportedUserId,
+    required String reason,
+    String? conversationId,
+    String? messageId,
+  }) async {
+    await relay.reportGate?.future;
+    if (relay.refuseReports > 0) {
+      relay.refuseReports -= 1;
+      throw VeilApiException('Too many requests', statusCode: 429, code: 'rate_limited');
+    }
+    if (reportedUserId == me.userId) {
+      throw VeilApiException('Cannot report yourself', statusCode: 400, code: 'validation_failed');
+    }
+    if (relay.partyByUserId(reportedUserId) == null) {
+      throw VeilApiException('Reported user not found', statusCode: 404, code: 'not_found');
+    }
+    if (conversationId != null && !(relay.conversations[conversationId]?.memberHandles.contains(me.handle) ?? false)) {
+      throw VeilApiException('Conversation membership required', statusCode: 403, code: 'conversation_membership_required');
+    }
+    relay.reports.add((
+      reporterUserId: me.userId,
+      fields: {
+        'reportedUserId': reportedUserId,
+        'reason': reason,
+        if (conversationId != null) 'conversationId': conversationId,
+        if (messageId != null) 'messageId': messageId,
+      },
+    ));
+    return {'reportId': 'report-${relay.reports.length}', 'filedAt': relay.now().toIso8601String()};
   }
 
   @override

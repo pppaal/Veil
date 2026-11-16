@@ -138,7 +138,7 @@ macOS + Xcode 없이는 불가능. 계정/팀이 먼저 마련된 뒤 수행.
 
 - [x] **배포 타겟** — `IPHONEOS_DEPLOYMENT_TARGET = 14.0` 전 config 일관(Debug 479, Release 530, Profile 353). `TARGETED_DEVICE_FAMILY='1,2'`(iPhone+iPad).
 
-- [x] **Privacy manifest + usage-description 문자열** — `apps/mobile/ios/Runner/PrivacyInfo.xcprivacy` 존재. Info.plist에 NSCameraUsageDescription, NSMicrophoneUsageDescription, NSPhotoLibraryUsageDescription, NSPhotoLibraryAddUsageDescription, NSFaceIDUsageDescription 모두 존재. 누락 없음.
+- [x] **Privacy manifest + usage-description 문자열** — `apps/mobile/ios/Runner/PrivacyInfo.xcprivacy` 존재. Info.plist의 usage-description은 앱 잠금용 `NSFaceIDUsageDescription` 하나뿐입니다. 앱은 텍스트만 보내고 카메라·마이크·사진 선택 플러그인이 없으므로 iOS의 `NSCameraUsageDescription`, `NSMicrophoneUsageDescription`, `NSPhotoLibraryUsageDescription`, `NSPhotoLibraryAddUsageDescription`과 Android의 `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_*`, `READ_EXTERNAL_STORAGE`는 선언하지 않습니다. 플러그인 자체 매니페스트에도 없습니다(`flutter_local_notifications`는 `POST_NOTIFICATIONS`·`VIBRATE`, `local_auth_android`는 `USE_BIOMETRIC`만 선언). Gradle 병합 매니페스트는 아직 확인하지 않았으니 제출 전에 확인합니다(`docs/launch/play-store-listing.md`의 권한 절). 그런 기능을 다시 켤 때 함께 선언합니다.
 
 - [x] **App 아이콘** — `Assets.xcassets/AppIcon.appiconset`에 1024x1024 마케팅 아이콘 포함 21개 PNG. `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon`. `flutter_launcher_icons`에 `remove_alpha_ios:true`(알파 제거, Apple 요구).
 

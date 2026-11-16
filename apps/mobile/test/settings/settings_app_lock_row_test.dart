@@ -15,6 +15,7 @@ import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.d
 import 'package:veil_mobile/src/features/settings/data/trusted_devices.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
 
 import '../phone/phone_app.dart';
 import '../support/memory_secure_store.dart';
@@ -49,9 +50,21 @@ class _NoBiometrics implements LocalUnlockAuthenticator {
   Future<bool> canUseBiometrics() async => false;
 }
 
+/// A phone with biometrics that recognise the user.
+class _Biometrics implements LocalUnlockAuthenticator {
+  const _Biometrics();
+
+  @override
+  Future<bool> authenticateBiometric() async => true;
+
+  @override
+  Future<bool> canUseBiometrics() async => true;
+}
+
 /// The app lock with the PIN as a flag, counting how often it is asked.
 class _Lock extends AppLockService {
-  _Lock(SecureStorageService storage) : super(const _NoBiometrics(), storage);
+  _Lock(SecureStorageService storage, {LocalUnlockAuthenticator biometrics = const _NoBiometrics()})
+      : super(biometrics, storage);
 
   bool pinSet = false;
   int asked = 0;
@@ -108,10 +121,14 @@ ProviderContainer _container(_Lock lock, SecureStorageService storage) {
   ]);
 }
 
-Future<_App> _openSettings(WidgetTester tester, {Completer<void>? answer}) async {
+Future<_App> _openSettings(
+  WidgetTester tester, {
+  Completer<void>? answer,
+  LocalUnlockAuthenticator biometrics = const _NoBiometrics(),
+}) async {
   usePhoneView(tester, phoneLarge);
   final storage = SecureStorageService(MemorySecureStore());
-  final lock = _Lock(storage)..answer = answer;
+  final lock = _Lock(storage, biometrics: biometrics)..answer = answer;
   final container = _container(lock, storage);
   addTearDown(container.dispose);
   final app = _App(container, lock);
@@ -210,6 +227,120 @@ void main() {
     await pumpFrames(tester);
     expect(app.path, '/settings', reason: 'the row no longer opens anything');
     expect(app.container.read(appSessionProvider).locked, isFalse);
+  });
+
+  // The first-PIN setup that Settings opens on a phone with no PIN guards
+  // nothing yet, so it can be cancelled: back to Settings, unlocked, with
+  // the lock still off. Once a PIN exists, or when the app locked by itself,
+  // there is no way past the lock screen but the PIN.
+  final cancel = find.byKey(AppLockScreen.cancelKey);
+
+  testWidgets('Lock now without a PIN: back cancels the setup and puts Settings back, unlocked',
+      (tester) async {
+    final app = await _openSettings(tester);
+    await pumpFrames(tester);
+    _expectRowSays(_en.commonOff);
+
+    await tester.tap(find.byKey(const ValueKey('settings-lock-now')));
+    await pumpFrames(tester);
+    expect(app.path, '/lock');
+    expect(find.text(_en.appLockTurnOn), findsOneWidget, reason: 'the PIN is chosen here');
+    expect(cancel, findsOneWidget);
+
+    await tester.tap(cancel);
+    await pumpFrames(tester);
+    expect(app.container.read(appSessionProvider).locked, isFalse);
+    expect(app.path, '/settings', reason: 'cancelling goes back to where the user was');
+    expect(app.lock.pinSet, isFalse);
+    _expectRowSays(_en.commonOff);
+
+    // The cancel was for that one request: the lock the app engages by
+    // itself still asks for a PIN.
+    app.session.lock();
+    await pumpFrames(tester);
+    expect(app.path, '/lock');
+    expect(find.text(_en.appLockTurnOn), findsOneWidget);
+    expect(cancel, findsNothing);
+  });
+
+  testWidgets('the App lock row while Off: the system back button cancels the setup too', (tester) async {
+    final app = await _openSettings(tester);
+    await pumpFrames(tester);
+
+    await tester.tap(_row);
+    await pumpFrames(tester);
+    expect(app.path, '/lock');
+    expect(cancel, findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await pumpFrames(tester);
+    expect(app.container.read(appSessionProvider).locked, isFalse);
+    expect(app.path, '/settings');
+    expect(app.lock.pinSet, isFalse);
+    _expectRowSays(_en.commonOff);
+  });
+
+  // On a phone with biometrics, the setup Settings opens does not offer
+  // them: they would only unlock, as Cancel does, and turn nothing on. The
+  // lock the app engages by itself still does.
+  testWidgets('with biometrics, the setup Settings opens offers the PIN and a way back, not biometrics',
+      (tester) async {
+    final app = await _openSettings(tester, biometrics: const _Biometrics());
+    await pumpFrames(tester);
+
+    await tester.tap(find.byKey(const ValueKey('settings-lock-now')));
+    await pumpFrames(tester);
+    expect(app.path, '/lock');
+    expect(find.text(_en.appLockTurnOn), findsOneWidget);
+    expect(cancel, findsOneWidget);
+    expect(find.text(_en.appLockUseBiometrics, skipOffstage: false), findsNothing);
+
+    await tester.tap(cancel);
+    await pumpFrames(tester);
+    expect(app.path, '/settings');
+
+    app.session.lock();
+    await pumpFrames(tester);
+    expect(app.path, '/lock');
+    expect(cancel, findsNothing);
+    expect(find.text(_en.appLockUseBiometrics, skipOffstage: false), findsOneWidget);
+  });
+
+  testWidgets('the lock the app engages by itself keeps its first-PIN setup without a way back', (tester) async {
+    final app = await _openSettings(tester);
+    await pumpFrames(tester);
+
+    // What going to the background does.
+    app.session.lock();
+    await pumpFrames(tester);
+    expect(app.path, '/lock');
+    expect(find.text(_en.appLockTurnOn), findsOneWidget);
+    expect(cancel, findsNothing);
+    expect(find.byType(VeilBackButton), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await pumpFrames(tester);
+    expect(app.container.read(appSessionProvider).locked, isTrue);
+    expect(app.path, '/lock');
+  });
+
+  testWidgets('once a PIN exists, Lock now opens the lock screen with no way back', (tester) async {
+    final app = await _openSettings(tester);
+    app.lock.pinSet = true;
+    await pumpFrames(tester);
+    _expectRowSays(_en.commonOn);
+
+    await tester.tap(find.byKey(const ValueKey('settings-lock-now')));
+    await pumpFrames(tester);
+    expect(app.path, '/lock');
+    expect(find.text(_en.appLockLockedTitle), findsOneWidget);
+    expect(cancel, findsNothing);
+    expect(find.byType(VeilBackButton), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await pumpFrames(tester);
+    expect(app.container.read(appSessionProvider).locked, isTrue);
+    expect(app.path, '/lock');
   });
 
   testWidgets('a lock from elsewhere (the app went to the background) is followed on Settings as well',

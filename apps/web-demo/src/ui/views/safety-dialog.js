@@ -33,7 +33,10 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
       });
       const result = el('div', { class: 'dialog-error', role: 'status', 'aria-live': 'polite' });
       let backdrop = null;
+      // Set while the code to copy by hand is shown; see showCodeToCopy.
+      let refitHandCopy = null;
       const close = () => {
+        if (refitHandCopy) window.removeEventListener('resize', refitHandCopy);
         dialogs.close(DIALOG_ID);
         backdrop.remove();
       };
@@ -48,13 +51,50 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
         close();
         await identityTrust.reopenLockedMessages(peer.userId);
       };
-      // The code is long machine text: it is copied to send, not read.
+      // The code is long machine text: it is copied to send, not read. A
+      // browser without the clipboard API, or one that refuses it (an
+      // insecure origin, a denied permission), gets the code in a read-only
+      // field instead, selected, to copy by hand.
+      const handCopy = el('div', { class: 'safety-hand-copy', hidden: '' }, [
+        el('label', { class: 'field-label', for: 'safety-my-code' }, [t('safety.myCode')]),
+        el('textarea', {
+          id: 'safety-my-code',
+          class: 'safety-my-code',
+          readonly: '',
+          rows: '3',
+          spellcheck: 'false',
+          'aria-describedby': 'safety-my-code-hint',
+          onfocus: (event) => event.target.select(),
+        }, [safety.code]),
+        el('div', { class: 'field-hint', id: 'safety-my-code-hint' }, [t('safety.copyByHand')]),
+      ]);
+      // The field is as tall as the code at its width, so no line is cut at
+      // its bottom edge; it is sized again when the window's width changes.
+      const showCodeToCopy = () => {
+        handCopy.hidden = false;
+        const field = handCopy.querySelector('textarea');
+        if (!refitHandCopy) {
+          refitHandCopy = () => {
+            field.style.height = 'auto';
+            const borders = field.offsetHeight - field.clientHeight;
+            field.style.height = `${field.scrollHeight + borders}px`;
+          };
+          window.addEventListener('resize', refitHandCopy);
+        }
+        refitHandCopy();
+        field.focus();
+        field.select();
+      };
       const copyCode = async () => {
+        if (typeof navigator.clipboard?.writeText !== 'function') {
+          showCodeToCopy();
+          return;
+        }
         try {
           await navigator.clipboard.writeText(safety.code);
           toast(t('safety.codeCopied'), 'good');
         } catch {
-          toast(t('safety.copyFailed'), 'error');
+          showCodeToCopy();
         }
       };
       const compare = async () => {
@@ -86,6 +126,7 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
             'data-code': safety.code,
             onclick: copyCode,
           }, [icon('copy'), t('safety.copyCode')]),
+          handCopy,
           el('div', { class: 'field-label' }, [t('safety.theirCode')]),
           codeInput,
           result,

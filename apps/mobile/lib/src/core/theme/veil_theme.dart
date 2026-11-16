@@ -544,6 +544,21 @@ class VeilTheme {
           ),
         ),
       ),
+      // The same three tabs on a tablet or a desktop window (MainTabShell):
+      // the bar's look turned on its side, at the top of the start edge.
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: palette.canvas,
+        elevation: 0,
+        useIndicator: false,
+        indicatorColor: Colors.transparent,
+        labelType: NavigationRailLabelType.all,
+        groupAlignment: -1,
+        minWidth: 80,
+        selectedIconTheme: IconThemeData(size: 24, color: palette.primaryStrong),
+        unselectedIconTheme: IconThemeData(size: 24, color: palette.textMuted),
+        selectedLabelTextStyle: labelSmall.copyWith(color: palette.primaryStrong),
+        unselectedLabelTextStyle: labelSmall.copyWith(color: palette.textMuted),
+      ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
         color: palette.primaryStrong,
         linearTrackColor: palette.surfaceAlt,

@@ -92,28 +92,26 @@ file and the Data safety form are amended together.
 
 ## Permissions
 
-Declared in `AndroidManifest.xml` and surfaced in Play Console:
+Declared in `AndroidManifest.xml` (the app's own plus what its plugins merge
+in) and surfaced in Play Console:
 
-| Permission                   | Used for            | Runtime prompt? |
-|------------------------------|---------------------|-----------------|
-| INTERNET                     | network             | no              |
-| ACCESS_NETWORK_STATE         | reconnect logic     | no              |
-| POST_NOTIFICATIONS (33+)     | message wake only   | yes (Android 13+)|
-| CAMERA                       | attachments (switched off) | never asked |
-| RECORD_AUDIO                 | voice messages, calls (not in the app) | never asked |
-| READ_MEDIA_IMAGES/VIDEO/AUDIO (33+) | attachments (switched off) | never asked |
-| USE_BIOMETRIC                | app lock            | no (per-use)    |
+| Permission               | Used for                          | Runtime prompt?   |
+|--------------------------|-----------------------------------|-------------------|
+| INTERNET                 | network                           | no                |
+| POST_NOTIFICATIONS (33+) | message notifications             | yes (Android 13+) |
+| VIBRATE                  | notification vibration            | no                |
+| WAKE_LOCK                | push wake-ups, once push is wired | no                |
+| USE_BIOMETRIC            | app lock                          | no (per-use)      |
 
-No `READ_CONTACTS`, no `ACCESS_FINE_LOCATION`, no `QUERY_ALL_PACKAGES`.
-
-Sending attachments is switched off in the mobile app (`kAttachmentsEnabled`
-in `apps/mobile/lib/src/features/attachments/attachments_feature.dart`), and
-the app has no voice messages or calls, so nothing in the build asks for the
-camera, the microphone or the media library at runtime. The
-manifest still declares those permissions. Remove them (and the matching
-usage strings in `ios/Runner/Info.plist`) before submitting a build that
-ships without those features: a store reviewer reads a declared permission
-as a feature.
+No `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_*` or `READ_EXTERNAL_STORAGE`: the
+app sends text only (sending attachments is switched off by
+`kAttachmentsEnabled` in
+`apps/mobile/lib/src/features/attachments/attachments_feature.dart`, and there
+are no voice messages or calls), and none of its plugins declares them. No
+`READ_CONTACTS`, no `ACCESS_FINE_LOCATION`, no `QUERY_ALL_PACKAGES`. A feature
+that needs one of these declares it in the change that makes the feature
+work, together with the matching usage string in `ios/Runner/Info.plist`
+(`test/platform/native_permissions_test.dart` pins both lists).
 
 ## Support & policy URLs
 

@@ -1,9 +1,9 @@
-# VEIL Privacy Policy
+# Veil privacy policy
 
 Effective: 2026-04-20
 Last updated: 2026-11-12
 
-VEIL ("the service") collects the absolute minimum data required to operate an end-to-end encrypted messenger. This policy describes what we collect, why, how long we keep it, and the rights users hold. It is written to satisfy Korea's Personal Information Protection Act (PIPA) alongside general privacy expectations.
+Veil ("the service") collects the absolute minimum data required to operate an end-to-end encrypted messenger. This policy describes what we collect, why, how long we keep it, and the rights users hold. It is written to satisfy Korea's Personal Information Protection Act (PIPA) alongside general privacy expectations.
 
 ## 1. Data we collect
 
@@ -20,7 +20,7 @@ The service collects only:
 - The accounts you block, the conversations you mute, and the abuse reports you file. Reports are deleted after 90 days.
 - Group and channel names and descriptions, and the label of each of your devices. Unlike message content, these are stored in readable form.
 
-Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form. Every field the server stores, how long it is kept and who can see it is listed in [What a seized VEIL server reveals](server-data-inventory.md), which is generated from the database schema and checked on every change.
+Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form. Every field the server stores, how long it is kept and who can see it is listed in [What a seized Veil server reveals](server-data-inventory.md), which is generated from the database schema and checked on every change.
 
 The service does **not** collect:
 
@@ -65,9 +65,9 @@ Users may at any time:
 
 Deleting an account purges all associated server-side identifiers and stored ciphertext. To stop someone else from registering the same handle and being mistaken for you, a keyed hash of the handle (not the handle itself) is kept for 90 days.
 
-## 6. No-recovery posture
+## 6. No account recovery
 
-VEIL has **no account recovery path by design.** If a device is lost or wiped, conversations cannot be restored. This is not a defect; it is the privacy guarantee the product is built around.
+Veil has **no account recovery**, and this is on purpose: it protects your privacy. If a device is lost or wiped, conversations cannot be restored.
 
 ## 7. Security controls
 

@@ -6,13 +6,19 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../data/lock_request_provider.dart';
 import 'app_lock_parts.dart';
 
 /// The app's lock. With a PIN it is the lock screen: "Veil is locked", the
 /// PIN and the ways to unlock. Without one (the app locked before a PIN
-/// was ever chosen) it is where the PIN is chosen.
+/// was ever chosen) it is where the PIN is chosen; when the user opened it
+/// from Settings, back (the bar's button, Android's back) cancels and puts
+/// them where they were, unlocked, since there was nothing to protect.
 class AppLockScreen extends ConsumerStatefulWidget {
   const AppLockScreen({super.key});
+
+  /// The back button of a PIN setup that can be cancelled.
+  static const cancelKey = ValueKey('app-lock-cancel');
 
   @override
   ConsumerState<AppLockScreen> createState() => _AppLockScreenState();
@@ -78,13 +84,27 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     // the other.
     if (_loading) return const VeilShell(child: SizedBox.shrink());
     if (!_hasPin) {
-      return VeilShell(
+      // Never once a PIN exists, and never for the lock the app engages by
+      // itself (the background, a cold start): that one keeps asking.
+      final cancellable = ref.watch(lockRequestedInSettingsProvider);
+      final setUp = VeilShell(
         title: l10n.appLockTitle,
         grouped: true,
+        leading: cancellable
+            ? VeilBackButton(key: AppLockScreen.cancelKey, onPressed: _submitting ? null : _cancelSetUp)
+            : null,
         child: ListView(
           padding: const EdgeInsets.only(top: VeilSpace.xl, bottom: VeilSpace.xl),
           children: _setUp(context),
         ),
+      );
+      if (!cancellable) return setUp;
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && !_submitting) _cancelSetUp();
+        },
+        child: setUp,
       );
     }
     return VeilShell(
@@ -299,6 +319,10 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       ),
     ];
   }
+
+  // No PIN was chosen: the app unlocks as it was, and the router's lock
+  // guard puts back the screen the lock replaced.
+  void _cancelSetUp() => ref.read(appSessionProvider.notifier).unlock();
 
   Future<void> _unlockWithBiometrics() async {
     if (_integrityCompromised) {

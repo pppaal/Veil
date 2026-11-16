@@ -48,13 +48,39 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
         close();
         await identityTrust.reopenLockedMessages(peer.userId);
       };
-      // The code is long machine text: it is copied to send, not read.
+      // The code is long machine text: it is copied to send, not read. A
+      // browser without the clipboard API, or one that refuses it (an
+      // insecure origin, a denied permission), gets the code in a read-only
+      // field instead, selected, to copy by hand.
+      const handCopy = el('div', { class: 'safety-hand-copy', hidden: '' }, [
+        el('label', { class: 'field-label', for: 'safety-my-code' }, [t('safety.myCode')]),
+        el('textarea', {
+          id: 'safety-my-code',
+          class: 'safety-my-code',
+          readonly: '',
+          rows: '3',
+          spellcheck: 'false',
+          'aria-describedby': 'safety-my-code-hint',
+          onfocus: (event) => event.target.select(),
+        }, [safety.code]),
+        el('div', { class: 'field-hint', id: 'safety-my-code-hint' }, [t('safety.copyByHand')]),
+      ]);
+      const showCodeToCopy = () => {
+        handCopy.hidden = false;
+        const field = handCopy.querySelector('textarea');
+        field.focus();
+        field.select();
+      };
       const copyCode = async () => {
+        if (typeof navigator.clipboard?.writeText !== 'function') {
+          showCodeToCopy();
+          return;
+        }
         try {
           await navigator.clipboard.writeText(safety.code);
           toast(t('safety.codeCopied'), 'good');
         } catch {
-          toast(t('safety.copyFailed'), 'error');
+          showCodeToCopy();
         }
       };
       const compare = async () => {
@@ -86,6 +112,7 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
             'data-code': safety.code,
             onclick: copyCode,
           }, [icon('copy'), t('safety.copyCode')]),
+          handCopy,
           el('div', { class: 'field-label' }, [t('safety.theirCode')]),
           codeInput,
           result,

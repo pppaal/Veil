@@ -192,6 +192,15 @@ const List<ScreenCase> screenCases = [
       location: '/lock',
       account: LayoutAccount.locked,
       primaryAction: _primaryButton),
+  // The PIN setup that Settings opens on a phone with no PIN: its bar has
+  // the back button that cancels it.
+  ScreenCase('app-lock-setup',
+      screen: AppLockScreen,
+      file: 'app_lock_screen.dart',
+      location: '/lock',
+      account: LayoutAccount.choosingPin,
+      primaryAction: _primaryButton,
+      settle: _expectCancellableSetup),
 
   // The conversation list, in the main shell with its bottom bar: with
   // conversations, with none, and while searching.
@@ -739,6 +748,19 @@ const List<ScreenCase> wideCases = [
     account: LayoutAccount.signedInEmpty,
     sizes: _wideSizes,
   ),
+  // From 1024 px the three tabs are a rail at the start edge: beside the
+  // list on a tablet held upright (one pane, as on a phone), and beside a
+  // tab with no second pane.
+  ScreenCase(
+    'tablet-conversation-list',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    sizes: _tablet,
+    primaryExtent: conversationRowsExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase('wide-settings', screen: SettingsScreen, file: 'settings_screen.dart', location: '/settings', sizes: _wideSizes),
   ScreenCase(
     'tablet-chat',
     screen: ChatRoomScreen,
@@ -911,6 +933,11 @@ Future<void> _expectGroupPane(WidgetTester tester) async {
     reason: 'the second pane did not open the group',
   );
   await _expectGroupMessages(tester);
+}
+
+Future<void> _expectCancellableSetup(WidgetTester tester) async {
+  expect(find.byType(TextField), findsNWidgets(2), reason: 'the PIN setup is not on screen');
+  expect(find.byKey(AppLockScreen.cancelKey), findsOneWidget, reason: 'the setup has no way back');
 }
 
 Future<void> _openTimerSheet(WidgetTester tester) => _openFromChatMenu(tester, 'timer', BottomSheet);

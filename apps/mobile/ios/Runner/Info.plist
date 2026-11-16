@@ -45,16 +45,8 @@
 		<array>
 			<string>remote-notification</string>
 		</array>
-		<key>NSCameraUsageDescription</key>
-		<string>VEIL needs camera access to capture photos and videos for encrypted messages.</string>
-		<key>NSMicrophoneUsageDescription</key>
-		<string>VEIL needs microphone access for voice messages and encrypted calls.</string>
-		<key>NSPhotoLibraryUsageDescription</key>
-		<string>VEIL needs photo library access to send images in encrypted conversations.</string>
-		<key>NSPhotoLibraryAddUsageDescription</key>
-		<string>VEIL may save received encrypted attachments to your photo library when you choose to export them.</string>
 		<key>NSFaceIDUsageDescription</key>
-		<string>VEIL uses Face ID only to unlock the app locally on this device.</string>
+		<string>Face ID is used only to unlock the app on this device.</string>
 		<key>UIApplicationSceneManifest</key>
 		<dict>
 			<key>UIApplicationSupportsMultipleScenes</key>

@@ -77,6 +77,64 @@ test.describe('a contact verified by safety number', () => {
     expectNoErrors(alice, bob);
   });
 
+  // The verification code goes to the clipboard. A browser that refuses
+  // the clipboard, or has no clipboard API, gets the code in a read-only
+  // field in the dialog, selected, in the body font, to copy by hand.
+  test('a refused or missing clipboard shows the code to copy by hand', async () => {
+    const page = alice.page;
+    const setClipboard = (mode: 'works' | 'refuses' | 'missing') =>
+      page.evaluate((mode) => {
+        const copied: string[] = ((window as unknown as { copied: string[] }).copied = []);
+        const value =
+          mode === 'missing'
+            ? undefined
+            : {
+                writeText: (text: string) => {
+                  if (mode === 'refuses') return Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+                  copied.push(text);
+                  return Promise.resolve();
+                },
+              };
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value });
+      }, mode);
+    const close = async (dialog: Awaited<ReturnType<typeof openSafetyDialog>>) => {
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+    };
+
+    await setClipboard('works');
+    let dialog = await openSafetyDialog(page);
+    const code = (await dialog.locator('.safety-copy-code').getAttribute('data-code')) ?? '';
+    expect(code.length).toBeGreaterThan(40);
+    await dialog.locator('.safety-copy-code').click();
+    await expect(toast(alice, 'Verification code copied')).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { copied: string[] }).copied)).toEqual([code]);
+    await expect(dialog.locator('#safety-my-code')).toBeHidden();
+    await close(dialog);
+
+    for (const mode of ['refuses', 'missing'] as const) {
+      await setClipboard(mode);
+      dialog = await openSafetyDialog(page);
+      await expect(dialog.locator('#safety-my-code')).toBeHidden();
+      await dialog.locator('.safety-copy-code').click();
+      const field = dialog.locator('#safety-my-code');
+      await expect(field, mode).toBeVisible();
+      await expect(field).toHaveValue(code);
+      await expect(field).toHaveAttribute('readonly', '');
+      await expect(field).toBeFocused();
+      expect(await field.evaluate((node: HTMLTextAreaElement) => [node.selectionStart, node.selectionEnd])).toEqual([0, code.length]);
+      const fonts = await field.evaluate((node) => [getComputedStyle(node).fontFamily, getComputedStyle(document.body).fontFamily]);
+      expect(fonts[0], 'the body font, not the monospace one').toBe(fonts[1]);
+      await expect(dialog.getByLabel('Your verification code')).toHaveValue(code);
+      await expect(dialog.locator('#safety-my-code-hint')).toHaveText(
+        "This browser didn't let the page copy. Select the code and copy it yourself.",
+      );
+      await expect(toast(alice, 'Verification code copied')).toHaveCount(0);
+      await close(dialog);
+    }
+    expectNoErrors(alice, bob);
+  });
+
   test('a new key of a verified contact is accepted only by comparing it', async () => {
     await relay('/__test/impersonate', { victim: bob.handle, target: alice.handle, text: 'relay as verified bob' });
     const { page } = alice;

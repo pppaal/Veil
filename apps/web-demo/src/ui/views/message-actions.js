@@ -20,6 +20,11 @@ const UNDO_MS = 5_000;
 const MENU_WIDTH_PX = 288;
 const MENU_HEIGHT_PX = 400;
 
+// What the delete dialog says may happen to a copy already received: in a
+// 1:1 there is one person to say it of.
+export const deleteBodyKey = (conversation) =>
+  conversation?.type === 'direct' ? 'msg.delete.bodyDirect' : 'msg.delete.body';
+
 // send: src/app/services/send.js; composer, forwardDialog, reportDialog:
 // the views the items lead to; confirm: src/ui/confirm.js.
 export function createMessageActions({ store, send, composer, forwardDialog, reportDialog, confirm }) {
@@ -49,10 +54,10 @@ export function createMessageActions({ store, send, composer, forwardDialog, rep
   // message.deleted shows it (the web does, the phone app not yet): a copy
   // already received may stay. The undo puts the text back in the composer
   // to be sent as a new message.
-  async function remove(message) {
+  async function remove(message, convId) {
     const ok = await confirm({
       title: t('msg.delete.title'),
-      body: t('msg.delete.body'),
+      body: t(deleteBodyKey(store.conversation(convId))),
       okLabel: t('msg.delete.confirm'),
       destructive: true,
     });
@@ -122,7 +127,7 @@ export function createMessageActions({ store, send, composer, forwardDialog, rep
       // own, and none in a group, where a sender's device names no member
       // here.
       ...(peer ? [divider(), item(t('msg.action.report'), () => reportDialog.open(convId, message.id, peer), { opensDialog: true })] : []),
-      ...(sent ? [divider(), item(t('msg.action.delete'), () => remove(message), { className: 'msg-action-item danger', opensDialog: true })] : []),
+      ...(sent ? [divider(), item(t('msg.action.delete'), () => remove(message, convId), { className: 'msg-action-item danger', opensDialog: true })] : []),
     ]);
     node.style.left = Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH_PX)) + 'px';
     node.style.top = Math.max(8, Math.min(y, window.innerHeight - MENU_HEIGHT_PX)) + 'px';

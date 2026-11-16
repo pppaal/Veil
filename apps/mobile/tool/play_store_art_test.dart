@@ -464,9 +464,10 @@ Future<void> _typePin(WidgetTester tester) async {
 
 // Scrolled to the Appearance group, so that the screenful runs from the
 // settings a user changes to the Security group's footer, which says what
-// the account rests on. The header of the group after it then sits across
-// the bottom edge, so the list scrolls on until that line is whole: it
-// shows that more follows, and the Appearance header still fits at the top.
+// the account rests on. If a line then sits across the bottom edge (the
+// header of the group after it, before Privacy had Blocked accounts), the
+// list scrolls on until that line is whole, as long as the Appearance
+// header still fits at the top.
 Future<void> _showSecurityFooter(WidgetTester tester) async {
   final l10n = lookupAppLocalizations(const Locale('en'));
   final appearanceHeader = find.text(l10n.settingsSectionAppearance);

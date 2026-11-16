@@ -8,10 +8,10 @@ section 4). Upload them in file-name order.
 |---|---|
 | `01-choose-handle.png` | Choose a handle, with a handle typed in |
 | `02-chats.png` | Chats: a group and five one-to-one chats |
-| `03-chat.png` | A chat with Sam Rivera: his message with a reaction, two replies (one read, one disappearing), Sam typing |
+| `03-chat.png` | A chat with Sam Rivera: his message with a reaction, two replies (the first read and disappearing, the second delivered), Sam typing |
 | `04-move-to-a-new-phone.png` | Move to a new phone, on the old phone, before it asks for a code |
 | `05-app-lock.png` | The lock screen with a PIN typed in |
-| `06-settings.png` | Settings, from Appearance to the footer of the Security group, with the Devices header below it |
+| `06-settings.png` | Settings, from Appearance (with Blocked accounts under the Privacy switches) to the footer of the Security group |
 
 The feature graphic is [`../feature-graphic.png`](../feature-graphic.png),
 1024 x 500: the app icon and the word Veil on white, and no other text.

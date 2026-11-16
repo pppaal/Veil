@@ -5,27 +5,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/network/veil_api_client.dart';
-import '../../../core/storage/secure_storage_service.dart';
-import 'contact_nicknames.dart';
+import 'contact_names.dart';
 
+/// A contact: a handle the relay lists for this account, with when it was
+/// added (the relay keeps no name for it), and the nickname this phone gave
+/// it.
 class ContactEntry {
   const ContactEntry({
     required this.handle,
-    required this.displayName,
     required this.nickname,
     required this.avatarPath,
     required this.addedAt,
   });
 
   final String handle;
-  final String? displayName;
   final String? nickname;
   final String? avatarPath;
   final DateTime addedAt;
 
-  /// Whether there is a name to show above the handle: a nickname this
-  /// device gave them, or the name their account set.
-  bool get hasName => (nickname?.trim().isNotEmpty ?? false) || (displayName?.trim().isNotEmpty ?? false);
+  /// Whether there is a name to show above the handle: the nickname this
+  /// device gave them.
+  bool get hasName => nickname?.trim().isNotEmpty ?? false;
 
   /// The first line of their row: the name, or with none the handle with its
   /// "@", alone (M26: never the bare handle over the same handle again).
@@ -39,10 +39,6 @@ class ContactEntry {
     if (trimmedNickname != null && trimmedNickname.isNotEmpty) {
       return trimmedNickname;
     }
-    final trimmedDisplayName = displayName?.trim();
-    if (trimmedDisplayName != null && trimmedDisplayName.isNotEmpty) {
-      return trimmedDisplayName;
-    }
     return handle;
   }
 
@@ -50,7 +46,6 @@ class ContactEntry {
   static ContactEntry fromJson(Map<String, dynamic> json, {String? nickname}) {
     return ContactEntry(
       handle: (json['handle'] as String?) ?? '',
-      displayName: json['displayName'] as String?,
       nickname: nickname,
       avatarPath: json['avatarPath'] as String?,
       addedAt:
@@ -65,7 +60,7 @@ class ContactsController extends ChangeNotifier {
 
   final VeilApiClient apiClient;
   final Ref ref;
-  final ContactNicknames nicknames;
+  final ContactNameBook nicknames;
 
   List<ContactEntry> _contacts = const [];
   bool _loading = false;
@@ -96,10 +91,10 @@ class ContactsController extends ChangeNotifier {
     notifyListeners();
     try {
       final raw = await apiClient.getContacts(token);
-      final labels = await nicknames.readAll();
+      final labels = await nicknames.load();
       _contacts = [
         for (final json in raw.whereType<Map<String, dynamic>>())
-          ContactEntry.fromJson(json, nickname: labels[json['handle']]),
+          ContactEntry.fromJson(json, nickname: labels[(json['handle'] as String?)?.toLowerCase()]),
       ];
       _loadFailed = false;
     } catch (error) {
@@ -165,7 +160,6 @@ class ContactsController extends ChangeNotifier {
         if (contact.handle == handle)
           ContactEntry(
             handle: contact.handle,
-            displayName: contact.displayName,
             nickname: label.isEmpty ? null : label,
             avatarPath: contact.avatarPath,
             addedAt: contact.addedAt,
@@ -188,7 +182,7 @@ final contactsControllerProvider =
   final controller = ContactsController(
     apiClient: ref.read(apiClientProvider),
     ref: ref,
-    nicknames: ContactNicknames(ref.read(secureStorageProvider).scoped(SecureScope.contacts)),
+    nicknames: ref.read(contactNameBookProvider),
   );
 
   ref.listen(appSessionProvider, (previous, next) {

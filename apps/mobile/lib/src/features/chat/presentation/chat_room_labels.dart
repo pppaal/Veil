@@ -3,26 +3,43 @@ import 'package:flutter/material.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
+import '../../conversations/presentation/peer_names.dart';
 
 // The words and formats the chat screen shows for who a chat is with,
 // delivery, timers and attachments. Pure functions of their arguments.
 
-/// What a conversation is called. A 1:1 by its peer's name, or their handle
-/// when they set none. A group by its name, which the relay's conversation
-/// list leaves out and the sync asks for once per group; until that answer
-/// comes, or when it fails, by its other members. [localUserId] is this
-/// user, who is left out of that list of names.
-String conversationTitle(AppLocalizations l10n, ConversationPreview conversation, {required String? localUserId}) {
+/// What a conversation is called. A 1:1 by the nickname the user gave its
+/// peer on this phone, or their handle when there is none (see PeerNames:
+/// the server keeps no names). A group by its name, which the relay's
+/// conversation list leaves out and the sync asks for once per group; until
+/// that answer comes, or when it fails, by its other members. [localUserId]
+/// is this user, who is left out of that list of names.
+String conversationTitle(
+  AppLocalizations l10n,
+  ConversationPreview conversation,
+  PeerNames names, {
+  required String? localUserId,
+}) {
   if (conversation.type == ConversationType.direct) {
-    return conversation.peerDisplayName ?? '@${conversation.peerHandle}';
+    return names.peerName(conversation) ?? '@${conversation.peerHandle}';
   }
   final name = (conversation.groupMeta?.name ?? conversation.channelMeta?.name)?.trim();
   if (name != null && name.isNotEmpty) return name;
   final others = [
     for (final member in conversation.members)
-      if (member.userId != localUserId) member.title,
+      if (member.userId != localUserId) names.memberTitle(member),
   ];
   return others.isEmpty ? l10n.conversationsGroupMark : others.join(', ');
+}
+
+/// What a group calls the member typing under [handle], as its bubbles call
+/// them: their nickname, or the handle with its "@" (one the group does not
+/// list, too).
+String typingMemberTitle(ConversationPreview group, String handle, PeerNames names) {
+  for (final member in group.members) {
+    if (member.handle == handle) return names.memberTitle(member);
+  }
+  return '@$handle';
 }
 
 String messageDeliveryLabel(AppLocalizations l10n, ChatMessage message) {

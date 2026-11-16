@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../conversations/data/conversation_models.dart';
+import '../../conversations/presentation/peer_names.dart';
 
 /// Who of a group wrote each message. A group frame names the device that
 /// sealed it, not a person: the member is the one this device has pinned
@@ -12,25 +12,27 @@ import '../../conversations/data/conversation_models.dart';
 /// the identity the frame's key was accepted under. A device no pin names
 /// gets no name, never a guess.
 mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
-  Map<String, String> _nameByDevice = const {};
-  Map<String, String> _handleByDevice = const {};
-  Map<String, String> _userByDevice = const {};
+  Map<String, GroupMember> _memberByDevice = const {};
   String? _namesOf;
   bool _readingNames = false;
   bool _namesRead = false;
 
-  /// The member name to show on [message], or null: a 1:1, or a device this
-  /// device has pinned for none of the members.
-  String? groupSenderName(ChatMessage message) => _nameByDevice[message.senderDeviceId];
+  /// What [message]'s sender is called, by [names] (their nickname, or
+  /// their handle), or null: a 1:1, or a device this device has pinned for
+  /// none of the members.
+  String? groupSenderName(ChatMessage message, PeerNames names) => switch (_memberByDevice[message.senderDeviceId]) {
+        final member? => names.memberTitle(member),
+        null => null,
+      };
 
   /// The handle of the member who wrote [message], which their avatar and
   /// the tint of their name are drawn from; null where [groupSenderName]
   /// is.
-  String? groupSenderHandle(ChatMessage message) => _handleByDevice[message.senderDeviceId];
+  String? groupSenderHandle(ChatMessage message) => _memberByDevice[message.senderDeviceId]?.handle;
 
   /// The account of the member who wrote [message], which a report of it
   /// names; null where [groupSenderName] is.
-  String? groupSenderUserId(ChatMessage message) => _userByDevice[message.senderDeviceId];
+  String? groupSenderUserId(ChatMessage message) => _memberByDevice[message.senderDeviceId]?.userId;
 
   /// Whether the pins of the open group have been read at least once. From
   /// then on a message with no name is one this device cannot attribute,
@@ -43,22 +45,18 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   void syncGroupSenderNames(ConversationPreview? conversation, List<ChatMessage> messages) {
     if (conversation == null || conversation.type != ConversationType.group) {
       _namesOf = null;
-      _nameByDevice = const {};
-      _handleByDevice = const {};
-      _userByDevice = const {};
+      _memberByDevice = const {};
       _namesRead = false;
       return;
     }
     if (_namesOf != conversation.id) {
       _namesOf = conversation.id;
-      _nameByDevice = const {};
-      _handleByDevice = const {};
-      _userByDevice = const {};
+      _memberByDevice = const {};
       _namesRead = false;
     }
     if (_readingNames) return;
     final unnamed = messages.any(
-      (message) => !message.isMine && !message.isLocalNotice && !_nameByDevice.containsKey(message.senderDeviceId),
+      (message) => !message.isMine && !message.isLocalNotice && !_memberByDevice.containsKey(message.senderDeviceId),
     );
     if (!unnamed) return;
     _readingNames = true;
@@ -74,18 +72,13 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
           if (member.userId != localUserId) member.userId: member,
       };
       final owners = await messenger.pinnedDeviceOwners(members.keys);
-      final names = {
-        for (final MapEntry(key: deviceId, value: userId) in owners.entries) deviceId: members[userId]!.title,
-      };
-      final handles = {
-        for (final MapEntry(key: deviceId, value: userId) in owners.entries) deviceId: members[userId]!.handle,
+      final byDevice = {
+        for (final MapEntry(key: deviceId, value: userId) in owners.entries) deviceId: members[userId]!,
       };
       if (!mounted || _namesOf != conversation.id) return;
-      if (_namesRead && mapEquals(names, _nameByDevice) && mapEquals(handles, _handleByDevice)) return;
+      if (_namesRead && _sameMembers(byDevice, _memberByDevice)) return;
       setState(() {
-        _nameByDevice = names;
-        _handleByDevice = handles;
-        _userByDevice = owners;
+        _memberByDevice = byDevice;
         _namesRead = true;
       });
     } finally {
@@ -93,3 +86,7 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     }
   }
 }
+
+bool _sameMembers(Map<String, GroupMember> a, Map<String, GroupMember> b) =>
+    a.length == b.length &&
+    a.entries.every((entry) => b[entry.key]?.userId == entry.value.userId && b[entry.key]?.handle == entry.value.handle);

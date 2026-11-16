@@ -733,8 +733,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String chatTypingSuffix(String handle) {
-    return '@$handle is typing…';
+  String chatTypingSuffix(String name) {
+    return '$name is typing…';
   }
 
   @override

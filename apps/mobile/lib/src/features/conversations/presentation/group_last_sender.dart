@@ -1,14 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
+import '../../contacts/data/contact_names.dart';
+import 'peer_names.dart';
 
 /// The first name of the member who sent [deviceId]'s message in the group
-/// [conversationId], for the list's "Omar: …" preview. A group frame names
-/// the device that sealed it, not a person: the member is the one this
-/// device has pinned that device for, as the chat names them (see
-/// GroupSenderNames). Null for a device no pin names: no guess.
+/// [conversationId], for the list's "Omar: …" preview: the first word of
+/// the nickname the user gave them, or their handle (see PeerNames). A
+/// group frame names the device that sealed it, not a person: the member is
+/// the one this device has pinned that device for, as the chat names them
+/// (see GroupSenderNames). Null for a device no pin names: no guess.
 final groupLastSenderProvider =
     FutureProvider.autoDispose.family<String?, ({String conversationId, String deviceId})>((ref, key) async {
+  // Read again when a nickname changes, not each time the messenger does.
+  ref.watch(contactNameBookProvider);
   final messenger = ref.read(messengerControllerProvider);
   final conversation = messenger.conversationById(key.conversationId);
   if (conversation == null) return null;
@@ -21,5 +26,5 @@ final groupLastSenderProvider =
   final userId = owners[key.deviceId];
   if (userId == null) return null;
   // A handle has no space, so it is kept whole.
-  return members[userId]!.title.split(' ').first;
+  return ref.read(peerNamesProvider).memberTitle(members[userId]!).split(' ').first;
 });

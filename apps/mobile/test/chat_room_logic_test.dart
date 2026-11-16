@@ -5,6 +5,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_message_runs.dar
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart' show conversationTitle;
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/peer_names.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
 
@@ -48,13 +49,12 @@ void main() {
   group('conversationTitle', () {
     ConversationPreview conversation({
       ConversationType type = ConversationType.direct,
-      String? displayName,
       List<GroupMember> members = const [],
     }) =>
         ConversationPreview(
           id: 'conv-1',
           peerHandle: 'selene',
-          peerDisplayName: displayName,
+          peerDisplayName: null,
           recipientBundle: const KeyBundle(
             userId: 'user-selene',
             deviceId: 'dev-selene',
@@ -68,21 +68,24 @@ void main() {
           members: members,
         );
     const members = [
-      GroupMember(userId: 'user-atlas', handle: 'atlas', displayName: 'Atlas Moreau'),
-      GroupMember(userId: 'user-selene', handle: 'selene', displayName: 'Selene Park'),
+      GroupMember(userId: 'user-atlas', handle: 'atlas'),
+      GroupMember(userId: 'user-selene', handle: 'selene'),
       GroupMember(userId: 'user-jiwoo', handle: 'jiwoo'),
     ];
+    // The names are the nicknames this phone gave the handles: the server
+    // keeps none.
+    final names = PeerNames(const {'atlas': 'Atlas Moreau', 'selene': 'Selene Park'});
 
-    test('a 1:1 is called by the peer\'s name, or by their handle when they set none', () {
-      expect(conversationTitle(l10n, conversation(displayName: 'Selene Park'), localUserId: 'user-atlas'), 'Selene Park');
-      expect(conversationTitle(l10n, conversation(), localUserId: 'user-atlas'), '@selene');
+    test('a 1:1 is called by the nickname of the peer\'s handle, or by the handle when it has none', () {
+      expect(conversationTitle(l10n, conversation(), names, localUserId: 'user-atlas'), 'Selene Park');
+      expect(conversationTitle(l10n, conversation(), PeerNames(const {}), localUserId: 'user-atlas'), '@selene');
     });
 
     test('a group is called by its other members, never by one of them alone, and never by the user', () {
-      final group = conversation(type: ConversationType.group, displayName: 'Selene Park', members: members);
-      expect(conversationTitle(l10n, group, localUserId: 'user-atlas'), 'Selene Park, @jiwoo');
+      final group = conversation(type: ConversationType.group, members: members);
+      expect(conversationTitle(l10n, group, names, localUserId: 'user-atlas'), 'Selene Park, @jiwoo');
       // A group this device knows no member of is still called something.
-      expect(conversationTitle(l10n, conversation(type: ConversationType.group), localUserId: 'user-atlas'), 'Group');
+      expect(conversationTitle(l10n, conversation(type: ConversationType.group), names, localUserId: 'user-atlas'), 'Group');
     });
   });
 

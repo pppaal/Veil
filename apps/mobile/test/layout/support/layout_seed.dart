@@ -20,9 +20,11 @@ import 'layout_world.dart';
 // timer, Lena's nothing yet, and the group the cases that ask for one.
 // Then contacts.
 
-/// Peers by handle, with the name the relay lists them under. One of them
-/// set no name and is listed by handle; one name is long enough to overflow
-/// a row. A person's avatar colour comes from their handle (VeilAvatar), so
+/// Peers by handle, with the nickname alex gave each on this phone
+/// (ContactNicknames, which LayoutWorld writes): the relay keeps no names,
+/// and lists members and contacts by handle alone. One of them has no
+/// nickname and is shown by handle; one name is long enough to overflow a
+/// row. A person's avatar colour comes from their handle (VeilAvatar), so
 /// the handles are picked for rows that sit next to each other, in Chats,
 /// in Contacts and in the store's Chats shot, to differ in colour: Sam
 /// ochre, Priya slate blue, Jonas purple, Alexandra and tom_walsh olive,
@@ -306,7 +308,8 @@ Future<void> seedConversations(
         conversationId: conversationId,
         messageId: stored['id'] as String,
         peerHandle: peer,
-        peerDisplayName: peerNames[peer],
+        // The cache has no name to give: the relay sent none.
+        peerDisplayName: null,
         sentAt: sentAt,
         messageKind: line.kind,
         isMine: line.mine,
@@ -442,13 +445,6 @@ class LayoutRelayClient extends FakeRelayClient {
           {
             ...conversation,
             if (timers.containsKey(conversation['id'])) 'disappearingTimerSeconds': timers[conversation['id']],
-            'members': [
-              for (final member in (conversation['members'] as List).cast<Map<String, dynamic>>())
-                <String, dynamic>{
-                  ...member,
-                  if (peerNames.containsKey(member['handle'])) 'displayName': peerNames[member['handle']],
-                },
-            ],
           },
       ],
     };
@@ -470,10 +466,9 @@ class LayoutRelayClient extends FakeRelayClient {
   Future<List<dynamic>> getContacts(String accessToken) async => [
         for (final handle in [...peerNames.keys, ...addedContacts.where((added) => !peerNames.containsKey(added))])
           if (!removedContacts.contains(handle))
+            // What the relay keeps of a contact (ContactSummary): no name.
             <String, dynamic>{
               'handle': handle,
-              'displayName': peerNames[handle],
-              'avatarPath': null,
               'addedAt': DateTime.utc(2026, 3, 2).toIso8601String(),
             },
       ];

@@ -15,6 +15,7 @@ import 'package:veil_mobile/src/core/security/app_lock_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/data/lock_request_provider.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
@@ -281,6 +282,12 @@ class LayoutWorld {
         authPrivateKey: 'auth',
         authPublicKey: 'auth-pub',
       );
+      // The names the screens show are the nicknames alex gave on this
+      // phone, as on a real one: the relay sends none.
+      final nicknames = ContactNicknames(storage.scoped(SecureScope.contacts));
+      for (final MapEntry(key: handle, value: name) in peerNames.entries) {
+        if (name != null) await nicknames.write(handle, name);
+      }
     }
     trust = IdentityTrust(TrustedIdentityResolver(store: TrustedIdentityStore(InMemoryIdentityKeyValueBackend())));
     // The chat's peer was compared out of band, so the chat shows its mark.

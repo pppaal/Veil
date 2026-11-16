@@ -17,7 +17,17 @@ import 'package:veil_mobile/src/features/conversations/data/veil_messenger_contr
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_phone.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/peer_names.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+
+// The names this phone gave the peers in Contacts, which is where every
+// name the screens show comes from: the relay lists none.
+final _nicknames = peerNamesProvider.overrideWith(
+  (ref) => PeerNames(
+    const {'selene': 'Selene', 'rowan': 'Rowan'},
+    chats: ref.watch(messengerControllerProvider).conversations,
+  ),
+);
 
 void main() {
   group('ConversationRow', () {
@@ -123,6 +133,7 @@ void main() {
       ProviderScope(
         overrides: [
           messengerControllerProvider.overrideWith((ref) => controller),
+          _nicknames,
         ],
         child: const _TestApp(
           child: ConversationListScreen(),
@@ -188,6 +199,7 @@ void main() {
       ProviderScope(
         overrides: [
           messengerControllerProvider.overrideWith((ref) => controller),
+          _nicknames,
         ],
         child: const _TestApp(
           child: ConversationListScreen(),
@@ -235,7 +247,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [messengerControllerProvider.overrideWith((ref) => controller)],
+        overrides: [messengerControllerProvider.overrideWith((ref) => controller), _nicknames],
         child: const _TestApp(child: ConversationListScreen()),
       ),
     );
@@ -296,8 +308,8 @@ void main() {
       adapter: adapter,
       apiClient: _FakeConversationApiClient.multiple(
         conversations: [
-          _conversationMap(id: 'conv-1', peerHandle: 'selene', peerDisplayName: 'Selene', envelope: textEnvelope),
-          _conversationMap(id: 'conv-2', peerHandle: 'rowan', peerDisplayName: 'Rowan', envelope: noticeEnvelope),
+          _conversationMap(id: 'conv-1', peerHandle: 'selene', envelope: textEnvelope),
+          _conversationMap(id: 'conv-2', peerHandle: 'rowan', envelope: noticeEnvelope),
         ],
         messagesByConversation: {
           'conv-1': [
@@ -342,7 +354,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [messengerControllerProvider.overrideWith((ref) => controller)],
+        overrides: [messengerControllerProvider.overrideWith((ref) => controller), _nicknames],
         child: const _TestApp(child: ConversationListScreen()),
       ),
     );
@@ -385,7 +397,6 @@ void main() {
           _conversationMap(
             id: 'conv-1',
             peerHandle: 'selene',
-            peerDisplayName: 'Selene',
             envelope: envelope,
             expiresAt: expiresAt,
           ),
@@ -425,7 +436,7 @@ void main() {
       await controller.loadConversationMessages('conv-1');
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [messengerControllerProvider.overrideWith((ref) => controller)],
+          overrides: [messengerControllerProvider.overrideWith((ref) => controller), _nicknames],
           child: const _TestApp(child: ConversationListScreen()),
         ),
       );
@@ -500,13 +511,11 @@ void main() {
           _conversationMap(
             id: 'conv-1',
             peerHandle: 'selene',
-            peerDisplayName: 'Selene',
             envelope: firstEnvelope,
           ),
           _conversationMap(
             id: 'conv-2',
             peerHandle: 'rowan',
-            peerDisplayName: 'Rowan',
             envelope: secondEnvelope,
           ),
         ],
@@ -554,6 +563,7 @@ void main() {
       ProviderScope(
         overrides: [
           messengerControllerProvider.overrideWith((ref) => controller),
+          _nicknames,
         ],
         child: const _TestApp(
           child: ConversationListScreen(),
@@ -617,13 +627,11 @@ void main() {
           _conversationMap(
             id: 'conv-1',
             peerHandle: 'selene',
-            peerDisplayName: 'Selene',
             envelope: firstEnvelope,
           ),
           _conversationMap(
             id: 'conv-2',
             peerHandle: 'rowan',
-            peerDisplayName: 'Rowan',
             envelope: secondEnvelope,
           ),
         ],
@@ -686,6 +694,7 @@ void main() {
       ProviderScope(
         overrides: [
           messengerControllerProvider.overrideWith((ref) => controller),
+          _nicknames,
         ],
         child: const _TestApp(
           child: ConversationListScreen(),
@@ -907,7 +916,6 @@ class _FakeConversationApiClient extends VeilApiClient {
             _conversationMap(
               id: 'conv-1',
               peerHandle: 'selene',
-              peerDisplayName: 'Selene',
               envelope: _envelope,
             ),
           ];
@@ -969,7 +977,6 @@ class _FakeConversationApiClient extends VeilApiClient {
 Map<String, dynamic> _conversationMap({
   required String id,
   required String peerHandle,
-  required String peerDisplayName,
   CryptoEnvelope? envelope,
   DateTime? expiresAt,
 }) {
@@ -977,15 +984,14 @@ Map<String, dynamic> _conversationMap({
     'id': id,
     'createdAt': DateTime.utc(2026, 4, 7, 8).toIso8601String(),
     'members': [
+      // As the relay lists a member (ConversationMemberSummary): no name.
       {
         'userId': 'user-local',
         'handle': 'atlas',
-        'displayName': 'Atlas',
       },
       {
         'userId': 'user-peer',
         'handle': peerHandle,
-        'displayName': peerDisplayName,
       },
     ],
     'lastMessage': envelope == null

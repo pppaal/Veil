@@ -1339,8 +1339,8 @@ abstract class AppLocalizations {
   /// No description provided for @chatTypingSuffix.
   ///
   /// In en, this message translates to:
-  /// **'@{handle} is typing…'**
-  String chatTypingSuffix(String handle);
+  /// **'{name} is typing…'**
+  String chatTypingSuffix(String name);
 
   /// No description provided for @chatTypingUnnamed.
   ///

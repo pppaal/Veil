@@ -9,6 +9,7 @@ import '../data/conversation_models.dart';
 import '../data/veil_messenger_controller.dart';
 import 'conversation_list_labels.dart';
 import 'conversation_list_logic.dart';
+import 'peer_names.dart';
 
 /// What a layout of the conversation list shows and what it can ask for:
 /// the same for the wide pane and the phone list, which differ only in how
@@ -17,6 +18,7 @@ class ConversationListView {
   const ConversationListView({
     required this.session,
     required this.controller,
+    required this.names,
     required this.conversations,
     required this.archiveResults,
     required this.searchingArchive,
@@ -32,6 +34,9 @@ class ConversationListView {
 
   final AppSessionState session;
   final VeilMessengerController controller;
+
+  /// What the rows call people: the nicknames on this phone.
+  final PeerNames names;
 
   /// The conversations to list: all of them, or those the query matches.
   final List<ConversationPreview> conversations;
@@ -95,6 +100,7 @@ class MessageSearchResultTile extends StatelessWidget {
     required this.timeFormat,
     required this.now,
     required this.onTap,
+    required this.names,
     this.conversation,
     this.localUserId,
   });
@@ -107,6 +113,9 @@ class MessageSearchResultTile extends StatelessWidget {
   final MessageTimeFormat timeFormat;
   final DateTime now;
   final VoidCallback onTap;
+
+  /// What the hit's chat is called by: the nicknames on this phone.
+  final PeerNames names;
 
   /// The chat the message is in, when this device still lists it.
   final ConversationPreview? conversation;
@@ -122,7 +131,9 @@ class MessageSearchResultTile extends StatelessWidget {
     final snippetStyle = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted);
     final chat = conversation;
     final group = chat?.type == ConversationType.group;
-    final title = chat == null ? result.title : conversationRowTitle(l10n, chat, localUserId: localUserId);
+    final title = chat == null
+        ? names.nicknameOf(result.peerHandle) ?? '@${result.peerHandle}'
+        : conversationRowTitle(l10n, chat, names, localUserId: localUserId);
     return Semantics(
       button: true,
       child: InkWell(
@@ -215,6 +226,7 @@ List<Widget> messageSearchResultSection(BuildContext context, ConversationListVi
               child: MessageSearchResultTile(
                 result: result,
                 conversation: view.controller.conversationById(result.conversationId),
+                names: view.names,
                 localUserId: view.session.userId,
                 query: view.searchController.text,
                 timeFormat: view.timeFormat,

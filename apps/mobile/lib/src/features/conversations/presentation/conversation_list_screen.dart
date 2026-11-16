@@ -12,9 +12,11 @@ import '../../chat/presentation/chat_bar.dart';
 import '../../chat/presentation/chat_room_screen.dart';
 import '../../chat/presentation/message_time.dart';
 import '../data/conversation_models.dart';
+import 'conversation_list_labels.dart';
 import 'conversation_list_logic.dart';
 import 'conversation_list_parts.dart';
 import 'conversation_list_phone.dart';
+import 'peer_names.dart';
 
 // These were declared here before the screen was split up.
 export 'conversation_list_logic.dart';
@@ -99,8 +101,15 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
   Widget build(BuildContext context) {
     final session = ref.watch(appSessionProvider);
     final controller = ref.watch(messengerControllerProvider);
+    final names = ref.watch(peerNamesProvider);
     final conversations = controller.conversations;
-    final filteredConversations = _filterConversations(conversations);
+    final l10n = AppLocalizations.of(context);
+    // A chat is found by the name its row shows, as well as by its handle.
+    final filteredConversations = filterConversationPreviews(
+      conversations,
+      _searchController.text,
+      nameOf: (chat) => conversationRowTitle(l10n, chat, names, localUserId: session.userId),
+    );
 
     return Builder(
       builder: (context) {
@@ -122,6 +131,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         final view = ConversationListView(
           session: session,
           controller: controller,
+          names: names,
           conversations: filteredConversations,
           archiveResults: _archiveResults,
           searchingArchive: _searchingArchive,
@@ -157,7 +167,6 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           onLoadMoreMessageResults: () => unawaited(_loadMoreArchiveResults()),
         );
 
-        final l10n = AppLocalizations.of(context);
         // Starting a chat is the bar's one action.
         const barActions = [_NewConversationButton()];
         // While there is no connection the bar's title says so in place of
@@ -230,10 +239,6 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         );
       },
     );
-  }
-
-  List<ConversationPreview> _filterConversations(List<ConversationPreview> conversations) {
-    return filterConversationPreviews(conversations, _searchController.text);
   }
 
   MessageNavigationTarget _issueNavigationTarget(String messageId) {

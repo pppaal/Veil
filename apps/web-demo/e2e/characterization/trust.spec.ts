@@ -123,6 +123,14 @@ test.describe('a contact verified by safety number', () => {
       await expect(field).toHaveAttribute('readonly', '');
       await expect(field).toBeFocused();
       expect(await field.evaluate((node: HTMLTextAreaElement) => [node.selectionStart, node.selectionEnd])).toEqual([0, code.length]);
+      // The whole code shows, no line cut at the field's bottom edge, and
+      // still at phone width once the window narrows.
+      const whole = (node: HTMLTextAreaElement) => node.scrollHeight <= node.clientHeight;
+      expect(await field.evaluate(whole), 'a line of the code is cut off').toBe(true);
+      const size = page.viewportSize();
+      await page.setViewportSize({ width: 360, height: 640 });
+      await expect.poll(() => field.evaluate(whole), 'a line of the code is cut off at 360 px').toBe(true);
+      if (size) await page.setViewportSize(size);
       const fonts = await field.evaluate((node) => [getComputedStyle(node).fontFamily, getComputedStyle(document.body).fontFamily]);
       expect(fonts[0], 'the body font, not the monospace one').toBe(fonts[1]);
       await expect(dialog.getByLabel('Your verification code')).toHaveValue(code);

@@ -185,7 +185,7 @@ test.describe('session lifecycle', () => {
       'Sounds',
       'Browser notifications',
       'Notification content',
-      'Blocked users',
+      'Blocked accounts',
     ]);
     await expect(dialog.locator('[data-key="lang"]')).toHaveCount(0);
     await expect(dialog.locator('[data-key="notification-level"]')).toHaveValue('generic');

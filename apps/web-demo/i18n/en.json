@@ -79,7 +79,7 @@
   "settings.notifications.generic": "No name or message",
   "settings.notifications.sender": "Name only",
   "settings.notifications.senderPreview": "Name and message",
-  "settings.blocked": "Blocked users",
+  "settings.blocked": "Blocked accounts",
   "settings.unblock": "Unblock",
   "settings.close": "Close",
   "settings.saveFailed": "Could not save the setting",

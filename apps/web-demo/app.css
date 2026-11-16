@@ -1078,7 +1078,8 @@ html.theme-light .name-7 { color: #45602A; }
 .safety-copy-code { margin-bottom: 16px; }
 /* The verification code to copy by hand, shown only when the clipboard is
    missing or refuses: body text in a read-only field, each line filled (the
-   code's hyphens are not places to break). */
+   code's hyphens are not places to break). The dialog sets its height to the
+   whole code, so it needs no scrollbar. */
 .safety-hand-copy { margin: -4px 0 16px; }
 .safety-hand-copy .field-label { display: block; }
 .safety-my-code {
@@ -1094,6 +1095,7 @@ html.theme-light .name-7 { color: #45602A; }
   line-height: 1.4;
   word-break: break-all;
   resize: none;
+  overflow: hidden;
 }
 .safety-my-code:focus { outline: none; border-color: var(--fg-subtle); }
 

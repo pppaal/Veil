@@ -33,7 +33,10 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
       });
       const result = el('div', { class: 'dialog-error', role: 'status', 'aria-live': 'polite' });
       let backdrop = null;
+      // Set while the code to copy by hand is shown; see showCodeToCopy.
+      let refitHandCopy = null;
       const close = () => {
+        if (refitHandCopy) window.removeEventListener('resize', refitHandCopy);
         dialogs.close(DIALOG_ID);
         backdrop.remove();
       };
@@ -65,9 +68,20 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
         }, [safety.code]),
         el('div', { class: 'field-hint', id: 'safety-my-code-hint' }, [t('safety.copyByHand')]),
       ]);
+      // The field is as tall as the code at its width, so no line is cut at
+      // its bottom edge; it is sized again when the window's width changes.
       const showCodeToCopy = () => {
         handCopy.hidden = false;
         const field = handCopy.querySelector('textarea');
+        if (!refitHandCopy) {
+          refitHandCopy = () => {
+            field.style.height = 'auto';
+            const borders = field.offsetHeight - field.clientHeight;
+            field.style.height = `${field.scrollHeight + borders}px`;
+          };
+          window.addEventListener('resize', refitHandCopy);
+        }
+        refitHandCopy();
         field.focus();
         field.select();
       };

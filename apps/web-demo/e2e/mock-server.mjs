@@ -2,7 +2,7 @@
 // e2e/characterization/) run the web demo against, with no Postgres, Redis
 // or object storage: it serves the demo at /demo/ and an in-memory /v1 relay
 // (auth, key directory, prekeys, conversations, messages, receipts,
-// attachments, reports, device transfer, one-time secret links). It relays
+// attachments, blocks, reports, device transfer, one-time secret links). It relays
 // ciphertext and never decrypts. Its realtime gateway (mock-realtime.mjs) is
 // off until a test turns it on, so by default /v1/realtime refuses the
 // upgrade and the demo falls back to polling.
@@ -186,6 +186,7 @@ function reset() {
     receipts: new Set(), // `${messageId}:${userId}` once that member read it
     transfers: new Map(), // id -> { id, userId, oldDeviceId, token, expiresAt, completedAt, ended, claim, newDeviceId }
     secrets: new Map(), // id -> { ciphertext, expiresAt }
+    blocks: [], // { blockerId, blockedId, createdAt }, oldest first
     reports: [],
     shuffle: false,
     tamper: false,
@@ -250,10 +251,21 @@ function signedBy(authPublicKey, challenge, signature) {
 
 const isMember = (userId, conversationId) => db.conversations.get(conversationId)?.memberIds.includes(userId) ?? false;
 
+// As SafetyService.isBlockedEitherWay.
+const blockedEitherWay = (a, b) => db.blocks.some(
+  ({ blockerId, blockedId }) => (blockerId === a && blockedId === b) || (blockerId === b && blockedId === a),
+);
+// As ConversationAccessService.isPeerReachable: every conversation here is
+// direct, and a block either way cuts it off. What reaches the peer (a send,
+// an edit, typing, a receipt) stops; reading does not.
+const peerReachable = (userId, conversation) =>
+  conversation.memberIds.every((memberId) => memberId === userId || !blockedEitherWay(userId, memberId));
+
 const realtime = createRealtimeGateway({
   authenticate: sessionOf,
   isMember,
   membersOf: (conversationId) => db.conversations.get(conversationId)?.memberIds ?? [],
+  mayReachPeers: (userId, conversationId) => peerReachable(userId, db.conversations.get(conversationId)),
 });
 
 function emitToMembers(conversation, event, payload, { except = null } = {}) {
@@ -648,7 +660,11 @@ const routes = [
   ['POST', /^\/v1\/conversations\/direct$/, (req) => {
     const { user } = authenticate(req);
     const peer = userByHandle(req.body.peerHandle);
-    if (!peer || peer.id === user.id) throw new HttpError(404, 'handle_not_found', 'User not found');
+    // As ConversationsService.createDirect: a block either way answers
+    // exactly like an unknown handle, even for a conversation that exists.
+    if (!peer || peer.id === user.id || blockedEitherWay(user.id, peer.id)) {
+      throw new HttpError(404, 'handle_not_found', 'User not found');
+    }
     let conversation = [...db.conversations.values()].find(
       (c) => c.memberIds.includes(user.id) && c.memberIds.includes(peer.id),
     );
@@ -688,6 +704,7 @@ const routes = [
       groupEpoch: optional(intWithin(0, Number.MAX_SAFE_INTEGER)),
     });
     const conversation = conversationFor(user, req.body.conversationId);
+    if (!peerReachable(user.id, conversation)) throw new HttpError(403, 'peer_unreachable', 'Peer is unreachable');
     const { envelope } = req.body;
     if (envelope.senderDeviceId !== device.id || envelope.conversationId !== conversation.id) {
       throw new HttpError(400, 'envelope_mismatch');
@@ -708,7 +725,8 @@ const routes = [
     const receipt = `${messageId}:${user.id}`;
     if (message.senderUserId !== user.id && !db.receipts.has(receipt)) {
       db.receipts.add(receipt);
-      for (const userId of [message.senderUserId, user.id]) {
+      const reachable = peerReachable(user.id, db.conversations.get(message.conversationId));
+      for (const userId of reachable ? [message.senderUserId, user.id] : [user.id]) {
         realtime.emitToUser(userId, 'message.delivered', { messageId, userId: user.id, deliveredAt: readAt });
         realtime.emitToUser(userId, 'message.read', { messageId, userId: user.id, readAt });
       }
@@ -720,6 +738,9 @@ const routes = [
     validateBody(req.body, { ciphertext, nonce: matches(NONCE), version: stringUpTo(64) });
     const message = db.messages.find((m) => m.id === messageId && m.senderDeviceId === device.id);
     if (!message) throw new HttpError(404, 'message_not_found');
+    if (!peerReachable(device.userId, db.conversations.get(message.conversationId))) {
+      throw new HttpError(403, 'peer_unreachable', 'Peer is unreachable');
+    }
     Object.assign(message, {
       ciphertext: req.body.ciphertext,
       nonce: req.body.nonce,
@@ -767,9 +788,36 @@ const routes = [
     authenticate(req);
     return { ticket: { downloadUrl: `/blob/${attachmentId}` } };
   }],
+  // SafetyController: the caller's blocks, newest first; a block (BlockUserDto,
+  // not yourself, an existing account, a repeat answered as the first); an
+  // unblock that answers the same whether or not there was a block.
   ['GET', /^\/v1\/safety\/blocks$/, (req) => {
-    authenticate(req);
-    return { items: [] };
+    const { user } = authenticate(req);
+    const items = db.blocks
+      .filter(({ blockerId }) => blockerId === user.id)
+      .reverse()
+      .map(({ blockedId, createdAt }) => ({ userId: blockedId, handle: db.users.get(blockedId).handle, blockedAt: createdAt }));
+    return { items };
+  }],
+  ['POST', /^\/v1\/safety\/blocks$/, (req) => {
+    const { user } = authenticate(req);
+    validateBody(req.body, { userId: uuid() });
+    const { userId } = req.body;
+    if (userId === user.id) throw new HttpError(400, 'validation_failed', 'Cannot block yourself');
+    const target = db.users.get(userId);
+    if (!target) throw new HttpError(404, 'not_found', 'User not found');
+    let block = db.blocks.find(({ blockerId, blockedId }) => blockerId === user.id && blockedId === userId);
+    if (!block) {
+      block = { blockerId: user.id, blockedId: userId, createdAt: now() };
+      db.blocks.push(block);
+    }
+    return { blocked: { userId, handle: target.handle, blockedAt: block.createdAt } };
+  }],
+  ['DELETE', /^\/v1\/safety\/blocks\/([^/]+)$/, (req, [userId]) => {
+    const { user } = authenticate(req);
+    if (!UUID.test(userId)) throw new HttpError(400, 'validation_failed', 'userId must be a UUID');
+    db.blocks = db.blocks.filter(({ blockerId, blockedId }) => !(blockerId === user.id && blockedId === userId));
+    return { userId, unblocked: true };
   }],
   // FileAbuseReportDto. The API accepts a deprecated note and never stores
   // it; this relay keeps what it was sent, so a test can see that no note

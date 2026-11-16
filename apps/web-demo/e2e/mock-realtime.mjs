@@ -5,7 +5,7 @@
 // token, a socket the token does not admit is connected and then cut ('io
 // server disconnect'), presence goes to the user's own sockets only, and
 // typing is relayed to the other members, throttled per socket and
-// conversation.
+// conversation, unless a block cuts the conversation off.
 //
 // The gateway is off until a test turns it on, so the demo runs in polling
 // mode by default, as the browser tests in e2e/browser/ expect.
@@ -80,8 +80,10 @@ function createFrameReader({ onText, onControl }) {
 }
 
 // authenticate(token) -> { user, device } or null; isMember(userId,
-// conversationId) -> boolean; membersOf(conversationId) -> userId[].
-export function createRealtimeGateway({ authenticate, isMember, membersOf }) {
+// conversationId) -> boolean; membersOf(conversationId) -> userId[];
+// mayReachPeers(userId, conversationId) -> boolean, false once a block cuts
+// the conversation off.
+export function createRealtimeGateway({ authenticate, isMember, membersOf, mayReachPeers = () => true }) {
   let enabled = false;
   const sockets = new Set();
 
@@ -92,6 +94,7 @@ export function createRealtimeGateway({ authenticate, isMember, membersOf }) {
   function relayTyping(socket, event, payload) {
     const conversationId = payload?.conversationId;
     if (typeof conversationId !== 'string' || !isMember(socket.user.id, conversationId)) return;
+    if (!mayReachPeers(socket.user.id, conversationId)) return;
     const now = Date.now();
     if (now - (socket.typingAt.get(conversationId) ?? 0) < TYPING_MIN_INTERVAL_MS) return;
     socket.typingAt.set(conversationId, now);

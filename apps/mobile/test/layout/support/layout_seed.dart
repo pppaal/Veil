@@ -182,6 +182,9 @@ const _others = <String, List<_Line>>{
 const groupConversationId = 'conv-group';
 const groupMemberHandles = [peerHandle, noticeChatPeerHandle, 'omar'];
 
+/// The group's name, as its creator typed it in New group.
+const groupName = 'Moving day';
+
 const _group = <_Line>[
   _Line(_At(9, 52), false, 'movers can do the 14th or 16th', from: peerHandle),
   _Line(_At(9, 59), false, '14th works for me', from: noticeChatPeerHandle),
@@ -284,7 +287,7 @@ Future<void> seedConversations(
   }
   await seedDirect(peerHandle, [..._samsEvening, ..._samsMorning, ...keyChange ? _samsKeyChange : _samsEnd]);
   if (!withGroup) return;
-  relay.addGroup(groupConversationId, [selfHandle, ...groupMemberHandles], useSenderKeys: false);
+  relay.addGroup(groupConversationId, [selfHandle, ...groupMemberHandles], useSenderKeys: false, name: groupName);
   for (final line in _group) {
     await send(groupConversationId, line.from ?? peerHandle, line);
   }
@@ -433,7 +436,8 @@ class LayoutRelayClient extends FakeRelayClient {
     final handles = (body['memberHandles'] as List<dynamic>? ?? const <dynamic>[]).cast<String>();
     handles.forEach(_requireParty);
     createdGroups.add(Map<String, dynamic>.of(body));
-    final group = relay.addGroup('conv-new-group-${createdGroups.length}', [me.handle, ...handles], useSenderKeys: false);
+    final group = relay.addGroup('conv-new-group-${createdGroups.length}', [me.handle, ...handles],
+        useSenderKeys: false, name: body['name'] as String);
     return {
       'conversation': {'id': group.id},
     };

@@ -1099,8 +1099,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String conversationsGroupRowSemantics(String names) {
-    return 'Group chat with $names';
+  String conversationsGroupRowSemantics(String name) {
+    return '$name, group chat';
   }
 
   @override

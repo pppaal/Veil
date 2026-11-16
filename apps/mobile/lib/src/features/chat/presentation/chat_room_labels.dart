@@ -8,10 +8,10 @@ import '../../conversations/data/conversation_models.dart';
 // delivery, timers and attachments. Pure functions of their arguments.
 
 /// What a conversation is called. A 1:1 by its peer's name, or their handle
-/// when they set none. A group by its name when this device knows one, and
-/// otherwise by its other members: the relay's conversation list names the
-/// members of a group, not the group. [localUserId] is this user, who is
-/// left out of that list of names.
+/// when they set none. A group by its name, which the relay's conversation
+/// list leaves out and the sync asks for once per group; until that answer
+/// comes, or when it fails, by its other members. [localUserId] is this
+/// user, who is left out of that list of names.
 String conversationTitle(AppLocalizations l10n, ConversationPreview conversation, {required String? localUserId}) {
   if (conversation.type == ConversationType.direct) {
     return conversation.peerDisplayName ?? '@${conversation.peerHandle}';

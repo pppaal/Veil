@@ -1843,8 +1843,8 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsGroupRowSemantics.
   ///
   /// In en, this message translates to:
-  /// **'Group chat with {names}'**
-  String conversationsGroupRowSemantics(String names);
+  /// **'{name}, group chat'**
+  String conversationsGroupRowSemantics(String name);
 
   /// No description provided for @conversationsGroupMark.
   ///

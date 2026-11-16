@@ -57,10 +57,9 @@ void main() {
   });
 
   group('a group chat', () {
-    testWidgets('is titled with its other members and says how many are in it', (tester) async {
+    testWidgets('is titled with its name and says how many are in it', (tester) async {
       await withPhoneApp(tester, identities, withGroup: true, location: _group, body: (world) async {
-        // The relay lists a group's members, not a name for it.
-        expect(find.text('Sam Rivera, Priya Nair, Omar Haddad'), findsOneWidget);
+        expect(find.text(groupName), findsOneWidget);
         expect(find.text('4 members'), findsOneWidget);
         expect(find.textContaining(selfDisplayName), findsNothing, reason: 'the user is not named in their own title');
       });

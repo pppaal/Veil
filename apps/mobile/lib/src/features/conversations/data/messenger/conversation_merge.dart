@@ -45,9 +45,15 @@ ConversationPreview _mergePreview(ConversationPreview? local, ConversationPrevie
   }
   final keepBundle = _isEmptyBundle(incoming.recipientBundle) &&
       local.recipientBundle.userId == incoming.recipientBundle.userId;
+  // The list never names a group (see ConversationSyncService._fillGroupNames);
+  // the name this device fetched for it stays.
+  final keepGroupMeta = incoming.groupMeta == null &&
+      incoming.type == ConversationType.group &&
+      local.type == ConversationType.group;
   return incoming.copyWith(
     sessionState: incoming.sessionState ?? local.sessionState,
     recipientBundle: keepBundle ? local.recipientBundle : incoming.recipientBundle,
+    groupMeta: keepGroupMeta ? local.groupMeta : incoming.groupMeta,
   );
 }
 

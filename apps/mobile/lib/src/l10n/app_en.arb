@@ -345,8 +345,8 @@
   "conversationsNewTooltip": "New chat",
   "conversationsRowSemantics": "Chat with {name}",
   "@conversationsRowSemantics": {"placeholders": {"name": {"type": "String"}}},
-  "conversationsGroupRowSemantics": "Group chat with {names}",
-  "@conversationsGroupRowSemantics": {"placeholders": {"names": {"type": "String"}}},
+  "conversationsGroupRowSemantics": "{name}, group chat",
+  "@conversationsGroupRowSemantics": {"placeholders": {"name": {"type": "String"}}},
   "conversationsGroupMark": "Group",
 
   "navChats": "Chats",

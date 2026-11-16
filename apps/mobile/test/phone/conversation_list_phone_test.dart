@@ -137,18 +137,20 @@ void main() {
     }
   });
 
-  testWidgets('a group is listed under its members\' names, with the group avatar and its last message',
+  testWidgets('a group is listed under its name, with the group avatar and its last message',
       (tester) async {
     await withPhoneApp(tester, identities, withGroup: true, location: '/conversations', body: (world) async {
       final row = tester.widget<ConversationRow>(find.byType(ConversationRow).first);
-      expect(row.title, 'Sam Rivera, Priya Nair, Omar Haddad');
+      // The relay's list leaves the name out; the app asked for it once.
+      expect(row.title, groupName);
+      expect(world.api.groupFetches, {groupConversationId: 1});
       expect(row.group, isTrue);
       expect(
         find.descendant(of: find.byType(ConversationRow).first, matching: find.byIcon(Icons.group_outlined)),
         findsOneWidget,
         reason: 'the neutral group disc, never a letter',
       );
-      expect(row.semanticLabel, 'Group chat with Sam Rivera, Priya Nair, Omar Haddad');
+      expect(row.semanticLabel, '$groupName, group chat');
       // Led by who wrote it, as Signal, WhatsApp and Telegram do in a group.
       expect(row.snippet, 'Omar: $latestGroupLine');
 
@@ -336,7 +338,7 @@ void main() {
         expect(find.descendant(of: tile, matching: find.byIcon(Icons.group_outlined)), findsOneWidget);
         expect(find.descendant(of: tile, matching: find.text('S')), findsNothing, reason: 'no letter on a group');
         expect(
-          find.descendant(of: tile, matching: find.text('Sam Rivera, Priya Nair, Omar Haddad')),
+          find.descendant(of: tile, matching: find.text(groupName)),
           findsOneWidget,
           reason: 'named as the group\'s row is',
         );

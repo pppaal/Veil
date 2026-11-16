@@ -159,11 +159,11 @@ void main() {
     });
   }
 
-  testWidgets('a group\'s pane is titled with its members and names who wrote each message', (tester) async {
+  testWidgets('a group\'s pane is titled with its name and names who wrote each message', (tester) async {
     await withPhoneApp(tester, identities, size: wideSmall, withGroup: true, location: '/conversations',
         body: (world) async {
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, groupConversationId);
-      expect(inChat(find.text('Sam Rivera, Priya Nair, Omar Haddad')), findsOneWidget);
+      expect(inChat(find.text(groupName)), findsOneWidget);
       expect(inChat(find.text('4 members')), findsOneWidget);
       for (final name in ['Sam Rivera', 'Priya Nair', 'Omar Haddad']) {
         expect(inChat(find.text(name)), findsOneWidget, reason: name);

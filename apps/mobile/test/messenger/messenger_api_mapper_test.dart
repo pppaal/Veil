@@ -207,5 +207,23 @@ void main() {
       expect(mapper.appliedTimer({'conversation': <String, dynamic>{}}, requested: 30)?.seconds, isNull);
       expect(mapper.appliedTimer({'conversation': {'disappearingTimerSeconds': '60'}}, requested: 30), isNull);
     });
+
+    test('a group answer gives its name; one with no usable name gives none', () {
+      final meta = mapper.groupMeta({
+        'id': 'conv-group',
+        'name': ' Moving day ',
+        'description': null,
+        'isPublic': false,
+        'members': [
+          {'userId': 'user-a', 'handle': 'a', 'role': 'owner'},
+          {'userId': 'user-b', 'handle': 'b', 'role': 'member'},
+        ],
+      });
+      expect(meta?.name, 'Moving day');
+      expect(meta?.memberCount, 2);
+      expect(mapper.groupMeta({'name': '  '}), isNull);
+      expect(mapper.groupMeta({'name': 7}), isNull);
+      expect(mapper.groupMeta({'name': 'Moving day', 'description': 3}), isNull);
+    });
   });
 }

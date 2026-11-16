@@ -33,6 +33,17 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
     if (changed) store.notify('panels');
   }
 
+  // A message from the other side ends its "typing…" there and then, even
+  // when no stop arrives: the server drops a stop that follows its start
+  // too closely, and a phone may not send one at all. A reaction is not
+  // what was being typed, so it ends nothing. A message summary names only
+  // the sending device, never its user, so the whole conversation's entry
+  // goes; only a direct chat shows typing at all.
+  function endTyping(convId, view) {
+    if (view?.kind === 'reaction') return;
+    if (state.typing.delete(convId)) store.notify('panels');
+  }
+
   function close() {
     if (!socket) return;
     try {
@@ -52,7 +63,18 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
     s.on('disconnect', (reason) => onStatus(reason === 'io server disconnect' ? 'offline' : 'connecting'));
     s.on('connect_error', () => onStatus('offline'));
 
-    s.on('message.new', (message) => inbound.onMessageNew(message));
+    // The typing line goes once the message is in the list, before the
+    // browser paints again: the message never shows under "typing…".
+    s.on('message.new', async (message) => {
+      const fromPeer = Boolean(message) && message.senderDeviceId !== state.me?.deviceId;
+      if (fromPeer) onPeerMessage();
+      let view = null;
+      try {
+        view = await inbound.onMessageNew(message);
+      } finally {
+        if (fromPeer) endTyping(message.conversationId, view);
+      }
+    });
     s.on('message.delivered', ({ messageId, deliveredAt }) => inbound.patchMessage(messageId, { deliveredAt }));
     s.on('message.read', ({ messageId, readAt }) => inbound.patchMessage(messageId, { readAt }));
     s.on('message.edited', (message) => inbound.onMessageEdited(message));
@@ -85,9 +107,6 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
       conv.disappearingTimerSeconds = Number.isInteger(disappearingTimerSeconds) ? disappearingTimerSeconds : null;
       messages.persistConversation(conv);
     });
-    s.on('message.new', (message) => {
-      if (message && message.senderDeviceId !== state.me?.deviceId) onPeerMessage();
-    });
   }
 
   function stopTyping(convId) {
@@ -101,27 +120,29 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
     if (socket?.connected) socket.emit('typing.stop', { conversationId: convId });
   }
 
+  function connect() {
+    if (!state.me) return;
+    const io = getIo();
+    if (typeof io !== 'function') {
+      onStatus('offline');
+      return;
+    }
+    close();
+    onStatus('connecting');
+    socket = io({
+      path: '/v1/realtime',
+      auth: (send) => send({ token: stack.sessionStore.getAccessToken() }),
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.4,
+    });
+    listen(socket);
+  }
+
   return {
-    connect() {
-      if (!state.me) return;
-      const io = getIo();
-      if (typeof io !== 'function') {
-        onStatus('offline');
-        return;
-      }
-      close();
-      onStatus('connecting');
-      socket = io({
-        path: '/v1/realtime',
-        auth: (send) => send({ token: stack.sessionStore.getAccessToken() }),
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 30000,
-        randomizationFactor: 0.4,
-      });
-      listen(socket);
-    },
+    connect,
 
     disconnect() {
       close();
@@ -135,6 +156,13 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
     // expired one; the socket reads the current token on every connect.
     reviveIfDisconnected() {
       if (socket && !socket.connected) socket.connect();
+    },
+
+    // The browser says the network is back: connect now rather than when
+    // the reconnection backoff (up to 30 seconds) next tries, or never, for
+    // a socket the server closed. Only a channel that was open is revived.
+    reconnectNow() {
+      if (socket && !socket.connected) connect();
     },
 
     // Typing: one start at most every 3s while the composer has text, and a

@@ -14,8 +14,9 @@ import {
 } from './support';
 
 // With the relay's realtime gateway on: messages, edits and deletes are
-// pushed, a read receipt reaches only the sender, and typing shows in the
-// peer's header while it lasts.
+// pushed, a read receipt reaches only the sender, typing shows in the
+// peer's header while it lasts, and the connection comes back as soon as
+// the browser is online again.
 
 test.describe.configure({ mode: 'serial' });
 
@@ -102,6 +103,54 @@ test.describe('realtime', () => {
     for (const device of [alice, bob]) {
       await expect.poll(() => bubbleTexts(device), { timeout: 5_000 }).toEqual(['Message deleted']);
     }
+    expectNoErrors(alice, bob);
+  });
+
+  test("typing ends the moment the peer's message shows, with no stop", async () => {
+    const sub = alice.page.locator('.panel .panel-title > div:last-child');
+    // Bob's typing stops never reach the relay, as when the server drops a
+    // stop that follows its start too closely: only the 6 second expiry
+    // would end his "typing…" otherwise.
+    await bob.page.evaluate(() => {
+      const original = WebSocket.prototype.send;
+      (window as unknown as { restoreSend: () => void }).restoreSend = () => {
+        WebSocket.prototype.send = original;
+      };
+      WebSocket.prototype.send = function (this: WebSocket, data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+        if (typeof data === 'string' && data.includes('"typing.stop"')) return;
+        original.call(this, data);
+      };
+    });
+    await bob.page.evaluate(() => {
+      const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
+      textarea.value = 'on my';
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect(sub).toHaveText('typing…', { timeout: 5_000 });
+
+    // What the header says in the first frame that shows the message.
+    const atArrival = alice.page.waitForFunction(() => {
+      const texts = [...document.querySelectorAll('.panel-msgs .msg-row .msg-text')].map((node) => node.textContent);
+      if (!texts.includes('on my way')) return null;
+      return { subtitle: document.querySelector('.panel .panel-title > div:last-child')?.textContent ?? '' };
+    }, null, { timeout: 5_000 });
+    await send(bob, 'on my way');
+    expect(await (await atArrival).jsonValue()).toEqual({ subtitle: '' });
+    await expect(sub).toHaveClass('sub');
+    await bob.page.evaluate(() => (window as unknown as { restoreSend: () => void }).restoreSend());
+    expectNoErrors(alice, bob);
+  });
+
+  test('the bar reconnects as soon as the browser is back online', async () => {
+    const bar = alice.page.locator('#conn-status');
+    // The relay closes every live connection and turns new ones away. A
+    // socket the server closed is not retried on its own.
+    await relay('/__test/realtime', { enabled: false });
+    await expect(bar).toHaveText('Offline', { timeout: 10_000 });
+    await relay('/__test/realtime', { enabled: true });
+    await alice.page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect(bar).toHaveClass(/connected/, { timeout: 5_000 });
+    await expect(bar).toBeHidden();
     expectNoErrors(alice, bob);
   });
 });

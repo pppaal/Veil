@@ -174,5 +174,7 @@ sidebar.mount();
 createNewChatDialog({ store, stack, history, tabs, dialogs }).mount();
 tabs.mount();
 transferDialogs.mount();
+// The bar stops saying "Offline" as soon as the network is back.
+window.addEventListener('online', () => realtime.reconnectNow());
 
 auth.boot();

@@ -114,6 +114,19 @@ void main() {
     expect(find.text(_en.deviceTransferOldStep1), findsNothing, reason: 'the instructions were the start screen');
   });
 
+  // A real code is longer than a phone is wide; drawn whole it wrapped into
+  // a block of machine text. "Copy code" copies the whole of it.
+  testWidgets('the code is one line that ends in "…" when it does not fit', (tester) async {
+    await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.add(const Duration(minutes: 4)), view: const Size(360, 3000));
+
+    final code = tester.widget<Text>(find.text(_code));
+    expect(code.maxLines, 1);
+    expect(code.softWrap, isFalse);
+    expect(code.overflow, TextOverflow.ellipsis);
+    final box = tester.getSize(find.byKey(const ValueKey('transfer-code')));
+    expect(box.height, lessThan(44), reason: 'one line, whatever the code\'s length');
+  });
+
   testWidgets('what an approval came to is said under the button that approves, in green', (tester) async {
     await _pump(
       tester,

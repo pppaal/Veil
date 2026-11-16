@@ -145,7 +145,10 @@ class ChatMenuEntry {
 /// The actions of a chat's bar, plain icon buttons: the safety number (a
 /// 1:1 opens the peer's, a group the list of its members with each one's),
 /// the search, and a menu with the rest ([menu]: the disappearing timer,
-/// notifications, reporting and blocking).
+/// notifications, reporting and blocking). Each is 44 square, the smallest
+/// tap target the app allows, not Material's 48: at 360 wide the three at
+/// 48 left a verified "Sam Rivera" cut to "Sam Rive…", where WhatsApp fits
+/// a short name beside its three.
 class ChatBarActions extends StatelessWidget {
   const ChatBarActions({
     super.key,
@@ -158,22 +161,38 @@ class ChatBarActions extends StatelessWidget {
   final VoidCallback onOpenSearch;
   final List<ChatMenuEntry> menu;
 
+  /// The size of each action.
+  static const double actionSize = 44;
+
+  static final ButtonStyle _actionStyle = IconButton.styleFrom(
+    minimumSize: const Size.square(actionSize),
+    maximumSize: const Size.square(actionSize),
+    padding: EdgeInsets.zero,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
-    final textStyle = Theme.of(context).textTheme.bodyLarge;
+    final theme = Theme.of(context);
+    final textStyle = theme.textTheme.bodyLarge;
+    // The menu is drawn in surfaceRaised, which in dark is the colour of
+    // the hairline `stroke`: the divider takes the stronger one there.
+    final dividerColor = theme.brightness == Brightness.dark ? palette.strokeStrong : palette.stroke;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
           tooltip: l10n.safetyNumbersTitle,
           onPressed: onOpenSafetyNumbers,
+          style: _actionStyle,
           icon: const Icon(Icons.verified_user_outlined),
         ),
         IconButton(
           tooltip: l10n.chatSearchTooltip,
           onPressed: onOpenSearch,
+          style: _actionStyle,
           icon: const Icon(Icons.search),
         ),
         PopupMenuButton<String>(
@@ -181,6 +200,8 @@ class ChatBarActions extends StatelessWidget {
           tooltip: l10n.chatMenuTooltip,
           position: PopupMenuPosition.under,
           color: palette.surfaceRaised,
+          style: _actionStyle,
+          padding: EdgeInsets.zero,
           icon: const Icon(Icons.more_vert_outlined),
           // The items were built when the menu opened; this runs with the
           // menu of the latest build. An entry is found by its key, so one
@@ -193,7 +214,7 @@ class ChatBarActions extends StatelessWidget {
           },
           itemBuilder: (context) => [
             for (final entry in menu) ...[
-              if (entry.divided) const PopupMenuDivider(height: 1),
+              if (entry.divided) PopupMenuDivider(height: 1, color: dividerColor),
               PopupMenuItem<String>(
                 key: ValueKey('chat-menu-${entry.key}'),
                 value: entry.key,

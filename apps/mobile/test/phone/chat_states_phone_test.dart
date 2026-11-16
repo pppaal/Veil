@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
@@ -36,6 +38,36 @@ void main() {
     }
     await pumpFrames(tester, frames: 3);
   }
+
+  // At 48 each, the three actions left a verified 10-letter name about
+  // 88 px: "Sam Rive…" on every verified chat at the most common width.
+  testWidgets('at 360 wide a verified name fits beside the three actions, each 44 square', (tester) async {
+    await withPhoneApp(tester, identities, location: _chat, body: (world) async {
+      expect(find.byTooltip('Verified'), findsOneWidget, reason: 'the seeded peer is verified');
+      final name = tester.renderObject<RenderParagraph>(find.descendant(
+        of: find.descendant(of: find.byType(ChatBarTitle), matching: find.text('Sam Rivera')),
+        matching: find.byType(RichText),
+      ));
+      expect(name.didExceedMaxLines, isFalse, reason: '"Sam Rivera" is whole');
+      for (final action in ['Safety number', 'Search', 'More options']) {
+        expect(tester.getSize(find.byTooltip(action)), const Size.square(ChatBarActions.actionSize), reason: action);
+      }
+    });
+  });
+
+  // In dark the menu's fill (surfaceRaised) is the colour of the hairline
+  // `stroke`, which drew the line above Report invisible.
+  testWidgets('in dark, the menu\'s line above Report shows against the menu', (tester) async {
+    await withPhoneApp(tester, identities, location: _chat, body: (world) async {
+      await tester.tap(find.byKey(const ValueKey('chat-menu')));
+      await pumpFrames(tester, frames: 4);
+      final context = tester.element(find.byKey(const ValueKey('chat-menu-report')));
+      expect(Theme.of(context).brightness, Brightness.dark);
+      final divider = tester.widget<PopupMenuDivider>(find.byType(PopupMenuDivider));
+      expect(divider.color, context.veilPalette.strokeStrong);
+      expect(divider.color, isNot(context.veilPalette.surfaceRaised));
+    });
+  });
 
   group('an empty chat', () {
     // One muted line, as Telegram's "No messages here yet": no line on

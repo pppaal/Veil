@@ -7,6 +7,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
+import 'package:veil_mobile/src/features/chat/presentation/typing_indicator.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
@@ -167,12 +168,21 @@ void main() {
       });
     });
 
+    // The dots bubble starts where the peer's bubbles above it do: past
+    // the avatar column in a group.
+    void expectDotsInLineWithBubbles(WidgetTester tester, String peerLine) {
+      final dots = find.descendant(of: find.byType(TypingIndicator), matching: find.byType(DecoratedBox)).first;
+      final bubble = find.ancestor(of: find.text(peerLine), matching: find.byType(MessageBubble));
+      expect(tester.getTopLeft(dots).dx, tester.getTopLeft(bubble).dx);
+    }
+
     testWidgets('says who is typing; a 1:1 only that they are', (tester) async {
       await withPhoneApp(tester, identities, withGroup: true, location: _group, body: (world) async {
         world.messenger.presenceTyping.typingStarted(groupConversationId, 'priya');
         await tester.pump();
         // Called as her bubbles are: by the nickname saved for her handle.
         expect(find.text('Priya Nair is typing…'), findsOneWidget);
+        expectDotsInLineWithBubbles(tester, latestGroupLine);
         // The indicator clears by itself.
         await tester.pump(const Duration(seconds: 6));
         expect(find.textContaining('typing'), findsNothing);
@@ -182,6 +192,7 @@ void main() {
         await tester.pump();
         // The dots alone; a screen reader still hears it.
         expect(find.bySemanticsLabel('Typing…'), findsOneWidget);
+        expectDotsInLineWithBubbles(tester, latestChatLine);
         expect(find.text('Typing…'), findsNothing);
         expect(find.textContaining(' is typing'), findsNothing);
         await tester.pump(const Duration(seconds: 6));

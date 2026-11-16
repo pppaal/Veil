@@ -160,16 +160,21 @@ class MessageSearchResultTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       // The snippet is a person's words: drawn as they wrote
-                      // them, with the query in bold.
+                      // them, with the query in bold, and led by "You: " when
+                      // they are the user's own, as the chat's row leads its
+                      // preview.
                       RichText(
                         text: TextSpan(
                           style: snippetStyle,
-                          children: buildSearchHighlightTextSpans(
-                            text: result.bodySnippet,
-                            query: query,
-                            highlightStyle: snippetStyle?.copyWith(color: palette.text, fontWeight: FontWeight.w600),
-                            baseStyle: snippetStyle,
-                          ),
+                          children: [
+                            if (result.isMine) TextSpan(text: l10n.conversationsPreviewYou('')),
+                            ...buildSearchHighlightTextSpans(
+                              text: result.bodySnippet,
+                              query: query,
+                              highlightStyle: snippetStyle?.copyWith(color: palette.text, fontWeight: FontWeight.w600),
+                              baseStyle: snippetStyle,
+                            ),
+                          ],
                         ),
                         textScaler: MediaQuery.textScalerOf(context),
                         maxLines: 1,

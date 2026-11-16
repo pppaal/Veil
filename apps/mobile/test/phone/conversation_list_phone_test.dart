@@ -347,4 +347,51 @@ void main() {
       },
     );
   });
+
+  // As the chat's row leads its preview: the user's own words found by a
+  // search say so, someone else's do not.
+  testWidgets('a message of the user\'s own found by search is led by "You: "', (tester) async {
+    MessageSearchResult hit(String id, {required bool mine, required String body}) => MessageSearchResult(
+          conversationId: chatConversationId,
+          messageId: id,
+          peerHandle: peerHandle,
+          peerDisplayName: 'Sam Rivera',
+          sentAt: DateTime.utc(2026, 4, 7, 9, 12),
+          messageKind: MessageKind.text,
+          isMine: mine,
+          bodySnippet: body,
+        );
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/conversations',
+      prepare: (world) async {
+        world.cache.archiveHits = [
+          hit('own-hit', mine: true, body: 'bring the van at six'),
+          hit('their-hit', mine: false, body: 'the van is booked'),
+        ];
+        return null;
+      },
+      body: (world) async {
+        await tester.enterText(find.byType(TextField), 'van');
+        // The archive search waits 180 ms for the typing to stop.
+        await pumpFrames(tester, frames: 4);
+        final tiles = find.byType(MessageSearchResultTile);
+        await tester.dragUntilVisible(tiles.last, find.byType(ListView), const Offset(0, -200));
+        await pumpFrames(tester, frames: 2);
+        String snippetOf(String id) {
+          final tile = find.byWidgetPredicate(
+            (widget) => widget is MessageSearchResultTile && widget.result.messageId == id,
+          );
+          final snippet = find.descendant(of: tile, matching: find.byType(RichText)).last;
+          return tester.widget<RichText>(snippet).text.toPlainText();
+        }
+
+        final l10n = lookupAppLocalizations(const Locale('en'));
+        expect(snippetOf('own-hit'), l10n.conversationsPreviewYou('bring the van at six'));
+        expect(snippetOf('their-hit'), 'the van is booked');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
 }

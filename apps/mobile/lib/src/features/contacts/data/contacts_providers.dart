@@ -67,6 +67,9 @@ class ContactsController extends ChangeNotifier {
   bool _mutating = false;
   bool _loadFailed = false;
   String? _errorMessage;
+  // Moves on at every refresh: an answer to an earlier one, made for the
+  // account signed in then or overtaken by a later read, is dropped.
+  int _generation = 0;
 
   List<ContactEntry> get contacts => _contacts;
   bool get isLoading => _loading;
@@ -80,9 +83,11 @@ class ContactsController extends ChangeNotifier {
   String? get _accessToken => ref.read(appSessionProvider).accessToken;
 
   Future<void> refresh() async {
+    final generation = ++_generation;
     final token = _accessToken;
     if (token == null) {
       _contacts = const [];
+      _loading = false;
       notifyListeners();
       return;
     }
@@ -92,17 +97,21 @@ class ContactsController extends ChangeNotifier {
     try {
       final raw = await apiClient.getContacts(token);
       final labels = await nicknames.load();
+      if (generation != _generation) return;
       _contacts = [
         for (final json in raw.whereType<Map<String, dynamic>>())
           ContactEntry.fromJson(json, nickname: labels[(json['handle'] as String?)?.toLowerCase()]?.name),
       ];
       _loadFailed = false;
     } catch (error) {
+      if (generation != _generation) return;
       _loadFailed = true;
       _errorMessage = formatUserFacingError(error);
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (generation == _generation) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 

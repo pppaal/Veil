@@ -105,7 +105,7 @@ matter most: they are what most people see without scrolling.
 |---|---|---|
 | 1 | **Choose a handle** | The handle field with "alex" typed, and Create account. |
 | 2 | **Chats** | A group and five one-to-one chats. |
-| 3 | **A chat** | Sam Rivera's chat from 09:03 on: a thumbs-up on his news, two replies (the second disappearing), Sam typing. |
+| 3 | **A chat** | Sam Rivera's chat this morning: his question about the lease and the reply, a thumbs-up on his news, two replies (the second disappearing), Sam typing. |
 | 4 | **Move to a new phone** | The old phone's start screen: three numbered steps and Get code. |
 | 5 | **App lock** | The lock screen with a PIN typed in. |
 | 6 | **Settings** | The top of Settings as it opens: the profile row, Appearance, Privacy and Security. |

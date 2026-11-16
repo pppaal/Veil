@@ -32,13 +32,15 @@ phone in a form the server can read.
   revoke a phone, it loses access.
 - **Disappearing messages.** Set a timer on a chat, and its messages are
   deleted from every device when the timer runs out.
+- **Block, report and mute.** Block or report someone from a chat or your
+  contacts, and turn a chat's notifications off for a while.
 
 Veil has no ads and no analytics, and there is no account recovery: if you
 lose your phone, you lose the account.
 
-Not in the mobile build, so not in this listing: view-once messages,
-block, mute and report. The server has the endpoints; the app has no screen
-for any of them yet. Put a bullet back when its screen ships.
+Not in the mobile build, so not in this listing: view-once messages. The
+server has the endpoint; the app has no screen for it yet. Put a bullet back
+when its screen ships.
 
 ## Keywords (100 chars, comma-separated)
 
@@ -53,9 +55,8 @@ for any of them yet. Put a bullet back when its screen ships.
 
 17+ (unrestricted web access not enabled, but user-generated content is
 end-to-end encrypted so we cannot moderate private content). The mobile app
-has no reporting or blocking screen yet, though the server takes abuse
-reports. App Review expects both in an app with user-generated content
-(guideline 1.2): a launch blocker.
+reports and blocks accounts from a chat, a message and a contact, as App
+Review expects in an app with user-generated content (guideline 1.2).
 
 ## Privacy nutrition label
 

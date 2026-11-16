@@ -357,6 +357,7 @@
   "errorTransferCompletionInvalid": "This phone couldn't finish the transfer. Start again on the old phone.",
   "errorAttachmentCanceled": "The upload was canceled.",
   "errorAttachmentRejected": "This file couldn't be sent. Attach it again.",
+  "errorPeerUnreachable": "Messages can't be sent to this account.",
 
   "conversationsNewChat": "New chat",
   "conversationsNewGroup": "New group",

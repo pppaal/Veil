@@ -51,8 +51,8 @@ disappearing messages, and message search that stays on your phone.
 - Primary category: **Social Networking** (alt: Utilities).
 - Age rating: expect **17+** for unfiltered user-generated messaging. Answer the
   ITunes/Play content questionnaire truthfully (user communication, no
-  moderation of E2E content is possible by design; the mobile app has no
-  block or report screen yet, so claim none).
+  moderation of E2E content is possible by design; the mobile app blocks and
+  reports accounts, so say so).
 
 ## Privacy "nutrition label" (App Store Connect): answer precisely
 

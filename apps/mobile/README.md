@@ -130,8 +130,9 @@ script, by file and literal:
 
 Under 1120 px the conversation list is the whole screen and a chat opens on
 top of it (`conversation_list_phone.dart`, `chat_phone_layout.dart`): content
-first, with the bar carrying the safety number, the search and the
-disappearing timer. From 1120 px the same list and the same chat sit side by
+first, with the bar carrying the safety number, the search and a menu (the
+disappearing timer, muting, and in a 1:1 reporting and blocking the peer).
+From 1120 px the same list and the same chat sit side by
 side, each under its own bar (`ChatPaneBar` in `chat_bar.dart`): the list in
 a 380 px pane with the open conversation's row marked, the chat in the rest,
 its messages and composer at most 760 px wide. Neither pane puts anything

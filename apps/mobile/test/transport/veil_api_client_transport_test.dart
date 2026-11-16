@@ -412,4 +412,27 @@ void main() {
       'messageId',
     });
   });
+
+  // The API reads a missing mutedForSeconds as "no end" and null as "on
+  // again": a mute with no end that sent null turned notifications back on.
+  test('a mute sends its length, leaves it out for no end, and an unmute sends null', () async {
+    const conversationId = '0b8f6a2e-4c3d-4b5a-8e7f-1a2b3c4d5e6f';
+    final bodies = <Map<String, dynamic>>[];
+    final api = VeilApiClient(
+      baseUrl: _baseUrl,
+      client: MockClient((request) async {
+        expect(request.url.toString(), '$_baseUrl/safety/mutes/$conversationId');
+        bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response('{"mute": null}', 201);
+      }),
+    );
+
+    await api.setConversationMute('t', conversationId, mutedForSeconds: 3600, unmute: false);
+    await api.setConversationMute('t', conversationId, unmute: false);
+    await api.setConversationMute('t', conversationId, unmute: true);
+
+    expect(bodies[0], {'mutedForSeconds': 3600});
+    expect(bodies[1], isEmpty);
+    expect(bodies[2], {'mutedForSeconds': null});
+  });
 }

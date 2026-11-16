@@ -85,11 +85,12 @@ class ConversationMutes extends ChangeNotifier {
     try {
       final stored = await _store.read();
       _mutes = {...stored, ..._mutes};
+      // What ended while the app was closed is forgotten for good.
+      if (_dropExpired()) await _store.write(_mutes);
     } catch (_) {
       // An unreadable keystore leaves nothing muted; a new mute writes the
       // document again.
     }
-    _dropExpired();
     _scheduleExpiry();
     _notify();
   }
@@ -150,9 +151,12 @@ class ConversationMutes extends ChangeNotifier {
     }
   }
 
-  void _dropExpired() {
+  /// Forgets the mutes that have ended; true when there were any.
+  bool _dropExpired() {
     final now = _clock();
+    final before = _mutes.length;
     _mutes.removeWhere((_, until) => until != null && !until.isAfter(now));
+    return _mutes.length != before;
   }
 
   // Wakes when the next mute ends, so what shows a chat as muted stops

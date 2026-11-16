@@ -52,6 +52,7 @@ final _byWireCode = <VeilApiException, UserFacingErrorCode>{
   VeilApiException('x', code: 'transfer_completion_invalid'): UserFacingErrorCode.transferCompletionInvalid,
   VeilApiException('x', code: 'attachment_upload_canceled'): UserFacingErrorCode.attachmentCanceled,
   VeilApiException('x', code: 'attachment_upload_invalid'): UserFacingErrorCode.attachmentRejected,
+  VeilApiException('Peer is unreachable', code: 'peer_unreachable', statusCode: 403): UserFacingErrorCode.peerUnreachable,
 };
 
 void main() {

@@ -1178,6 +1178,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'This file couldn\'t be sent. Attach it again.';
 
   @override
+  String get errorPeerUnreachable => 'Messages can\'t be sent to this account.';
+
+  @override
   String get conversationsNewChat => 'New chat';
 
   @override

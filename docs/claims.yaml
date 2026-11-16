@@ -59,7 +59,7 @@ claims:
       - file: docs/app-store-listing-metadata.md
         quote: "Promotional text (iOS, ≤170 chars, updatable without review): End-to-end encrypted messages with no phone number, no email and no real name."
       - file: docs/app-store-listing-metadata.md
-        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app has no block or report screen yet, so claim none)."
+        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app blocks and reports accounts, so say so)."
       - file: docs/launch/app-store-listing.md
         quote: "End-to-end encrypted messages with no phone number, no email and no ads."
       - file: docs/launch/app-store-listing.md
@@ -404,3 +404,33 @@ claims:
     evidence:
       - test: apps/api/test/unit/app-config.service.spec.ts
         name: "production requires VEIL_AUDIT_REPORT_SHA256"
+  - id: mobile-block-report-mute
+    text: "The mobile app reports and blocks accounts and mutes chats. A report holds the reported account, the reason and which chat or message, never what it says; the server refuses a 1:1 send across a block in either direction; a muted chat raises no notification on the phone, and the server is told so it wakes no device for it."
+    sources:
+      - file: README.md
+        quote: "Block, report and mute: from a chat's menu, a message's long-press sheet and a contact's sheet, with Settings > Privacy > Blocked accounts; a muted chat raises no notification on the phone"
+      - file: store/play/full-en.txt
+        quote: "Block or report someone, and mute a chat"
+      - file: store/appstore/metadata-en.txt
+        quote: "Block or report someone, and mute a chat"
+      - file: docs/launch/play-store-listing.md
+        quote: "Block or report someone from a chat or your contacts, and mute a chat."
+      - file: docs/launch/play-store-listing.md
+        quote: "A chat's menu, a message's long-press sheet and a contact's sheet file a report (POST /safety/reports): the account, the reason and which chat or message, never its text."
+      - file: docs/launch/app-store-listing.md
+        quote: "Block or report someone from a chat or your contacts, and turn a chat's notifications off for a while."
+      - file: docs/launch/app-store-listing.md
+        quote: "The mobile app reports and blocks accounts from a chat, a message and a contact, as App Review expects in an app with user-generated content (guideline 1.2)."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app blocks and reports accounts, so say so)."
+    evidence:
+      - test: apps/mobile/test/safety/safety_relay_test.dart
+        name: "a report carries the account, the reason and where it was filed from, nothing else"
+      - test: apps/mobile/test/safety/safety_relay_test.dart
+        name: "a block refuses sends both ways until it is lifted"
+      - test: apps/mobile/test/safety/safety_relay_test.dart
+        name: "a muted chat raises no notification until the mute ends"
+      - test: apps/mobile/test/transport/veil_api_client_transport_test.dart
+        name: "an abuse report carries the FileAbuseReportRequest fields and no text"
+      - test: apps/api/src/modules/messages/messages.service.spec.ts
+        name: "refuses to send to a peer blocked in either direction"

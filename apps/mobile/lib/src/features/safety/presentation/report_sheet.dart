@@ -136,7 +136,8 @@ class _ReportSheetState extends State<_ReportSheet> {
                   ),
               ],
             ),
-            if (widget.offerBlock)
+            if (widget.offerBlock) ...[
+              const SizedBox(height: VeilSpace.xs),
               VeilGroup(
                 footer: footer,
                 children: [
@@ -148,6 +149,7 @@ class _ReportSheetState extends State<_ReportSheet> {
                   ),
                 ],
               ),
+            ],
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
               child: VeilButton(

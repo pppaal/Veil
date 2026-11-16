@@ -1906,6 +1906,12 @@ abstract class AppLocalizations {
   /// **'This file couldn\'t be sent. Attach it again.'**
   String get errorAttachmentRejected;
 
+  /// No description provided for @errorPeerUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages can\'t be sent to this account.'**
+  String get errorPeerUnreachable;
+
   /// No description provided for @conversationsNewChat.
   ///
   /// In en, this message translates to:

@@ -137,6 +137,10 @@ class FakeRelay {
   /// who filed it.
   final List<({String reporterUserId, Map<String, String> fields})> reports = [];
 
+  /// Reports to refuse as the throttle does (six a minute) before any is
+  /// taken again.
+  int refuseReports = 0;
+
   /// Whether either of two users blocked the other, as
   /// SafetyService.isBlockedEitherWay answers it.
   bool blockedEitherWay(String userIdA, String userIdB) =>
@@ -629,6 +633,10 @@ class FakeRelayClient extends VeilApiClient {
     String? conversationId,
     String? messageId,
   }) async {
+    if (relay.refuseReports > 0) {
+      relay.refuseReports -= 1;
+      throw VeilApiException('Too many requests', statusCode: 429, code: 'rate_limited');
+    }
     if (reportedUserId == me.userId) {
       throw VeilApiException('Cannot report yourself', statusCode: 400, code: 'validation_failed');
     }

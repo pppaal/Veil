@@ -371,12 +371,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         groupSenderUserId: groupSenderUserId, groupSenderHandle: groupSenderHandle);
     if (!canReact && report == null) return;
     VeilHaptics.selection();
+    // The message list on screen, so a menu that shows alone keeps clear of
+    // what is under the list.
+    final list = _scrollController.hasClients ? _scrollController.position.context.notificationContext : null;
+    final box = list?.findRenderObject();
     await showMessageActions(
       context,
       anchor: anchor,
       isMine: message.isMine,
       onSelected: canReact ? (emoji) => controller.toggleReaction(message, emoji) : null,
       onReport: report,
+      messages: box is RenderBox && box.hasSize ? box.localToGlobal(Offset.zero) & box.size : null,
     );
   }
 }

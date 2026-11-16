@@ -272,6 +272,13 @@ void main() {
         await pumpFrames(tester, frames: 4);
         expect(find.byKey(const ValueKey('message-report')), findsOneWidget);
         expect(find.byType(ReactionPickerWidget), findsNothing);
+        // The newest message is the last above the blocked line: the menu
+        // opens above it rather than over the line.
+        final menu = tester.getRect(find.byKey(const ValueKey('message-report')));
+        final line = tester.getRect(find.text(en.blockedComposerLine(peerHandle)));
+        final message = tester.getRect(find.text(latestChatLine));
+        expect(menu.bottom, lessThanOrEqualTo(line.top), reason: '"You blocked @sam." stays in sight');
+        expect(menu.bottom, lessThanOrEqualTo(message.top), reason: 'above the message, with no room under it');
       },
     );
   });

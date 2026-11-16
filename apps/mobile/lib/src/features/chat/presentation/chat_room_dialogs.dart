@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/security/sensitive_text_redactor.dart';
@@ -55,14 +57,18 @@ Future<void> showAttachmentTicketDialog(BuildContext context, String url) async 
 /// above it and, with [onReport] (a message someone else wrote), a small
 /// menu under it with Report, as WhatsApp and the web app place them.
 /// Without [onSelected] (a message that did not open, or a 1:1 with someone
-/// blocked, where the server refuses a reaction) only the menu shows. A tap
-/// outside closes both.
+/// blocked, where the server refuses a reaction) only the menu shows: under
+/// the message, or above it when there is no room under it inside
+/// [messages] (the message list on screen; what is under the list, such as
+/// a blocked chat's "You blocked @sam." line, stays visible). A tap outside
+/// closes both.
 Future<void> showMessageActions(
   BuildContext context, {
   required Rect anchor,
   required bool isMine,
   ValueChanged<String>? onSelected,
   VoidCallback? onReport,
+  Rect? messages,
 }) async {
   final l10n = AppLocalizations.of(context);
   await showGeneralDialog<void>(
@@ -116,7 +122,7 @@ Future<void> showMessageActions(
                 ),
               ),
             );
-      return _MessageActionsLayout(anchor: anchor, isMine: isMine, bar: bar, menu: menu);
+      return _MessageActionsLayout(anchor: anchor, isMine: isMine, bar: bar, menu: menu, messages: messages);
     },
   );
 }
@@ -124,12 +130,21 @@ Future<void> showMessageActions(
 /// Places the reaction bar above [anchor] (below it when there is no room)
 /// and the menu under it, on the message's side, inside the safe area.
 class _MessageActionsLayout extends StatelessWidget {
-  const _MessageActionsLayout({required this.anchor, required this.isMine, this.bar, this.menu});
+  const _MessageActionsLayout({required this.anchor, required this.isMine, this.bar, this.menu, this.messages});
 
   final Rect anchor;
   final bool isMine;
   final Widget? bar;
   final Widget? menu;
+  final Rect? messages;
+
+  // A menu alone: under the message when it fits above [bottom], else above
+  // the message.
+  double _menuAloneTop(double top, double bottom) {
+    if (anchor.bottom + _menuHeight <= bottom) return anchor.bottom.clamp(top, bottom - _menuHeight);
+    final above = anchor.top - _gap - _menuHeight;
+    return above >= top ? above : anchor.bottom.clamp(top, bottom - _menuHeight);
+  }
 
   static const double _barHeight = 52;
   static const double _menuHeight = 52;
@@ -160,7 +175,11 @@ class _MessageActionsLayout extends StatelessWidget {
     return Stack(
       children: [
         if (bar != null) place(barTop, bar!),
-        if (menu != null) place(bar == null ? anchor.bottom.clamp(top, bottom - _menuHeight) : menuTop, menu!),
+        if (menu != null)
+          place(
+            bar == null ? _menuAloneTop(top, messages == null ? bottom : math.min(bottom, messages!.bottom)) : menuTop,
+            menu!,
+          ),
       ],
     );
   }

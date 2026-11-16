@@ -315,6 +315,8 @@ Future<void> seedConversations(
         isMine: line.mine,
         bodySnippet: body,
         conversationOrder: stored['conversationOrder'] as int?,
+        // As the phone's index keeps it: a group's hit says who wrote it.
+        senderDeviceId: 'dev-$sender',
       ));
     }
     if (!line.mine) return;

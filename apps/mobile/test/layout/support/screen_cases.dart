@@ -353,13 +353,6 @@ const List<ScreenCase> screenCases = [
     location: _chat,
     settle: _openReactionSheet,
   ),
-  ScreenCase(
-    'conversation-list-new-menu',
-    screen: ConversationListScreen,
-    file: 'conversation_list_screen.dart',
-    location: '/conversations',
-    settle: _openNewConversationMenu,
-  ),
 
   // The three screens a user spends the day in, with larger text.
   ScreenCase(
@@ -408,7 +401,7 @@ const List<ScreenCase> screenCases = [
       screen: StartDirectChatScreen,
       file: 'start_direct_chat_screen.dart',
       location: '/start-chat',
-      primaryAction: _primaryButton),
+      primaryAction: _firstInput),
   ScreenCase('start-group',
       screen: StartGroupScreen,
       file: 'start_group_screen.dart',
@@ -1037,12 +1030,6 @@ Future<void> _openReactionSheet(WidgetTester tester) async {
   await tester.longPress(find.byType(MessageBubble).first);
   await pumpFrames(tester, frames: 4);
   expect(find.byType(ReactionPickerWidget), findsOneWidget, reason: 'the reaction sheet did not open');
-}
-
-Future<void> _openNewConversationMenu(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.edit_outlined));
-  await pumpFrames(tester, frames: 3);
-  expect(find.byType(PopupMenuItem<String>), findsNWidgets(2), reason: 'the menu did not open');
 }
 
 Future<void> _openAddContactSheet(WidgetTester tester) async {

@@ -38,9 +38,9 @@ List<List<int>> packPartsIntoLines(List<double> widths, {required double separat
 class ConversationListViewState {
   const ConversationListViewState({
     required this.query,
-    required this.senderFilter,
-    required this.typeFilter,
-    required this.dateFilter,
+    this.senderFilter = MessageSearchSenderFilter.all,
+    this.typeFilter = MessageSearchTypeFilter.all,
+    this.dateFilter = MessageSearchDateFilter.any,
     this.selectedConversationId,
     this.lastNavigationRequestId = 0,
   });

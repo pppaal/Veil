@@ -172,7 +172,7 @@ void main() {
     });
   });
 
-  testWidgets('with no conversation yet, the list says so once and the second pane stays empty', (tester) async {
+  testWidgets('with no conversation yet, the list says so once and the second pane has one muted line', (tester) async {
     await withPhoneApp(
       tester,
       identities,
@@ -183,8 +183,9 @@ void main() {
         expect(find.byType(ChatRoomScreen), findsNothing);
         expect(find.text('No chats yet'), findsOneWidget);
         expect(find.text('New chat'), findsOneWidget);
-        // "Pick one from the list" would point at a list with nothing in it.
-        expect(find.text('Select a chat'), findsNothing);
+        // The pane says what it is for in one muted line, as Telegram's does;
+        // the empty state and its button are the list's alone.
+        expect(find.text('Select a chat'), findsOneWidget);
         expect(find.byType(VeilEmptyState), findsOneWidget, reason: 'only the list\'s');
         expect(tester.takeException(), isNull);
       },

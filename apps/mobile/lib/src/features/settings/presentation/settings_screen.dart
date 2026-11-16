@@ -80,11 +80,6 @@ class SettingsScreen extends ConsumerWidget {
                 title: l10n.settingsSecurityDetailsTitle,
                 onTap: () => context.push('/security-status'),
               ),
-              VeilRow(
-                key: const ValueKey('settings-one-time-link'),
-                title: l10n.oneTimeLinkTitle,
-                onTap: () => context.push('/secret-link'),
-              ),
             ],
           ),
           const _DevicesGroup(),

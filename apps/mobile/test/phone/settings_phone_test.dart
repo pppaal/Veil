@@ -148,7 +148,7 @@ void main() {
       await scrollTo(tester, lock);
       // The seeded phone has a PIN.
       expect(find.descendant(of: lock, matching: find.text(en.commonOn)), findsOneWidget);
-      for (final key in ['settings-lock-now', 'settings-security-details', 'settings-one-time-link']) {
+      for (final key in ['settings-lock-now', 'settings-security-details']) {
         expect(find.byKey(ValueKey(key), skipOffstage: false), findsOneWidget, reason: key);
       }
       final footer = '${en.securityFooterEncryption} ${en.securityFooterDevice} ${en.securityFooterNoRecovery}';

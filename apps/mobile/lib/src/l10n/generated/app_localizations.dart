@@ -1882,12 +1882,6 @@ abstract class AppLocalizations {
   /// **'Messages can\'t be sent to this account.'**
   String get errorPeerUnreachable;
 
-  /// No description provided for @conversationsNewChat.
-  ///
-  /// In en, this message translates to:
-  /// **'New chat'**
-  String get conversationsNewChat;
-
   /// No description provided for @conversationsNewGroup.
   ///
   /// In en, this message translates to:
@@ -1921,7 +1915,7 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsPreviewMessage.
   ///
   /// In en, this message translates to:
-  /// **'Encrypted message'**
+  /// **'Message'**
   String get conversationsPreviewMessage;
 
   /// No description provided for @conversationsPreviewImage.
@@ -1935,12 +1929,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'File'**
   String get conversationsPreviewAttachment;
-
-  /// No description provided for @conversationsPreviewSystem.
-  ///
-  /// In en, this message translates to:
-  /// **'Security notice'**
-  String get conversationsPreviewSystem;
 
   /// No description provided for @conversationsPreviewVoice.
   ///
@@ -1957,8 +1945,20 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsPreviewReaction.
   ///
   /// In en, this message translates to:
-  /// **'Reaction'**
+  /// **'Reacted to a message'**
   String get conversationsPreviewReaction;
+
+  /// No description provided for @conversationsPreviewSender.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}: {text}'**
+  String conversationsPreviewSender(String name, String text);
+
+  /// No description provided for @conversationsPreviewYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You: {text}'**
+  String conversationsPreviewYou(String text);
 
   /// No description provided for @conversationsBarConnecting.
   ///
@@ -1981,7 +1981,7 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsSyncIssueTitle.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t refresh'**
+  /// **'Couldn\'t refresh chats'**
   String get conversationsSyncIssueTitle;
 
   /// No description provided for @conversationsSearchHintCompact.
@@ -1989,60 +1989,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Search'**
   String get conversationsSearchHintCompact;
-
-  /// No description provided for @conversationsFilterAllSenders.
-  ///
-  /// In en, this message translates to:
-  /// **'All senders'**
-  String get conversationsFilterAllSenders;
-
-  /// No description provided for @conversationsFilterMine.
-  ///
-  /// In en, this message translates to:
-  /// **'From me'**
-  String get conversationsFilterMine;
-
-  /// No description provided for @conversationsFilterTheirs.
-  ///
-  /// In en, this message translates to:
-  /// **'From them'**
-  String get conversationsFilterTheirs;
-
-  /// No description provided for @conversationsFilterAllTypes.
-  ///
-  /// In en, this message translates to:
-  /// **'All types'**
-  String get conversationsFilterAllTypes;
-
-  /// No description provided for @conversationsFilterText.
-  ///
-  /// In en, this message translates to:
-  /// **'Text'**
-  String get conversationsFilterText;
-
-  /// No description provided for @conversationsFilterMedia.
-  ///
-  /// In en, this message translates to:
-  /// **'Media'**
-  String get conversationsFilterMedia;
-
-  /// No description provided for @conversationsFilterAnyDate.
-  ///
-  /// In en, this message translates to:
-  /// **'Any date'**
-  String get conversationsFilterAnyDate;
-
-  /// No description provided for @conversationsFilterLast7Days.
-  ///
-  /// In en, this message translates to:
-  /// **'Last 7 days'**
-  String get conversationsFilterLast7Days;
-
-  /// No description provided for @conversationsFilterLast30Days.
-  ///
-  /// In en, this message translates to:
-  /// **'Last 30 days'**
-  String get conversationsFilterLast30Days;
 
   /// No description provided for @conversationsSectionLabel.
   ///
@@ -2053,26 +1999,14 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsNoMatchTitle.
   ///
   /// In en, this message translates to:
-  /// **'No matching chats'**
-  String get conversationsNoMatchTitle;
+  /// **'No results for \"{query}\"'**
+  String conversationsNoMatchTitle(String query);
 
   /// No description provided for @conversationsNoneYetTitle.
   ///
   /// In en, this message translates to:
   /// **'No chats yet'**
   String get conversationsNoneYetTitle;
-
-  /// No description provided for @conversationsNoMatchBody.
-  ///
-  /// In en, this message translates to:
-  /// **'No name or handle matches.'**
-  String get conversationsNoMatchBody;
-
-  /// No description provided for @conversationsNoneYetBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Start a chat with someone\'s handle.'**
-  String get conversationsNoneYetBody;
 
   /// No description provided for @conversationsStartDirect.
   ///
@@ -2085,60 +2019,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Messages'**
   String get conversationsMessagesSection;
-
-  /// No description provided for @conversationsNoMessageMatchBody.
-  ///
-  /// In en, this message translates to:
-  /// **'No message matches these filters.'**
-  String get conversationsNoMessageMatchBody;
-
-  /// No description provided for @conversationsResultFromYou.
-  ///
-  /// In en, this message translates to:
-  /// **'You'**
-  String get conversationsResultFromYou;
-
-  /// No description provided for @conversationsResultFromPeer.
-  ///
-  /// In en, this message translates to:
-  /// **'Them'**
-  String get conversationsResultFromPeer;
-
-  /// No description provided for @conversationsKindImage.
-  ///
-  /// In en, this message translates to:
-  /// **'Photo'**
-  String get conversationsKindImage;
-
-  /// No description provided for @conversationsKindAttachment.
-  ///
-  /// In en, this message translates to:
-  /// **'File'**
-  String get conversationsKindAttachment;
-
-  /// No description provided for @conversationsKindSystem.
-  ///
-  /// In en, this message translates to:
-  /// **'Notice'**
-  String get conversationsKindSystem;
-
-  /// No description provided for @conversationsKindVoice.
-  ///
-  /// In en, this message translates to:
-  /// **'Voice message'**
-  String get conversationsKindVoice;
-
-  /// No description provided for @conversationsKindSticker.
-  ///
-  /// In en, this message translates to:
-  /// **'Sticker'**
-  String get conversationsKindSticker;
-
-  /// No description provided for @conversationsKindReaction.
-  ///
-  /// In en, this message translates to:
-  /// **'Reaction'**
-  String get conversationsKindReaction;
 
   /// No description provided for @conversationsLoadingMore.
   ///
@@ -2157,12 +2037,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Select a chat'**
   String get conversationsChoosePaneTitle;
-
-  /// No description provided for @conversationsChoosePaneBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Pick one from the list or start a new one.'**
-  String get conversationsChoosePaneBody;
 
   /// No description provided for @conversationsNewTooltip.
   ///
@@ -2227,14 +2101,8 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkUsePassphrase.
   ///
   /// In en, this message translates to:
-  /// **'Protect with a passphrase'**
+  /// **'Add a passphrase'**
   String get oneTimeLinkUsePassphrase;
-
-  /// No description provided for @oneTimeLinkUsePassphraseCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'The secret can\'t be read without it.'**
-  String get oneTimeLinkUsePassphraseCaption;
 
   /// No description provided for @oneTimeLinkPassphraseLabel.
   ///
@@ -2257,7 +2125,7 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t create the link. Try again in a moment.'**
+  /// **'Couldn\'t create the link. Try again.'**
   String get oneTimeLinkFailed;
 
   /// No description provided for @oneTimeLinkCopy.
@@ -2281,37 +2149,13 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkSendPassphraseApart.
   ///
   /// In en, this message translates to:
-  /// **'Send the passphrase separately from the link.'**
+  /// **'Send the passphrase separately.'**
   String get oneTimeLinkSendPassphraseApart;
-
-  /// No description provided for @oneTimeLinkLimitsLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'What it doesn\'t protect'**
-  String get oneTimeLinkLimitsLabel;
-
-  /// No description provided for @oneTimeLinkLimitHolder.
-  ///
-  /// In en, this message translates to:
-  /// **'Whoever opens the whole link first can read it. If the channel isn\'t safe, add a passphrase.'**
-  String get oneTimeLinkLimitHolder;
-
-  /// No description provided for @oneTimeLinkLimitReader.
-  ///
-  /// In en, this message translates to:
-  /// **'The person who opens it can copy it or take a screenshot. One-time means it opens once, not that it can\'t be copied.'**
-  String get oneTimeLinkLimitReader;
-
-  /// No description provided for @oneTimeLinkLimitRelay.
-  ///
-  /// In en, this message translates to:
-  /// **'The server sees when a link is made and opened, its size and the network addresses. It also serves the page that opens the link, so a link is only as trustworthy as the server.'**
-  String get oneTimeLinkLimitRelay;
 
   /// No description provided for @oneTimeLinkFooter.
   ///
   /// In en, this message translates to:
-  /// **'The link opens once, then it\'s gone. The server can\'t read it.'**
+  /// **'It opens once, for whoever opens it first.'**
   String get oneTimeLinkFooter;
 
   /// No description provided for @contactsNotice.
@@ -2482,41 +2326,35 @@ abstract class AppLocalizations {
   /// **'New chat'**
   String get startDirectTitle;
 
-  /// No description provided for @startDirectInputLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Handle'**
-  String get startDirectInputLabel;
-
   /// No description provided for @startDirectOpening.
   ///
   /// In en, this message translates to:
   /// **'Opening…'**
   String get startDirectOpening;
 
-  /// No description provided for @startDirectOpenButton.
-  ///
-  /// In en, this message translates to:
-  /// **'Start chat'**
-  String get startDirectOpenButton;
-
-  /// No description provided for @startDirectFieldCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter their handle exactly as they gave it to you.'**
-  String get startDirectFieldCaption;
-
   /// An example handle in the field's hint: lower-case Latin, as every handle.
   ///
   /// In en, this message translates to:
-  /// **'alex'**
+  /// **'Name or handle'**
   String get startDirectHandleHint;
 
   /// No description provided for @startDirectHandleError.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t start the chat. Check the handle and your connection.'**
+  /// **'Couldn\'t start the chat. Check your connection.'**
   String get startDirectHandleError;
+
+  /// No description provided for @startDirectChatWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat with @{handle}'**
+  String startDirectChatWith(String handle);
+
+  /// No description provided for @startDirectContactsHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts'**
+  String get startDirectContactsHeader;
 
   /// No description provided for @startGroupTitle.
   ///
@@ -2527,14 +2365,8 @@ abstract class AppLocalizations {
   /// No description provided for @startGroupNameInput.
   ///
   /// In en, this message translates to:
-  /// **'Group name'**
+  /// **'Group name (required)'**
   String get startGroupNameInput;
-
-  /// No description provided for @startGroupNameHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Weekend plans'**
-  String get startGroupNameHint;
 
   /// No description provided for @startGroupDescriptionInput.
   ///
@@ -2542,22 +2374,16 @@ abstract class AppLocalizations {
   /// **'Description (optional)'**
   String get startGroupDescriptionInput;
 
-  /// No description provided for @startGroupDescriptionHint.
-  ///
-  /// In en, this message translates to:
-  /// **'What it\'s for'**
-  String get startGroupDescriptionHint;
-
   /// No description provided for @startGroupMembersCount.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 handle} other{{count} handles}}'**
+  /// **'{count, plural, =1{1 member} other{{count} members}}'**
   String startGroupMembersCount(int count);
 
   /// No description provided for @startGroupMembersCaption.
   ///
   /// In en, this message translates to:
-  /// **'Handles, separated by commas. Members can\'t be added later, so list everyone now.'**
+  /// **'You can\'t add members later.'**
   String get startGroupMembersCaption;
 
   /// No description provided for @startGroupMembersInput.
@@ -2584,22 +2410,16 @@ abstract class AppLocalizations {
   /// **'The server can read the group name, description and member list.'**
   String get startGroupNote;
 
-  /// No description provided for @startGroupNameRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Required'**
-  String get startGroupNameRequired;
-
   /// Example handles in the field's hint, separated as the field expects.
   ///
   /// In en, this message translates to:
-  /// **'alex, sam, priya'**
+  /// **'Add a handle'**
   String get startGroupMembersHint;
 
   /// No description provided for @startGroupMembersError.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t create the group. Check the handles and your connection.'**
+  /// **'Couldn\'t create the group. Check your connection and try again.'**
   String get startGroupMembersError;
 
   /// No description provided for @safetyNumbersTitle.

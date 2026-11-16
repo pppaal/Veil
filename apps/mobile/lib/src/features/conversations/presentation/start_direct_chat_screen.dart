@@ -3,14 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/identity/issued_handle.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../contacts/data/contact_index.dart';
+import '../../contacts/data/contacts_providers.dart';
 import 'conversation_list_logic.dart';
 
-/// Opens a 1:1 chat with the person whose handle is typed: the field, with
-/// how to type it under it (or why it opened nothing), and the button.
+/// The compose screen: a search field, then "New group" and "One-time link",
+/// then the contacts, which the field filters. A typed handle that is no
+/// contact's becomes the first row, "Chat with @sam". A tap on a row, or Go
+/// on the keyboard for the first one, opens the chat.
 class StartDirectChatScreen extends ConsumerStatefulWidget {
   const StartDirectChatScreen({super.key});
 
@@ -19,35 +24,34 @@ class StartDirectChatScreen extends ConsumerStatefulWidget {
 }
 
 class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
-  final _handleController = TextEditingController();
+  final _queryController = TextEditingController();
   bool _opening = false;
-
-  // Whether the last attempt of this screen failed; a failure elsewhere in
-  // the messenger is not this screen's to show.
-  bool _failed = false;
 
   @override
   void dispose() {
-    _handleController.dispose();
+    _queryController.dispose();
     super.dispose();
   }
 
-  String get _handle => _handleController.text.trim().replaceAll(RegExp(r'^@'), '');
+  String get _query => _queryController.text.trim();
 
-  Future<void> _open() async {
-    final handle = _handle;
+  // What was typed, as a handle: without its @, in the case handles have.
+  String get _typedHandle => _query.replaceAll(RegExp(r'^@'), '').toLowerCase();
+
+  Future<void> _open(String handle) async {
     if (handle.isEmpty || _opening) return;
-    setState(() {
-      _opening = true;
-      _failed = false;
-    });
-    final conversationId = await ref.read(messengerControllerProvider).startConversationByHandle(handle);
+    setState(() => _opening = true);
+    final messenger = ref.read(messengerControllerProvider);
+    final conversationId = await messenger.startConversationByHandle(handle);
     if (!mounted) return;
     if (conversationId == null) {
-      setState(() {
-        _opening = false;
-        _failed = true;
-      });
+      setState(() => _opening = false);
+      final l10n = AppLocalizations.of(context);
+      showVeilToast(
+        context,
+        messenger.failedAsNotFound ? l10n.safetyAccountNotFound(handle) : l10n.startDirectHandleError,
+        tone: VeilTone.warn,
+      );
       return;
     }
     // Beside the list the new conversation is already on screen; on a phone
@@ -62,36 +66,99 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final palette = context.veilPalette;
+    final contacts = ref.watch(contactsControllerProvider).contacts;
+    final matches = [
+      for (final section in sectionContacts(filterContacts(contacts, _query.replaceAll(RegExp(r'^@'), ''))))
+        ...section.contacts,
+    ];
+    final handle = _typedHandle;
+    final offerHandle = isIssuableHandle(handle) && !contacts.any((contact) => contact.handle == handle);
+    final first = offerHandle ? handle : matches.firstOrNull?.handle;
 
     return VeilShell(
       title: l10n.startDirectTitle,
       maxWidth: 560,
       child: ListView(
-        padding: VeilShell.formPadding,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
-          TextField(
-            controller: _handleController,
-            autofocus: true,
-            autocorrect: false,
-            enableSuggestions: false,
-            textInputAction: TextInputAction.go,
-            onChanged: (_) => setState(() => _failed = false),
-            onSubmitted: (_) => _open(),
-            decoration: InputDecoration(
-              labelText: l10n.startDirectInputLabel,
-              hintText: l10n.startDirectHandleHint,
-              prefixText: '@',
-              helperText: l10n.startDirectFieldCaption,
-              helperMaxLines: 2,
-              errorText: _failed ? l10n.startDirectHandleError : null,
-              errorMaxLines: 2,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.xs, VeilSpace.md, VeilSpace.xs),
+            child: TextField(
+              controller: _queryController,
+              autofocus: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              enabled: !_opening,
+              textInputAction: TextInputAction.go,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) {
+                if (first != null) _open(first);
+              },
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: l10n.startDirectHandleHint,
+                prefixIcon: Icon(Icons.search, color: palette.textMuted),
+                prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 44),
+              ),
             ),
           ),
-          const SizedBox(height: VeilSpace.md),
-          VeilButton(
-            onPressed: _opening || _handle.isEmpty ? null : _open,
-            label: _opening ? l10n.startDirectOpening : l10n.startDirectOpenButton,
+          VeilGroup(
+            inset: 56,
+            children: [
+              if (offerHandle)
+                VeilRow(
+                  key: const ValueKey('start-chat-with-handle'),
+                  leading: Icon(Icons.chat_bubble_outline, color: palette.textMuted),
+                  title: _opening ? l10n.startDirectOpening : l10n.startDirectChatWith(handle),
+                  trailing: const SizedBox.shrink(),
+                  onTap: _opening ? null : () => _open(handle),
+                ),
+              if (_query.isEmpty) ...[
+                VeilRow(
+                  key: const ValueKey('start-new-group'),
+                  leading: Icon(Icons.group_add_outlined, color: palette.textMuted),
+                  title: l10n.conversationsNewGroup,
+                  trailing: const SizedBox.shrink(),
+                  onTap: () => context.pushReplacement('/start-group'),
+                ),
+                VeilRow(
+                  key: const ValueKey('start-one-time-link'),
+                  leading: Icon(Icons.link, color: palette.textMuted),
+                  title: l10n.oneTimeLinkTitle,
+                  trailing: const SizedBox.shrink(),
+                  onTap: () => context.pushReplacement('/secret-link'),
+                ),
+              ],
+            ],
           ),
+          if (matches.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.md, VeilSpace.md, 6),
+              child: Semantics(
+                header: true,
+                child: Text(
+                  l10n.startDirectContactsHeader,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                ),
+              ),
+            ),
+            VeilGroup(
+              inset: 68,
+              children: [
+                for (final contact in matches)
+                  VeilRow(
+                    key: ValueKey('start-contact-${contact.handle}'),
+                    leading: VeilAvatar(name: contact.label, seed: contact.handle),
+                    // A name and a handle are their owner's words: drawn as typed.
+                    title: contact.label,
+                    subtitle: '@${contact.handle}',
+                    trailing: const SizedBox.shrink(),
+                    onTap: _opening ? null : () => _open(contact.handle),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

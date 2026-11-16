@@ -1165,9 +1165,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errorPeerUnreachable => 'Messages can\'t be sent to this account.';
 
   @override
-  String get conversationsNewChat => 'New chat';
-
-  @override
   String get conversationsNewGroup => 'New group';
 
   @override
@@ -1199,7 +1196,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsPreviewExpired => 'Message expired';
 
   @override
-  String get conversationsPreviewMessage => 'Encrypted message';
+  String get conversationsPreviewMessage => 'Message';
 
   @override
   String get conversationsPreviewImage => 'Photo';
@@ -1208,16 +1205,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsPreviewAttachment => 'File';
 
   @override
-  String get conversationsPreviewSystem => 'Security notice';
-
-  @override
   String get conversationsPreviewVoice => 'Voice message';
 
   @override
   String get conversationsPreviewSticker => 'Sticker';
 
   @override
-  String get conversationsPreviewReaction => 'Reaction';
+  String get conversationsPreviewReaction => 'Reacted to a message';
+
+  @override
+  String conversationsPreviewSender(String name, String text) {
+    return '$name: $text';
+  }
+
+  @override
+  String conversationsPreviewYou(String text) {
+    return 'You: $text';
+  }
 
   @override
   String get conversationsBarConnecting => 'Connecting…';
@@ -1237,86 +1241,27 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get conversationsSyncIssueTitle => 'Couldn\'t refresh';
+  String get conversationsSyncIssueTitle => 'Couldn\'t refresh chats';
 
   @override
   String get conversationsSearchHintCompact => 'Search';
 
   @override
-  String get conversationsFilterAllSenders => 'All senders';
-
-  @override
-  String get conversationsFilterMine => 'From me';
-
-  @override
-  String get conversationsFilterTheirs => 'From them';
-
-  @override
-  String get conversationsFilterAllTypes => 'All types';
-
-  @override
-  String get conversationsFilterText => 'Text';
-
-  @override
-  String get conversationsFilterMedia => 'Media';
-
-  @override
-  String get conversationsFilterAnyDate => 'Any date';
-
-  @override
-  String get conversationsFilterLast7Days => 'Last 7 days';
-
-  @override
-  String get conversationsFilterLast30Days => 'Last 30 days';
-
-  @override
   String get conversationsSectionLabel => 'Chats';
 
   @override
-  String get conversationsNoMatchTitle => 'No matching chats';
+  String conversationsNoMatchTitle(String query) {
+    return 'No results for \"$query\"';
+  }
 
   @override
   String get conversationsNoneYetTitle => 'No chats yet';
-
-  @override
-  String get conversationsNoMatchBody => 'No name or handle matches.';
-
-  @override
-  String get conversationsNoneYetBody => 'Start a chat with someone\'s handle.';
 
   @override
   String get conversationsStartDirect => 'New chat';
 
   @override
   String get conversationsMessagesSection => 'Messages';
-
-  @override
-  String get conversationsNoMessageMatchBody =>
-      'No message matches these filters.';
-
-  @override
-  String get conversationsResultFromYou => 'You';
-
-  @override
-  String get conversationsResultFromPeer => 'Them';
-
-  @override
-  String get conversationsKindImage => 'Photo';
-
-  @override
-  String get conversationsKindAttachment => 'File';
-
-  @override
-  String get conversationsKindSystem => 'Notice';
-
-  @override
-  String get conversationsKindVoice => 'Voice message';
-
-  @override
-  String get conversationsKindSticker => 'Sticker';
-
-  @override
-  String get conversationsKindReaction => 'Reaction';
 
   @override
   String get conversationsLoadingMore => 'Loading more…';
@@ -1326,10 +1271,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get conversationsChoosePaneTitle => 'Select a chat';
-
-  @override
-  String get conversationsChoosePaneBody =>
-      'Pick one from the list or start a new one.';
 
   @override
   String get conversationsNewTooltip => 'New chat';
@@ -1366,11 +1307,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get oneTimeLinkSecretHint => 'A password, an account number, a note';
 
   @override
-  String get oneTimeLinkUsePassphrase => 'Protect with a passphrase';
-
-  @override
-  String get oneTimeLinkUsePassphraseCaption =>
-      'The secret can\'t be read without it.';
+  String get oneTimeLinkUsePassphrase => 'Add a passphrase';
 
   @override
   String get oneTimeLinkPassphraseLabel => 'Passphrase';
@@ -1382,8 +1319,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get oneTimeLinkCreating => 'Creating…';
 
   @override
-  String get oneTimeLinkFailed =>
-      'Couldn\'t create the link. Try again in a moment.';
+  String get oneTimeLinkFailed => 'Couldn\'t create the link. Try again.';
 
   @override
   String get oneTimeLinkCopy => 'Copy link';
@@ -1398,26 +1334,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get oneTimeLinkSendPassphraseApart =>
-      'Send the passphrase separately from the link.';
+      'Send the passphrase separately.';
 
   @override
-  String get oneTimeLinkLimitsLabel => 'What it doesn\'t protect';
-
-  @override
-  String get oneTimeLinkLimitHolder =>
-      'Whoever opens the whole link first can read it. If the channel isn\'t safe, add a passphrase.';
-
-  @override
-  String get oneTimeLinkLimitReader =>
-      'The person who opens it can copy it or take a screenshot. One-time means it opens once, not that it can\'t be copied.';
-
-  @override
-  String get oneTimeLinkLimitRelay =>
-      'The server sees when a link is made and opened, its size and the network addresses. It also serves the page that opens the link, so a link is only as trustworthy as the server.';
-
-  @override
-  String get oneTimeLinkFooter =>
-      'The link opens once, then it\'s gone. The server can\'t read it.';
+  String get oneTimeLinkFooter => 'It opens once, for whoever opens it first.';
 
   @override
   String get contactsNotice =>
@@ -1514,54 +1434,45 @@ class AppLocalizationsEn extends AppLocalizations {
   String get startDirectTitle => 'New chat';
 
   @override
-  String get startDirectInputLabel => 'Handle';
-
-  @override
   String get startDirectOpening => 'Opening…';
 
   @override
-  String get startDirectOpenButton => 'Start chat';
-
-  @override
-  String get startDirectFieldCaption =>
-      'Enter their handle exactly as they gave it to you.';
-
-  @override
-  String get startDirectHandleHint => 'alex';
+  String get startDirectHandleHint => 'Name or handle';
 
   @override
   String get startDirectHandleError =>
-      'Couldn\'t start the chat. Check the handle and your connection.';
+      'Couldn\'t start the chat. Check your connection.';
+
+  @override
+  String startDirectChatWith(String handle) {
+    return 'Chat with @$handle';
+  }
+
+  @override
+  String get startDirectContactsHeader => 'Contacts';
 
   @override
   String get startGroupTitle => 'New group';
 
   @override
-  String get startGroupNameInput => 'Group name';
-
-  @override
-  String get startGroupNameHint => 'Weekend plans';
+  String get startGroupNameInput => 'Group name (required)';
 
   @override
   String get startGroupDescriptionInput => 'Description (optional)';
-
-  @override
-  String get startGroupDescriptionHint => 'What it\'s for';
 
   @override
   String startGroupMembersCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count handles',
-      one: '1 handle',
+      other: '$count members',
+      one: '1 member',
     );
     return '$_temp0';
   }
 
   @override
-  String get startGroupMembersCaption =>
-      'Handles, separated by commas. Members can\'t be added later, so list everyone now.';
+  String get startGroupMembersCaption => 'You can\'t add members later.';
 
   @override
   String get startGroupMembersInput => 'Members';
@@ -1577,14 +1488,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'The server can read the group name, description and member list.';
 
   @override
-  String get startGroupNameRequired => 'Required';
-
-  @override
-  String get startGroupMembersHint => 'alex, sam, priya';
+  String get startGroupMembersHint => 'Add a handle';
 
   @override
   String get startGroupMembersError =>
-      'Couldn\'t create the group. Check the handles and your connection.';
+      'Couldn\'t create the group. Check your connection and try again.';
 
   @override
   String get safetyNumbersTitle => 'Safety number';

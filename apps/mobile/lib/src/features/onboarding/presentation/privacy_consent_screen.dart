@@ -36,6 +36,7 @@ class _PrivacyConsentScreenState extends ConsumerState<PrivacyConsentScreen> {
     return OnboardingActionScaffold(
       title: l10n.privacyConsentTitle,
       listPadding: const EdgeInsets.fromLTRB(VeilSpace.md, 0, VeilSpace.md, VeilSpace.md),
+      divider: true,
       actions: [
         // The box and its sentence are one row to tap, and one checkbox
         // with its sentence to a screen reader.

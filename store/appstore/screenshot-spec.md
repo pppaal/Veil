@@ -97,7 +97,7 @@ without scrolling.
 | # | Screen | What it shows | Caption (if any) |
 |---|---|---|---|
 | 1 | **Choose a handle** | Sign-up with a handle: no phone number, no email, no real name. | "Sign up with a handle, not a phone number." |
-| 2 | **Chats** | One-to-one and group chats, unread state. | "Only you and the people you talk to can read your chats." |
+| 2 | **Chats** | One-to-one and group chats. | "Only you and the people you talk to can read your chats." |
 | 3 | **A chat** | Message thread with reactions, a disappearing-message timer, typing indicator, optional read receipts. | "Messages are end-to-end encrypted. The server never sees them in plaintext." |
 | 4 | **Move to a new phone** | The old phone must be there and approve; the handle moves to keys made on the new phone, the old phone is signed out, and message history does not move. | "Move your handle to a new phone. The old one signs out." |
 | 5 | **App lock** | Local app lock with a PIN and biometrics (Face ID / Touch ID). | "Lock the app with a PIN or biometrics." |
@@ -108,6 +108,9 @@ Notes:
 - Shots 1 to 3 come from the iOS Flutter app (`apps/mobile`), not the web
   demo. Crypto on mobile is the full Double Ratchet (X25519 + HKDF-SHA256 +
   AES-256-GCM, Ed25519 device signatures).
+- Shot 2: the Chats list shows no unread count (the app does not keep
+  one), so the shot has none. Leave out chats whose last message is a voice
+  note or a photo: the app cannot send either.
 - Shot 3: text messages only. Sending attachments is switched off in the
   mobile app, and it has no voice messages or calls, so the shot shows none
   of them. Keep any visible message text ordinary and safe.
@@ -135,11 +138,20 @@ Notes:
   messages. No real personal data and no phone numbers anywhere (the app
   does not use them).
 - **Consistency:** same demo accounts, same avatars and one theme (light or
-  dark) for the whole set.
+  dark) for the whole set. The Google Play set is light, with the same
+  accounts and messages: match it
+  ([`../play/screenshots/`](../play/screenshots/README.md)).
 
 ---
 
 ## 6. Capture method: Mac only
+
+The iPhone set is captured, not rendered. The Google Play set is drawn by a
+Flutter test from the app's screens
+([`../play/screenshots/README.md`](../play/screenshots/README.md)), but that
+does not work for iOS: the app draws the platform's font, which on iOS is
+SF Pro, and the test renderer does not have SF Pro. A rendered iPhone shot
+would show Roboto, which no iPhone shows.
 
 iOS App Store screenshots at the exact required pixel dimensions must be
 captured on a **Mac**, because the iOS Simulator and Xcode are macOS-only:

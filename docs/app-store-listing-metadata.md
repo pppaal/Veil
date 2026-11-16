@@ -125,4 +125,6 @@ voice messages are not part of this build.
   safety number screen, settings/theme. Use fictional content and no real
   user data. Show nothing the build does not have: no call, voice message or
   attachment screen.
-- Google Play: phone + 7"/10" tablet if declared; feature graphic 1024×500.
+- Google Play: the phone screenshots and the 1024×500 feature graphic are in
+  `store/play` (`store/play/screenshots/README.md` says how they are made);
+  7" and 10" tablet sets only if tablets are declared.

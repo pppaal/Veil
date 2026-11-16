@@ -94,6 +94,12 @@ it empty, so a screen that stops fitting is fixed, not listed. The gate
 fails for a listed case that passes, or fails another way, as it does for an
 unlisted one that fails.
 
+`flutter test tool/play_store_art_test.dart` draws the Google Play
+screenshots and feature graphic into `store/play` from the screens the gate
+opens (`store/play/screenshots/README.md` says what it draws). It sits under
+`tool/`, so `flutter test` does not run it; `test/store/play_listing_art_test.dart`,
+which it does run, holds the committed files to the sizes Play takes.
+
 ## UI strings gate
 
 `node scripts/mobile-ui-strings-check.mjs` (from the repository root; part

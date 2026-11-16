@@ -104,19 +104,15 @@ Nothing you send is stored on our servers in a form we can read.
 
 ## Screenshot guide
 
-Ship 5 screenshots per device class (6.7" iPhone, 6.5" iPhone, 5.5"
-iPhone, 12.9" iPad, 11" iPad). Consistent visual order:
-
-1. Chats, with at least one disappearing-message timer visible. English
-   only.
-2. Safety number, the moment two people compare their numbers.
-3. A chat with the disappearing-message timer set.
-4. Settings: devices, app lock and privacy.
-5. Choose a handle: sign-up without a phone number.
+The shot list, the sizes and how to capture them are in
+[`store/appstore/screenshot-spec.md`](../../store/appstore/screenshot-spec.md):
+six shots, iPhone only (there is no iPad build), captured on the iOS
+Simulator. They cannot be rendered like the Google Play set
+(`store/play/screenshots/`), because iOS draws SF Pro, which the renderer
+does not have.
 
 Asset directory: `apps/mobile/ios/fastlane/screenshots/` (not yet
-configured). The shot list and sizes are in
-[`store/appstore/screenshot-spec.md`](../../store/appstore/screenshot-spec.md).
+configured).
 
 ## Review notes for Apple
 

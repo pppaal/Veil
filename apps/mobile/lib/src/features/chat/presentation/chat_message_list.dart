@@ -171,7 +171,8 @@ class ChatMessageList extends ConsumerWidget {
     final previous = hidden ? null : _neighbour(index, -1);
     final next = hidden ? null : _neighbour(index, 1);
     final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
-    final startsDay = !hidden && (previous == null || !sameChatDay(previous.sentAt, message.sentAt));
+    final now = ref.watch(wallClockProvider)();
+    final startsDay = !hidden && (previous == null || !sameChatDay(previous.sentAt, message.sentAt, now: now));
     final runsOn = previous != null && sameChatRun(previous, message);
     final runsInto = next != null && sameChatRun(message, next);
     final position = switch ((runsOn, runsInto)) {
@@ -183,7 +184,7 @@ class ChatMessageList extends ConsumerWidget {
     // The next day's date brings its own space above it.
     final gapBelow = hidden
         ? groupGap
-        : next == null || !sameChatDay(message.sentAt, next.sentAt)
+        : next == null || !sameChatDay(message.sentAt, next.sentAt, now: now)
             ? 0.0
             : runsInto
                 ? runGap
@@ -235,7 +236,7 @@ class ChatMessageList extends ConsumerWidget {
         if (startsDay)
           ChatDayDivider(
             day: message.sentAt,
-            now: ref.watch(wallClockProvider)(),
+            now: now,
             first: index == 0 && !showLoadOlder,
           ),
         entry,

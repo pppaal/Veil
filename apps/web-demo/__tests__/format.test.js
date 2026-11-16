@@ -30,8 +30,18 @@ describe('formatTime', () => {
 
 describe('dayKey', () => {
   it('matches the current calendar day even at midnight UTC offsets', () => {
-    expect(dayKey(new Date(2026, 3, 15))).toBe('2026-4-15');
-    expect(dayKey(new Date(2026, 3, 15, 23, 59))).toBe('2026-4-15');
+    const today = new Date(2026, 3, 15, 12);
+    expect(dayKey(new Date(2026, 3, 15), today)).toBe('2026-4-15');
+    expect(dayKey(new Date(2026, 3, 15, 23, 59), today)).toBe('2026-4-15');
+  });
+
+  // dayLabel calls a message stamped ahead of this clock "Today": it is
+  // under today's divider, not a second "Today".
+  it('puts a message stamped ahead of this clock on today', () => {
+    const today = new Date(2026, 3, 15, 23, 59);
+    expect(dayKey(new Date(2026, 3, 16, 0, 1), today)).toBe('2026-4-15');
+    expect(dayKey(new Date(2026, 3, 15, 9), today)).toBe('2026-4-15');
+    expect(dayKey(new Date(2026, 3, 14, 22), today)).toBe('2026-4-14');
   });
 });
 

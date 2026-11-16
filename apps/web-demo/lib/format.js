@@ -19,8 +19,12 @@ export function formatTime(date) {
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-export function dayKey(date) {
-  const d = date instanceof Date ? date : new Date(date);
+// The day a message is filed under in a chat: its own, or today for one
+// stamped later than this clock reads, which dayLabel calls "Today", so
+// that it shares today's divider and does not get a second "Today".
+export function dayKey(date, today = new Date()) {
+  const at = date instanceof Date ? date : new Date(date);
+  const d = calendarDaysBetween(at, today) < 0 ? today : at;
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 

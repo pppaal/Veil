@@ -138,6 +138,28 @@ void main() {
     });
   });
 
+  // A clock behind the server's: the morning's messages are stamped after
+  // this phone's midnight. They are "Today" (chatDayLabel), and sit under
+  // the one "Today" divider with the evening the phone calls today.
+  testWidgets('messages stamped after the phone\'s midnight share today\'s divider, not a second one', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      // Tall enough for the evening and the morning both to be built.
+      size: const PhoneSize(412, 2600, topInset: 32, bottomInset: 24),
+      location: '/chat/$chatConversationId',
+      prepare: (world) async {
+        world.now = DateTime(2026, 4, 6, 23);
+        return null;
+      },
+      body: (world) async {
+        expect(find.text('read section 7 finally'), findsOneWidget, reason: 'the evening is not drawn');
+        expect(find.text(latestChatLine), findsOneWidget);
+        expect(find.text('Today'), findsOneWidget);
+      },
+    );
+  });
+
   testWidgets('a message the search found is dated by the same rule', (tester) async {
     MessageSearchResult hit(String id, DateTime sentAt, String body) => MessageSearchResult(
           conversationId: chatConversationId,

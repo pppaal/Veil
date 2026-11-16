@@ -37,7 +37,7 @@ String conversationTitle(
 /// list, too).
 String typingMemberTitle(ConversationPreview group, String handle, PeerNames names) {
   for (final member in group.members) {
-    if (member.handle == handle) return names.memberTitle(member);
+    if (member.handle.toLowerCase() == handle.toLowerCase()) return names.memberTitle(member);
   }
   return '@$handle';
 }

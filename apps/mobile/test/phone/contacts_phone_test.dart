@@ -9,6 +9,7 @@ import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.d
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
+import '../layout/support/layout_seed.dart' show peerNames;
 import '../support/copy_finder.dart';
 import '../support/fake_relay.dart';
 import 'phone_app.dart';
@@ -231,7 +232,12 @@ void main() {
       expect(find.text('Alexa'), findsOneWidget);
       expect(find.text(name), findsNothing);
       final stored = await ContactNicknames(world.storage.scoped(SecureScope.contacts)).readAll();
-      expect(stored['alexandra'], 'Alexa');
+      // That one name changed, and nothing else the phone holds.
+      expect(stored, {
+        for (final MapEntry(key: handle, value: name) in peerNames.entries)
+          if (name != null) handle: name,
+        'alexandra': 'Alexa',
+      });
       expect(world.api.addedContacts, isEmpty, reason: 'the relay is not told');
     });
   });

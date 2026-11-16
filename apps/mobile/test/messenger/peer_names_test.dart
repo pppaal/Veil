@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart';
 import 'package:veil_mobile/src/features/contacts/data/contact_names.dart';
 import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
@@ -87,6 +88,22 @@ void main() {
       );
       expect(names.peerName(_direct('conv-sam', 'sam')), isNull);
       expect(names.peerName(_direct('conv-sam-2', 'sam', userId: 'user-sam-2')), isNull);
+    });
+
+    test('who is typing in a group is found by their handle whatever its case, and named as the bubbles name them', () {
+      final group = ConversationPreview(
+        id: 'grp',
+        peerHandle: 'sam',
+        peerDisplayName: null,
+        recipientBundle: _direct('grp', 'sam').recipientBundle,
+        lastEnvelope: null,
+        updatedAt: DateTime.utc(2026, 4, 7),
+        type: ConversationType.group,
+        members: const [GroupMember(userId: 'user-sam', handle: 'sam')],
+      );
+      final names = PeerNames(const {'sam': 'Sam Rivera'});
+      expect(typingMemberTitle(group, 'Sam', names), 'Sam Rivera');
+      expect(typingMemberTitle(group, 'omar_h', names), '@omar_h');
     });
 
     test('a chat known only by its id is named by whom it is bound to, else only by a handle bound to no one', () {

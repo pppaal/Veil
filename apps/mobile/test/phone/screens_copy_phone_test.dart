@@ -90,16 +90,17 @@ void main() {
     // itself stays.
     // The account itself stays on the server, its handle taken; what is lost
     // is the way back in, which no backup or reset gives (the web's sign
-    // out says the same).
+    // out says the same). Changed on purpose: the body no longer opens with
+    // "This signs this phone out", which said the title again.
     test('Sign out says what it deletes and what is lost, not that the app goes', () {
       final body = l10n.settingsLogoutConfirmBody('alex');
       expect(body, isNot(contains('Veil')), reason: 'the app is not what goes');
       expect(body, isNot(contains('uninstall')));
-      expect(body, contains('signs this phone out'));
-      expect(body, contains('chats'));
-      expect(body, contains("You can't sign in as @alex again."));
+      expect(body, isNot(contains('signs this phone out')), reason: 'the title says it');
+      expect(body, contains('chats on this phone are deleted'));
+      expect(body, contains("you can't sign in as @alex again."));
       expect(body, isNot(contains('account is gone')), reason: 'the account stays on the server');
-      expect(body.split(RegExp(r'(?<=[.!?])\s+')), hasLength(lessThanOrEqualTo(2)), reason: 'two short sentences');
+      expect(body.split(RegExp(r'(?<=[.!?])\s+')), hasLength(1), reason: 'one short sentence');
     });
 
     testWidgets('each account action says in its dialog what it erases, before the typed handle', (tester) async {
@@ -116,7 +117,7 @@ void main() {
           final said = find.descendant(of: dialog, matching: find.text(body));
           expect(said, findsOneWidget, reason: '$key says what it does');
           // What it erases, and that nothing brings it back.
-          expect(body, anyOf(contains('erases'), contains('deletes')), reason: key);
+          expect(body, anyOf(contains('erases'), contains('deletes'), contains('are deleted')), reason: key);
           expect(body, anyOf(contains("can't sign in"), contains("can't be undone")), reason: key);
           final prompt =
               find.descendant(of: dialog, matching: find.text(l10n.settingsTypePhraseToContinue('@$selfHandle')));

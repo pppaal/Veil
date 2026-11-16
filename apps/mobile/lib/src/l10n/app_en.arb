@@ -112,7 +112,7 @@
   "settingsSectionSecurity": "Security",
   "settingsSectionAccount": "Account",
   "settingsLogoutConfirmTitle": "Sign out of this phone?",
-  "settingsLogoutConfirmBody": "This signs this phone out and deletes your chats from it. You can't sign in as @{handle} again.",
+  "settingsLogoutConfirmBody": "Your chats on this phone are deleted, and you can't sign in as @{handle} again.",
   "@settingsLogoutConfirmBody": {"placeholders": {"handle": {"type": "String"}}},
   "settingsLogoutFailed": "Couldn't sign out. Check your connection and try again.",
   "settingsTypePhraseToContinue": "Type {phrase} to confirm.",

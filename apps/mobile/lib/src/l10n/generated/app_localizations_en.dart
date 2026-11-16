@@ -360,7 +360,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsLogoutConfirmBody(String handle) {
-    return 'This signs this phone out and deletes your chats from it. You can\'t sign in as @$handle again.';
+    return 'Your chats on this phone are deleted, and you can\'t sign in as @$handle again.';
   }
 
   @override

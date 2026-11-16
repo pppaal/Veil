@@ -176,6 +176,7 @@
   "chatDecryptAwaitingKey": "Waiting for this message",
   "chatDecryptSessionMissing": "Waiting for this message",
   "chatDecryptIdentityRejected": "Locked until you review the new safety number",
+  "chatDecryptHeldAccount": "Locked until you confirm this account",
   "notificationNewMessage": "New message",
   "chatLegacySenderLine": "Sent from an older app, not verified",
   "chatNotSentTapToRetry": "Not sent. Tap to retry.",

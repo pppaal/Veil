@@ -113,7 +113,9 @@ class ChatAttention {
   final int failedSends;
 
   /// The chat is listed under the peer's handle with another account than
-  /// the one this device talked to, and waits for the user to say so.
+  /// the one this device talked to, and waits for the user to say so. Such
+  /// a chat is a conversation of its own: it holds only the two messages
+  /// that account sent, both locked until the user confirms it.
   final bool accountHeld;
 
   /// The peer is typing while the chat is open.
@@ -249,6 +251,7 @@ class LayoutWorld {
         cache,
         withGroup: withGroup,
         keyChange: attention.identityChanged && attention.failedSends > 0,
+        heldAccount: attention.accountHeld,
       );
     }
     // A caller that shows less than the seed changes the relay here, before
@@ -538,6 +541,17 @@ class _LayoutMessenger extends VeilMessengerController {
 
   @override
   Future<DecryptedMessage> decryptMessage(ChatMessage message) async {
+    // A held chat admits no identity until the user confirms the account
+    // (ConversationCryptoRouter.verifyRemoteIdentity), so nothing that
+    // account sent opens: the engine refuses each frame as it would one
+    // from a changed identity.
+    if (attention.accountHeld && !message.isMine && message.envelope.conversationId == chatConversationId) {
+      return DecryptedMessage(
+        body: '',
+        messageKind: message.envelope.messageKind,
+        status: DecryptStatus.identityRejected,
+      );
+    }
     final opened = await super.decryptMessage(message);
     if (!attention.legacyMessage || !opened.isOk || message.isMine || opened.body != legacyMessageBody) {
       return opened;

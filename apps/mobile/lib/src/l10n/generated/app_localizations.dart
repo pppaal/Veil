@@ -1018,6 +1018,12 @@ abstract class AppLocalizations {
   /// **'Locked until you review the new safety number'**
   String get chatDecryptIdentityRejected;
 
+  /// No description provided for @chatDecryptHeldAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked until you confirm this account'**
+  String get chatDecryptHeldAccount;
+
   /// No description provided for @notificationNewMessage.
   ///
   /// In en, this message translates to:

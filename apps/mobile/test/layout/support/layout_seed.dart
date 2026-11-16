@@ -162,6 +162,18 @@ const _samsKeyChange = <_Line>[
 
 const _chat = [..._samsEvening, ..._samsMorning, ..._samsEnd];
 
+// Sam's chat as the account-hold cases list it: under @sam, but with
+// another account than the one this phone talked to, so it is not the same
+// conversation and holds nothing of Sam's history. All it has is what that
+// account sent, which stays locked until the user confirms the account.
+const _heldAccountLines = <_Line>[
+  _Line(_At(9, 52), false, 'hey, new phone. this is sam'),
+  _Line(_At(9, 53), false, 'can you send me the address again?'),
+];
+
+/// How many messages the held conversation of the account-hold cases holds.
+int get heldAccountLineCount => _heldAccountLines.length;
+
 /// How many messages the chat's conversation holds.
 int get chatLineCount => _chat.length;
 
@@ -208,12 +220,15 @@ int get groupLineCount => _group.length;
 /// Fills the relay with the conversations above and stores the content of
 /// this device's own messages, which no device can decrypt back. With
 /// [withGroup] the newest conversation is the group. With [keyChange]
-/// Sam's chat ends on the change of his safety number.
+/// Sam's chat ends on the change of his safety number. With [heldAccount]
+/// the chat listed under @sam is another account's, and holds only what
+/// that account sent.
 Future<void> seedConversations(
   FakeRelay relay,
   LayoutMemoryCache cache, {
   bool withGroup = false,
   bool keyChange = false,
+  bool heldAccount = false,
 }) async {
   final sealer = createDefaultCryptoAdapter();
   // The lines are dated April; what disappears must still be there today.
@@ -295,7 +310,10 @@ Future<void> seedConversations(
   for (final MapEntry(key: peer, value: lines) in _others.entries) {
     await seedDirect(peer, lines);
   }
-  await seedDirect(peerHandle, [..._samsEvening, ..._samsMorning, ...keyChange ? _samsKeyChange : _samsEnd]);
+  await seedDirect(
+    peerHandle,
+    heldAccount ? _heldAccountLines : [..._samsEvening, ..._samsMorning, ...keyChange ? _samsKeyChange : _samsEnd],
+  );
   if (!withGroup) return;
   relay.addGroup(groupConversationId, [selfHandle, ...groupMemberHandles], useSenderKeys: false, name: groupName);
   for (final line in _group) {

@@ -555,6 +555,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Locked until you review the new safety number';
 
   @override
+  String get chatDecryptHeldAccount => 'Locked until you confirm this account';
+
+  @override
   String get notificationNewMessage => 'New message';
 
   @override

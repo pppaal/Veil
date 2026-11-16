@@ -45,6 +45,7 @@ class MessageBubble extends StatelessWidget {
     this.position = VeilBubblePosition.single,
     this.reactions,
     this.searchQuery,
+    this.heldAccount = false,
   });
 
   final ChatMessage message;
@@ -77,6 +78,10 @@ class MessageBubble extends StatelessWidget {
 
   /// A chat search's query, drawn in bold where the text holds it.
   final String? searchQuery;
+
+  /// The chat is held for its handle until the user confirms the account
+  /// (see DecryptFailureLine.heldAccount).
+  final bool heldAccount;
 
   /// How far the reactions overlap the bubble's foot.
   static const double reactionOverlap = 6;
@@ -120,7 +125,7 @@ class MessageBubble extends StatelessWidget {
               ),
             ),
           DecryptStatus.ok || DecryptStatus.legacyUnauthenticated => Text(decrypted!.body, style: bodyStyle),
-          _ => DecryptFailureLine(status: status, color: metaColor),
+          _ => DecryptFailureLine(status: status, heldAccount: heldAccount, color: metaColor),
         };
         final bubble = VeilBubble(
           isMine: message.isMine,

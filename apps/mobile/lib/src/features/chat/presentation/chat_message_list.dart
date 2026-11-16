@@ -305,6 +305,7 @@ class ChatMessageList extends ConsumerWidget {
       position: position,
       highlighted: message.id == highlightedMessageId,
       searchQuery: searchQuery,
+      heldAccount: controller.peerAccountHoldFor(conversationId) != null,
       reactions: message.reactions.isEmpty
           ? null
           : ReactionChipsRow(

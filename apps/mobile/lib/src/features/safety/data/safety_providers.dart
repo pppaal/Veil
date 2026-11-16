@@ -1,0 +1,49 @@
+import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../app/app_session_state.dart';
+import '../../../app/session/session_providers.dart';
+import '../../../core/di/core_providers.dart';
+import '../../../core/storage/secure_storage_service.dart';
+import 'abuse_reports.dart';
+import 'blocked_accounts.dart';
+import 'conversation_mutes.dart';
+
+/// The accounts the user blocked, read from the server when the account
+/// signs in and forgotten when it signs out.
+final blockedAccountsProvider = ChangeNotifierProvider<BlockedAccounts>((ref) {
+  final blocked = BlockedAccounts(
+    api: ref.read(apiClientProvider),
+    accessToken: () => ref.read(appSessionProvider).accessToken,
+  );
+  ref.listen<AppSessionState>(appSessionProvider, (previous, next) {
+    if (previous?.isAuthenticated == next.isAuthenticated) return;
+    if (next.isAuthenticated) {
+      unawaited(blocked.refresh());
+    } else {
+      blocked.clear();
+    }
+  });
+  if (ref.read(appSessionProvider).isAuthenticated) unawaited(blocked.refresh());
+  return blocked;
+});
+
+/// The chats muted on this phone, kept in the keystore (wiped with the
+/// device's other local state).
+final conversationMutesProvider = ChangeNotifierProvider<ConversationMutes>((ref) {
+  final mutes = ConversationMutes(
+    store: ref.read(secureStorageProvider).scoped(SecureScope.notifications),
+    api: ref.read(apiClientProvider),
+    accessToken: () => ref.read(appSessionProvider).accessToken,
+  );
+  unawaited(mutes.load());
+  return mutes;
+});
+
+final abuseReportsProvider = Provider<AbuseReports>((ref) {
+  return AbuseReports(
+    api: ref.read(apiClientProvider),
+    accessToken: () => ref.read(appSessionProvider).accessToken,
+  );
+});

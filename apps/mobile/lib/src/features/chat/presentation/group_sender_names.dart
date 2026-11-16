@@ -14,6 +14,7 @@ import '../../conversations/data/conversation_models.dart';
 mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   Map<String, String> _nameByDevice = const {};
   Map<String, String> _handleByDevice = const {};
+  Map<String, String> _userByDevice = const {};
   String? _namesOf;
   bool _readingNames = false;
   bool _namesRead = false;
@@ -26,6 +27,10 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// the tint of their name are drawn from; null where [groupSenderName]
   /// is.
   String? groupSenderHandle(ChatMessage message) => _handleByDevice[message.senderDeviceId];
+
+  /// The account of the member who wrote [message], which a report of it
+  /// names; null where [groupSenderName] is.
+  String? groupSenderUserId(ChatMessage message) => _userByDevice[message.senderDeviceId];
 
   /// Whether the pins of the open group have been read at least once. From
   /// then on a message with no name is one this device cannot attribute,
@@ -40,6 +45,7 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       _namesOf = null;
       _nameByDevice = const {};
       _handleByDevice = const {};
+      _userByDevice = const {};
       _namesRead = false;
       return;
     }
@@ -47,6 +53,7 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       _namesOf = conversation.id;
       _nameByDevice = const {};
       _handleByDevice = const {};
+      _userByDevice = const {};
       _namesRead = false;
     }
     if (_readingNames) return;
@@ -78,6 +85,7 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       setState(() {
         _nameByDevice = names;
         _handleByDevice = handles;
+        _userByDevice = owners;
         _namesRead = true;
       });
     } finally {

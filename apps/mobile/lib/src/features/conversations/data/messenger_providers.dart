@@ -14,6 +14,8 @@ import '../../../core/network/keys_api.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../attachments/data/attachment_providers.dart';
 import '../../device_transfer/data/device_transfer_providers.dart';
+import '../../safety/application/silenced_notifications.dart';
+import '../../safety/data/safety_providers.dart';
 import '../../settings/data/privacy_preferences_provider.dart';
 import 'group_sender_key_coordinator.dart';
 import 'messenger/conversation_peer_bindings.dart';
@@ -55,7 +57,6 @@ final identityTrustProvider = Provider<IdentityTrust>((ref) {
 
 final messengerControllerProvider =
     ChangeNotifierProvider<VeilMessengerController>((ref) {
-  final notificationService = ref.read(localNotificationServiceProvider);
   final secureStorage = ref.read(secureStorageProvider);
   final cryptoAdapter = ref.read(cryptoAdapterProvider);
   final keys = ref.read(keysApiProvider);
@@ -64,6 +65,16 @@ final messengerControllerProvider =
   // Bound below; the group coordinator reaches the controller only after
   // both exist.
   late final VeilMessengerController controller;
+  // No notification for a muted chat, nor for a 1:1 with someone blocked.
+  final notificationService = SilencedNotifications(
+    ref.read(localNotificationServiceProvider),
+    isSilenced: (conversationId) => conversationSilenced(
+      conversationId,
+      controller.conversationById(conversationId),
+      mutes: ref.read(conversationMutesProvider),
+      blocked: ref.read(blockedAccountsProvider),
+    ),
+  );
 
   // Double Ratchet session persistence: wire the adapter's after-mutate
   // callback to secure storage, and build a restorer that rehydrates

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/security/sensitive_text_redactor.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_ui.dart';
 import '../../reactions/presentation/reaction_picker_widget.dart';
 
 /// Asks before a 1:1 is bound to another account listed under the user's
@@ -50,11 +51,14 @@ Future<void> showAttachmentTicketDialog(BuildContext context, String url) async 
 }
 
 /// The reaction picker in a sheet, which closes on a pick and hands the
-/// picked emoji to [onSelected].
+/// picked emoji to [onSelected]. With [onReport] (a message someone else
+/// wrote) a Report row sits under the reactions.
 Future<void> showReactionPickerSheet(
   BuildContext context, {
   required ValueChanged<String> onSelected,
+  VoidCallback? onReport,
 }) async {
+  final l10n = AppLocalizations.of(context);
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -62,14 +66,37 @@ Future<void> showReactionPickerSheet(
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.only(bottom: VeilSpace.md),
-          child: Center(
-            heightFactor: 1,
-            child: ReactionPickerWidget(
-              onReactionSelected: (emoji) {
-                Navigator.of(sheetContext).pop();
-                onSelected(emoji);
-              },
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                heightFactor: 1,
+                child: ReactionPickerWidget(
+                  onReactionSelected: (emoji) {
+                    Navigator.of(sheetContext).pop();
+                    onSelected(emoji);
+                  },
+                ),
+              ),
+              if (onReport != null) ...[
+                const SizedBox(height: VeilSpace.xs),
+                VeilGroup(
+                  children: [
+                    VeilRow(
+                      key: const ValueKey('message-report'),
+                      title: l10n.reportAction,
+                      // It opens the report sheet in this one's place.
+                      trailing: const SizedBox.shrink(),
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        onReport();
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ],
           ),
         ),
       );

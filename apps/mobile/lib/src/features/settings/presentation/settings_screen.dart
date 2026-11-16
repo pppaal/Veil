@@ -8,6 +8,7 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../safety/presentation/blocked_accounts_screen.dart';
 import '../data/trusted_devices.dart';
 import 'device_rows.dart';
 import 'settings_danger_zone.dart';
@@ -53,6 +54,7 @@ class SettingsScreen extends ConsumerWidget {
                 switchValue: privacy.sendTypingIndicators,
                 onSwitch: privacy.setSendTypingIndicators,
               ),
+              const BlockedAccountsSettingsRow(),
             ],
           ),
           VeilGroup(

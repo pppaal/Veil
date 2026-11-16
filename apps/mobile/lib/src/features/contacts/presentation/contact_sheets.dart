@@ -6,6 +6,11 @@ import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../safety/application/safety_accounts.dart';
+import '../../safety/data/abuse_reports.dart';
+import '../../safety/data/safety_providers.dart';
+import '../../safety/presentation/block_actions.dart';
+import '../../safety/presentation/report_sheet.dart';
 import '../data/contacts_providers.dart';
 
 // The sheets of the contacts tab: adding a contact, what to do with one,
@@ -166,10 +171,34 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
   }
 }
 
-/// What to do with [contact]: open the chat, rename it, remove it.
+/// What to do with [contact]: open the chat, rename it, report or block
+/// them, remove it.
 Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, ContactEntry contact) {
   VeilHaptics.medium();
   final l10n = AppLocalizations.of(context);
+  final blocked = ref.read(blockedAccountsProvider).byHandle(contact.handle);
+
+  // Blocking and reporting need their account, which the contact list does
+  // not hold (see SafetyAccounts.accountIdFor).
+  Future<String?> account() async {
+    final userId = await ref.read(safetyAccountsProvider).accountIdFor(contact.handle);
+    if (userId == null && context.mounted) {
+      showVeilToast(context, l10n.safetyAccountNotFound(contact.handle), tone: VeilTone.warn);
+    }
+    return userId;
+  }
+
+  Future<void> report() async {
+    final userId = await account();
+    if (userId == null || !context.mounted) return;
+    await showReportSheet(context, ref, ReportTarget(userId: userId, handle: contact.handle, offerBlock: true));
+  }
+
+  Future<void> block() async {
+    final userId = await account();
+    if (userId == null || !context.mounted) return;
+    await confirmAndBlock(context, ref, userId: userId, handle: contact.handle, announce: true);
+  }
 
   Future<void> startChat() async {
     final conversationId = await ref.read(messengerControllerProvider).startConversationByHandle(contact.handle);
@@ -217,6 +246,35 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
                 showContactNicknameSheet(context, ref, contact);
               },
             ),
+            VeilRow(
+              key: const ValueKey('contact-report'),
+              title: l10n.reportAction,
+              trailing: noChevron,
+              onTap: () {
+                close();
+                report();
+              },
+            ),
+            if (blocked != null)
+              VeilRow(
+                key: const ValueKey('contact-unblock'),
+                title: l10n.unblockAction,
+                trailing: noChevron,
+                onTap: () {
+                  close();
+                  unblockAccount(context, ref, userId: blocked.userId, handle: contact.handle, announce: true);
+                },
+              )
+            else
+              VeilRow(
+                key: const ValueKey('contact-block'),
+                title: l10n.blockAction,
+                destructive: true,
+                onTap: () {
+                  close();
+                  block();
+                },
+              ),
             VeilRow(
               title: l10n.contactsRemove,
               destructive: true,

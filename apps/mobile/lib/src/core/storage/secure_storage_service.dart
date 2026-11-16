@@ -703,7 +703,11 @@ enum SecureScope {
   privacy('veil.settings.privacy'),
 
   /// Private nicknames for contacts.
-  contacts('veil.contacts');
+  contacts('veil.contacts'),
+
+  /// The chats whose notifications the user turned off on this device, and
+  /// when each mute ends.
+  notifications('veil.settings.notifications');
 
   const SecureScope(this.namespace);
 

@@ -6,7 +6,8 @@ import '../../../shared/presentation/veil_ui.dart';
 /// One chat in the Chats list: a full-bleed 72dp row (64 [dense]) with the
 /// avatar, the name and the time on the first line, and the last message
 /// with the unread count or the timer glyph on the second. An unread chat
-/// has its name in bold and its last message in the text colour. The list
+/// has its name in bold and its last message in the text colour. A [muted]
+/// chat shows the muted glyph there, and its unread count in grey. The list
 /// puts the rows in a VeilGroup, whose hairlines start at the text edge
 /// ([textInset], 76).
 ///
@@ -23,6 +24,8 @@ class ConversationRow extends StatelessWidget {
     this.unreadCount = 0,
     this.unreadLabel,
     this.timerLabel,
+    this.muted = false,
+    this.mutedLabel,
     this.group = false,
     this.selected = false,
     this.dense = false,
@@ -51,6 +54,11 @@ class ConversationRow extends StatelessWidget {
   /// and a screen reader says this.
   final String? timerLabel;
 
+  /// The chat raises no notification for now; a screen reader says
+  /// [mutedLabel].
+  final bool muted;
+  final String? mutedLabel;
+
   /// A group chat: the neutral group avatar.
   final bool group;
 
@@ -78,6 +86,7 @@ class ConversationRow extends StatelessWidget {
       semanticLabel,
       if (unread && unreadLabel != null) unreadLabel!,
       if (timerLabel != null) timerLabel!,
+      if (this.muted && mutedLabel != null) mutedLabel!,
     ].join(', ');
 
     return Semantics(
@@ -137,10 +146,14 @@ class ConversationRow extends StatelessWidget {
                               const SizedBox(width: VeilSpace.xs),
                               Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: palette.textMuted),
                             ],
+                            if (this.muted) ...[
+                              const SizedBox(width: VeilSpace.xs),
+                              Icon(Icons.notifications_off_outlined, size: VeilIconSize.xs, color: palette.textMuted),
+                            ],
                             if (unread) ...[
                               const SizedBox(width: VeilSpace.xs),
                               // The row's label says it in words.
-                              ExcludeSemantics(child: UnreadBadge(count: unreadCount)),
+                              ExcludeSemantics(child: UnreadBadge(count: unreadCount, muted: this.muted)),
                             ],
                           ],
                         ),
@@ -158,11 +171,13 @@ class ConversationRow extends StatelessWidget {
 }
 
 /// The count of unread messages: a brand pill, at least 20x20, with the
-/// number in white.
+/// number in white. A [muted] chat's is grey: the muted text colour with the
+/// number in the page colour, the pair body text has the other way round.
 class UnreadBadge extends StatelessWidget {
-  const UnreadBadge({super.key, required this.count});
+  const UnreadBadge({super.key, required this.count, this.muted = false});
 
   final int count;
+  final bool muted;
 
   @override
   Widget build(BuildContext context) {
@@ -171,13 +186,16 @@ class UnreadBadge extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w600,
           height: 1,
-          color: Colors.white,
+          color: muted ? palette.canvas : Colors.white,
         );
     return Container(
       constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
       padding: const EdgeInsets.symmetric(horizontal: 6),
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: palette.primary, borderRadius: BorderRadius.circular(VeilRadius.pill)),
+      decoration: BoxDecoration(
+        color: muted ? palette.textMuted : palette.primary,
+        borderRadius: BorderRadius.circular(VeilRadius.pill),
+      ),
       child: Text(count > 999 ? '999+' : '$count', style: style, textAlign: TextAlign.center),
     );
   }

@@ -18,6 +18,7 @@ import '../../features/onboarding/presentation/onboarding_warning_screen.dart';
 import '../../features/onboarding/presentation/privacy_consent_screen.dart';
 import '../../features/onboarding/presentation/splash_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/safety/presentation/blocked_accounts_screen.dart';
 import '../../features/security/presentation/safety_numbers_screen.dart';
 import '../../features/security_status/presentation/security_status_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
@@ -155,6 +156,10 @@ List<RouteBase> _buildRoutes() {
     GoRoute(
       path: '/trusted-devices',
       pageBuilder: (context, state) => _veilPushPage(state, const TrustedDevicesScreen()),
+    ),
+    GoRoute(
+      path: '/blocked-accounts',
+      pageBuilder: (context, state) => _veilPushPage(state, const BlockedAccountsScreen()),
     ),
     GoRoute(
       path: '/lock',

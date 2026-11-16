@@ -21,6 +21,7 @@ import 'package:veil_mobile/src/features/onboarding/presentation/privacy_consent
 import 'package:veil_mobile/src/features/onboarding/presentation/splash_screen.dart';
 import 'package:veil_mobile/src/features/profile/presentation/profile_screen.dart';
 import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_widget.dart';
+import 'package:veil_mobile/src/features/safety/presentation/blocked_accounts_screen.dart';
 import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
@@ -610,6 +611,57 @@ const List<ScreenCase> screenCases = [
     primaryExtent: conversationRowsExtent,
     minPrimaryShare: minPrimaryContentShare,
   ),
+
+  // Keeping someone out: the chat's menu, muting, reporting the peer, one
+  // of their messages or a group member's, blocking, a chat whose peer is
+  // blocked, the blocked accounts with and without any, muted chats in the
+  // list, and reporting a contact.
+  ScreenCase('chat-room-menu',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openChatMenu),
+  ScreenCase('chat-room-mute-sheet',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openMuteSheet),
+  ScreenCase('chat-room-report-sheet',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openReportSheet),
+  ScreenCase('chat-room-message-report-sheet',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openMessageReportSheet),
+  ScreenCase('chat-room-group-report-sheet',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: '/chat/$groupConversationId',
+      withGroup: true,
+      settle: _openGroupMessageReportSheet),
+  ScreenCase('chat-room-block-dialog',
+      screen: ChatRoomScreen, file: 'chat_room_screen.dart', location: _chat, settle: _openBlockDialog),
+  ScreenCase(
+    'chat-room-blocked',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(peerBlocked: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectBlockedLine,
+  ),
+  ScreenCase('blocked-accounts',
+      screen: BlockedAccountsScreen,
+      file: 'blocked_accounts_screen.dart',
+      location: '/blocked-accounts',
+      attention: ChatAttention(peerBlocked: true),
+      settle: _expectBlockedAccounts),
+  ScreenCase('blocked-accounts-empty',
+      screen: BlockedAccountsScreen, file: 'blocked_accounts_screen.dart', location: '/blocked-accounts'),
+  ScreenCase(
+    'conversation-list-muted',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    attention: ChatAttention(muted: true),
+    primaryExtent: conversationRowsExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectMutedRows,
+  ),
+  ScreenCase('contacts-report-sheet',
+      screen: ContactsScreen, file: 'contacts_screen.dart', location: '/contacts', settle: _openContactReportSheet),
 ];
 
 const _wideSizes = [wideSmall, wideLarge];
@@ -840,11 +892,68 @@ Future<void> _expectGroupPane(WidgetTester tester) async {
   await _expectGroupMessages(tester);
 }
 
-Future<void> _openTimerSheet(WidgetTester tester) async {
-  // A disappearing message carries the same icon: the bar's is the button.
-  await tester.tap(find.widgetWithIcon(IconButton, Icons.timer_outlined));
+Future<void> _openTimerSheet(WidgetTester tester) => _openFromChatMenu(tester, 'timer', BottomSheet);
+
+// The chat's menu, open: the timer, muting, reporting and blocking.
+Future<void> _openChatMenu(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('chat-menu')));
+  await pumpFrames(tester, frames: 3);
+  expect(find.byType(PopupMenuItem<int>), findsNWidgets(4), reason: 'the chat menu did not open');
+}
+
+Future<void> _openFromChatMenu(WidgetTester tester, String entry, Type opens) async {
+  await _openChatMenu(tester);
+  await tester.tap(find.byKey(ValueKey('chat-menu-$entry')));
   await pumpFrames(tester, frames: 4);
-  expect(find.byType(BottomSheet), findsOneWidget, reason: 'the timer sheet did not open');
+  expect(find.byType(opens), findsOneWidget, reason: 'the chat menu\'s $entry did not open');
+}
+
+Future<void> _openMuteSheet(WidgetTester tester) => _openFromChatMenu(tester, 'mute', BottomSheet);
+
+Future<void> _openReportSheet(WidgetTester tester) => _openFromChatMenu(tester, 'report', BottomSheet);
+
+Future<void> _openBlockDialog(WidgetTester tester) => _openFromChatMenu(tester, 'block', AlertDialog);
+
+// A message from the other side, long pressed, then Report under the
+// reactions: the report names that message.
+Future<void> _reportMessage(WidgetTester tester, Finder message) async {
+  await tester.longPress(message);
+  await pumpFrames(tester, frames: 4);
+  await tester.tap(find.byKey(const ValueKey('message-report')));
+  await pumpFrames(tester, frames: 4);
+  expect(find.byKey(const ValueKey('report-reason-spam')), findsOneWidget, reason: 'the report sheet did not open');
+}
+
+Future<void> _openMessageReportSheet(WidgetTester tester) =>
+    _reportMessage(tester, find.textContaining('registry.example.org'));
+
+// A group member's message: the report names its writer, and offers no
+// block, which would not keep them out of the group.
+Future<void> _openGroupMessageReportSheet(WidgetTester tester) async {
+  await _expectGroupMessages(tester);
+  await _reportMessage(tester, find.text('The 14th works for me.'));
+  expect(find.byKey(const ValueKey('report-also-block')), findsNothing, reason: 'a group report offered a block');
+}
+
+Future<void> _expectBlockedLine(WidgetTester tester) async {
+  final en = lookupAppLocalizations(const Locale('en'));
+  expect(find.text(en.blockedComposerLine), findsOneWidget, reason: 'the blocked chat shows its composer');
+}
+
+Future<void> _expectBlockedAccounts(WidgetTester tester) async {
+  await pumpFrames(tester, frames: 3);
+  expect(find.byType(BlockedAccountRow), findsNWidgets(2), reason: 'the blocked accounts did not load');
+}
+
+Future<void> _expectMutedRows(WidgetTester tester) async {
+  expect(find.byIcon(Icons.notifications_off_outlined), findsNWidgets(2), reason: 'the muted chats show no glyph');
+}
+
+Future<void> _openContactReportSheet(WidgetTester tester) async {
+  await _openContactActionsSheet(tester);
+  await tester.tap(find.byKey(const ValueKey('contact-report')));
+  await pumpFrames(tester, frames: 6);
+  expect(find.byKey(const ValueKey('report-reason-spam')), findsOneWidget, reason: 'the report sheet did not open');
 }
 
 Future<void> _openReactionSheet(WidgetTester tester) async {

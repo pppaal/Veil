@@ -172,12 +172,21 @@ class VeilEmptyState extends StatelessWidget {
 
 /// A short message at the bottom of the screen for something that just
 /// happened. The tone shows only as a leading icon; information has none.
-void showVeilToast(BuildContext context, String message, {VeilTone tone = VeilTone.info}) {
+/// [actionLabel] and [onAction] add one text button, such as Retry after
+/// something failed.
+void showVeilToast(
+  BuildContext context,
+  String message, {
+  VeilTone tone = VeilTone.info,
+  String? actionLabel,
+  VoidCallback? onAction,
+}) {
   final palette = context.veilPalette;
   final messenger = ScaffoldMessenger.of(context);
   messenger.clearSnackBars();
   messenger.showSnackBar(
     SnackBar(
+      action: actionLabel == null || onAction == null ? null : SnackBarAction(label: actionLabel, onPressed: onAction),
       content: Row(
         children: [
           if (tone != VeilTone.info) ...[

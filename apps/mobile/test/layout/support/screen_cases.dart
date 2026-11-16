@@ -191,6 +191,15 @@ const List<ScreenCase> screenCases = [
       location: '/lock',
       account: LayoutAccount.locked,
       primaryAction: _primaryButton),
+  // The PIN setup that Settings opens on a phone with no PIN: its bar has
+  // the back button that cancels it.
+  ScreenCase('app-lock-setup',
+      screen: AppLockScreen,
+      file: 'app_lock_screen.dart',
+      location: '/lock',
+      account: LayoutAccount.choosingPin,
+      primaryAction: _primaryButton,
+      settle: _expectCancellableSetup),
 
   // The conversation list, in the main shell with its bottom bar: with
   // conversations, with none, and while searching.
@@ -838,6 +847,11 @@ Future<void> _expectGroupPane(WidgetTester tester) async {
     reason: 'the second pane did not open the group',
   );
   await _expectGroupMessages(tester);
+}
+
+Future<void> _expectCancellableSetup(WidgetTester tester) async {
+  expect(find.byType(TextField), findsNWidgets(2), reason: 'the PIN setup is not on screen');
+  expect(find.byKey(AppLockScreen.cancelKey), findsOneWidget, reason: 'the setup has no way back');
 }
 
 Future<void> _openTimerSheet(WidgetTester tester) async {

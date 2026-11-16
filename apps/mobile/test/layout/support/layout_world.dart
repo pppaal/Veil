@@ -14,6 +14,7 @@ import 'package:veil_mobile/src/core/identity/trusted_identity_store.dart';
 import 'package:veil_mobile/src/core/security/app_lock_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/app_lock/data/lock_request_provider.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
@@ -79,6 +80,10 @@ enum LayoutAccount {
 
   /// Signed in, behind the app lock.
   locked,
+
+  /// Signed in with no PIN yet, behind the lock the user turned on in
+  /// Settings: the PIN setup, which can be cancelled.
+  choosingPin,
 }
 
 /// Things a chat can be asked to show on top of its messages.
@@ -146,7 +151,9 @@ class LayoutWorld {
   final String? sessionError;
 
   final FakeRelay relay = FakeRelay();
-  final SecureStorageService storage = _PinSetStorage(MemorySecureStore());
+  late final SecureStorageService storage = account == LayoutAccount.choosingPin
+      ? SecureStorageService(MemorySecureStore())
+      : _PinSetStorage(MemorySecureStore());
   final LayoutMemoryCache cache = LayoutMemoryCache();
   late final LayoutRelayClient api;
   late final IdentityTrust trust;
@@ -166,7 +173,7 @@ class LayoutWorld {
             displayName: selfDisplayName,
             onboardingAccepted: true,
             privacyConsentAccepted: true,
-            locked: account == LayoutAccount.locked,
+            locked: account == LayoutAccount.locked || account == LayoutAccount.choosingPin,
             initializing: false,
             errorMessage: sessionError,
           ),
@@ -259,6 +266,7 @@ class LayoutWorld {
       identityTrustProvider.overrideWithValue(trust),
       conversationCacheProvider.overrideWith((ref) async => null),
       appLockServiceProvider.overrideWithValue(AppLockService(const _Biometrics(), storage)),
+      if (account == LayoutAccount.choosingPin) lockRequestedInSettingsProvider.overrideWith((ref) => true),
       localSecuritySnapshotProvider.overrideWith(
         (ref) async => const LocalSecuritySnapshot(
           hasDeviceSecretRefs: true,

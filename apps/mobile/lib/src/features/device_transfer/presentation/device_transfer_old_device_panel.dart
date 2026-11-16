@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../chat/presentation/message_time.dart';
 import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/device_transfer_controller.dart';
@@ -120,7 +121,7 @@ class TransferOldDevicePanel extends StatelessWidget {
             label: l10n.deviceTransferCopyPayload,
           ),
           const SizedBox(height: VeilSpace.xs),
-          Text(l10n.deviceTransferExpires(formatTransferExpiry(transferExpiresAt!, now, l10n)), style: muted),
+          Text(l10n.deviceTransferExpires(formatTransferExpiry(transferExpiresAt!, now, l10n, timeFormat: MessageTimeFormat.of(context))), style: muted),
           const SizedBox(height: VeilSpace.lg),
           TextField(
             controller: claimIdController,

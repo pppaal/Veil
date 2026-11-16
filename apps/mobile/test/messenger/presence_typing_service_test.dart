@@ -72,6 +72,20 @@ void main() {
     expect(notifications, 2);
   });
 
+  // It runs for every message a peer sends: one where nobody was typing
+  // rebuilds nothing.
+  test('a stop where nobody was typing notifies nobody', () {
+    var notifications = 0;
+    presence.addListener(() => notifications += 1);
+
+    presence.typingStopped('conv-a');
+    presence.typingStarted('conv-a', 'atlas');
+    presence.typingStopped('conv-a');
+    presence.typingStopped('conv-a');
+
+    expect(notifications, 2);
+  });
+
   test('presence follows the latest update per user', () {
     presence.presenceChanged('user-atlas', online: true);
     presence.presenceChanged('user-selene', online: true);

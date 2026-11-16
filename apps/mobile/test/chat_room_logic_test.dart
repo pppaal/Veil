@@ -30,6 +30,9 @@ void main() {
     expect(chatDayLabel(l10n, DateTime(2026, 11, 11, 9), now: now), 'Wednesday');
     expect(chatDayLabel(l10n, DateTime(2026, 4, 7, 9), now: now), 'April 7');
     expect(chatDayLabel(l10n, DateTime(2025, 12, 31, 9), now: now), 'December 31, 2025');
+    // Stamped by a server ahead of this phone's clock: today, as its Chats
+    // row shows its time, not tomorrow's date.
+    expect(chatDayLabel(l10n, DateTime(2026, 11, 16, 0, 5), now: now), 'Today');
   });
 
   test('messageBubbleSemanticsLabel includes delivery state for sent messages', () {

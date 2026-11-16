@@ -101,13 +101,15 @@ class ChatDayDivider extends StatelessWidget {
 
 /// The words for the day of [day] as seen on [now]: "Today", "Yesterday",
 /// the weekday for the six days before, the month and day this year, and
-/// the full date before that.
+/// the full date before that. A message stamped later than this phone's
+/// clock reads (a clock behind the server's) is under "Today", as its row in
+/// Chats shows its time (MessageTimeFormat.listDate).
 String chatDayLabel(AppLocalizations l10n, DateTime day, {required DateTime now}) {
   final local = day.toLocal();
   final date = DateTime(local.year, local.month, local.day);
   final today = DateTime(now.year, now.month, now.day);
   final daysAgo = (today.difference(date).inHours / 24).round();
-  if (daysAgo == 0) return l10n.chatDayToday;
+  if (daysAgo <= 0) return l10n.chatDayToday;
   if (daysAgo == 1) return l10n.chatDayYesterday;
   if (daysAgo > 1 && daysAgo < 7) return DateFormat.EEEE(l10n.localeName).format(local);
   if (local.year == now.year) return DateFormat.MMMMd(l10n.localeName).format(local);

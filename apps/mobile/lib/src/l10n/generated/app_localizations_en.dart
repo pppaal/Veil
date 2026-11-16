@@ -359,8 +359,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLogoutConfirmTitle => 'Sign out of this phone?';
 
   @override
-  String get settingsLogoutConfirmBody =>
-      'This signs this phone out and deletes your chats from it. Your account is gone for good.';
+  String settingsLogoutConfirmBody(String handle) {
+    return 'This signs this phone out and deletes your chats from it. You can\'t sign in as @$handle again.';
+  }
 
   @override
   String get settingsLogoutFailed =>

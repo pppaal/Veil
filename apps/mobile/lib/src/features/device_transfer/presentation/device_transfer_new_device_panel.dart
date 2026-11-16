@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../chat/presentation/message_time.dart';
 import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import 'device_transfer_code.dart';
@@ -152,7 +153,7 @@ class TransferNewDevicePanel extends StatelessWidget {
             style: muted,
           ),
           if (claimExpiresAt != null)
-            Text(l10n.deviceTransferExpires(formatTransferExpiry(claimExpiresAt!, now, l10n)), style: muted),
+            Text(l10n.deviceTransferExpires(formatTransferExpiry(claimExpiresAt!, now, l10n, timeFormat: MessageTimeFormat.of(context))), style: muted),
           const SizedBox(height: VeilSpace.md),
           VeilButton(
             onPressed: isCompleting ? null : onComplete,

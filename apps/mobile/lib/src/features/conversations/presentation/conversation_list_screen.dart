@@ -47,6 +47,11 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
   DateTime? _archiveNextBeforeSentAt;
   String? _archiveNextBeforeMessageId;
   bool _restoredUiState = false;
+  // Rows say when their last message was sent against the phone's day, so
+  // the list is drawn again when the day turns, even with nothing arriving:
+  // a row from 11:58 PM says "Yesterday" from midnight on.
+  Timer? _dayTurn;
+  DateTime? _nextDay;
 
   @override
   void initState() {
@@ -79,8 +84,19 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     _navigationRequestCounter = restored.lastNavigationRequestId;
   }
 
+  void _redrawWhenTheDayTurns(DateTime now) {
+    final nextDay = DateTime(now.year, now.month, now.day + 1);
+    if (nextDay == _nextDay) return;
+    _nextDay = nextDay;
+    _dayTurn?.cancel();
+    _dayTurn = Timer(nextDay.difference(now), () {
+      if (mounted) setState(() {});
+    });
+  }
+
   @override
   void dispose() {
+    _dayTurn?.cancel();
     _searchController.removeListener(_handleSearchChanged);
     _archiveSearchDebounce?.cancel();
     _searchController.dispose();
@@ -102,6 +118,8 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     final session = ref.watch(appSessionProvider);
     final controller = ref.watch(messengerControllerProvider);
     final names = ref.watch(peerNamesProvider);
+    final now = ref.watch(wallClockProvider)().toLocal();
+    _redrawWhenTheDayTurns(now);
     final conversations = controller.conversations;
     final l10n = AppLocalizations.of(context);
     // A chat is found by the name its row shows, as well as by its handle.
@@ -139,7 +157,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
               _archiveNextBeforeSentAt != null && _archiveNextBeforeMessageId != null,
           searchController: _searchController,
           timeFormat: MessageTimeFormat.of(context),
-          now: ref.watch(wallClockProvider)(),
+          now: now,
           selectedConversationId: isWideLayout ? _selectedConversationId : null,
           onSelectConversation: (conversationId) {
             if (isWideLayout) {

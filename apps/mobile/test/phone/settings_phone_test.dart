@@ -292,7 +292,7 @@ void main() {
 
         expect(world.container.read(appSessionProvider).isAuthenticated, isTrue, reason: 'a tap alone signs nobody out');
         expect(findCopy(en.settingsLogoutConfirmTitle), findsOneWidget);
-        expect(findCopy(en.settingsLogoutConfirmBody), findsOneWidget);
+        expect(findCopy(en.settingsLogoutConfirmBody(world.container.read(appSessionProvider).handle!)), findsOneWidget);
         expect(findCopy(en.settingsTypePhraseToContinue(handle)), findsOneWidget);
         TextButton confirm() => tester.widget(find.widgetWithText(TextButton, en.settingsLogout));
         expect(confirm().onPressed, isNull);

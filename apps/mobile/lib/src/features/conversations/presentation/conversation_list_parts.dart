@@ -172,8 +172,11 @@ class MessageSearchResultTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       // The snippet is a person's words: drawn as they wrote
                       // them, with the query in bold, and led by "You: " when
-                      // they are the user's own, as the chat's row leads its
-                      // preview.
+                      // they are the user's own, in a 1:1 too. That departs
+                      // from the pattern sheet (M8: hits carry no You/Them
+                      // label, as Signal's): a hit stands apart from its chat,
+                      // and nothing else on it says whose words they are. A
+                      // group's row leads its own last message the same way.
                       RichText(
                         text: TextSpan(
                           style: snippetStyle,

@@ -85,6 +85,34 @@ void main() {
     );
   });
 
+  // Nothing arrives and nothing is touched: the rows still move to the new
+  // day when the phone's clock passes midnight.
+  testWidgets('a list left open across midnight says "Yesterday" from midnight on', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      size: _tall,
+      location: '/conversations',
+      prepare: (world) async {
+        // Ten seconds before midnight. The clock here stands still while
+        // the test's time runs, so it is moved past midnight by hand once
+        // what the opening of the app set going has settled, before the ten
+        // seconds are up.
+        world.now = DateTime(2026, 4, 7, 23, 59, 50);
+        return null;
+      },
+      body: (world) async {
+        await tester.pump(const Duration(seconds: 5));
+        expect(_rowTimes(tester)['Sam Rivera'], '9:45\u00a0AM');
+        world.now = DateTime(2026, 4, 8, 0, 0, 1);
+        await tester.pump(const Duration(seconds: 4));
+        await tester.pump();
+        expect(_rowTimes(tester)['Sam Rivera'], 'Yesterday');
+        expect(_rowTimes(tester)['Mia Chen'], 'Mon');
+      },
+    );
+  });
+
   testWidgets('with the phone set to 24-hour time, rows and bubbles show it', (tester) async {
     tester.platformDispatcher.alwaysUse24HourFormatTestValue = true;
     addTearDown(tester.platformDispatcher.clearAlwaysUse24HourTestValue);

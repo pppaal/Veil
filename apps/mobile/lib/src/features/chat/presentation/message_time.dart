@@ -28,6 +28,10 @@ class MessageTimeFormat {
       // draw as a box. A no-break space keeps the two together as well.
       _timeOfDay.format(at.toLocal()).replaceAll(' ', ' ');
 
+  /// A day and a time of day, as an expiry says it: "Apr 8 2:05 PM", or
+  /// "Apr 8 14:05" on a phone set to 24-hour time.
+  String dayAndTime(DateTime at) => '${DateFormat.MMMd(_l10n.localeName).format(at.toLocal())} ${timeOfDay(at)}';
+
   /// When [at] was, as seen on [now]: the time of day for today,
   /// "Yesterday", the short weekday ("Mon") for the six days before, then
   /// the short date ("Mar 30"), with the year when it was not this year.

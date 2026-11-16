@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_time.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_code.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 // When a message was sent, as Signal, WhatsApp and the web app say it: the
@@ -45,6 +46,16 @@ void main() {
     test('is the phone\'s local time, also for a time the server sent in UTC', () {
       final utc = DateTime.utc(2026, 4, 7, 9, 5);
       expect(_twentyFourHour.timeOfDay(utc), _twentyFourHour.timeOfDay(utc.toLocal()));
+    });
+
+    // A one-time link's and a move's expiry say the hour as the chats do.
+    test('with a day, as an expiry says it, follows the 24-hour setting too', () {
+      expect(_twelveHour.dayAndTime(DateTime(2026, 4, 8, 14, 5)), 'Apr 8 2:05\u00a0PM');
+      expect(_twentyFourHour.dayAndTime(DateTime(2026, 4, 8, 14, 5)), 'Apr 8 14:05');
+      expect(
+        formatTransferExpiry(DateTime(2026, 4, 8, 14, 5), DateTime(2026, 4, 7, 10, 20), _en, timeFormat: _twelveHour),
+        _en.deviceTransferExpiryAt('Apr 8 2:05\u00a0PM'),
+      );
     });
   });
 

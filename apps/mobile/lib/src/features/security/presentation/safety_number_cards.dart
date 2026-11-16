@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-// The parts of the safety number page: who it is about, the number, and the
-// code to scan. Plain parts on the page: no card around any of them.
+// The parts of the safety number page: who it is about and the number.
+// Plain parts on the page: no card around either.
 
 /// Who the safety number is about: their avatar, name and handle, and
-/// whether they are verified, as a word.
+/// whether they are verified: "Verified" with a check in green, or "Not
+/// verified" in grey.
 class SafetyPeerHeader extends StatelessWidget {
   const SafetyPeerHeader({super.key, required this.name, required this.handle, required this.verified});
 
@@ -41,10 +41,10 @@ class SafetyPeerHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(width: VeilSpace.xs),
-        Text(
-          verified ? l10n.safetyNumbersVerified : l10n.safetyNumbersUnverified,
-          style: theme.textTheme.labelMedium?.copyWith(color: verified ? palette.success : palette.textMuted),
-        ),
+        if (verified)
+          const SafetyVerifiedMark()
+        else
+          Text(l10n.safetyNumbersUnverified, style: theme.textTheme.labelMedium?.copyWith(color: palette.textMuted)),
       ],
     );
   }
@@ -112,31 +112,47 @@ class SafetyNumberCard extends StatelessWidget {
   }
 }
 
-/// The QR code the contact scans to compare both identities in one step,
-/// on a white panel in both themes, and what it holds.
-class SafetyQrCard extends StatelessWidget {
-  const SafetyQrCard({super.key, required this.content});
+/// "Verified" with a check, in the success colour: the one state a list
+/// labels. [chevron] ends a row that opens something.
+class SafetyVerifiedMark extends StatelessWidget {
+  const SafetyVerifiedMark({super.key, this.chevron = false});
 
-  final String content;
+  final bool chevron;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.veilPalette;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.check, size: 16, color: palette.success),
+        const SizedBox(width: VeilSpace.xxs),
+        Text(
+          AppLocalizations.of(context).safetyNumbersVerified,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(color: palette.success),
+        ),
+        if (chevron) Icon(Icons.chevron_right, size: 20, color: palette.textSubtle),
+      ],
+    );
+  }
+}
+
+/// The two quiet buttons under a number: copy this phone's code for the
+/// contact to paste, and paste theirs to compare (null while it can't).
+class SafetyCodeButtons extends StatelessWidget {
+  const SafetyCodeButtons({super.key, required this.onCopy, required this.onPaste});
+
+  final VoidCallback onCopy;
+  final VoidCallback? onPaste;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Column(
+    return Wrap(
+      spacing: VeilSpace.xs,
       children: [
-        Container(
-          width: 220,
-          height: 220,
-          padding: const EdgeInsets.all(VeilSpace.sm),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(VeilRadius.md)),
-          child: QrImageView(data: content, version: QrVersions.auto, backgroundColor: Colors.white),
-        ),
-        const SizedBox(height: VeilSpace.xs),
-        Text(
-          l10n.safetyNumbersQrNote,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
-        ),
+        TextButton(key: const ValueKey('safety-copy-code'), onPressed: onCopy, child: Text(l10n.safetyNumbersCopyCode)),
+        TextButton(key: const ValueKey('safety-paste-code'), onPressed: onPaste, child: Text(l10n.safetyNumbersScanAction)),
       ],
     );
   }

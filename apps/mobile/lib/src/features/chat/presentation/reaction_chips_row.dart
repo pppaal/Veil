@@ -4,7 +4,6 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
-import '../../reactions/presentation/reaction_picker_widget.dart';
 
 /// The reactions on a message, one chip per emoji, the most used first,
 /// with its count from two up (WhatsApp, Signal). A chip this user added to

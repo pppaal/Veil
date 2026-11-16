@@ -100,6 +100,9 @@ class ContactsController extends ChangeNotifier {
     }
   }
 
+  /// Whether the last failure was the server not finding the account.
+  bool get failedAsNotFound => userFacingErrorCodeOf(_errorMessage ?? '') == UserFacingErrorCode.notFound;
+
   Future<bool> addContact({required String handle, String? nickname}) async {
     final token = _accessToken;
     if (token == null) return false;

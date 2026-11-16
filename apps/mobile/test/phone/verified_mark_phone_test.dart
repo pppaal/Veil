@@ -72,19 +72,21 @@ void main() {
     return texts;
   }
 
-  final verifiedOn = l10n.safetyNumbersVerifiedOn('').trim();
+  // "Verified Nov 16, 2026": the mark's own word is "Verified" alone.
+  final verifiedOn = '${l10n.safetyNumbersVerifiedOn('').trim()} ';
 
   // What a safety-number page says while it may not call the contact
   // verified because another conversation holds a change of theirs.
   void expectInQuestion(Set<String> texts) {
     expect(texts, contains(l10n.safetyNumbersChangedElsewhereTitle));
-    expect(texts, contains(l10n.safetyNumbersChangedElsewhereBody(peerName)));
+    expect(texts, contains(l10n.safetyNumbersChangedElsewhereBody));
     expect(texts, contains(l10n.safetyNumbersUnverified));
     expect(texts, isNot(contains(l10n.safetyNumbersVerified)));
     expect(texts.where((text) => text.startsWith(verifiedOn)), isEmpty, reason: 'no "Verified on" card');
-    // The pinned number is still shown, as the current one; what would
-    // confirm the old key (marking it verified, its QR code, a scan against
-    // it) is not offered here: the change is reviewed where it is held.
+    // The pinned number is still shown, as the one before the change; what
+    // would confirm the old key (marking it verified, its code, a paste
+    // against it) is not offered here: the change is reviewed where it is
+    // held.
     expect(texts, contains(l10n.safetyNumbersCurrentNumberHeader));
     expect(texts, contains(l10n.safetyNumbersReviewChange));
     expect(texts, isNot(contains(l10n.safetyNumbersMarkVerified)));
@@ -243,8 +245,9 @@ void main() {
         await pumpFrames(tester, frames: 3);
         await awaitSafetyNumber(tester);
         expect(find.byType(VeilRow), findsNWidgets(groupMemberHandles.length));
+        // Only the positive state is labelled in the list.
         expect(find.text(l10n.safetyNumbersVerified), findsNothing);
-        expect(find.text(l10n.safetyNumbersUnverified), findsNWidgets(groupMemberHandles.length));
+        expect(find.text(l10n.safetyNumbersUnverified), findsNothing);
 
         // Her page in the group says why, and leads to the 1:1 that holds
         // the change.
@@ -280,7 +283,9 @@ void main() {
       body: (world) async {
         await awaitSafetyNumber(tester);
         final row = find.widgetWithText(VeilRow, peerNames['priya']!);
-        expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersUnverified)), findsOneWidget);
+        // Not verified yet: her row has no label.
+        expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersVerified)), findsNothing);
+        expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersUnverified)), findsNothing);
 
         await tester.tap(row);
         await pumpFrames(tester);

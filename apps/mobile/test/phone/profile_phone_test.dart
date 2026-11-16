@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -7,9 +8,10 @@ import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
-// The profile on a phone: the avatar, the name and the handle, then the
-// nickname in one field row with the one line on who sees it, all on the
-// first screenful; the nickname is edited in place.
+// The profile on a phone: the avatar, the name and the handle (a tap copies
+// it), then the name in one field row with the one line on who sees it, all
+// on the first screenful; the name is edited in place and saved from the
+// bar.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -51,20 +53,18 @@ void main() {
     });
   });
 
-  testWidgets('the nickname is edited in place: saved from its row, an empty one clears it', (tester) async {
+  testWidgets('the name is edited in place and saved from the bar; an empty one clears it', (tester) async {
     await withPhoneApp(tester, identities, location: '/profile', keyboardHeight: 300, body: (world) async {
       String? nickname() => world.container.read(appSessionProvider).displayName;
-      final save = find.widgetWithText(TextButton, en.profileSaveNickname, skipOffstage: false);
+      final save = find.byKey(const ValueKey('profile-save'), skipOffstage: false);
 
       await tester.enterText(field(), 'Someone else');
       await pumpFrames(tester, frames: 2);
       expect(nickname(), selfDisplayName, reason: 'typing alone saves nothing');
       expect(save, findsOneWidget);
-      // The button that saves is in the field's row, above the keyboard.
-      await tester.ensureVisible(save);
-      await pumpFrames(tester, frames: 2);
+      // "Save" is in the bar, above the keyboard whatever is scrolled.
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300));
-      expect(tester.getRect(save).top, closeTo(tester.getRect(field()).top, 24));
+      expect(tester.getRect(save).bottom, lessThan(tester.getRect(field()).top));
 
       await tester.tap(save);
       await pumpFrames(tester, frames: 3);
@@ -80,6 +80,21 @@ void main() {
       await pumpFrames(tester, frames: 3);
       expect(nickname(), isNull);
       expect(find.text('@$selfHandle', skipOffstage: false), findsOneWidget);
+    });
+  });
+
+  testWidgets('a tap on the handle copies it', (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied.add((call.arguments as Map)['text'] as String);
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    await withPhoneApp(tester, identities, location: '/profile', body: (world) async {
+      await tester.tap(find.byKey(const ValueKey('profile-handle')));
+      await pumpFrames(tester, frames: 2);
+      expect(copied, ['@$selfHandle']);
+      expect(findCopy(en.profileHandleCopied), findsOneWidget);
     });
   });
 }

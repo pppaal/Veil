@@ -79,8 +79,15 @@ String? _timerNoticeText(AppLocalizations l10n, String body) {
 // The user's own system message, as this device sent it: a screenshot
 // notice reads "You took a screenshot" here, whatever its sent words.
 String _ownSystemText(AppLocalizations l10n, String body) =>
-    body.endsWith(screenshotNoticeSuffix) ? l10n.chatScreenshotSelfNotice : body;
+    isScreenshotNotice(l10n, body) ? l10n.chatScreenshotSelfNotice : body;
 
-/// How the screenshot notice this app sends ends ("@sam took a screenshot"),
-/// by which the sender's own copy is told apart.
-const screenshotNoticeSuffix = ' took a screenshot';
+/// Whether [body] is the screenshot notice this app sends ("@sam took a
+/// screenshot"), read off the same ARB sentence that wrote it.
+bool isScreenshotNotice(AppLocalizations l10n, String body) {
+  const mark = '\u0000';
+  final parts = l10n.chatScreenshotSystemNotice(mark).split(mark);
+  if (parts.length != 2) return false;
+  return body.length > parts.first.length + parts.last.length &&
+      body.startsWith(parts.first) &&
+      body.endsWith(parts.last);
+}

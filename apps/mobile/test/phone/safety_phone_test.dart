@@ -440,12 +440,12 @@ void main() {
         await pumpFrames(tester);
         expect(find.byType(BlockedAccountsScreen), findsOneWidget);
         expect(find.byType(BlockedAccountRow), findsNWidgets(2));
-        // A name where this phone knows one, the handle alone where not,
-        // without its @ as the Chats row names them.
+        // A name and the @handle where this phone knows a name; the @handle
+        // alone where not, never a bare handle.
         expect(find.text('Sam Rivera'), findsOneWidget);
         expect(find.text('@$peerHandle'), findsOneWidget);
-        expect(find.text('tom_walsh'), findsOneWidget);
-        expect(find.text('@tom_walsh'), findsNothing);
+        expect(find.text('@tom_walsh'), findsOneWidget);
+        expect(find.text('tom_walsh'), findsNothing);
 
         Finder unblockOf(String handle) => find.descendant(
               of: find.byKey(ValueKey('blocked-$handle')),
@@ -459,7 +459,9 @@ void main() {
         await tester.tap(unblockOf('tom_walsh'));
         await pumpFrames(tester, frames: 4);
         expect(world.relay.blocks['user-$selfHandle'], isEmpty);
+        // One quiet line, nothing under it.
         expect(find.text(en.blockedAccountsEmptyTitle), findsOneWidget);
+        expect(find.byType(VeilEmptyState), findsNothing);
 
         await tester.tap(find.byTooltip('Back'));
         await pumpFrames(tester);

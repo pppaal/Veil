@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
+import 'package:veil_mobile/src/core/crypto/crypto_adapter_registry.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_labels.dart';
@@ -12,7 +13,7 @@ import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
 // What the screens around the chat say on a phone, and in which order: the
-// settings say what each destructive action does, a pending identity change
+// settings' account actions say what they erase, a pending identity change
 // comes first on the screen that reviews it, and the consent row is one tap
 // target.
 
@@ -60,42 +61,34 @@ void main() {
       await pumpFrames(tester, frames: 2);
     }
 
-    testWidgets('names the account, and says the loss of an account once, in the security footer', (tester) async {
+    testWidgets('names the account, and the security group ends in one plain line, with no paragraph', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
         final said = await read(tester);
         expect(said, containsAll([selfDisplayName, '@$selfHandle']), reason: 'the account was on screen');
+        final testBuild =
+            cryptoAdapterKindOf(world.container.read(cryptoAdapterProvider).adapterId) == CryptoAdapterKind.development;
         for (final text in [
           l10n.settingsSectionSecurity,
           l10n.settingsSectionDevices,
           l10n.settingsSectionAccount,
-          '${l10n.securityFooterEncryption} ${l10n.securityFooterDevice} ${l10n.securityFooterNoRecovery}',
+          testBuild ? l10n.securityFooterTestBuild : l10n.securityFooterUnaudited,
           l10n.settingsLogout,
-          l10n.settingsWipeLocal,
-          l10n.settingsRevokeTitle,
           l10n.settingsDeleteAccountAction,
         ]) {
           expect(said, contains(text));
         }
-        // The security footer is the only text of the screen that names
-        // the backup there is not.
-        expect([for (final text in said) if (text.toLowerCase().contains('backup')) text],
-            ['${l10n.securityFooterEncryption} ${l10n.securityFooterDevice} ${l10n.securityFooterNoRecovery}']);
+        // What losing the account means is said in the dialogs that lose
+        // it, and in Before you start; Settings has no paragraph on it.
+        expect([for (final text in said) if (text.toLowerCase().contains('backup')) text], isEmpty);
+        expect([for (final text in said) if (text.toLowerCase().contains('recover')) text], isEmpty);
       });
     });
 
-    testWidgets('each destructive action says in its dialog what it erases, before the typed phrase',
-        (tester) async {
+    testWidgets('each account action says in its dialog what it erases, before the typed handle', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', size: phoneLarge, body: (world) async {
-        for (final (key, title, body, phrase) in [
-          ('settings-logout', l10n.settingsLogoutConfirmTitle, l10n.settingsLogoutConfirmBody, l10n.settingsLogoutConfirmPhrase),
-          ('settings-wipe', l10n.settingsWipeConfirmTitle, l10n.settingsWipeConfirmBody, l10n.settingsWipeConfirmPhrase),
-          ('settings-revoke', l10n.settingsRevokeConfirmTitle, l10n.settingsRevokeConfirmBody, l10n.settingsRevokeConfirmPhrase),
-          (
-            'settings-delete-account',
-            l10n.settingsDeleteAccountConfirmHeadline,
-            l10n.settingsDeleteAccountBody,
-            l10n.settingsDeleteAccountConfirmPhrase
-          ),
+        for (final (key, title, body) in [
+          ('settings-logout', l10n.settingsLogoutConfirmTitle, l10n.settingsLogoutConfirmBody),
+          ('settings-delete-account', l10n.settingsDeleteAccountConfirmHeadline, l10n.settingsDeleteAccountBody),
         ]) {
           await scrollToRow(tester, key);
           await tester.tap(find.byKey(ValueKey(key)));
@@ -105,9 +98,10 @@ void main() {
           final said = find.descendant(of: dialog, matching: find.text(body));
           expect(said, findsOneWidget, reason: '$key says what it does');
           // What it erases, and that nothing brings it back.
-          expect(body, anyOf(contains('erases'), contains('deletes'), contains('wipes')), reason: key);
-          expect(body.toLowerCase(), contains('backup'), reason: key);
-          final prompt = find.descendant(of: dialog, matching: find.text(l10n.settingsTypePhraseToContinue(phrase)));
+          expect(body, anyOf(contains('erases'), contains('deletes')), reason: key);
+          expect(body, anyOf(contains('for good'), contains("can't be undone")), reason: key);
+          final prompt =
+              find.descendant(of: dialog, matching: find.text(l10n.settingsTypePhraseToContinue('@$selfHandle')));
           expect(tester.getRect(said).bottom, lessThan(tester.getRect(prompt).top), reason: 'read before typing');
           await tester.tap(find.text(l10n.commonCancel));
           await pumpFrames(tester, frames: 3);
@@ -116,28 +110,26 @@ void main() {
       });
     });
 
-    testWidgets('the devices list says what the server knows of each device', (tester) async {
+    testWidgets('the devices list says one grey line of each device, and lists no removed one', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-        await scrollToRow(tester, 'settings-device-dev-laptop');
-        await tester.tap(find.byKey(const ValueKey('settings-device-dev-laptop')));
+        await scrollToRow(tester, 'settings-devices');
+        await tester.tap(find.byKey(const ValueKey('settings-devices')));
         await pumpFrames(tester, frames: 6);
         final devices = await read(tester);
-        expect(devices, containsAll(['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone', 'Android']),
-            reason: 'the devices were on screen');
-        for (final text in ['Last seen Apr 2', 'Approved by Pixel 9 Pro Fold', l10n.settingsDeviceNoteStale]) {
-          expect(devices, contains(text));
+        expect(devices, containsAll(['Pixel 9 Pro Fold', 'MacBook Air']), reason: 'the devices were on screen');
+        expect(devices, contains(l10n.settingsDeviceInactiveSince('Apr 2')));
+        expect(devices.where((text) => text.startsWith('Android · ')), hasLength(1), reason: 'this phone: what and since when');
+        for (final gone in ['Old iPhone', 'Approved by Pixel 9 Pro Fold', 'Last seen Apr 2']) {
+          expect(devices, isNot(contains(gone)));
         }
-        // No count of what the list already shows.
-        expect(devices.where((text) => text.contains('·')), isEmpty);
       });
     });
   });
 
   group('device transfer', () {
-    test('every outcome of the old device has words of its own', () {
+    test('every outcome of the old device that needs saying has words of its own', () {
       const outcomes = <TransferStatus>[
         TransferNeedsApi(),
-        TransferTokenReady(),
         TransferNotStarted(),
         TransferClaimCodeMissing(),
         TransferClaimNotWaiting('claim-7'),
@@ -145,10 +137,13 @@ void main() {
       ];
       final labels = [for (final outcome in outcomes) transferStatusLabel(l10n, outcome)!];
       expect(labels.toSet(), hasLength(outcomes.length));
-      expect(labels[4], contains('claim-7'));
-      expect(labels[5], allOf(contains('claim-7'), contains('AB12 CD34')));
+      expect(labels[3], contains('claim-7'));
+      expect(labels[4], l10n.deviceTransferStatusClaimApproved);
+      // The code on screen says it is ready, and the approve dialog shows
+      // a claim that waits: no line repeats them.
       expect(transferStatusLabel(l10n, null), isNull);
-      expect(transferStatusLabel(l10n, const TransferClaimApproved('c', 'f')), 'Approved code c. Key fingerprint: f');
+      expect(transferStatusLabel(l10n, const TransferTokenReady()), isNull);
+      expect(transferStatusLabel(l10n, const TransferClaimWaiting('c', 'f')), isNull);
     });
   });
 
@@ -173,35 +168,30 @@ void main() {
       });
     });
 
-    // The number to compare is the new one, so it comes first with the
-    // decision under it; the pinned number follows for reference.
-    testWidgets('says which number is the new one and which the current, the new one first', (tester) async {
+    // The number to compare is the new one: it is the one number on the
+    // page, labelled as such, with the decision under it (as Signal shows
+    // only the number in question).
+    testWidgets('shows the new number alone, labelled, with the decision under it', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final current = find.text('Current safety number', skipOffstage: false);
-        final next = find.text('New safety number', skipOffstage: false);
-        final decide = find.text('Verify the new number', skipOffstage: false);
+        final next = find.text(l10n.safetyNumbersNewNumberHeader, skipOffstage: false);
+        final decide = find.text(l10n.safetyNumbersReVerify, skipOffstage: false);
         expect(next, findsOneWidget);
-        final newTop = tester.getTopLeft(next).dy;
-        final decideTop = tester.getTopLeft(decide).dy;
-        await tester.dragUntilVisible(current, find.byType(ListView), const Offset(0, -200));
-        expect(current, findsOneWidget);
-        expect(newTop, lessThan(decideTop));
+        expect(find.byType(SafetyNumberCard, skipOffstage: false), findsOneWidget);
+        expect(find.text(l10n.safetyNumbersCurrentNumberHeader, skipOffstage: false), findsNothing);
+        expect(tester.getTopLeft(next).dy, lessThan(tester.getTopLeft(decide).dy));
         expect(plainLabel, findsNothing);
-        // Scrolled by now: compared within one frame.
-        expect(tester.getTopLeft(next).dy, lessThan(tester.getTopLeft(current).dy));
       });
     });
 
-    testWidgets('a wide window opens on the warning too, with the new number before the current one', (tester) async {
+    testWidgets('a wide window opens on the warning too, with the new number under it', (tester) async {
       const wide = PhoneSize(900, 1400, topInset: 0, bottomInset: 0);
       await withPhoneApp(tester, identities, size: wide, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
         final warning = find.text('Safety number changed', skipOffstage: false);
-        final current = find.text('Current safety number', skipOffstage: false);
-        final next = find.text('New safety number', skipOffstage: false);
+        final next = find.text(l10n.safetyNumbersNewNumberHeader, skipOffstage: false);
         expect(tester.getTopLeft(warning).dy, lessThan(tester.getTopLeft(next).dy));
-        expect(tester.getTopLeft(next).dy, lessThan(tester.getTopLeft(current).dy));
+        expect(find.byType(SafetyNumberCard, skipOffstage: false), findsOneWidget);
       });
     });
 

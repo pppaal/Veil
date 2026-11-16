@@ -15,6 +15,10 @@ class VeilSpace {
   static const double xxl = 32;
 }
 
+/// The colour emoji fonts of the platforms, named so an emoji (a reaction)
+/// is drawn from one whatever the text font is.
+const emojiFontFallback = ['Apple Color Emoji', 'Noto Color Emoji'];
+
 /// Corner radii. Nothing is rounder than [xl] but the four pill shapes
 /// (avatar, switch, unread badge, send circle).
 class VeilRadius {

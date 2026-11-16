@@ -23,7 +23,6 @@ import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_
 import 'package:veil_mobile/src/features/safety/presentation/blocked_accounts_screen.dart';
 import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
-import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -443,8 +442,6 @@ const List<ScreenCase> screenCases = [
       location: '/settings',
       settle: _openTrustedDevices),
   ScreenCase('profile', screen: ProfileScreen, file: 'profile_screen.dart', location: '/profile'),
-  ScreenCase('security-status',
-      screen: SecurityStatusScreen, file: 'security_status_screen.dart', location: '/security-status'),
   ScreenCase('device-transfer-old-device',
       screen: DeviceTransferScreen,
       file: 'device_transfer_screen.dart',
@@ -788,10 +785,11 @@ Finder _firstInput() => find.byType(TextField);
 Finder _addContact() => find.byIcon(Icons.person_add_alt_1_outlined);
 
 // The first control of the settings screen that changes a setting: the
-// theme selector or a switch, whichever the screen puts first. A row that
-// only leads to another screen (the profile, the security status) is not it.
-Finder _firstSetting() =>
-    find.byWidgetPredicate((widget) => widget is Switch || widget is SegmentedButton<ThemeMode>);
+// theme row (it opens the three themes) or a switch, whichever the screen
+// puts first. A row that only leads to another screen (the profile) is not
+// it.
+Finder _firstSetting() => find.byWidgetPredicate(
+    (widget) => widget is Switch || (widget is VeilRow && widget.key == const ValueKey('settings-theme')));
 
 /// Why the first control [finder] finds is not on the first screenful, or
 /// null when it is. On the two larger phones all of it must be on screen where a
@@ -1046,9 +1044,9 @@ Future<void> _openContactActionsSheet(WidgetTester tester) async {
 }
 
 Future<void> _openTrustedDevices(WidgetTester tester) async {
-  // A device's row is under the day-to-day settings, below the first
+  // The Devices row is under the day-to-day settings, below the first
   // screenful.
-  final row = find.byKey(const ValueKey('settings-device-dev-laptop'), skipOffstage: false);
+  final row = find.byKey(const ValueKey('settings-devices'), skipOffstage: false);
   await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
   await pumpFrames(tester, frames: 2);
   await tester.tap(row);

@@ -160,42 +160,8 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       : VeilButton(
           onPressed: _submitting || _integrityCompromised ? null : _unlockWithBiometrics,
           tone: VeilButtonTone.ghost,
-          label: switch (_biometricKind) {
-            BiometricKind.faceId => l10n.appLockUseFaceId,
-            BiometricKind.touchId => l10n.appLockUseTouchId,
-            BiometricKind.fingerprint => l10n.appLockUseFingerprint,
-            BiometricKind.unknown => l10n.appLockUseBiometrics,
-          },
+          label: biometricUnlockLabel(l10n, _biometricKind),
         );
-
-  TextField _pinField({
-    required TextEditingController controller,
-    required String hint,
-    String? label,
-    String? errorText,
-    ValueChanged<String>? onChanged,
-    TextAlign textAlign = TextAlign.start,
-    bool dense = false,
-  }) {
-    return TextField(
-      controller: controller,
-      obscureText: true,
-      keyboardType: TextInputType.number,
-      enableSuggestions: false,
-      autocorrect: false,
-      enableInteractiveSelection: false,
-      textAlign: textAlign,
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        errorText: errorText,
-        errorMaxLines: 3,
-        // The lock screen's field is the design system's 44.
-        isDense: dense ? true : null,
-      ),
-    );
-  }
 
   void _pinChanged(String _) => setState(() {
         _status = null;
@@ -228,7 +194,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _pinField(
+              appLockPinField(
                 controller: _pinController,
                 hint: l10n.appLockPinLabel,
                 textAlign: TextAlign.center,
@@ -300,7 +266,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
           VeilRow.field(
             field: labelled(
               l10n.appLockPinLabel,
-              _pinField(
+              appLockPinField(
                 controller: _pinController,
                 hint: l10n.appLockFieldPinHint,
                 errorText: pinError,
@@ -312,7 +278,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
           VeilRow.field(
             field: labelled(
               l10n.appLockFieldConfirm,
-              _pinField(
+              appLockPinField(
                 controller: _confirmPinController,
                 hint: l10n.appLockFieldConfirmHint,
                 errorText: mismatch,

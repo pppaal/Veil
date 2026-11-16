@@ -93,7 +93,7 @@ void main() {
     expect(find.text('Use biometrics'), findsOneWidget);
   });
 
-  testWidgets('the devices screen shows the trusted devices of the account', (tester) async {
+  testWidgets('the devices screen lists this device and the others, one grey line each', (tester) async {
     // Tall enough for the three devices at once: the list builds what is
     // near the screen.
     tester.view.physicalSize = const Size(800, 2000);
@@ -132,26 +132,25 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Devices'), findsOneWidget);
-    expect(find.text('Pixel Fold'), findsOneWidget);
-    expect(find.text('Old iPhone'), findsOneWidget);
-    expect(find.text('MacBook Air'), findsOneWidget);
-    // Each device says its state as a word; nothing counts what the list
-    // already shows.
-    expect(find.text('Stale'), findsOneWidget);
-    expect(find.textContaining('·'), findsNothing);
+    // This device, then the others, as Signal lists linked devices; a
+    // revoked device is not listed.
     expect(find.text('This device'), findsOneWidget);
-    expect(find.text('Revoked'), findsOneWidget);
-    expect(find.text('Revoke'), findsOneWidget);
-    // One line on when a device was last seen. The server keeps only the
-    // UTC day of device activity: it is shown as that day, a bare date with
-    // no time of day that never happened and no time zone after it.
-    expect(find.text('Last seen Apr 1'), findsOneWidget);
-    expect(find.text('Revoked Apr 1'), findsOneWidget);
-    expect(find.text('Approved by Pixel Fold'), findsOneWidget);
+    expect(find.text('Other devices'), findsOneWidget);
+    expect(find.text('Pixel Fold'), findsOneWidget);
+    expect(find.text('MacBook Air'), findsOneWidget);
+    expect(find.text('Old iPhone'), findsNothing);
+    // No state words and no colours: one grey line under each name.
+    for (final word in ['Stale', 'Revoked', 'Preferred', 'Revoke']) {
+      expect(find.text(word), findsNothing, reason: word);
+    }
+    expect(find.text('Android · Added Apr 1'), findsOneWidget);
+    // The server keeps only the UTC day of device activity: it is shown as
+    // that day, a bare date with no time of day and no time zone after it.
+    expect(find.text('Inactive since Apr 1'), findsOneWidget);
+    expect(find.textContaining('Approved by'), findsNothing);
     expect(find.textContaining('UTC'), findsNothing);
     expect(find.textContaining(RegExp(r'\d\d:\d\d')), findsNothing);
-    // Synced and active said again what last seen says.
-    expect(find.textContaining(RegExp(r'^Last (synced|active)')), findsNothing);
+    expect(find.textContaining(RegExp(r'^Last synced')), findsNothing);
   });
 }
 

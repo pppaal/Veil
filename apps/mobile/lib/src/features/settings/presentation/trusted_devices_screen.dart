@@ -9,88 +9,90 @@ import '../../../shared/presentation/veil_ui.dart';
 import '../data/trusted_devices.dart';
 import 'device_rows.dart';
 
-/// The devices that hold this account, as the server lists them: this one
-/// first, then the others, each with what the server knows of it and,
-/// where it still can be, the row that revokes it. The route
-/// `/trusted-devices`, opened from a device row in Settings.
+/// The devices that hold this account, as Signal lists linked devices:
+/// this one in a section of its own, then the others, a row each with one
+/// grey line. A tap on another device asks to remove it. Removed devices
+/// are not listed. The route `/trusted-devices`, opened from Settings.
 class TrustedDevicesScreen extends ConsumerWidget {
   const TrustedDevicesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final palette = context.veilPalette;
-    final theme = Theme.of(context);
     final devices = ref.watch(trustedDevicesProvider);
     final list = devices.valueOrNull;
 
+    // On open, and on a pull: no refresh button.
     Future<void> refresh() async {
       ref.invalidate(trustedDevicesProvider);
       // A failed reload shows on the screen itself.
       await ref.read(trustedDevicesProvider.future).then<void>((_) {}, onError: (_) {});
     }
 
+    final listed = list?.devices.where((device) => device.trustState != DeviceTrustState.revoked).toList();
+    final thisDevice = listed?.where((device) => device.trustState == DeviceTrustState.current).toList();
+    final others = listed?.where((device) => device.trustState != DeviceTrustState.current).toList();
+
     final List<Widget> content;
     // A reload keeps the list on screen; only a failed one replaces it.
     if (devices.hasError && !devices.isLoading) {
       content = [
-        VeilNotice(
-          margin: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+        VeilEmptyState(
           title: l10n.settingsDeviceGraphUnavailable,
-          message: l10n.settingsDeviceGraphLoadFailedBody,
-          tone: VeilTone.warn,
-          actionLabel: l10n.commonRetry,
-          onAction: refresh,
+          action: VeilButton(
+            expanded: false,
+            tone: VeilButtonTone.secondary,
+            label: l10n.commonRetry,
+            onPressed: refresh,
+          ),
         ),
       ];
-    } else if (list == null) {
+    } else if (listed == null) {
       content = [
         Padding(
           padding: const EdgeInsets.only(top: VeilSpace.xxl),
-          child: Column(
-            children: [
-              const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-              const SizedBox(height: VeilSpace.sm),
-              Text(l10n.settingsLoadingDeviceGraph,
-                  style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
-            ],
+          child: Center(
+            child: Semantics(
+              label: l10n.settingsLoadingDeviceGraph,
+              child: const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
           ),
         ),
       ];
-    } else if (list.devices.isEmpty) {
-      content = [
-        VeilEmptyState(
-          title: l10n.settingsNoTrustedDevices,
-          body: l10n.settingsNoTrustedDevicesBody,
-          icon: Icons.devices_outlined,
-        ),
-      ];
+    } else if (listed.isEmpty) {
+      content = [_QuietLine(l10n.settingsNoTrustedDevices)];
     } else {
       content = [
-        for (final (index, device) in list.devices.indexed) ...[
-          if (index > 0) const SizedBox(height: VeilSpace.lg),
-          DeviceDetailsGroup(
-            key: ValueKey('device-${device.id}'),
-            device: device,
-            onRevoke: device.canBeRevoked ? () => _confirmAndRevoke(context, ref, device, refresh) : null,
+        if (thisDevice!.isNotEmpty)
+          VeilGroup(
+            header: l10n.settingsDeviceStateCurrent,
+            children: [
+              for (final device in thisDevice) DeviceRow(key: ValueKey('device-${device.id}'), device: device),
+            ],
           ),
-        ],
+        if (others!.isNotEmpty)
+          VeilGroup(
+            header: l10n.settingsDevicesOtherHeader,
+            children: [
+              for (final device in others)
+                DeviceRow(
+                  key: ValueKey('device-${device.id}'),
+                  device: device,
+                  onTap: () => _confirmAndRemove(context, ref, device, refresh),
+                ),
+            ],
+          ),
       ];
     }
 
     return VeilShell(
       title: l10n.settingsDevicesTitle,
       grouped: true,
-      actions: [
-        IconButton(
-          tooltip: l10n.settingsRefreshDeviceGraph,
-          onPressed: list == null && !devices.hasError ? null : refresh,
-          icon: const Icon(Icons.refresh),
-        ),
-      ],
+      maxWidth: 600,
       child: RefreshIndicator(
         onRefresh: refresh,
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(top: VeilSpace.md, bottom: VeilSpace.xxl),
           children: content,
         ),
@@ -98,7 +100,7 @@ class TrustedDevicesScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmAndRevoke(
+  Future<void> _confirmAndRemove(
     BuildContext context,
     WidgetRef ref,
     TrustedDevice device,
@@ -111,13 +113,13 @@ class TrustedDevicesScreen extends ConsumerWidget {
       builder: (dialogContext) => AlertDialog(
         scrollable: true,
         title: Text(l10n.settingsRevokeListedTitle(device.deviceName)),
-        content: Text(l10n.settingsRevokeListedBody(device.deviceName)),
+        content: Text(l10n.settingsRevokeListedBody),
         actions: [
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(l10n.commonCancel)),
           TextButton(
             style: TextButton.styleFrom(foregroundColor: palette.danger),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(l10n.settingsRevokeConfirmAction),
+            child: Text(l10n.settingsDeviceRevokeAction),
           ),
         ],
       ),
@@ -128,10 +130,26 @@ class TrustedDevicesScreen extends ConsumerWidget {
       await ref.read(appSessionProvider.notifier).revokeListedDevice(device.id);
       await refresh();
       if (!context.mounted) return;
-      showVeilToast(context, l10n.settingsRevokeListedDone(device.deviceName), tone: VeilTone.good);
+      showVeilToast(context, l10n.settingsRevokeListedDone(device.deviceName));
     } catch (_) {
       if (!context.mounted) return;
       showVeilToast(context, l10n.settingsRevokeListedFailed, tone: VeilTone.warn);
     }
+  }
+}
+
+/// One muted line at the top of the list area, as Signal's "No linked
+/// devices".
+class _QuietLine extends StatelessWidget {
+  const _QuietLine(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.sm),
+      child: Text(text, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: context.veilPalette.textMuted)),
+    );
   }
 }

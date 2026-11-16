@@ -130,7 +130,7 @@ void main() {
 
   // The mark says what the chat's says: the key this device encrypts to was
   // compared. The directory serving another one is a warning under it, not
-  // a second, contradicting answer beside the "Verified on" card.
+  // a second, contradicting answer beside the "Verified {date}" line.
   testWidgets('a verified contact stays verified while the directory serves another key, under the warning',
       (tester) async {
     final fixture = _Fixture();
@@ -143,7 +143,7 @@ void main() {
     expect(await tester.runAsync(() => fixture.controller.isUserVerified('user-selene')), isTrue);
     expect(find.text('Verified'), findsOneWidget);
     expect(find.text('Not verified'), findsNothing);
-    expect(find.textContaining('Verified on'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^Verified \w')), findsOneWidget, reason: 'Verified Nov 16, 2026');
     expect(find.text('Mark as verified'), findsNothing);
     final mark = tester.getRect(find.text('Verified'));
     final warning = tester.getRect(find.text('The server lists a different key'));
@@ -209,8 +209,8 @@ void main() {
     // The tap only opens the comparison; nothing is accepted yet.
     await tester.tap(reverify);
     await tester.pumpAndSettle();
-    expect(find.text('Compare the new safety number'), findsOneWidget);
-    final accept = find.widgetWithText(TextButton, 'Accept as verified');
+    expect(find.text('Verify the new number?'), findsOneWidget);
+    final accept = find.widgetWithText(TextButton, 'Verify');
     expect(tester.widget<TextButton>(accept).onPressed, isNull);
     await tester.tap(accept);
     await tester.pumpAndSettle();
@@ -219,7 +219,7 @@ void main() {
     // Cancelling keeps the old verified pin and the block.
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    expect(find.text('Compare the new safety number'), findsNothing);
+    expect(find.text('Verify the new number?'), findsNothing);
     final kept = (await tester.runAsync(() => resolver.pinFor('user-selene', 'dev-selene')))!;
     expect(kept.identityKey, fixture.pinnedKey);
     expect(kept.isVerified, isTrue);
@@ -260,13 +260,13 @@ void main() {
     await tester.runAsync(() => fixture.trust.admit(conv, 'user-selene', 'dev-selene', relayKey));
     await tester.tap(find.byType(Checkbox));
     await tester.pump();
-    await tester.tap(find.widgetWithText(TextButton, 'Accept as verified'));
+    await tester.tap(find.widgetWithText(TextButton, 'Verify'));
     await fixture.settleUntil(
       tester,
-      () => find.textContaining('The safety number changed again').evaluate().isNotEmpty,
+      () => find.textContaining('It changed again while you were looking').evaluate().isNotEmpty,
     );
 
-    expect(find.textContaining('The safety number changed again'), findsOneWidget);
+    expect(find.textContaining('It changed again while you were looking'), findsOneWidget);
     final kept = (await tester.runAsync(() => resolver.pinFor('user-selene', 'dev-selene')))!;
     expect(kept.identityKey, fixture.pinnedKey);
     expect(kept.isVerified, isTrue);
@@ -288,8 +288,9 @@ void main() {
     });
 
     await fixture.pumpScreen(tester, until: find.text('selene'), conversationId: 'grp');
-    expect(find.text('Not verified'), findsOneWidget);
+    // Only the positive state is labelled in the list: her row has none.
     expect(find.text('Verified'), findsNothing);
+    expect(find.text('Not verified'), findsNothing);
   });
 
   testWidgets('an identity change can be declined, keeping the pinned key', (tester) async {

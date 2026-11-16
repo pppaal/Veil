@@ -123,7 +123,9 @@ class ChatMenuEntry {
     this.destructive = false,
   });
 
-  /// Names the entry for tests: 'timer', 'mute', 'report', 'block'.
+  /// Names the entry, uniquely within a menu: 'timer', 'mute' or 'unmute',
+  /// 'report', 'block' or 'unblock'. The menu finds a tapped entry by it,
+  /// and tests find the item by 'chat-menu-<key>'.
   final String key;
   final String label;
   final IconData icon;
@@ -165,18 +167,26 @@ class ChatBarActions extends StatelessWidget {
           onPressed: onOpenSearch,
           icon: const Icon(Icons.search),
         ),
-        PopupMenuButton<int>(
+        PopupMenuButton<String>(
           key: const ValueKey('chat-menu'),
           tooltip: l10n.chatMenuTooltip,
           position: PopupMenuPosition.under,
           color: palette.surfaceRaised,
           icon: const Icon(Icons.more_vert_outlined),
-          onSelected: (index) => menu[index].onSelected(),
+          // The items were built when the menu opened; this runs with the
+          // menu of the latest build. An entry is found by its key, so one
+          // that changed while the menu was open (Block turned Unblock, a
+          // mute ended) does nothing rather than what took its place.
+          onSelected: (key) {
+            for (final entry in menu) {
+              if (entry.key == key) return entry.onSelected();
+            }
+          },
           itemBuilder: (context) => [
-            for (final (index, entry) in menu.indexed)
-              PopupMenuItem<int>(
+            for (final entry in menu)
+              PopupMenuItem<String>(
                 key: ValueKey('chat-menu-${entry.key}'),
-                value: index,
+                value: entry.key,
                 height: 44,
                 child: Row(
                   children: [

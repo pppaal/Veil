@@ -946,7 +946,7 @@ Future<void> _openTimerSheet(WidgetTester tester) => _openFromChatMenu(tester, '
 Future<void> _openChatMenu(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('chat-menu')));
   await pumpFrames(tester, frames: 3);
-  expect(find.byType(PopupMenuItem<int>), findsNWidgets(4), reason: 'the chat menu did not open');
+  expect(find.byType(PopupMenuItem<String>), findsNWidgets(4), reason: 'the chat menu did not open');
 }
 
 Future<void> _openFromChatMenu(WidgetTester tester, String entry, Type opens) async {

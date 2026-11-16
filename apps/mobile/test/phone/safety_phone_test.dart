@@ -15,6 +15,7 @@ import 'package:veil_mobile/src/features/conversations/presentation/conversation
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_widget.dart';
 import 'package:veil_mobile/src/features/safety/data/conversation_mutes.dart';
+import 'package:veil_mobile/src/features/safety/data/safety_providers.dart';
 import 'package:veil_mobile/src/features/safety/presentation/blocked_accounts_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
@@ -125,6 +126,32 @@ void main() {
       await send(tester, 'delivered');
       expect(relayed(world), hasLength(before + 1));
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  // The menu's items are built when it opens, but what a tap does is looked
+  // up when it lands. An item that changed in between (here a block lands
+  // from elsewhere while the menu is open, turning Block into Unblock) does
+  // nothing, rather than what now sits at its place in the list.
+  testWidgets('a menu item that changed while the menu was open does nothing, not the action now in its place',
+      (tester) async {
+    await withPhoneApp(tester, identities, location: _chat, body: (world) async {
+      await tester.tap(find.byTooltip(en.chatMenuTooltip));
+      await pumpFrames(tester, frames: 3);
+      expect(find.byKey(const ValueKey('chat-menu-block')), findsOneWidget);
+
+      await tester.runAsync(
+        () => world.container.read(blockedAccountsProvider).block('user-$peerHandle', handle: peerHandle),
+      );
+      await pumpFrames(tester, frames: 2);
+      expect(world.relay.blocks['user-$selfHandle']?.keys, ['user-$peerHandle']);
+
+      await tester.tap(find.byKey(const ValueKey('chat-menu-block')));
+      await pumpFrames(tester, frames: 4);
+      expect(world.relay.blocks['user-$selfHandle']?.keys, ['user-$peerHandle'], reason: 'tapping Block unblocked');
+      expect(find.text(en.unblockDone(peerHandle)), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text(en.blockedComposerLine), findsOneWidget);
     });
   });
 

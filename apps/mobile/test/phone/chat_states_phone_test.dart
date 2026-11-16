@@ -9,7 +9,6 @@ import 'package:veil_mobile/src/features/security/presentation/safety_numbers_sc
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
-import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
 // The states of a chat beyond a quiet 1:1: nothing sent yet, a group, a
@@ -39,19 +38,16 @@ void main() {
   }
 
   group('an empty chat', () {
-    // The button used to say "Send" and only moved the focus to the
-    // composer right under it. What is worth doing before the first message
-    // is comparing safety numbers, and that is what it does.
-    testWidgets('offers to compare safety numbers with a peer not verified yet, and opens them', (tester) async {
+    // One muted line, as Telegram's "No messages here yet": no line on
+    // encryption, and no button. The safety number is in the bar.
+    testWidgets('says it has no messages, and nothing else', (tester) async {
       await withPhoneApp(tester, identities, location: _emptyChat, body: (world) async {
         expect(find.text('No messages yet'), findsOneWidget);
-        expect(
-          find.text('Messages are end-to-end encrypted.'),
-          findsOneWidget,
-        );
-        expect(find.text('Send'), findsNothing);
+        expect(find.textContaining('encrypted'), findsNothing);
+        expect(find.text('Compare safety numbers'), findsNothing);
+        expect(find.byType(OutlinedButton), findsNothing);
 
-        await tester.tap(find.text('Compare safety numbers'));
+        await tester.tap(find.byTooltip('Safety number'));
         await pumpFrames(tester);
         final opened = tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen));
         expect(opened.conversationId, emptyChatConversationId);
@@ -163,7 +159,7 @@ void main() {
   });
 
   group('a history that could not be loaded', () {
-    testWidgets('says so once, with the reason and a retry that fetches again', (tester) async {
+    testWidgets('says so once, with a retry that fetches again', (tester) async {
       await withPhoneApp(
         tester,
         identities,
@@ -171,8 +167,8 @@ void main() {
         attention: const ChatAttention(relayError: true),
         body: (world) async {
           expect(find.text("Couldn't load messages"), findsOneWidget);
-          expect(find.text("The server couldn't complete the request."), findsOneWidget,
-              reason: 'the reason, said once');
+          expect(find.textContaining('server'), findsNothing, reason: 'the title and Retry say it');
+          expect(find.byIcon(Icons.error_outline), findsNothing);
           expect(find.byType(VeilNotice), findsNothing, reason: 'no notice repeats it');
           expect(find.text('No messages yet'), findsNothing, reason: 'nobody knows that yet');
 
@@ -184,16 +180,17 @@ void main() {
       );
     });
 
-    testWidgets('with messages on screen an error is one line above them, in the app\'s words', (tester) async {
+    testWidgets('with messages on screen an earlier error puts nothing above them', (tester) async {
       await withPhoneApp(
         tester,
         identities,
         location: _chat,
         attention: const ChatAttention(relayError: true),
         body: (world) async {
-          // Nothing to decide and no action to take: a plain line, no notice.
+          // A failure while the chat is open is a toast; one from before it
+          // opened is not this chat's to say, and no line is pinned here.
           expect(find.byType(VeilNotice), findsNothing);
-          expect(findCopy("The server couldn't complete the request."), findsOneWidget);
+          expect(find.textContaining('server'), findsNothing);
           expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
           expect(onScreen(tester, find.byType(ChatMessageList)).height / screenHeight(tester), greaterThan(0.4));
         },
@@ -207,7 +204,9 @@ void main() {
         location: _emptyChat,
         attention: const ChatAttention(loading: true),
         body: (world) async {
-          expect(find.text('Loading messages…'), findsOneWidget);
+          // A spinner alone; a screen reader hears what it is for.
+          expect(find.bySemanticsLabel('Loading messages…'), findsOneWidget);
+          expect(find.text('Loading messages…'), findsNothing);
           expect(find.text('No messages yet'), findsNothing);
           expect(find.text('Compare safety numbers'), findsNothing);
         },
@@ -226,7 +225,7 @@ void main() {
       location: _chat,
       attention: const ChatAttention(identityChangedInGroup: true),
       body: (world) async {
-        expect(find.text('Safety number changed in another chat'), findsOneWidget);
+        expect(find.text('Safety number changed in a group you share'), findsOneWidget);
         expect(find.byTooltip('Verified'), findsNothing);
         expect(find.text('Safety number changed'), findsNothing, reason: 'this chat itself is not paused');
 
@@ -248,10 +247,10 @@ void main() {
       location: _chat,
       keyboardHeight: 300,
       textScale: 1.3,
-      attention: const ChatAttention(identityChanged: true, failedSends: 2),
+      attention: const ChatAttention(identityChanged: true, accountHeld: true),
       body: (world) async {
         expect(find.byWidgetPredicate((widget) => widget is VeilNotice && widget.dense), findsNWidgets(2));
-        for (final action in ['Review', 'Retry now']) {
+        for (final action in ['Review', 'Talk to this account']) {
           final button = tester.renderObject<RenderBox>(find.widgetWithText(TextButton, action));
           expect(whyNotWhollyTappable(tester, button), isNull, reason: '"$action"');
           expect(button.size.height, greaterThanOrEqualTo(44), reason: '"$action"');

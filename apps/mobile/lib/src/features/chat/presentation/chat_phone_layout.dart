@@ -7,10 +7,8 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
-import '../../conversations/data/messenger/presence_typing_service.dart';
 import 'chat_bar.dart';
 import 'disappearing_timer_sheet.dart';
-import 'presence_selector.dart';
 
 /// A chat, content first: the bar (who it is with, the verified mark, the
 /// safety number, search and a menu with the rest), the warnings that ask
@@ -22,14 +20,16 @@ import 'presence_selector.dart';
 /// top of the pane and has no back button, since the list is still there.
 ///
 /// Search opens in the bar and closes with its back button, which drops the
-/// query. [banners], [messages], [typing] and [composer] are the screen's
-/// own widgets; this only places them.
+/// query; while it is open [searchBar] ("1 of 2" and the arrows between the
+/// hits) takes the composer's place, as in Signal and Telegram. [banners],
+/// [messages], [typing], [composer] and [searchBar] are the screen's own
+/// widgets; this only places them.
 class ChatPhoneScaffold extends StatefulWidget {
   const ChatPhoneScaffold({
     super.key,
     required this.conversation,
     required this.title,
-    required this.presence,
+    required this.connecting,
     required this.peerVerified,
     required this.messageTtl,
     required this.searchController,
@@ -40,6 +40,7 @@ class ChatPhoneScaffold extends StatefulWidget {
     required this.messages,
     required this.typing,
     required this.composer,
+    required this.searchBar,
     this.pane = false,
   });
 
@@ -47,7 +48,9 @@ class ChatPhoneScaffold extends StatefulWidget {
 
   /// What the conversation is called (see conversationTitle).
   final String title;
-  final PresenceTypingService presence;
+
+  /// Whether the app is waiting for its connection to the server.
+  final bool connecting;
 
   /// Whether every pinned device of the 1:1 peer was verified out of band.
   final bool peerVerified;
@@ -67,6 +70,9 @@ class ChatPhoneScaffold extends StatefulWidget {
   final Widget typing;
 
   final Widget composer;
+
+  /// What stands in the composer's place while the search is open.
+  final Widget searchBar;
 
   /// Whether the chat is the second pane of the wide layout, not a screen.
   final bool pane;
@@ -129,7 +135,6 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
     final l10n = AppLocalizations.of(context);
     final conversation = widget.conversation;
     final isDirect = conversation?.type == ConversationType.direct;
-    final peerUserId = conversation?.recipientBundle.userId;
     final timerLabel = widget.messageTtl == null ? null : disappearingTimerLabel(l10n, widget.messageTtl);
     // A 1:1 names the peer's handle under their name; a group says how many
     // are in it.
@@ -150,19 +155,15 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
             focusNode: _searchFocus,
             searching: widget.searching,
           )
-        : PresenceSelector<bool>(
-            presence: widget.presence,
-            select: (presence) => isDirect && peerUserId != null && presence.isUserOnline(peerUserId),
-            builder: (context, online) => ChatBarTitle(
-              title: widget.title,
-              detail: detail,
-              verified: isDirect && widget.peerVerified,
-              online: online,
-              timerLabel: timerLabel,
-              // A group has no handle of its own: its id stands in.
-              avatarSeed: conversation == null ? null : (isDirect ? conversation.peerHandle : conversation.id),
-              group: conversation != null && !isDirect,
-            ),
+        : ChatBarTitle(
+            title: widget.title,
+            detail: detail,
+            verified: isDirect && widget.peerVerified,
+            connecting: widget.connecting,
+            timerLabel: timerLabel,
+            // A group has no handle of its own: its id stands in.
+            avatarSeed: conversation == null ? null : (isDirect ? conversation.peerHandle : conversation.id),
+            group: conversation != null && !isDirect,
           );
     final actions = _searchOpen
         ? null
@@ -208,7 +209,7 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
               border: Border(top: BorderSide(color: palette.stroke, width: 0.5)),
             ),
             child: Center(
-              child: ConstrainedBox(constraints: content, child: widget.composer),
+              child: ConstrainedBox(constraints: content, child: _searchOpen ? widget.searchBar : widget.composer),
             ),
           ),
         ];

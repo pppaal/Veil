@@ -16,14 +16,11 @@ import 'device_transfer_code.dart';
 import 'device_transfer_new_device_panel.dart';
 import 'device_transfer_old_device_panel.dart';
 
-enum _TransferMode { oldDevice, newDevice }
-
-/// Moving the account to another phone. A signed-in phone opens as the
-/// old one, any other as the new one. Each side is three numbered steps,
-/// with the controls of the step in hand under them; that nothing replaces
-/// a missing old phone is said once, under the steps. A session or a claim
-/// that ran out is said in the first step of its side, which takes the new
-/// code.
+/// Moving the account to another phone. A signed-in phone opens as the old
+/// one ("Move to a new phone", from Settings), any other as the new one
+/// ("Move from another phone", from Choose a handle): each side is its own
+/// flow, as Signal's. A session or a claim that ran out is said on the
+/// first screen of its side, which takes the new code.
 class DeviceTransferScreen extends ConsumerStatefulWidget {
   const DeviceTransferScreen({super.key});
 
@@ -39,7 +36,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
   // The transfer code this device read: empty until one was.
   String _sessionId = '';
   String _transferToken = '';
-  // The first step, reopened to paste another code.
+  // Back on the first screen from the second, to paste another code.
   bool _editingCode = false;
   bool _deviceNameSeeded = false;
   bool _isClaiming = false;
@@ -50,7 +47,8 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
   // The claim whose expired code was taken out of the field.
   String? _droppedCodeOfClaim;
   TransferNotice? _notice;
-  late _TransferMode _mode;
+  // Which side this phone is, fixed when the screen opens.
+  late bool _oldDevice;
   late Timer _ticker;
   DateTime _now = DateTime.now();
 
@@ -58,7 +56,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
   void initState() {
     super.initState();
     final session = ref.read(appSessionProvider);
-    _mode = session.isAuthenticated ? _TransferMode.oldDevice : _TransferMode.newDevice;
+    _oldDevice = session.isAuthenticated;
     // A claim this device made before the app stopped is completed from
     // where it was, never claimed again: a second claim ends the session.
     final pending = ref.read(appSessionProvider.notifier).pendingTransfer;
@@ -115,7 +113,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     // itself ends it.
     final claimExpired = _claimExpired();
     final windowDecides = !(_heldClaim()?.mayBeCommitted ?? false);
-    final oldDevice = _mode == _TransferMode.oldDevice;
+    final oldDevice = _oldDevice;
     final sessionError = session.errorMessage;
 
     if (_codeController.text.isEmpty && transferCode != null) {
@@ -123,34 +121,13 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     }
 
     return VeilShell(
-      title: l10n.deviceTransferTitle,
+      title: oldDevice ? l10n.deviceTransferTitle : l10n.deviceTransferNewTitle,
       grouped: true,
       child: ListView(
         padding: const EdgeInsets.only(top: VeilSpace.md, bottom: VeilSpace.xl),
         children: [
-          // Which phone this is, on the group's surface: the selected
-          // segment's blue on its tint reads there in both themes.
-          VeilGroup(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xs),
-                child: SegmentedButton<_TransferMode>(
-                  segments: [
-                    ButtonSegment(value: _TransferMode.oldDevice, label: Text(l10n.deviceTransferChipOldDevice)),
-                    ButtonSegment(value: _TransferMode.newDevice, label: Text(l10n.deviceTransferChipNewDevice)),
-                  ],
-                  selected: {_mode},
-                  showSelectedIcon: false,
-                  expandedInsets: EdgeInsets.zero,
-                  onSelectionChanged: (selection) => setState(() => _mode = selection.first),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: VeilSpace.md),
           if (oldDevice)
             TransferOldDevicePanel(
-              isAuthenticated: session.isAuthenticated,
               isBusy: controller.isBusy,
               transferSessionId: controller.transferSessionId,
               transferCode: transferCode,
@@ -160,19 +137,14 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               errorMessage: controller.errorMessage,
               claimIdController: _claimIdController,
               onIssue: () => ref.read(deviceTransferControllerProvider).initTransfer(),
-              onApprove: () => ref.read(deviceTransferControllerProvider).approveTransfer(
-                    _claimIdController.text.trim(),
-                  ),
+              onApprove: _approve,
               onCopyCode: transferCode == null || transferExpired ? null : () => _copyCode(transferCode),
-              onClear: () => ref.read(deviceTransferControllerProvider).clearTransferState(),
               now: _now,
-              stepsFooter: l10n.deviceTransferOldPhoneNeeded,
             )
           else
             TransferNewDevicePanel(
               codeController: _codeController,
               deviceNameController: _deviceNameController,
-              hasCode: _sessionId.isNotEmpty && _transferToken.isNotEmpty,
               editingCode: _editingCode,
               isClaiming: _isClaiming,
               isCompleting: _isCompleting,
@@ -185,16 +157,17 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               notice: (_notice?.isError ?? false) || sessionError == null
                   ? _notice
                   : TransferNotice(sessionError, isError: true),
-              onUseCode: _useCode,
-              onEditCode: () => setState(() => _editingCode = true),
+              onContinue: _continue,
+              onEditCode: () => setState(() {
+                _editingCode = true;
+                _notice = null;
+              }),
               onKeepCode: () => setState(() {
                 _editingCode = false;
                 if (_notice?.step == 1) _notice = null;
               }),
-              onClaim: _claimTransfer,
               onComplete: _completeTransfer,
               now: _now,
-              stepsFooter: l10n.deviceTransferOldPhoneNeeded,
             ),
           if (!oldDevice && session.isAuthenticated)
             Padding(
@@ -252,9 +225,28 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     showVeilToast(context, copied);
   }
 
-  void _useCode() {
+  // The old phone reads the claim first and shows the key fingerprint the
+  // new phone shows; only once the user chose to move the account is the
+  // approval signed.
+  Future<void> _approve() async {
+    final transfers = ref.read(deviceTransferControllerProvider);
+    final claimId = _claimIdController.text.trim();
+    final fingerprint = await transfers.readClaim(claimId);
+    if (fingerprint == null || !mounted) return;
+    if (!await confirmTransferApproval(context, fingerprint: fingerprint)) return;
+    await transfers.approveClaim(claimId, fingerprint);
+  }
+
+  // One step on the new phone: read the code and, unless this phone already
+  // claimed its session, register this phone with it.
+  Future<void> _continue() async {
     final l10n = AppLocalizations.of(context);
-    final parsed = parseTransferCode(_codeController.text.trim());
+    final raw = _codeController.text.trim();
+    if (raw.isEmpty) {
+      setState(() => _notice = TransferNotice(l10n.deviceTransferImportFirst, isError: true, step: 1));
+      return;
+    }
+    final parsed = parseTransferCode(raw);
     if (parsed == null) {
       setState(() => _notice = TransferNotice(l10n.deviceTransferPayloadInvalid, isError: true, step: 1));
       return;
@@ -285,18 +277,13 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       _claimFingerprint = held?.claimantFingerprint;
       _claimExpiresAt = held?.expiresAt;
       _editingCode = false;
-      // That the code was read is the first step's check mark.
       _notice = null;
     });
+    if (held == null) await _claimTransfer();
   }
 
   Future<void> _claimTransfer() async {
     final l10n = AppLocalizations.of(context);
-    if (_sessionId.isEmpty || _transferToken.isEmpty) {
-      setState(() => _notice = TransferNotice(l10n.deviceTransferImportFirst, isError: true, step: 1));
-      return;
-    }
-
     setState(() {
       _isClaiming = true;
       _notice = null;
@@ -327,6 +314,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
         _notice = TransferNotice(
           ref.read(appSessionProvider).errorMessage ?? l10n.deviceTransferClaimFailed,
           isError: true,
+          step: 1,
         );
       });
     } finally {
@@ -340,10 +328,8 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
 
   Future<void> _completeTransfer() async {
     final l10n = AppLocalizations.of(context);
-    if (_sessionId.isEmpty || _transferToken.isEmpty || _claimId == null) {
-      setState(() => _notice = TransferNotice(l10n.deviceTransferRegisterBeforeComplete, isError: true));
-      return;
-    }
+    // Finish is only offered for a claim this phone holds.
+    if (_sessionId.isEmpty || _transferToken.isEmpty || _claimId == null) return;
     // A claim the relay committed, or may have, is completed however long ago
     // it was made; the relay decides (see _claimExpired).
     if (_claimExpired()) {
@@ -365,9 +351,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       if (!mounted) {
         return;
       }
-      setState(() {
-        _notice = TransferNotice(l10n.deviceTransferComplete);
-      });
+      showVeilToast(context, l10n.deviceTransferComplete);
       context.go('/conversations');
     } catch (_) {
       if (!mounted) {

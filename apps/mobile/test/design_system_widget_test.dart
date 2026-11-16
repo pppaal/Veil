@@ -662,7 +662,7 @@ void main() {
       expect((decorationOf(tester, bubbles.at(3)).borderRadius! as BorderRadius).bottomLeft, const Radius.circular(6));
     });
 
-    testWidgets('fills: brand for mine, surfaceAlt for theirs and for a failed send with its line', (tester) async {
+    testWidgets('fills: brand for mine, surfaceAlt for theirs; a failed send keeps its fill, with a glyph and its line', (tester) async {
       await _pump(
         tester,
         const _App(
@@ -683,7 +683,10 @@ void main() {
       expect(decorationOf(tester, bubbles.at(0)).boxShadow, isNull);
       expect(decorationOf(tester, bubbles.at(0)).border, isNull);
       expect(decorationOf(tester, bubbles.at(1)).color, palette.surfaceAlt);
-      expect(decorationOf(tester, bubbles.at(2)).color, palette.surfaceAlt);
+      // A failed send keeps its own fill; the glyph beside it and the line
+      // under it say it failed, as Signal draws one.
+      expect(decorationOf(tester, bubbles.at(2)).color, palette.primary);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
       expect(find.text('Not sent. Tap to retry.'), findsOneWidget);
       expect(tester.widget<Text>(find.text('Not sent. Tap to retry.')).style?.color, palette.danger);
       final highlighted = decorationOf(tester, bubbles.at(3));

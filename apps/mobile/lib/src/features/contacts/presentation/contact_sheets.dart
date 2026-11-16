@@ -90,7 +90,8 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
   final _handle = TextEditingController();
   final _nickname = TextEditingController();
   bool _saving = false;
-  bool _failed = false;
+  // Why the last try failed: no such account, or anything else.
+  String? _failure;
 
   @override
   void dispose() {
@@ -105,16 +106,18 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
     final handle = _typedHandle;
     if (handle.isEmpty || _saving) return;
     final navigator = Navigator.of(context);
+    final l10n = AppLocalizations.of(context);
     setState(() {
       _saving = true;
-      _failed = false;
+      _failure = null;
     });
-    final added = await ref.read(contactsControllerProvider).addContact(handle: handle, nickname: _nickname.text);
+    final contacts = ref.read(contactsControllerProvider);
+    final added = await contacts.addContact(handle: handle, nickname: _nickname.text);
     if (!mounted) return;
     if (!added) {
       setState(() {
         _saving = false;
-        _failed = true;
+        _failure = contacts.failedAsNotFound ? l10n.safetyAccountNotFound(handle) : l10n.contactsAddFailed;
       });
       return;
     }
@@ -126,27 +129,23 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final palette = context.veilPalette;
     return _SheetBody(
       children: [
         _padded(Text(l10n.contactsAdd, style: theme.textTheme.titleLarge)),
         const SizedBox(height: VeilSpace.md),
-        // A refusal takes the place of the instruction under the field, so
-        // the sheet keeps its height and the button stays above the keyboard.
+        // No line under the field until a try failed: then why.
         _padded(TextField(
           controller: _handle,
           autofocus: true,
           autocorrect: false,
           enableSuggestions: false,
           textInputAction: TextInputAction.next,
-          onChanged: (_) => setState(() => _failed = false),
+          onChanged: (_) => setState(() => _failure = null),
           decoration: InputDecoration(
             labelText: l10n.contactsHandleLabel,
             hintText: l10n.contactsHandleHint,
             prefixText: '@',
-            helperText: l10n.contactsAddSheetBody,
-            errorText: _failed ? l10n.contactsAddFailed : null,
-            helperMaxLines: 2,
+            errorText: _failure,
             errorMaxLines: 2,
           ),
         )),
@@ -155,7 +154,6 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
           controller: _nickname,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _save(),
-          // Who sees it is said once, under the button.
           decoration: InputDecoration(labelText: l10n.contactsNicknameLabel),
         )),
         const SizedBox(height: VeilSpace.md),
@@ -163,16 +161,14 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
           label: _saving ? l10n.contactsWorking : l10n.contactsSave,
           onPressed: _saving || _typedHandle.isEmpty ? null : _save,
         )),
-        const SizedBox(height: VeilSpace.sm),
-        // What the server learns of the list, said where one adds to it.
-        _padded(Text(l10n.contactsNotice, style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted))),
       ],
     );
   }
 }
 
-/// What to do with [contact]: open the chat, rename it, report or block
-/// them, remove it.
+/// What to do with [contact], led by Message as Signal and WhatsApp lead
+/// theirs: message them, rename or remove the contact, report or block
+/// them. Only Block is red.
 Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, ContactEntry contact) {
   VeilHaptics.medium();
   final l10n = AppLocalizations.of(context);
@@ -247,6 +243,15 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
               },
             ),
             VeilRow(
+              key: const ValueKey('contact-remove'),
+              title: l10n.contactsRemove,
+              trailing: noChevron,
+              onTap: () {
+                close();
+                remove();
+              },
+            ),
+            VeilRow(
               key: const ValueKey('contact-report'),
               title: l10n.reportAction,
               trailing: noChevron,
@@ -275,14 +280,6 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
                   block();
                 },
               ),
-            VeilRow(
-              title: l10n.contactsRemove,
-              destructive: true,
-              onTap: () {
-                close();
-                remove();
-              },
-            ),
           ],
         ),
       ],
@@ -324,7 +321,7 @@ class _NicknameSheetState extends ConsumerState<_NicknameSheet> {
     final l10n = AppLocalizations.of(context);
     return _SheetBody(
       children: [
-        _ContactHeader(contact: widget.contact),
+        _padded(Text(l10n.contactsEditNickname, style: Theme.of(context).textTheme.titleLarge)),
         const SizedBox(height: VeilSpace.md),
         _padded(TextField(
           controller: _nickname,

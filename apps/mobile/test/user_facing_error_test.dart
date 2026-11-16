@@ -86,7 +86,10 @@ void main() {
       expect(userFacingErrorCodeOf(reported), isNotNull, reason: reported);
       english.add(veilErrorText(en, reported));
     }
-    expect(english, hasLength(UserFacingErrorCode.values.length), reason: 'one sentence per code');
+    // One sentence per code, except the two failures the user can do
+    // nothing about but try again, which say the same words.
+    expect(en.errorRelayFailed, en.errorUnexpectedResponse);
+    expect(english, hasLength(UserFacingErrorCode.values.length - 1), reason: 'one sentence per code');
     // What a screen shows never names the product in capitals or the old
     // vocabulary (spec 3.2, 10.4).
     for (final sentence in english) {

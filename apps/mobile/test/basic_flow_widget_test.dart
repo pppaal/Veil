@@ -10,7 +10,7 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
-import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
+import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
@@ -29,30 +29,25 @@ void main() {
     expect(find.text('Before you start'), findsOneWidget);
     expect(
       find.textContaining(
-          'If you lose this phone, you lose this account and its messages.'),
+          'If you lose the phone, your account and messages are gone for good.'),
       findsOneWidget,
     );
-    expect(find.text('I understand there is no way to recover a lost account'), findsOneWidget);
+    expect(find.text("I understand a lost account can't be recovered"), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
   });
 
   testWidgets(
-      'create account screen keeps transfer and no-restore copy visible',
+      'the handle screen creates the account and offers the move from another phone',
       (tester) async {
     await tester.pumpWidget(
       const ProviderScope(
         child: _TestApp(
-          child: CreateAccountScreen(),
+          child: ChooseHandleScreen(),
         ),
       ),
     );
 
-    await tester.scrollUntilVisible(
-      find.text('Continue'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
     expect(find.text('Move from another phone'), findsOneWidget);
   });
 
@@ -98,7 +93,7 @@ void main() {
     expect(find.text('Use biometrics'), findsOneWidget);
   });
 
-  testWidgets('the devices screen shows the trusted devices of the account', (tester) async {
+  testWidgets('the devices screen lists this device and the others, one grey line each', (tester) async {
     // Tall enough for the three devices at once: the list builds what is
     // near the screen.
     tester.view.physicalSize = const Size(800, 2000);
@@ -137,26 +132,25 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Devices'), findsOneWidget);
-    expect(find.text('Pixel Fold'), findsOneWidget);
-    expect(find.text('Old iPhone'), findsOneWidget);
-    expect(find.text('MacBook Air'), findsOneWidget);
-    // Each device says its state as a word; nothing counts what the list
-    // already shows.
-    expect(find.text('Stale'), findsOneWidget);
-    expect(find.textContaining('·'), findsNothing);
+    // This device, then the others, as Signal lists linked devices; a
+    // revoked device is not listed.
     expect(find.text('This device'), findsOneWidget);
-    expect(find.text('Revoked'), findsOneWidget);
-    expect(find.text('Revoke'), findsOneWidget);
-    // One line on when a device was last seen. The server keeps only the
-    // UTC day of device activity: it is shown as that day, a bare date with
-    // no time of day that never happened and no time zone after it.
-    expect(find.text('Last seen Apr 1'), findsOneWidget);
-    expect(find.text('Revoked Apr 1'), findsOneWidget);
-    expect(find.text('Approved by Pixel Fold'), findsOneWidget);
+    expect(find.text('Other devices'), findsOneWidget);
+    expect(find.text('Pixel Fold'), findsOneWidget);
+    expect(find.text('MacBook Air'), findsOneWidget);
+    expect(find.text('Old iPhone'), findsNothing);
+    // No state words and no colours: one grey line under each name.
+    for (final word in ['Stale', 'Revoked', 'Preferred', 'Revoke']) {
+      expect(find.text(word), findsNothing, reason: word);
+    }
+    expect(find.text('Android · Added Apr 1'), findsOneWidget);
+    // The server keeps only the UTC day of device activity: it is shown as
+    // that day, a bare date with no time of day and no time zone after it.
+    expect(find.text('Inactive since Apr 1'), findsOneWidget);
+    expect(find.textContaining('Approved by'), findsNothing);
     expect(find.textContaining('UTC'), findsNothing);
     expect(find.textContaining(RegExp(r'\d\d:\d\d')), findsNothing);
-    // Synced and active said again what last seen says.
-    expect(find.textContaining(RegExp(r'^Last (synced|active)')), findsNothing);
+    expect(find.textContaining(RegExp(r'^Last synced')), findsNothing);
   });
 }
 

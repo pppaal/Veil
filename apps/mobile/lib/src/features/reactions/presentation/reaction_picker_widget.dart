@@ -91,7 +91,7 @@ class _ReactionButton extends StatelessWidget {
           child: Center(
             child: Text(
               emoji,
-              style: const TextStyle(fontSize: 24),
+              style: const TextStyle(fontSize: 24, fontFamilyFallback: emojiFontFallback),
             ),
           ),
         ),

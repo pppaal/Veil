@@ -4,7 +4,7 @@ import '../app_session_state.dart';
 const _splashPath = '/splash';
 const _privacyConsentPath = '/privacy-consent';
 const _onboardingPath = '/onboarding';
-const _createAccountPath = '/create-account';
+const _chooseHandlePath = '/choose-handle';
 const _lockPath = '/lock';
 const _homePath = '/conversations';
 const _returnParameter = 'from';
@@ -12,8 +12,7 @@ const _returnParameter = 'from';
 /// Where a signed-out device may be.
 const _signedOutPaths = <String>{
   _splashPath,
-  _createAccountPath,
-  '/choose-handle',
+  _chooseHandlePath,
   '/device-transfer',
 };
 
@@ -23,8 +22,7 @@ const _gatePaths = <String>{
   _splashPath,
   _privacyConsentPath,
   _onboardingPath,
-  _createAccountPath,
-  '/choose-handle',
+  _chooseHandlePath,
   _lockPath,
 };
 
@@ -106,7 +104,7 @@ String? redirectFor(RouteGuardState state, Uri uri) {
     return path == _onboardingPath ? null : _onboardingPath;
   }
   if (!state.authenticated) {
-    return _signedOutPaths.contains(path) ? null : _createAccountPath;
+    return _signedOutPaths.contains(path) ? null : _chooseHandlePath;
   }
   if (path == _lockPath) {
     return _returnLocation(uri.queryParameters[_returnParameter]) ?? _homePath;

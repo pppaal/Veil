@@ -10,9 +10,10 @@ import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
-// Starting a 1:1 chat or a group on a phone: the field and its button are
-// the first things on the screen, the explanation is one note under them,
-// and nothing on either screen offers what this build cannot do.
+// Starting a 1:1 chat or a group on a phone. New chat is a search field,
+// then "New group" and "One-time link", then the contacts; a typed handle
+// that is no contact's becomes "Chat with @…". New group is its fields, the
+// members as chips with the one rule under them, and the button.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -24,11 +25,9 @@ void main() {
     identities = await LayoutIdentities.generate();
   });
 
-  // The start screen as a user reaches it: from the list's bar.
-  Future<void> openFromList(WidgetTester tester, String menuItem) async {
+  // New chat as a user reaches it: the pencil in the list's bar.
+  Future<void> openNewChat(WidgetTester tester) async {
     await tester.tap(find.byTooltip(en.conversationsNewTooltip));
-    await pumpFrames(tester, frames: 3);
-    await tester.tap(find.text(menuItem));
     await pumpFrames(tester);
   }
 
@@ -36,28 +35,35 @@ void main() {
   Finder on(Type screen, Type widget) => find.descendant(of: find.byType(screen), matching: find.byType(widget));
 
   group('a direct chat', () {
-    testWidgets('opens on the handle, how to type it under it, and the button', (tester) async {
+    testWidgets('opens on the search field, then New group and One-time link, then the contacts', (tester) async {
       await withPhoneApp(tester, identities, location: '/start-chat', body: (world) async {
         final field = tester.getRect(find.byType(TextField));
-        final button = tester.getRect(find.byType(FilledButton));
-        final helper = tester.getRect(findCopy(en.startDirectFieldCaption));
+        final group = tester.getRect(find.text(en.conversationsNewGroup));
+        final link = tester.getRect(find.text(en.oneTimeLinkTitle));
         expect(field.top, lessThan(140), reason: 'the field is the first thing under the bar');
-        expect(helper.top, greaterThanOrEqualTo(field.top), reason: 'the field\'s helper text, under its input');
-        expect(helper.bottom, lessThan(button.top), reason: 'the button comes after the field');
-        expect(button.bottom, lessThan(640 / 2), reason: 'the button is on the upper half of a 360x640 phone');
+        expect(field.bottom, lessThan(group.top));
+        expect(group.bottom, lessThan(link.top));
+        expect(find.text(en.startDirectContactsHeader), findsOneWidget);
+        expect(find.byType(FilledButton), findsNothing, reason: 'a row is the action');
         expect(find.byType(VeilNotice), findsNothing, reason: 'no notice for information');
-        expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull, reason: 'no handle yet');
+        // Typing filters: the rows that start something else go.
+        await tester.enterText(find.byType(TextField), 'zzzz');
+        await tester.pump();
+        expect(find.text(en.conversationsNewGroup), findsNothing);
       });
     });
 
     testWidgets('opens the chat with the handle that was typed, in the screen\'s place', (tester) async {
       await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-        await openFromList(tester, en.conversationsNewChat);
+        await openNewChat(tester);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
 
+        // A contact's handle filters the contacts down to them: their row
+        // opens the chat.
         await tester.enterText(on(StartDirectChatScreen, TextField), '@$emptyChatPeerHandle');
         await tester.pump();
-        await tester.tap(on(StartDirectChatScreen, FilledButton));
+        expect(find.text(en.startDirectChatWith(emptyChatPeerHandle)), findsNothing, reason: 'a contact has their row');
+        await tester.tap(find.byKey(const ValueKey('start-contact-$emptyChatPeerHandle')));
         await pumpFrames(tester, frames: 10);
 
         expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, emptyChatConversationId);
@@ -78,22 +84,16 @@ void main() {
         expect(world.messenger.errorMessage, isNotNull);
         return null;
       }, body: (world) async {
-        expect(findCopy(en.startDirectHandleError), findsNothing, reason: 'another screen\'s failure is not shown here');
+        expect(findCopy(en.safetyAccountNotFound('nobody')), findsNothing, reason: 'another screen\'s failure is not shown here');
 
-        // An example handle nobody has: what is typed is the user's own.
-        await tester.enterText(find.byType(TextField), 'icarus');
+        // A handle nobody has: a toast names it, and the screen stays.
+        await tester.enterText(find.byType(TextField), 'nobody');
         await tester.pump();
-        await tester.tap(find.byType(FilledButton));
+        await tester.tap(find.text(en.startDirectChatWith('nobody')));
         await pumpFrames(tester, frames: 6);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
-        // The field says it, as its error, in place of how to type a handle.
-        expect(tester.widget<TextField>(find.byType(TextField)).decoration?.errorText, en.startDirectHandleError);
-        expect(findCopy(en.startDirectHandleError), findsOneWidget);
+        expect(findCopy(en.safetyAccountNotFound('nobody')), findsOneWidget);
         expect(find.byType(VeilNotice), findsNothing);
-
-        await tester.enterText(find.byType(TextField), 'icaru');
-        await pumpFrames(tester, frames: 3);
-        expect(findCopy(en.startDirectHandleError), findsNothing, reason: 'a new handle clears the failure');
       });
     });
   });
@@ -106,6 +106,7 @@ void main() {
         final button = tester.getRect(find.byType(FilledButton));
         expect(tester.getRect(fields.first).top, lessThan(140));
         expect(tester.getRect(fields.last).bottom, lessThan(button.top));
+        expect(find.text(en.startGroupNameInput), findsOneWidget, reason: 'the label says it is required');
         expect(button.bottom, lessThanOrEqualTo(640));
 
         // This build has no public groups and cannot add members later:
@@ -118,16 +119,19 @@ void main() {
       });
     });
 
-    testWidgets('counts the handles as they are typed', (tester) async {
+    testWidgets('makes a chip of each handle a space or a comma ends, and counts the members', (tester) async {
       await withPhoneApp(tester, identities, location: '/start-group', body: (world) async {
-        final members = find.byType(TextField).at(1);
-        expect(find.textContaining(RegExp(r'^\d+ handles?$')), findsNothing);
+        final members = find.byType(TextField).at(2);
+        expect(find.textContaining(RegExp(r'^\d+ members?$')), findsNothing);
         await tester.enterText(members, 'lena');
         await tester.pump();
-        expect(find.text('1 handle'), findsOneWidget);
-        await tester.enterText(members, 'lena, @omar  jonas');
+        expect(find.text('1 member'), findsOneWidget);
+        expect(find.byType(InputChip), findsNothing, reason: 'a handle still being typed');
+        await tester.enterText(find.byType(TextField).at(2), 'lena, @omar  jonas');
         await tester.pump();
-        expect(find.text('3 handles'), findsOneWidget);
+        expect(find.text('3 members'), findsOneWidget);
+        expect(find.widgetWithText(InputChip, '@lena'), findsOneWidget);
+        expect(find.widgetWithText(InputChip, '@omar'), findsOneWidget);
       });
     });
 
@@ -145,14 +149,14 @@ void main() {
         expect(create().onPressed, isNull, reason: 'a name and no member');
 
         // The creator's own handle, however it is written, is nobody else.
-        await tester.enterText(fields.at(1), '@Alex, alex');
+        await tester.enterText(fields.at(2), '@Alex, alex');
         await tester.pump();
         expect(create().onPressed, isNull, reason: 'only the creator');
-        expect(find.textContaining(RegExp(r'^\d+ handles?$')), findsNothing, reason: 'no member is counted');
+        expect(find.textContaining(RegExp(r'^\d+ members?$')), findsNothing, reason: 'no member is counted');
 
-        await tester.enterText(fields.at(1), 'alex, lena');
+        await tester.enterText(fields.at(2), 'alex, lena');
         await tester.pump();
-        expect(find.text('1 handle'), findsOneWidget);
+        expect(find.text('1 member'), findsOneWidget);
         expect(create().onPressed, isNotNull);
 
         await tester.enterText(fields.at(0), '   ');
@@ -173,7 +177,9 @@ void main() {
     testWidgets('creates the group with its name and members, never public, and returns to the list',
         (tester) async {
       await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-        await openFromList(tester, en.conversationsNewGroup);
+        await openNewChat(tester);
+        await tester.tap(find.text(en.conversationsNewGroup));
+        await pumpFrames(tester);
         final fields = on(StartGroupScreen, TextField);
         final create = on(StartGroupScreen, FilledButton);
         expect(tester.widget<FilledButton>(create).onPressed, isNull, reason: 'no name yet');
@@ -181,8 +187,8 @@ void main() {
         await tester.enterText(fields.at(0), 'Movers');
         await tester.pump();
         expect(tester.widget<FilledButton>(create).onPressed, isNull, reason: 'no member yet');
-        await tester.enterText(fields.at(1), 'lena, @omar');
-        await tester.enterText(fields.at(2), 'The 14th');
+        await tester.enterText(fields.at(1), 'The 14th');
+        await tester.enterText(fields.at(2), 'lena, @omar');
         await tester.pump();
         await tester.tap(create);
         await pumpFrames(tester, frames: 10);
@@ -200,15 +206,15 @@ void main() {
     testWidgets('says when the relay refuses, and keeps what was typed', (tester) async {
       await withPhoneApp(tester, identities, location: '/start-group', body: (world) async {
         await tester.enterText(find.byType(TextField).at(0), 'Moving day');
-        await tester.enterText(find.byType(TextField).at(1), 'icarus');
+        await tester.enterText(find.byType(TextField).at(2), 'icarus');
         await tester.pump();
         await tester.tap(find.byType(FilledButton));
         await pumpFrames(tester, frames: 6);
 
         expect(world.api.createdGroups, isEmpty);
         expect(find.byType(StartGroupScreen), findsOneWidget);
-        // The members' field says it, as its error.
-        expect(findCopy(en.startGroupMembersError), findsOneWidget);
+        // The members' field names the handle nobody has, as its error.
+        expect(findCopy(en.safetyAccountNotFound('icarus')), findsOneWidget);
         expect(find.byType(VeilNotice), findsNothing);
         expect(find.text('Moving day'), findsOneWidget);
       });

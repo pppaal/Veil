@@ -7,9 +7,10 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// The last group of Settings: the four actions that take this device, or
-/// the account, away for good. Each row opens a dialog that says what it
-/// erases and asks for a typed phrase first.
+/// The last group of Settings: signing this phone out and deleting the
+/// account, both for good. Each row opens a dialog that says what it
+/// erases and asks for the user's own handle typed first, as Signal and
+/// WhatsApp ask for the phone number.
 class SettingsDangerZone extends ConsumerWidget {
   const SettingsDangerZone({super.key});
 
@@ -17,25 +18,26 @@ class SettingsDangerZone extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final session = ref.read(appSessionProvider.notifier);
+    final handle = '@${ref.watch(appSessionProvider.select((state) => state.handle)) ?? ''}';
 
-    // Runs [action] once the user typed [phrase]. An action that asks the
-    // server first can fail: the device then keeps its state, and says so.
+    // Runs [action] once the user typed their handle. Both ask the server
+    // first and can fail: the phone then keeps its state, and says so.
     Future<void> run({
       required String title,
       required String body,
       required String confirm,
-      required String phrase,
       required Future<void> Function() action,
+      required String failed,
       required String thenGo,
     }) async {
-      final confirmed = await confirmByTypingPhrase(context, title: title, body: body, confirm: confirm, phrase: phrase);
+      final confirmed = await confirmByTypingPhrase(context, title: title, body: body, confirm: confirm, phrase: handle);
       if (confirmed != true) return;
       try {
         await action();
         if (context.mounted) context.go(thenGo);
       } catch (_) {
         if (!context.mounted) return;
-        showVeilToast(context, l10n.commonError, tone: VeilTone.warn);
+        showVeilToast(context, failed, tone: VeilTone.warn);
       }
     }
 
@@ -50,36 +52,11 @@ class SettingsDangerZone extends ConsumerWidget {
             title: l10n.settingsLogoutConfirmTitle,
             body: l10n.settingsLogoutConfirmBody,
             confirm: l10n.settingsLogout,
-            phrase: l10n.settingsLogoutConfirmPhrase,
-            action: session.logout,
-            thenGo: '/create-account',
-          ),
-        ),
-        VeilRow(
-          key: const ValueKey('settings-wipe'),
-          destructive: true,
-          title: l10n.settingsWipeLocal,
-          onTap: () => run(
-            title: l10n.settingsWipeConfirmTitle,
-            body: l10n.settingsWipeConfirmBody,
-            confirm: l10n.settingsWipeConfirmAction,
-            phrase: l10n.settingsWipeConfirmPhrase,
-            action: session.wipeLocalDeviceState,
-            thenGo: '/splash',
-          ),
-        ),
-        VeilRow(
-          key: const ValueKey('settings-revoke'),
-          destructive: true,
-          title: l10n.settingsRevokeTitle,
-          onTap: () => run(
-            title: l10n.settingsRevokeConfirmTitle,
-            body: l10n.settingsRevokeConfirmBody,
-            confirm: l10n.settingsRevokeConfirmAction,
-            phrase: l10n.settingsRevokeConfirmPhrase,
-            // The server did not revoke it: this device keeps its state.
+            // The server signs this phone out first; only then is it erased.
+            // Unreached, nothing is erased.
             action: session.revokeCurrentDevice,
-            thenGo: '/create-account',
+            failed: l10n.settingsLogoutFailed,
+            thenGo: '/choose-handle',
           ),
         ),
         VeilRow(
@@ -90,8 +67,8 @@ class SettingsDangerZone extends ConsumerWidget {
             title: l10n.settingsDeleteAccountConfirmHeadline,
             body: l10n.settingsDeleteAccountBody,
             confirm: l10n.settingsDeleteAccountAction,
-            phrase: l10n.settingsDeleteAccountConfirmPhrase,
             action: session.deleteAccount,
+            failed: l10n.commonError,
             thenGo: '/splash',
           ),
         ),
@@ -100,8 +77,9 @@ class SettingsDangerZone extends ConsumerWidget {
   }
 }
 
-/// Asks the user to type [phrase] before an action that cannot be undone.
-/// Returns true only when they typed it and pressed [confirm].
+/// Asks the user to type [phrase] (their handle, "@alex") before an action
+/// that cannot be undone. Returns true only when they typed it and pressed
+/// [confirm].
 Future<bool?> confirmByTypingPhrase(
   BuildContext context, {
   required String title,
@@ -136,8 +114,13 @@ class _TypedPhraseDialogState extends State<_TypedPhraseDialog> {
     super.dispose();
   }
 
-  // Letter case is not the point of the phrase; typing it is.
-  bool get _matches => _typed.text.trim().toLowerCase() == widget.phrase.toLowerCase();
+  // Letter case and the "@" are not the point of the phrase; typing it is.
+  static String _bare(String text) {
+    final trimmed = text.trim().toLowerCase();
+    return trimmed.startsWith('@') ? trimmed.substring(1) : trimmed;
+  }
+
+  bool get _matches => _bare(_typed.text).isNotEmpty && _bare(_typed.text) == _bare(widget.phrase);
 
   @override
   Widget build(BuildContext context) {
@@ -161,7 +144,7 @@ class _TypedPhraseDialogState extends State<_TypedPhraseDialog> {
             controller: _typed,
             autocorrect: false,
             enableSuggestions: false,
-            textCapitalization: TextCapitalization.sentences,
+            textCapitalization: TextCapitalization.none,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(isDense: true, hintText: widget.phrase),
           ),

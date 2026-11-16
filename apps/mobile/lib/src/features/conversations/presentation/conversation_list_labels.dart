@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../chat/presentation/chat_room_labels.dart';
+import '../../chat/presentation/decrypt_status_view.dart';
 import '../../chat/presentation/disappearing_timer_sheet.dart';
 import '../../chat/presentation/message_expiration.dart';
 import '../data/conversation_models.dart';
@@ -29,13 +29,17 @@ String conversationRowSemantics(AppLocalizations l10n, ConversationPreview item,
 }
 
 /// The line under a conversation's name: what was not sent or waits to be
-/// sent (in the words the chat's own notice uses), or the last message. Only a text this device decrypted is quoted; every other kind is
-/// named by its decrypted kind, never by the envelope's unauthenticated one.
+/// sent, or the last message. Only a text this device decrypted is quoted,
+/// and a system line by its own words; every other kind is named by its
+/// decrypted kind, never by the envelope's unauthenticated one. In a group
+/// the text is led by who wrote it: "You: …", or [groupSender] when this
+/// device knows the member.
 String conversationPreviewLine(
   AppLocalizations l10n,
   ConversationPreview item,
-  VeilMessengerController controller,
-) {
+  VeilMessengerController controller, {
+  String? groupSender,
+}) {
   final pendingCount = controller.pendingCountFor(item.id);
   if (pendingCount > 0) {
     final failedCount = controller.messagesFor(item.id).where((message) => message.hasFailed).length;
@@ -51,15 +55,26 @@ String conversationPreviewLine(
     return l10n.conversationsPreviewExpired;
   }
 
-  final previewBody = controller.lastMessagePreviewFor(item.id);
-  if (previewBody != null) {
-    return previewBody;
+  final last = controller.messagesFor(item.id).lastOrNull;
+  final kind = controller.lastMessageKindFor(item.id) ?? MessageKind.text;
+  if (kind == MessageKind.system && last != null) {
+    final body = controller.lastMessageBodyFor(item.id);
+    if (body != null) return systemNoticeText(l10n, last, body);
   }
+  final text = controller.lastMessagePreviewFor(item.id) ?? _kindPreview(l10n, kind);
+  if (item.type != ConversationType.group || last == null || last.isLocalNotice || kind == MessageKind.system) {
+    return text;
+  }
+  if (last.isMine) return l10n.conversationsPreviewYou(text);
+  return groupSender == null ? text : l10n.conversationsPreviewSender(groupSender, text);
+}
 
-  return switch (controller.lastMessageKindFor(item.id) ?? MessageKind.text) {
+String _kindPreview(AppLocalizations l10n, MessageKind kind) {
+  return switch (kind) {
     MessageKind.image => l10n.conversationsPreviewImage,
     MessageKind.file => l10n.conversationsPreviewAttachment,
-    MessageKind.system => l10n.conversationsPreviewSystem,
+    // A system line whose words did not open.
+    MessageKind.system => l10n.conversationsPreviewMessage,
     MessageKind.text => l10n.conversationsPreviewMessage,
     MessageKind.voice => l10n.conversationsPreviewVoice,
     MessageKind.sticker => l10n.conversationsPreviewSticker,
@@ -88,38 +103,6 @@ String? conversationExpiryLabel(
 ) {
   final expiresAt = item.lastEnvelope?.expiresAt;
   return expiresAt == null ? null : formatMessageExpiry(l10n, expiresAt, now: controller.expiryNow());
-}
-
-String messageKindLabel(AppLocalizations l10n, MessageKind kind) {
-  return switch (kind) {
-    MessageKind.text => l10n.conversationsFilterText,
-    MessageKind.image => l10n.conversationsKindImage,
-    MessageKind.file => l10n.conversationsKindAttachment,
-    MessageKind.system => l10n.conversationsKindSystem,
-    MessageKind.voice => l10n.conversationsKindVoice,
-    MessageKind.sticker => l10n.conversationsKindSticker,
-    MessageKind.reaction => l10n.conversationsKindReaction,
-    MessageKind.call => l10n.conversationsKindSystem,
-  };
-}
-
-IconData messageKindIcon(MessageKind kind) {
-  return switch (kind) {
-    MessageKind.text => Icons.chat_bubble_outline,
-    MessageKind.image => Icons.image_outlined,
-    MessageKind.file => Icons.attach_file,
-    MessageKind.system => Icons.info_outlined,
-    MessageKind.voice => Icons.mic_none_outlined,
-    MessageKind.sticker => Icons.emoji_emotions_outlined,
-    MessageKind.reaction => Icons.favorite_border,
-    MessageKind.call => Icons.call_outlined,
-  };
-}
-
-/// "You · Text", the sender and kind of a message the search found.
-String messageResultOrigin(AppLocalizations l10n, MessageSearchResult result) {
-  final sender = result.isMine ? l10n.conversationsResultFromYou : l10n.conversationsResultFromPeer;
-  return '$sender · ${messageKindLabel(l10n, result.messageKind)}';
 }
 
 /// The time of a message sent today, the day of an older one.

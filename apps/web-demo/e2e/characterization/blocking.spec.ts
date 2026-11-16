@@ -55,7 +55,7 @@ test.describe('blocking', () => {
     await chooseAction(alice, 'hi alice', 'Block');
     await expect(alice.page.locator('#confirm-title')).toHaveText(`Block @${bob.handle}?`);
     // Not a silent block: the dialog says what Bob sees below.
-    await expect(alice.page.locator('#confirm-body')).toContainText("They aren't told, but their direct messages to you will fail");
+    await expect(alice.page.locator('#confirm-body')).toContainText('Their messages to you will show as not sent');
     await alice.page.click('#confirm-ok');
     await expect(toast(alice, `@${bob.handle} blocked`)).toBeVisible();
 

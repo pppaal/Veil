@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../../../core/network/veil_api_client.dart';
+import 'local_notice.dart';
 import 'message_content_service.dart';
 import 'messenger_api_mapper.dart';
 import 'messenger_operation_runner.dart';
@@ -9,7 +10,8 @@ import 'messenger_session_context.dart';
 import 'messenger_state_store.dart';
 
 /// Expires messages at min(inner, outer) expiry and keeps each
-/// conversation's disappearing timer.
+/// conversation's disappearing timer, with a line in the chat for every
+/// change of it ([writeNotice]): "You set …" when this phone made it.
 ///
 /// One one-shot timer is armed for the next expiry of anything loaded or
 /// listed, and re-armed whenever the state changes; nothing ticks while
@@ -23,8 +25,10 @@ class DisappearingMessagesService implements MessengerStateObserver {
     required VeilApiClient apiClient,
     required MessengerApiMapper mapper,
     required MessengerOperationRunner ops,
+    Future<void> Function(String conversationId, LocalNotice notice)? writeNotice,
     DateTime Function() now = DateTime.now,
   })  : _store = store,
+        _writeNotice = writeNotice,
         _contents = contents,
         _persistence = persistence,
         _session = session,
@@ -41,6 +45,11 @@ class DisappearingMessagesService implements MessengerStateObserver {
   final MessengerApiMapper _mapper;
   final MessengerOperationRunner _ops;
   final DateTime Function() _now;
+  final Future<void> Function(String conversationId, LocalNotice notice)? _writeNotice;
+
+  // The timer this phone asked the server for, per conversation, until it
+  // is applied: the server's event for it then counts as this phone's.
+  final Map<String, int?> _ownRequests = {};
   Timer? _timer;
   DateTime? _armedFor;
   bool _rearmScheduled = false;
@@ -72,26 +81,47 @@ class DisappearingMessagesService implements MessengerStateObserver {
   Future<void> setTimer(String conversationId, int? seconds) async {
     final session = _session.authed;
     if (session == null) {
-      applyTimer(conversationId, seconds);
+      applyTimer(conversationId, seconds, byThisPhone: true);
       return;
     }
+    _ownRequests[conversationId] = seconds;
     try {
       final response = await _apiClient.setDisappearingTimer(session.accessToken, conversationId, seconds);
       final applied = _mapper.appliedTimer(response, requested: seconds) ?? (throw StateError('Unexpected response shape'));
-      applyTimer(conversationId, applied.seconds);
+      applyTimer(conversationId, applied.seconds, byThisPhone: true);
     } catch (error) {
+      _ownRequests.remove(conversationId);
       await _ops.fail(error);
       rethrow;
     }
   }
 
-  void applyTimer(String conversationId, int? seconds) {
+  /// Makes [seconds] the timer of [conversationId]. A change is noted in
+  /// the chat: as this phone's when [byThisPhone], or when it is the timer
+  /// this phone asked for and the server's event came first.
+  void applyTimer(String conversationId, int? seconds, {bool byThisPhone = false}) {
+    final requested = _ownRequests.containsKey(conversationId) && _ownRequests[conversationId] == seconds;
+    final byYou = byThisPhone || requested;
+    if (byYou) _ownRequests.remove(conversationId);
+    final previous = _store.conversationById(conversationId);
     _store.updateConversation(
       conversationId,
       (conversation) => conversation.disappearingTimerSeconds == seconds
           ? conversation
           : conversation.copyWith(disappearingTimerSeconds: seconds),
     );
+    final writeNotice = _writeNotice;
+    if (previous == null || previous.disappearingTimerSeconds == seconds || writeNotice == null) return;
+    unawaited(writeNotice(
+      conversationId,
+      timerChangeNotice(
+        conversationId,
+        seconds: seconds,
+        byYou: byYou,
+        conversationMessages: _store.messagesOf(conversationId),
+        now: _now(),
+      ),
+    ));
   }
 
   void dispose() {

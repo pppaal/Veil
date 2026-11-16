@@ -77,6 +77,9 @@ const tabletUpright = PhoneSize(1024, 1366, topInset: 24, bottomInset: 20);
 /// The family the layout world passes to VeilTheme (see the file comment).
 const String layoutFontFamily = 'VeilTestSans';
 
+/// Where Debian and Ubuntu keep the emoji font, when it is installed.
+const String _systemEmojiFont = '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf';
+
 /// Where the test fonts are, from apps/mobile (where `flutter test` runs).
 const String testFontsDir = 'test/fonts';
 
@@ -97,6 +100,14 @@ Future<void> loadTestFonts() async {
         .load();
   }
   await (FontLoader('monospace')..addFont(Future.value(regular))).load();
+  // Emoji (the reaction bar, the chips) from the machine's own emoji font
+  // where it has one, so a render shows them rather than empty boxes. The
+  // layout is measured the same either way: each emoji sits in a box of
+  // its own fixed size.
+  final emoji = File(_systemEmojiFont);
+  if (emoji.existsSync()) {
+    await (FontLoader('Noto Color Emoji')..addFont(Future.value(emoji.readAsBytesSync().buffer.asByteData()))).load();
+  }
 
   final manifest = json.decode(await rootBundle.loadString('FontManifest.json')) as List<dynamic>;
   for (final entry in manifest.cast<Map<String, dynamic>>()) {

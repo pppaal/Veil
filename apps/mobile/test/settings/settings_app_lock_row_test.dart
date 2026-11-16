@@ -100,7 +100,7 @@ class _App {
 /// Screens the rows do not reach stand in as their paths; Settings and the
 /// lock screen are the real ones.
 List<RouteBase> _routes() => [
-      for (final path in const ['/splash', '/privacy-consent', '/onboarding', '/create-account', '/choose-handle', '/conversations'])
+      for (final path in const ['/splash', '/privacy-consent', '/onboarding', '/choose-handle', '/conversations'])
         GoRoute(path: path, builder: (_, __) => Scaffold(body: Text(path))),
       GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
       GoRoute(path: '/lock', builder: (_, __) => const AppLockScreen()),

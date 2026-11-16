@@ -211,7 +211,7 @@ void main() {
     ]);
 
     expect(find.text("Couldn't decrypt this message"), findsOneWidget);
-    expect(find.text("Waiting for the sender's key"), findsOneWidget);
+    expect(find.text('Waiting for this message'), findsOneWidget);
     expect(find.text('whatever an adapter put here'), findsNothing);
   });
 
@@ -240,7 +240,7 @@ void main() {
     ]);
 
     expect(find.text('old client'), findsOneWidget);
-    expect(find.text('Sent from an older version; not verified'), findsOneWidget);
+    expect(find.text('Sent from an older app, not verified'), findsOneWidget);
   });
 
   testWidgets('inbound reaction applies to target and renders no bubble', (tester) async {

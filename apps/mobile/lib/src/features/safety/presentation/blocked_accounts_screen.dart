@@ -44,9 +44,8 @@ class _BlockedAccountsScreenState extends ConsumerState<BlockedAccountsScreen> {
     final Widget body;
     if (blocked.accounts.isEmpty && !blocked.loaded) {
       body = blocked.loadFailed && !blocked.isLoading
-          ? VeilEmptyState.error(
+          ? VeilEmptyState(
               title: l10n.blockedAccountsLoadFailedTitle,
-              body: l10n.blockedAccountsLoadFailedBody,
               action: VeilButton(
                 expanded: false,
                 tone: VeilButtonTone.secondary,
@@ -58,7 +57,17 @@ class _BlockedAccountsScreenState extends ConsumerState<BlockedAccountsScreen> {
               child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
             );
     } else if (blocked.accounts.isEmpty) {
-      body = VeilEmptyState(title: l10n.blockedAccountsEmptyTitle, body: l10n.blockedAccountsEmptyBody);
+      // One quiet line at the top of the list, as Signal's "No blocked
+      // users": not centred, nothing else.
+      body = ListView(
+        padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.md, VeilSpace.md, VeilSpace.xxl),
+        children: [
+          Text(
+            l10n.blockedAccountsEmptyTitle,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: context.veilPalette.textMuted),
+          ),
+        ],
+      );
     } else {
       body = ListView(
         padding: const EdgeInsets.only(top: VeilSpace.md, bottom: VeilSpace.xxl),
@@ -84,8 +93,8 @@ class _BlockedAccountsScreenState extends ConsumerState<BlockedAccountsScreen> {
 }
 
 /// One blocked account: the avatar, the name this phone knows for it with
-/// the @handle under it (or the handle alone, without its @, as a Chats or
-/// Contacts row names someone with no name) and Unblock.
+/// the @handle under it (or the @handle alone, never a bare handle, for one
+/// with no name) and Unblock.
 class BlockedAccountRow extends StatelessWidget {
   const BlockedAccountRow({super.key, required this.account, required this.name, required this.onUnblock});
 
@@ -104,7 +113,7 @@ class BlockedAccountRow extends StatelessWidget {
     return VeilRow(
       leading: VeilAvatar(name: name ?? account.handle, seed: account.handle),
       // A name and a handle are their owner's words: drawn as typed.
-      title: name ?? account.handle,
+      title: name ?? handle,
       subtitle: name == null ? null : handle,
       trailing: TextButton(onPressed: onUnblock, child: Text(l10n.unblockAction)),
     );

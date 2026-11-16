@@ -12,8 +12,11 @@ import '../../../shared/presentation/veil_ui.dart';
 import 'brand_mark.dart';
 
 const double _markWidth = 96;
-const double _indicatorSize = 24;
+const double _indicatorSize = 20;
 const double _indicatorGap = 24;
+
+/// How long a start may take before a spinner shows under the mark.
+const Duration _spinnerDelay = Duration(seconds: 1);
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -23,9 +26,15 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
+  Timer? _spinnerTimer;
+  bool _slow = false;
+
   @override
   void initState() {
     super.initState();
+    _spinnerTimer = Timer(_spinnerDelay, () {
+      if (mounted) setState(() => _slow = true);
+    });
     scheduleMicrotask(() async {
       await ref.read(appSessionProvider.notifier).bootstrap();
       if (!mounted) {
@@ -33,6 +42,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       }
       _route(ref.read(appSessionProvider));
     });
+  }
+
+  @override
+  void dispose() {
+    _spinnerTimer?.cancel();
+    super.dispose();
   }
 
   void _route(AppSessionState session) {
@@ -50,7 +65,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     }
 
     if (!session.isAuthenticated) {
-      context.go('/create-account');
+      context.go('/choose-handle');
       return;
     }
 
@@ -74,8 +89,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     final l10n = AppLocalizations.of(context);
     final error = session.errorMessage;
 
-    // The mark where the native splash had it, and under it that the app
-    // is starting; no words. Only a start that failed says something.
+    // The mark where the native splash had it, and nothing else. A start
+    // that takes more than a second adds a small spinner under it; only a
+    // start that failed says something.
     return VeilShell(
       maxWidth: null,
       child: error != null
@@ -85,18 +101,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 children: [
                   const Center(child: BrandMark(width: _markWidth)),
                   // 24 under the mark, which stays at the centre.
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: _markWidth + 2 * _indicatorGap + _indicatorSize),
-                      child: Semantics(
-                        label: l10n.splashPreparingTitle,
-                        child: const SizedBox.square(
+                  if (_slow)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.only(top: _markWidth + 2 * _indicatorGap + _indicatorSize),
+                        child: SizedBox.square(
                           dimension: _indicatorSize,
                           child: CircularProgressIndicator.adaptive(strokeWidth: 2),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),

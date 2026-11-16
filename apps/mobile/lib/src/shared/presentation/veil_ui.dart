@@ -101,14 +101,14 @@ class VeilButton extends StatelessWidget {
 }
 
 /// What a screen shows where its content would be and there is none: a
-/// title, one line under it and at most one button, centred in the space
-/// left. [icon], if any, is a plain 40dp glyph. [compact] (above an open
-/// keyboard) is the title and the button only.
+/// title, at most one line under it and at most one button, centred in the
+/// space left. [icon], if any, is a plain 40dp glyph. [compact] (above an
+/// open keyboard) is the title and the button only.
 class VeilEmptyState extends StatelessWidget {
   const VeilEmptyState({
     super.key,
     required this.title,
-    required this.body,
+    this.body,
     this.icon,
     this.action,
     this.compact = false,
@@ -118,13 +118,13 @@ class VeilEmptyState extends StatelessWidget {
   const VeilEmptyState.error({
     super.key,
     required this.title,
-    required this.body,
+    this.body,
     this.action,
     this.compact = false,
   }) : icon = Icons.error_outline;
 
   final String title;
-  final String body;
+  final String? body;
   final IconData? icon;
   final Widget? action;
   final bool compact;
@@ -148,10 +148,10 @@ class VeilEmptyState extends StatelessWidget {
                 const SizedBox(height: VeilSpace.md),
               ],
               Text(title, style: titleStyle, textAlign: TextAlign.center),
-              if (!compact) ...[
+              if (!compact && body != null) ...[
                 const SizedBox(height: VeilSpace.xs),
                 Text(
-                  body,
+                  body!,
                   style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
                   textAlign: TextAlign.center,
                   maxLines: 2,

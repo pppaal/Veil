@@ -5,18 +5,18 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 // Completing a transfer revokes the old device in the same transaction
 // (DeviceTransferService.complete), which signs it out and wipes its local
 // state, and no history moves: the new device registers a fresh identity.
-// The transfer screen must say so on both devices, where each decides (the
-// new device above its "complete" button, the old one above its approve
-// button), and must not promise that the old device stays trusted.
+// The old phone's approve dialog, where the move is decided, must say so,
+// and nothing may promise that the old device stays trusted.
 void main() {
-  test('the transfer screen says the old device is signed out and history stays behind', () {
+  test('the approve dialog says the old phone is signed out and the messages stay behind', () {
     final en = lookupAppLocalizations(const Locale('en'));
-    for (final text in [en.deviceTransferNewCompleteNote, en.deviceTransferApproveFooter]) {
-      expect(text, contains('signed out'));
-      expect(text, anyOf(contains('history is not transferred'), contains('history does not move')));
+    final body = en.deviceTransferApproveBody('ab12');
+    expect(body, contains('signed out'));
+    expect(body, contains("messages won't move"));
+    expect(body, contains('ab12'), reason: 'the key fingerprint the new phone shows');
+    for (final text in [body, en.deviceTransferComplete]) {
       expect(text, isNot(contains('remains trusted')));
+      expect(text, isNot(contains('joined the trusted graph')));
     }
-    expect(en.deviceTransferComplete, contains('old phone is signed out'));
-    expect(en.deviceTransferComplete, isNot(contains('joined the trusted graph')));
   });
 }

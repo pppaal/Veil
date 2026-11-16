@@ -22,17 +22,11 @@ class ConversationListView {
     required this.searchingArchive,
     required this.archiveHasMore,
     required this.searchController,
-    required this.senderFilter,
-    required this.typeFilter,
-    required this.dateFilter,
     required this.timeFormat,
     required this.selectedConversationId,
     required this.onSelectConversation,
     required this.onSelectMessageResult,
     required this.onLoadMoreMessageResults,
-    required this.onSenderFilterChanged,
-    required this.onTypeFilterChanged,
-    required this.onDateFilterChanged,
   });
 
   final AppSessionState session;
@@ -44,103 +38,13 @@ class ConversationListView {
   final bool searchingArchive;
   final bool archiveHasMore;
   final TextEditingController searchController;
-  final MessageSearchSenderFilter senderFilter;
-  final MessageSearchTypeFilter typeFilter;
-  final MessageSearchDateFilter dateFilter;
   final DateFormat timeFormat;
   final String? selectedConversationId;
   final ValueChanged<String> onSelectConversation;
   final ValueChanged<MessageSearchResult> onSelectMessageResult;
   final VoidCallback onLoadMoreMessageResults;
-  final ValueChanged<MessageSearchSenderFilter> onSenderFilterChanged;
-  final ValueChanged<MessageSearchTypeFilter> onTypeFilterChanged;
-  final ValueChanged<MessageSearchDateFilter> onDateFilterChanged;
 
   bool get hasSearchQuery => searchController.text.trim().isNotEmpty;
-}
-
-/// The sender, type and date filters of the local message search.
-List<Widget> conversationSearchFilterChips(AppLocalizations l10n, ConversationListView view) {
-  return [
-    _SearchChip<MessageSearchSenderFilter>(
-      value: MessageSearchSenderFilter.all,
-      groupValue: view.senderFilter,
-      label: l10n.conversationsFilterAllSenders,
-      onSelected: view.onSenderFilterChanged,
-    ),
-    _SearchChip<MessageSearchSenderFilter>(
-      value: MessageSearchSenderFilter.mine,
-      groupValue: view.senderFilter,
-      label: l10n.conversationsFilterMine,
-      onSelected: view.onSenderFilterChanged,
-    ),
-    _SearchChip<MessageSearchSenderFilter>(
-      value: MessageSearchSenderFilter.theirs,
-      groupValue: view.senderFilter,
-      label: l10n.conversationsFilterTheirs,
-      onSelected: view.onSenderFilterChanged,
-    ),
-    _SearchChip<MessageSearchTypeFilter>(
-      value: MessageSearchTypeFilter.all,
-      groupValue: view.typeFilter,
-      label: l10n.conversationsFilterAllTypes,
-      onSelected: view.onTypeFilterChanged,
-    ),
-    _SearchChip<MessageSearchTypeFilter>(
-      value: MessageSearchTypeFilter.text,
-      groupValue: view.typeFilter,
-      label: l10n.conversationsFilterText,
-      onSelected: view.onTypeFilterChanged,
-    ),
-    _SearchChip<MessageSearchTypeFilter>(
-      value: MessageSearchTypeFilter.media,
-      groupValue: view.typeFilter,
-      label: l10n.conversationsFilterMedia,
-      onSelected: view.onTypeFilterChanged,
-    ),
-    _SearchChip<MessageSearchDateFilter>(
-      value: MessageSearchDateFilter.any,
-      groupValue: view.dateFilter,
-      label: l10n.conversationsFilterAnyDate,
-      onSelected: view.onDateFilterChanged,
-    ),
-    _SearchChip<MessageSearchDateFilter>(
-      value: MessageSearchDateFilter.last7Days,
-      groupValue: view.dateFilter,
-      label: l10n.conversationsFilterLast7Days,
-      onSelected: view.onDateFilterChanged,
-    ),
-    _SearchChip<MessageSearchDateFilter>(
-      value: MessageSearchDateFilter.last30Days,
-      groupValue: view.dateFilter,
-      label: l10n.conversationsFilterLast30Days,
-      onSelected: view.onDateFilterChanged,
-    ),
-  ];
-}
-
-class _SearchChip<T> extends StatelessWidget {
-  const _SearchChip({
-    required this.value,
-    required this.groupValue,
-    required this.label,
-    required this.onSelected,
-  });
-
-  final T value;
-  final T groupValue;
-  final String label;
-  final ValueChanged<T> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(label),
-      showCheckmark: false,
-      selected: value == groupValue,
-      onSelected: (_) => onSelected(value),
-    );
-  }
 }
 
 /// The heading of a part of the list while searching ("Chats",
@@ -175,9 +79,9 @@ class ConversationListHeader extends StatelessWidget {
 }
 
 /// One message the local search found: a 60 px row with the avatar of the
-/// chat it is in, the chat's name and the day it was sent, and the message
-/// with the query in the text colour. The avatar and the name are the ones
-/// the chat's own row shows: a group's neutral disc and its name, never the
+/// chat it is in, the chat's name in bold and the day it was sent, and the
+/// message with the query in bold. The avatar and the name are the ones the
+/// chat's own row shows: a group's neutral disc and its name, never the
 /// letter or the name of the member the search result happens to carry.
 class MessageSearchResultTile extends StatelessWidget {
   const MessageSearchResultTile({
@@ -215,8 +119,6 @@ class MessageSearchResultTile extends StatelessWidget {
     final title = chat == null ? result.title : conversationRowTitle(l10n, chat, localUserId: localUserId);
     return Semantics(
       button: true,
-      // Who sent it and what it is, for a screen reader: "You · Text".
-      label: messageResultOrigin(l10n, result),
       child: InkWell(
         onTap: onTap,
         child: ConstrainedBox(
@@ -240,7 +142,7 @@ class MessageSearchResultTile extends StatelessWidget {
                               title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleMedium,
+                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                             ),
                           ),
                           const SizedBox(width: VeilSpace.xs),
@@ -252,7 +154,7 @@ class MessageSearchResultTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       // The snippet is a person's words: drawn as they wrote
-                      // them, with the query in the text colour.
+                      // them, with the query in bold.
                       RichText(
                         text: TextSpan(
                           style: snippetStyle,
@@ -264,7 +166,7 @@ class MessageSearchResultTile extends StatelessWidget {
                           ),
                         ),
                         textScaler: MediaQuery.textScalerOf(context),
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
@@ -280,11 +182,12 @@ class MessageSearchResultTile extends StatelessWidget {
 }
 
 /// The messages the local search found under the chats it matched: their
-/// heading, the results or a line saying there are none, and the button
-/// that loads more.
+/// heading, the results and the button that loads more. Nothing while no
+/// message matched.
 List<Widget> messageSearchResultSection(BuildContext context, ConversationListView view) {
   final l10n = AppLocalizations.of(context);
   final results = view.archiveResults;
+  if (results.isEmpty) return const [];
   return [
     ConversationListHeader(
       label: l10n.conversationsMessagesSection,
@@ -292,15 +195,7 @@ List<Widget> messageSearchResultSection(BuildContext context, ConversationListVi
           ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
           : null,
     ),
-    if (!view.searchingArchive && results.isEmpty)
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
-        child: Text(
-          l10n.conversationsNoMessageMatchBody,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
-        ),
-      )
-    else ...[
+    ...[
       VeilGroup(
         inset: MessageSearchResultTile.textInset,
         children: [

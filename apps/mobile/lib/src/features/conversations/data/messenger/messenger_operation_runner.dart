@@ -1,4 +1,5 @@
 import '../../../../core/errors/user_facing_error.dart';
+import '../../../../core/network/veil_api_exception.dart';
 import 'conversation_peer_bindings.dart';
 import 'identity_trust.dart';
 
@@ -16,10 +17,15 @@ class MessengerOperationRunner {
   final Future<void> Function(Object error)? _onSecurityException;
   bool _isBusy = false;
   String? _errorMessage;
+  String? _errorCode;
 
   bool get isBusy => _isBusy;
 
   String? get errorMessage => _errorMessage;
+
+  /// The server's error code for the failure of the last [run], when it
+  /// came with one ('handle_not_found', say); null otherwise.
+  String? get errorCode => _errorCode;
 
   /// Whether [errorMessage] is the note that the relay link dropped while
   /// sends were queued, which a screen words in the user's language.
@@ -29,6 +35,7 @@ class MessengerOperationRunner {
   Future<void> run(Future<void> Function() action) async {
     _isBusy = true;
     _errorMessage = null;
+    _errorCode = null;
     _onChanged();
     try {
       await action();
@@ -39,6 +46,7 @@ class MessengerOperationRunner {
     } catch (error) {
       await handleSecurityException(error);
       _errorMessage = formatUserFacingError(error);
+      _errorCode = extractVeilApiErrorCode(error);
     } finally {
       _isBusy = false;
       _onChanged();

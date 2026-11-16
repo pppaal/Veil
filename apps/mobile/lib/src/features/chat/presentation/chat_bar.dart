@@ -125,7 +125,7 @@ class ChatMenuEntry {
 
   /// Names the entry, uniquely within a menu: 'timer', 'mute' or 'unmute',
   /// 'report', 'block' or 'unblock'. The menu finds a tapped entry by it,
-  /// and tests find the item by 'chat-menu-<key>'.
+  /// and tests find its item by the key 'chat-menu-' plus this.
   final String key;
   final String label;
   final IconData icon;

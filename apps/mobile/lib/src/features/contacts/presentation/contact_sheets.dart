@@ -126,7 +126,8 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
     }
     navigator.pop();
     final nickname = _nickname.text.trim();
-    widget.onAdded(nickname.isEmpty ? '@$handle' : nickname);
+    // The server keeps handles in lower case, as the row shows it.
+    widget.onAdded(nickname.isEmpty ? '@${handle.toLowerCase()}' : nickname);
   }
 
   @override

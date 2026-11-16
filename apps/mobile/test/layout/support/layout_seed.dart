@@ -477,7 +477,8 @@ class LayoutRelayClient extends FakeRelayClient {
 
   @override
   Future<Map<String, dynamic>> addContact(String accessToken, Map<String, dynamic> body) async {
-    final handle = body['handle'] as String;
+    // Looked up and kept in lower case, as ContactsService does.
+    final handle = (body['handle'] as String).toLowerCase();
     _requireParty(handle);
     addedContacts.add(handle);
     removedContacts.remove(handle);

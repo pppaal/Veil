@@ -213,6 +213,27 @@ void main() {
     });
   });
 
+  // A handle typed in capitals is the server's lower-case one: the toast
+  // says it as the row does.
+  testWidgets('a contact added as "Dana" with no nickname is said as @dana', (tester) async {
+    await withPhoneApp(tester, identities, location: '/contacts', prepare: (world) async {
+      world.relay.addParty(
+        RelayParty(handle: 'dana', userId: 'user-dana', deviceId: 'dev-dana', identity: identities.peer),
+      );
+      return null;
+    }, body: (world) async {
+      await tester.tap(find.byTooltip(en.contactsAdd));
+      await pumpFrames(tester, frames: 4);
+      await tester.enterText(inSheet(find.byType(TextField)).first, 'Dana');
+      await tester.pump();
+      await tester.tap(inSheet(find.byType(FilledButton)));
+      await pumpFrames(tester, frames: 6);
+      expect(world.api.addedContacts, ['dana']);
+      expect(findCopy(en.contactsAdded('@dana')), findsOneWidget);
+      expect(findCopy(en.contactsAdded('@Dana')), findsNothing);
+    });
+  });
+
   testWidgets('a contact\'s nickname is changed from its sheet, and only this device learns it', (tester) async {
     await withPhoneApp(tester, identities, location: '/contacts', keyboardHeight: 300, body: (world) async {
       // The first row: with the keyboard up a 360x640 phone builds few.

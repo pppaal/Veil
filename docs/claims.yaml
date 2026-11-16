@@ -423,6 +423,8 @@ claims:
         quote: "The mobile app reports and blocks accounts from a chat, a message and a contact, as App Review expects in an app with user-generated content (guideline 1.2)."
       - file: docs/app-store-listing-metadata.md
         quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app blocks and reports accounts, so say so)."
+      - file: store/appstore/app-review-notes.md
+        quote: "A report sends B's account, the reason and which chat or message, not what it says."
     evidence:
       - test: apps/mobile/test/safety/safety_relay_test.dart
         name: "a report carries the account, the reason and where it was filed from, nothing else"

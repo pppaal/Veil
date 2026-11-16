@@ -66,13 +66,17 @@ final messengerControllerProvider =
   // both exist.
   late final VeilMessengerController controller;
   // No notification for a muted chat, nor for a 1:1 with someone blocked.
+  // Both lists start loading with the messenger, well before the first
+  // message can arrive.
+  final mutes = ref.read(conversationMutesProvider);
+  final blocked = ref.read(blockedAccountsProvider);
   final notificationService = SilencedNotifications(
     ref.read(localNotificationServiceProvider),
     isSilenced: (conversationId) => conversationSilenced(
       conversationId,
       controller.conversationById(conversationId),
-      mutes: ref.read(conversationMutesProvider),
-      blocked: ref.read(blockedAccountsProvider),
+      mutes: mutes,
+      blocked: blocked,
     ),
   );
 

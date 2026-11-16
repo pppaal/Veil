@@ -4,14 +4,19 @@
 // the menu, with moving it elsewhere as the safe alternative).
 
 import { t } from '../../../i18n/i18n.js';
-import { isValidHandle, normalizeHandle } from '../../domain/composer-text.js';
+import { normalizeHandle } from '../../domain/composer-text.js';
+import { HandleRule, handleRuleBroken } from '../../domain/handles.js';
 import { isAuthRejection } from '../../platform/api-client.js';
 import { $, avatarFor } from '../dom.js';
 import { toast } from '../toast.js';
 
-// What a failed registration says: a taken handle, or that it did not work.
-// The server's own wording never reaches the screen.
-const registrationError = (error) => t(error?.code === 'handle_taken' ? 'auth.form.handle.taken' : 'auth.form.failed');
+// What the form says about a handle that breaks one of the server's rules
+// (src/domain/handles.js), one rule at a time.
+const RULE_KEYS = Object.freeze({
+  [HandleRule.CHARACTERS]: 'auth.form.handle.invalid',
+  [HandleRule.EDGES]: 'auth.form.handle.edges',
+  [HandleRule.RUN]: 'auth.form.handle.run',
+});
 
 // session: src/app/services/session.js; confirm: src/ui/confirm.js.
 export function createAuthView({ stack, session, confirm }) {
@@ -80,6 +85,25 @@ export function createAuthView({ stack, session, confirm }) {
     return true;
   }
 
+  // What is wrong with the handle (missing, against the rules, taken) shows
+  // under the field in place of its hint, until the handle is changed. Only
+  // a failure to create the account or sign in is a toast.
+  function showHandleError(key) {
+    const hint = $('reg-handle-hint');
+    hint.textContent = t(key);
+    hint.classList.add('field-error');
+    $('reg-handle').setAttribute('aria-invalid', 'true');
+    $('reg-handle').focus();
+  }
+
+  function clearHandleError() {
+    const hint = $('reg-handle-hint');
+    if (!hint.classList.contains('field-error')) return;
+    hint.textContent = t('auth.form.handle.hint');
+    hint.classList.remove('field-error');
+    $('reg-handle').removeAttribute('aria-invalid');
+  }
+
   // failureKey: the message of a sign-in that failed.
   async function restore(failureKey) {
     try {
@@ -106,11 +130,13 @@ export function createAuthView({ stack, session, confirm }) {
     confirmAndSignOut,
 
     mount() {
+      $('reg-handle').addEventListener('input', clearHandleError);
       $('register-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const handle = normalizeHandle($('reg-handle').value);
-        if (!handle) return toast(t('auth.form.handle.missing'), 'error');
-        if (!isValidHandle(handle)) return toast(t('auth.form.handle.invalid'), 'error');
+        if (!handle) return showHandleError('auth.form.handle.missing');
+        const broken = handleRuleBroken(handle);
+        if (broken) return showHandleError(RULE_KEYS[broken]);
         // A new handle replaces the account stored here, which destroys it.
         if ((await session.hasStoredIdentity()) && !(await confirmAndRemove())) return;
         $('reg-btn').disabled = true;
@@ -120,10 +146,16 @@ export function createAuthView({ stack, session, confirm }) {
           await session.enterApp();
         } catch (error) {
           // Registered but not signed in: the account is stored, and the
-          // auth screen offers to try again.
-          const registered = Boolean(stack.sessionStore.current());
-          toast(registered ? t('auth.restore.failed') : registrationError(error), 'error');
-          if (registered) await show({ rejected: isAuthRejection(error) });
+          // auth screen offers to try again. The server's own wording never
+          // reaches the screen.
+          if (stack.sessionStore.current()) {
+            toast(t('auth.restore.failed'), 'error');
+            await show({ rejected: isAuthRejection(error) });
+          } else if (error?.code === 'handle_taken') {
+            showHandleError('auth.form.handle.taken');
+          } else {
+            toast(t('auth.form.failed'), 'error');
+          }
         } finally {
           $('reg-btn').disabled = false;
         }

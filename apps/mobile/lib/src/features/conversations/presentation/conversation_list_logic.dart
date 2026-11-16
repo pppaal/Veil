@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../data/conversation_models.dart';
@@ -147,10 +149,16 @@ T? _enumByName<T extends Enum>(List<T> values, Object? value) {
   return null;
 }
 
+/// The conversations [query] matches, best match first: by the handle of a
+/// 1:1's peer, and by the name [nameOf] says its row shows (the nickname of
+/// a 1:1's peer, a group's name). A match at the start of the handle or of
+/// the name, or of a word of the name ("ri" in "Sam Rivera"), comes before
+/// one inside a word ("ri" in "priya").
 List<ConversationPreview> filterConversationPreviews(
   List<ConversationPreview> conversations,
-  String query,
-) {
+  String query, {
+  required String Function(ConversationPreview conversation) nameOf,
+}) {
   final normalizedQuery = query.trim().toLowerCase();
   if (normalizedQuery.isEmpty) {
     return conversations;
@@ -158,12 +166,13 @@ List<ConversationPreview> filterConversationPreviews(
 
   final ranked = <({int score, ConversationPreview conversation})>[];
   for (final conversation in conversations) {
-    final handle = conversation.peerHandle.toLowerCase();
-    final displayName = (conversation.peerDisplayName ?? '').toLowerCase();
+    // A group has no handle: the one it carries is one of its members'.
+    final handle = conversation.type == ConversationType.direct ? conversation.peerHandle.toLowerCase() : '';
+    final name = nameOf(conversation).toLowerCase();
     final matchScore = _conversationSearchScore(
       query: normalizedQuery,
       handle: handle,
-      displayName: displayName,
+      name: name,
     );
     if (matchScore == null) {
       continue;
@@ -190,19 +199,22 @@ List<ConversationPreview> filterConversationPreviews(
 int? _conversationSearchScore({
   required String query,
   required String handle,
-  required String displayName,
+  required String name,
 }) {
   if (handle == query) {
     return 0;
   }
-  if (displayName == query) {
+  if (name == query) {
     return 10;
   }
   if (handle.startsWith(query)) {
     return 20;
   }
-  if (displayName.startsWith(query)) {
-    return 30;
+  // The start of the name or of a word in it, the earlier the better, and
+  // all before a handle that only holds the query.
+  final word = RegExp('(^|\\s)${RegExp.escape(query)}').firstMatch(name);
+  if (word != null) {
+    return 30 + math.min(word.start + word.group(1)!.length, 9);
   }
 
   final handleIndex = handle.indexOf(query);
@@ -210,9 +222,9 @@ int? _conversationSearchScore({
     return 40 + handleIndex;
   }
 
-  final displayIndex = displayName.indexOf(query);
-  if (displayIndex >= 0) {
-    return 80 + displayIndex;
+  final nameIndex = name.indexOf(query);
+  if (nameIndex >= 0) {
+    return 80 + nameIndex;
   }
 
   return null;

@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
-import '../../contacts/data/contacts_providers.dart';
 import '../../conversations/data/conversation_models.dart';
+import '../../conversations/presentation/peer_names.dart';
 import '../data/safety_providers.dart';
 
 /// Whose account a handle is, and what this phone calls it, for blocking
@@ -35,20 +35,11 @@ class SafetyAccounts {
     }
   }
 
-  /// The name this phone shows for [handle]: the nickname or name of the
-  /// contact, or the name a 1:1 with them is listed under. Null when it
-  /// knows none, and the handle is all there is to show.
-  String? knownNameFor(String handle) {
-    for (final contact in _ref.read(contactsControllerProvider).contacts) {
-      if (contact.handle != handle) continue;
-      for (final name in [contact.nickname, contact.displayName]) {
-        final trimmed = name?.trim();
-        if (trimmed != null && trimmed.isNotEmpty) return trimmed;
-      }
-    }
-    final listed = _directPeer(handle)?.peerDisplayName?.trim();
-    return listed == null || listed.isEmpty ? null : listed;
-  }
+  /// The name this phone shows for the account [userId], listed under
+  /// [handle]: the nickname the user gave that handle (see PeerNames). Null
+  /// when there is none, and the handle is all there is to show.
+  String? knownNameFor({required String userId, required String handle}) =>
+      _ref.read(peerNamesProvider).accountName(userId, handle);
 
   ConversationPreview? _directPeer(String handle) {
     for (final conversation in _ref.read(messengerControllerProvider).conversations) {

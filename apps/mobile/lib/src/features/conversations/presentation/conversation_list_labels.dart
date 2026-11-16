@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../chat/presentation/chat_room_labels.dart';
@@ -8,21 +6,33 @@ import '../../chat/presentation/disappearing_timer_sheet.dart';
 import '../../chat/presentation/message_expiration.dart';
 import '../data/conversation_models.dart';
 import '../data/veil_messenger_controller.dart';
+import 'peer_names.dart';
 
 // The words the conversation list shows for a conversation, for its last
 // message, and for a message found by the local search.
 
-/// The name on a conversation's row: a 1:1 by its peer's name or handle (the
-/// row draws the handle's first letter as the avatar, so without its @), a
-/// group as the chat titles it (see conversationTitle).
-String conversationRowTitle(AppLocalizations l10n, ConversationPreview item, {required String? localUserId}) =>
+/// The name on a conversation's row: a 1:1 by the nickname the user gave its
+/// peer (see PeerNames), or else their handle (the row draws the handle's
+/// first letter as the avatar, so without its @); a group as the chat
+/// titles it (see conversationTitle).
+String conversationRowTitle(
+  AppLocalizations l10n,
+  ConversationPreview item,
+  PeerNames names, {
+  required String? localUserId,
+}) =>
     item.type == ConversationType.direct
-        ? item.peerDisplayName ?? item.peerHandle
-        : conversationTitle(l10n, item, localUserId: localUserId);
+        ? names.peerName(item) ?? item.peerHandle
+        : conversationTitle(l10n, item, names, localUserId: localUserId);
 
 /// What a screen reader calls the row.
-String conversationRowSemantics(AppLocalizations l10n, ConversationPreview item, {required String? localUserId}) {
-  final title = conversationRowTitle(l10n, item, localUserId: localUserId);
+String conversationRowSemantics(
+  AppLocalizations l10n,
+  ConversationPreview item,
+  PeerNames names, {
+  required String? localUserId,
+}) {
+  final title = conversationRowTitle(l10n, item, names, localUserId: localUserId);
   return item.type == ConversationType.direct
       ? l10n.conversationsRowSemantics(title)
       : l10n.conversationsGroupRowSemantics(title);
@@ -103,13 +113,4 @@ String? conversationExpiryLabel(
 ) {
   final expiresAt = item.lastEnvelope?.expiresAt;
   return expiresAt == null ? null : formatMessageExpiry(l10n, expiresAt, now: controller.expiryNow());
-}
-
-/// The time of a message sent today, the day of an older one.
-String messageDateLabel(DateTime sentAt, DateFormat timeFormat, String localeName) {
-  final now = DateTime.now();
-  if (sentAt.year == now.year && sentAt.month == now.month && sentAt.day == now.day) {
-    return timeFormat.format(sentAt);
-  }
-  return DateFormat.MMMd(localeName).format(sentAt);
 }

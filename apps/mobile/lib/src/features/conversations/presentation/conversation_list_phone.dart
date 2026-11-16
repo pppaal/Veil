@@ -100,7 +100,7 @@ class ConversationListPhone extends ConsumerWidget {
                       child: ConversationRow(
                         dense: dense,
                         selected: item.id == view.selectedConversationId,
-                        title: conversationRowTitle(l10n, item, localUserId: localUserId),
+                        title: conversationRowTitle(l10n, item, view.names, localUserId: localUserId),
                         // What the avatar's colour is drawn from: a group has
                         // no handle of its own.
                         seed: item.type == ConversationType.group ? item.id : item.peerHandle,
@@ -112,8 +112,8 @@ class ConversationListPhone extends ConsumerWidget {
                           groupSender: _groupSender(ref, item, controller),
                         ),
                         // A chat with no message yet has no time to show.
-                        timestamp: item.lastEnvelope == null ? '' : view.timeFormat.format(item.updatedAt),
-                        semanticLabel: conversationRowSemantics(l10n, item, localUserId: localUserId),
+                        timestamp: item.lastEnvelope == null ? '' : view.timeFormat.listDate(item.updatedAt, now: view.now),
+                        semanticLabel: conversationRowSemantics(l10n, item, view.names, localUserId: localUserId),
                         unreadCount: item.unreadCount,
                         unreadLabel: item.unreadCount > 0 ? l10n.conversationsUnreadSemantics(item.unreadCount) : null,
                         timerLabel: conversationTimerLabel(l10n, item, controller),

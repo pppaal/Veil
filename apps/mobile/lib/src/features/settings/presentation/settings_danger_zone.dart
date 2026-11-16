@@ -20,7 +20,8 @@ class SettingsDangerZone extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final session = ref.read(appSessionProvider.notifier);
-    final handle = '@${ref.watch(appSessionProvider.select((state) => state.handle)) ?? ''}';
+    final ownHandle = ref.watch(appSessionProvider.select((state) => state.handle)) ?? '';
+    final handle = '@$ownHandle';
 
     // Runs [action] once the user typed their handle. Both ask the server
     // first and can fail: the phone then keeps its state, and says so.
@@ -64,7 +65,7 @@ class SettingsDangerZone extends ConsumerWidget {
           title: l10n.settingsLogout,
           onTap: () => run(
             title: l10n.settingsLogoutConfirmTitle,
-            body: l10n.settingsLogoutConfirmBody,
+            body: l10n.settingsLogoutConfirmBody(ownHandle),
             confirm: l10n.settingsLogout,
             // The server signs this phone out first; only then is it erased.
             // Unreached, nothing is erased.

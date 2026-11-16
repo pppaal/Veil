@@ -568,6 +568,18 @@ abstract class AppLocalizations {
   /// **'Use 3 to 32 lowercase letters, numbers, dots or underscores.'**
   String get authHandleInvalid;
 
+  /// No description provided for @authHandleEdges.
+  ///
+  /// In en, this message translates to:
+  /// **'Start and end with a letter or number.'**
+  String get authHandleEdges;
+
+  /// No description provided for @authHandleRun.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t put 2 dots or underscores in a row.'**
+  String get authHandleRun;
+
   /// No description provided for @authCreating.
   ///
   /// In en, this message translates to:
@@ -673,8 +685,8 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLogoutConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'This signs this phone out and erases Veil from it. You lose the account for good.'**
-  String get settingsLogoutConfirmBody;
+  /// **'This signs this phone out and deletes your chats from it. You can\'t sign in as @{handle} again.'**
+  String settingsLogoutConfirmBody(String handle);
 
   /// No description provided for @settingsLogoutFailed.
   ///
@@ -1018,6 +1030,12 @@ abstract class AppLocalizations {
   /// **'Locked until you review the new safety number'**
   String get chatDecryptIdentityRejected;
 
+  /// No description provided for @chatDecryptHeldAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked until you confirm this account'**
+  String get chatDecryptHeldAccount;
+
   /// No description provided for @notificationNewMessage.
   ///
   /// In en, this message translates to:
@@ -1321,8 +1339,8 @@ abstract class AppLocalizations {
   /// No description provided for @chatTypingSuffix.
   ///
   /// In en, this message translates to:
-  /// **'@{handle} is typing…'**
-  String chatTypingSuffix(String handle);
+  /// **'{name} is typing…'**
+  String chatTypingSuffix(String name);
 
   /// No description provided for @chatTypingUnnamed.
   ///

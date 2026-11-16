@@ -58,6 +58,7 @@ class ScreenCase {
     this.transferStarted = false,
     this.transferClaimed = false,
     this.withGroup = false,
+    this.searchesArchive = false,
     this.textScale = 1,
     this.sizes = phoneSizes,
     this.chatInPane = false,
@@ -98,6 +99,10 @@ class ScreenCase {
 
   /// The account has a group conversation, the newest of its list.
   final bool withGroup;
+
+  /// A search of Chats finds the seeded messages it matches, as the phone's
+  /// own index does (LayoutMemoryCache.searchesArchive).
+  final bool searchesArchive;
 
   /// The system's text size setting; 1 is the default size.
   final double textScale;
@@ -247,6 +252,7 @@ const List<ScreenCase> screenCases = [
     screen: ConversationListScreen,
     file: 'conversation_list_screen.dart',
     location: '/conversations',
+    searchesArchive: true,
     primaryExtent: conversationRowsExtent,
     settle: _searchConversations,
   ),
@@ -546,8 +552,8 @@ const List<ScreenCase> screenCases = [
     settle: _searchChatForHits,
   ),
   // What the everyday cases keep off their first screen: the top of the
-  // chat's history, a day back, with the long message and the long link a
-  // person sends now and then. And a chat with a notice from the other
+  // chat's history, Thursday evening, with the long message and the long
+  // link a person sends now and then. And a chat with a notice from the other
   // side in it: Priya took a screenshot.
   ScreenCase(
     'chat-room-history',
@@ -871,10 +877,15 @@ double _rowsExtent(WidgetTester tester, Finder rows) {
 Finder chatWarningActions() =>
     find.descendant(of: find.byType(ChatStatusBanners), matching: find.byType(TextButton));
 
+// The search as it stands once the archive search has answered: the chats
+// whose names match under "Chats", and the message that matches under
+// "Messages".
 Future<void> _searchConversations(WidgetTester tester) async {
   await tester.enterText(find.byType(TextField).first, conversationSearchQuery);
-  // The archive search waits 180 ms for the typing to stop.
+  // The archive search waits 180 ms for the typing to stop, then answers.
+  await tester.pump(const Duration(milliseconds: 250));
   await pumpFrames(tester, frames: 4);
+  expect(find.text('Messages'), findsOneWidget, reason: 'the search found no message');
 }
 
 Future<void> _searchChat(WidgetTester tester) async {

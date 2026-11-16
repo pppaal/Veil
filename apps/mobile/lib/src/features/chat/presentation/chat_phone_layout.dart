@@ -136,12 +136,14 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
     final conversation = widget.conversation;
     final isDirect = conversation?.type == ConversationType.direct;
     final timerLabel = widget.messageTtl == null ? null : disappearingTimerLabel(l10n, widget.messageTtl);
-    // A 1:1 names the peer's handle under their name; a group says how many
+    // A 1:1 called by the nickname the user gave its peer has their handle
+    // under it, and one called by the handle nothing; a group says how many
     // are in it.
+    final handle = conversation == null ? null : '@${conversation.peerHandle}';
     final detail = conversation == null
         ? null
         : isDirect
-            ? (conversation.peerDisplayName == null ? null : '@${conversation.peerHandle}')
+            ? (widget.title == handle ? null : handle)
             : l10n.chatGroupMemberCount(conversation.members.length);
 
     final Widget? leading = _searchOpen

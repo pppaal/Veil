@@ -19,7 +19,7 @@ import 'phone_app.dart';
 // a button, with no note under them (Threema, Session).
 
 ContactEntry _contact(String label) =>
-    ContactEntry(handle: 'h', displayName: label, nickname: null, avatarPath: null, addedAt: DateTime.utc(2026));
+    ContactEntry(handle: 'h', nickname: label, avatarPath: null, addedAt: DateTime.utc(2026));
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -65,8 +65,8 @@ void main() {
 
     test('a search matches the name or the handle, whatever the case', () {
       final contacts = [
-        ContactEntry(handle: 'seoyeon', displayName: '김서연', nickname: null, avatarPath: null, addedAt: DateTime.utc(2026)),
-        ContactEntry(handle: 'rowan', displayName: 'Rowan', nickname: 'Ro', avatarPath: null, addedAt: DateTime.utc(2026)),
+        ContactEntry(handle: 'seoyeon', nickname: '김서연', avatarPath: null, addedAt: DateTime.utc(2026)),
+        ContactEntry(handle: 'rowan', nickname: 'Ro', avatarPath: null, addedAt: DateTime.utc(2026)),
       ];
       expect(filterContacts(contacts, ' SEO '), [contacts[0]]);
       expect(filterContacts(contacts, 'ro'), [contacts[1]]);
@@ -231,7 +231,7 @@ void main() {
       expect(find.text('Alexa'), findsOneWidget);
       expect(find.text(name), findsNothing);
       final stored = await ContactNicknames(world.storage.scoped(SecureScope.contacts)).readAll();
-      expect(stored, {'alexandra': 'Alexa'});
+      expect(stored['alexandra'], 'Alexa');
       expect(world.api.addedContacts, isEmpty, reason: 'the relay is not told');
     });
   });
@@ -250,7 +250,7 @@ void main() {
       expect(inSheet(find.byType(FilledButton)), findsNothing);
       await tester.tap(find.text(en.contactsRemove));
       await pumpFrames(tester, frames: 6);
-      expect(world.api.removedContacts, {'lena'});
+      expect(world.api.removedContacts, {emptyChatPeerHandle});
       expect(find.text('Lena Fischer'), findsNothing);
       expect(findCopy(en.contactsRemoved('Lena Fischer')), findsOneWidget);
 

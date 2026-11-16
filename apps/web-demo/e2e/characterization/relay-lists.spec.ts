@@ -321,6 +321,10 @@ test.describe('another account under a handle this device knows', () => {
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
     await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked')).toHaveCount(1);
+    // It waits for the account to be confirmed, not for a safety number.
+    await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked .msg-text')).toHaveText(
+      'Locked until you confirm this account',
+    );
 
     // A reload changes nothing.
     await reload(alice);
@@ -399,6 +403,10 @@ test.describe('another account under a lookalike of a handle this device knows',
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
     await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked')).toHaveCount(1);
+    // It waits for the account to be confirmed, not for a safety number.
+    await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked .msg-text')).toHaveText(
+      'Locked until you confirm this account',
+    );
 
     // A reload changes nothing.
     await reload(alice);
@@ -473,6 +481,10 @@ test.describe('another account under our own handle', () => {
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     await expect(rowOf(alice, 'it is me, from my other phone')).toHaveCount(0);
     await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked')).toHaveCount(1);
+    // It waits for the account to be confirmed, not for a safety number.
+    await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked .msg-text')).toHaveText(
+      'Locked until you confirm this account',
+    );
 
     // A reload changes nothing.
     await reload(alice);

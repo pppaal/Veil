@@ -1,6 +1,7 @@
 import '../../../core/identity/trusted_identity.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/identity_trust.dart';
+import '../../conversations/presentation/peer_names.dart';
 
 // What the safety number screen has read before it draws: the member list
 // of a group, or one person's number with everything that qualifies it.
@@ -25,6 +26,14 @@ class SafetyDetailData extends SafetyNumbersViewData {
   });
 
   final GroupMember peer;
+
+  /// The nickname the user gave [peer] by [names] (see PeerNames), or null.
+  /// Read as the page draws, so a name that loads later still shows.
+  String? nameIn(PeerNames names, String conversationId) =>
+      isDirect ? names.directName(conversationId, peer.handle) : names.memberName(peer);
+
+  /// What the page calls [peer]: their name, or their handle.
+  String titleIn(PeerNames names, String conversationId) => nameIn(names, conversationId) ?? '@${peer.handle}';
   final String localUserId;
   final List<int> localKey;
 

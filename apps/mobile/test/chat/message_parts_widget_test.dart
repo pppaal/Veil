@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:intl/intl.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_read_glyph.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_time.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
@@ -233,7 +233,7 @@ void main() {
               child: MessageBubble(
                 message: message,
                 highlighted: false,
-                sentAtFormat: DateFormat('HH:mm'),
+                sentAtFormat: MessageTimeFormat(AppLocalizationsEn(), use24HourFormat: true),
                 decryptFuture: Future.value(DecryptedMessage(body: body, messageKind: MessageKind.text)),
                 onResolveAttachment: (_) async {},
                 onCancelAttachment: null,

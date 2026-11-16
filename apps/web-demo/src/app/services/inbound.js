@@ -20,10 +20,12 @@ export function createInbound({ store, messages, history, notifications }) {
   }
 
   return {
+    // Resolves to the view the message was ingested as, or null when it was
+    // already listed.
     async onMessageNew(raw) {
       const convId = raw.conversationId;
       const list = store.messagesOf(convId);
-      if (list.some((message) => message.id === raw.id)) return;
+      if (list.some((message) => message.id === raw.id)) return null;
       // The first message of a conversation can arrive before the
       // conversation list names its members, and a session-starting frame is
       // only accepted for the identity pinned for the member who sent it.
@@ -36,10 +38,10 @@ export function createInbound({ store, messages, history, notifications }) {
         list[pendingIndex] = view;
         state.messagesByConv.set(convId, list);
         bumpConversation(convId, view);
-        return;
+        return view;
       }
       const view = await messages.ingest(raw, { previous: store.findMessage(convId, raw.id) });
-      if (list.some((message) => message.id === view.id)) return;
+      if (list.some((message) => message.id === view.id)) return null;
       list.push(view);
       state.messagesByConv.set(convId, list);
       bumpConversation(convId, view);
@@ -49,6 +51,7 @@ export function createInbound({ store, messages, history, notifications }) {
         notifications.bumpUnread();
         notifications.show(view);
       }
+      return view;
     },
 
     patchMessage(messageId, patch) {

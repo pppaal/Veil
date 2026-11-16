@@ -68,9 +68,13 @@ class ChatLoadingState extends StatelessWidget {
 /// with no line: "Today", "Yesterday", a weekday within the week, then the
 /// date.
 class ChatDayDivider extends StatelessWidget {
-  const ChatDayDivider({super.key, required this.day, this.first = false});
+  const ChatDayDivider({super.key, required this.day, required this.now, this.first = false});
 
   final DateTime day;
+
+  /// The time on the phone's clock (wallClockProvider), which [day] is
+  /// said relative to.
+  final DateTime now;
 
   /// The first thing in the list, which needs less space above it.
   final bool first;
@@ -83,7 +87,7 @@ class ChatDayDivider extends StatelessWidget {
       child: Semantics(
         header: true,
         child: Text(
-          chatDayLabel(l10n, day, now: DateTime.now()),
+          chatDayLabel(l10n, day, now: now),
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: context.veilPalette.textMuted,
@@ -97,13 +101,15 @@ class ChatDayDivider extends StatelessWidget {
 
 /// The words for the day of [day] as seen on [now]: "Today", "Yesterday",
 /// the weekday for the six days before, the month and day this year, and
-/// the full date before that.
+/// the full date before that. A message stamped later than this phone's
+/// clock reads (a clock behind the server's) is under "Today", as its row in
+/// Chats shows its time (MessageTimeFormat.listDate).
 String chatDayLabel(AppLocalizations l10n, DateTime day, {required DateTime now}) {
   final local = day.toLocal();
   final date = DateTime(local.year, local.month, local.day);
   final today = DateTime(now.year, now.month, now.day);
   final daysAgo = (today.difference(date).inHours / 24).round();
-  if (daysAgo == 0) return l10n.chatDayToday;
+  if (daysAgo <= 0) return l10n.chatDayToday;
   if (daysAgo == 1) return l10n.chatDayYesterday;
   if (daysAgo > 1 && daysAgo < 7) return DateFormat.EEEE(l10n.localeName).format(local);
   if (local.year == now.year) return DateFormat.MMMMd(l10n.localeName).format(local);

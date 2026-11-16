@@ -31,6 +31,28 @@ export function isIssuableHandle(handle) {
 
 const ISSUABLE_CHARACTER = /^[a-z0-9._]$/;
 
+// The rules of that grammar, one at a time, so a form can say which one a
+// typed handle breaks (as Signal's username screen does).
+export const HandleRule = Object.freeze({
+  // 3 to 32 characters of a-z, 0-9, '.' and '_'
+  CHARACTERS: 'characters',
+  // starts and ends with a letter or digit
+  EDGES: 'edges',
+  // no two separators in a row
+  RUN: 'run',
+});
+
+// The first rule `handle` breaks, or null when the server registers it:
+// null exactly when isIssuableHandle(handle).
+export function handleRuleBroken(handle) {
+  if (typeof handle !== 'string') return HandleRule.CHARACTERS;
+  if (handle.length < HANDLE_MIN_LENGTH || handle.length > HANDLE_MAX_LENGTH) return HandleRule.CHARACTERS;
+  if (![...handle].every((character) => ISSUABLE_CHARACTER.test(character))) return HandleRule.CHARACTERS;
+  if (!/^[a-z0-9]/.test(handle) || !/[a-z0-9]$/.test(handle)) return HandleRule.EDGES;
+  if (/[._]{2}/.test(handle)) return HandleRule.RUN;
+  return null;
+}
+
 const codePoint = (character) => `[U+${character.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}]`;
 
 // The handle as the conversation list, the panel header, banners and

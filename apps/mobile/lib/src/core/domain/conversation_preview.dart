@@ -30,24 +30,19 @@ class GroupMeta {
 // Lightweight per-member projection used when the client needs to enumerate
 // a group's participants — currently for per-peer safety-number verification.
 // Does NOT carry key material: identities come from the local pin table, and
-// devices from the key directory when a chain key is sealed.
+// devices from the key directory when a chain key is sealed. Nor a name: the
+// relay lists a member as an account and a handle, and what the screens
+// call them is the nickname the user gave that handle on this phone.
 class GroupMember {
   const GroupMember({
     required this.userId,
     required this.handle,
-    this.displayName,
     this.role = MemberRole.member,
   });
 
   final String userId;
   final String handle;
-  final String? displayName;
   final MemberRole role;
-
-  String get title =>
-      (displayName != null && displayName!.isNotEmpty)
-          ? displayName!
-          : '@$handle';
 }
 
 class ChannelMeta {
@@ -138,6 +133,11 @@ class ConversationPreview {
 
   final String id;
   final String peerHandle;
+
+  /// Unused for display, and null from the relay, which lists a peer by
+  /// account and handle alone (ConversationMemberSummary). Kept because the
+  /// conversation cache stores the column. Screens name the peer by the
+  /// nickname the user gave their handle (PeerNames).
   final String? peerDisplayName;
   final KeyBundle recipientBundle;
   final CryptoEnvelope? lastEnvelope;
@@ -149,7 +149,7 @@ class ConversationPreview {
   final int? memberCount;
   // All participants of this conversation, populated only for groups.
   // For direct chats this is empty — the single peer lives in
-  // peerHandle/peerDisplayName/recipientBundle. Key material is NOT
+  // peerHandle/recipientBundle. Key material is NOT
   // carried here; resolve per-member KeyBundles on demand.
   final List<GroupMember> members;
   final int unreadCount;

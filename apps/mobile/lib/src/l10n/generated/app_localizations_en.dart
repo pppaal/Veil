@@ -301,6 +301,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Use 3 to 32 lowercase letters, numbers, dots or underscores.';
 
   @override
+  String get authHandleEdges => 'Start and end with a letter or number.';
+
+  @override
+  String get authHandleRun => 'Don\'t put 2 dots or underscores in a row.';
+
+  @override
   String get authCreating => 'Creating account…';
 
   @override
@@ -353,8 +359,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLogoutConfirmTitle => 'Sign out of this phone?';
 
   @override
-  String get settingsLogoutConfirmBody =>
-      'This signs this phone out and erases Veil from it. You lose the account for good.';
+  String settingsLogoutConfirmBody(String handle) {
+    return 'This signs this phone out and deletes your chats from it. You can\'t sign in as @$handle again.';
+  }
 
   @override
   String get settingsLogoutFailed =>
@@ -555,6 +562,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Locked until you review the new safety number';
 
   @override
+  String get chatDecryptHeldAccount => 'Locked until you confirm this account';
+
+  @override
   String get notificationNewMessage => 'New message';
 
   @override
@@ -724,8 +734,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String chatTypingSuffix(String handle) {
-    return '@$handle is typing…';
+  String chatTypingSuffix(String name) {
+    return '$name is typing…';
   }
 
   @override

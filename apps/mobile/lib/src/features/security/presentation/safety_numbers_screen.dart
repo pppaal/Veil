@@ -17,6 +17,7 @@ import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/identity_trust.dart';
+import '../../conversations/presentation/peer_names.dart';
 import '../domain/safety_numbers.dart';
 import 'safety_number_cards.dart';
 import 'safety_number_dialogs.dart';
@@ -135,11 +136,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     final localUserId = ref.read(appSessionProvider).userId;
     final isDirect = conversation.type == ConversationType.direct;
     final GroupMember peer = isDirect
-        ? GroupMember(
-            userId: conversation.recipientBundle.userId,
-            handle: conversation.peerHandle,
-            displayName: conversation.peerDisplayName,
-          )
+        ? GroupMember(userId: conversation.recipientBundle.userId, handle: conversation.peerHandle)
         : conversation.members.firstWhere(
             (m) => m.userId == widget.memberUserId,
             orElse: () => throw StateError('Member not in this group'),
@@ -301,7 +298,10 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   Future<void> _confirmReverification(SafetyDetailData data) async {
     final compared = await showDialog<bool>(
       context: context,
-      builder: (context) => SafetyReverifyDialog(peer: data.peer.title, number: data.pendingNumber!),
+      builder: (context) => SafetyReverifyDialog(
+        peer: data.titleIn(ref.read(peerNamesProvider), widget.conversationId),
+        number: data.pendingNumber!,
+      ),
     );
     if (compared != true || !mounted) return;
     await _acceptChange(data.pendingChange!, reverified: true);
@@ -379,6 +379,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final names = ref.watch(peerNamesProvider);
     // Only the messenger, not its stream, says when a change is settled: an open page then reads again.
     ref.listen(messengerControllerProvider, (_, __) => _reloadIfPendingChanged());
     return VeilShell(
@@ -402,9 +403,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           }
           final data = snapshot.data!;
           if (data is SafetyGroupListData) {
-            return _buildGroupList(context, data);
+            return _buildGroupList(context, data, names);
           }
-          return _buildDetail(context, data as SafetyDetailData);
+          return _buildDetail(context, data as SafetyDetailData, names);
         },
       ),
     );
@@ -427,7 +428,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
 
   // A row per member; only the verified ones are labelled, as Signal labels
   // only the positive state in a list. No footer.
-  Widget _buildGroupList(BuildContext context, SafetyGroupListData data) {
+  Widget _buildGroupList(BuildContext context, SafetyGroupListData data, PeerNames names) {
     final l10n = AppLocalizations.of(context);
     if (data.members.isEmpty) {
       return VeilEmptyState(title: l10n.safetyNumbersNoMembersTitle);
@@ -439,9 +440,10 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           children: [
             for (final member in data.members)
               VeilRow(
-                leading: VeilAvatar(name: member.title, seed: member.handle),
-                title: member.title,
-                subtitle: '@${member.handle}',
+                leading: VeilAvatar(name: names.memberTitle(member), seed: member.handle),
+                title: names.memberTitle(member),
+                // Under a name, the handle; never the handle twice.
+                subtitle: names.memberName(member) == null ? null : '@${member.handle}',
                 trailing: data.verifiedUserIds.contains(member.userId) ? const SafetyVerifiedMark(chevron: true) : null,
                 onTap: () => _openAndReload(_memberLocation(widget.conversationId, member.userId)),
               ),
@@ -455,7 +457,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   // before anything else; then who the number is about and whether they are
   // verified, the number with one sentence on comparing it, the one action
   // on it, and the codes to copy and paste as two quiet buttons.
-  Widget _buildDetail(BuildContext context, SafetyDetailData data) {
+  Widget _buildDetail(BuildContext context, SafetyDetailData data, PeerNames names) {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
@@ -474,7 +476,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     const gap = SizedBox(height: VeilSpace.md);
     const section = SizedBox(height: VeilSpace.xl);
     final muted = theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted);
-    final howTo = Text(l10n.safetyNumbersDetailBody(data.peer.title), style: muted);
+    final howTo = Text(l10n.safetyNumbersDetailBody(data.titleIn(names, widget.conversationId)), style: muted);
     // The code to copy goes with the number on screen: the new one while a
     // change waits.
     Widget codes(String remoteKey) => SafetyCodeButtons(
@@ -502,7 +504,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           ),
           gap,
         ],
-        SafetyPeerHeader(name: data.peer.title, handle: data.peer.handle, verified: verified),
+        SafetyPeerHeader(name: data.nameIn(names, widget.conversationId), handle: data.peer.handle, verified: verified),
         if (_scanMismatch) ...[
           gap,
           VeilNotice(

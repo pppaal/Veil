@@ -10,12 +10,19 @@ import 'disappearing_timer_sheet.dart';
 
 /// What a message that did not open shows in its bubble instead of the
 /// text: a small padlock and this app's own words for the outcome, in muted
-/// italics. It is chosen by status alone, so no text a peer sends can look
-/// like it, and nothing the peer sent is shown.
+/// italics. It is chosen by status (and whether the chat is held) alone, so
+/// no text a peer sends can look like it, and nothing the peer sent is
+/// shown.
 class DecryptFailureLine extends StatelessWidget {
-  const DecryptFailureLine({super.key, required this.status, this.color});
+  const DecryptFailureLine({super.key, required this.status, this.heldAccount = false, this.color});
 
   final DecryptStatus status;
+
+  /// The chat is held for its handle (VeilMessengerController
+  /// .peerAccountHoldFor): no identity is admitted in it until the user
+  /// confirms the account, so what it refused waits for that, not for a
+  /// safety number to be reviewed.
+  final bool heldAccount;
 
   /// The colour of the line; the muted text colour when null.
   final Color? color;
@@ -28,6 +35,7 @@ class DecryptFailureLine extends StatelessWidget {
       DecryptStatus.replayed => l10n.chatDecryptReplayed,
       DecryptStatus.awaitingKey => l10n.chatDecryptAwaitingKey,
       DecryptStatus.sessionMissing => l10n.chatDecryptSessionMissing,
+      DecryptStatus.identityRejected when heldAccount => l10n.chatDecryptHeldAccount,
       DecryptStatus.identityRejected => l10n.chatDecryptIdentityRejected,
       DecryptStatus.ok || DecryptStatus.legacyUnauthenticated || DecryptStatus.failed => l10n.chatDecryptFailed,
     };

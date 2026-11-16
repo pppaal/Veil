@@ -68,12 +68,14 @@ class MessageSearchResult {
   final String conversationId;
   final String messageId;
   final String peerHandle;
+
+  /// The conversation's cached peerDisplayName (see ConversationPreview):
+  /// unused for display. A hit is named by its chat, or by the nickname of
+  /// [peerHandle].
   final String? peerDisplayName;
   final DateTime sentAt;
   final MessageKind messageKind;
   final bool isMine;
   final String bodySnippet;
   final int? conversationOrder;
-
-  String get title => peerDisplayName ?? '@$peerHandle';
 }

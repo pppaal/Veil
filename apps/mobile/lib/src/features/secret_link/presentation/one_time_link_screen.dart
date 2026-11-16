@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../chat/presentation/message_time.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/one_time_link_service.dart';
@@ -173,7 +173,7 @@ class _CreatedLink extends StatelessWidget {
     final theme = Theme.of(context);
     final expiresAt = link.expiresAt?.toLocal();
     final notes = [
-      if (expiresAt != null) l10n.oneTimeLinkExpires(DateFormat.MMMd(l10n.localeName).add_Hm().format(expiresAt)),
+      if (expiresAt != null) l10n.oneTimeLinkExpires(MessageTimeFormat.of(context).dayAndTime(expiresAt)),
       if (link.passphraseLocked) l10n.oneTimeLinkSendPassphraseApart,
     ];
     return VeilGroup(

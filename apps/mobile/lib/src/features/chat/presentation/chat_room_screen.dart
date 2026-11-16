@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
@@ -15,6 +14,7 @@ import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
+import '../../conversations/presentation/peer_names.dart';
 import 'active_conversation_binding.dart';
 import 'chat_composer_bar.dart';
 import 'chat_message_list.dart';
@@ -28,6 +28,7 @@ import 'chat_status_banners.dart';
 import 'disappearing_timer_sheet.dart';
 import 'group_sender_names.dart';
 import 'message_expiration.dart';
+import 'message_time.dart';
 import 'navigation_target_jump.dart';
 import 'presence_selector.dart';
 import 'typing_indicator.dart';
@@ -64,7 +65,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         ChatSafetyMenu {
   final _composerFocusNode = FocusNode();
   final _scrollController = ScrollController();
-  final _sentAtFormat = DateFormat('HH:mm');
   StreamSubscription<PlatformSecurityEvent>? _securityEventSub;
   Duration? _messageTtl;
   int? _observedConversationTimer;
@@ -167,6 +167,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final controller = ref.watch(messengerControllerProvider);
+    final names = ref.watch(peerNamesProvider);
     ConversationPreview? conversation;
     for (final item in controller.conversations) {
       if (item.id == widget.conversationId) {
@@ -227,7 +228,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       scrollController: _scrollController,
       messageKeys: messageKeys,
       highlightedMessageId: currentSearchHit ?? highlightedMessageId,
-      sentAtFormat: _sentAtFormat,
+      sentAtFormat: MessageTimeFormat.of(context),
       loadFailed: _loadFailed,
       onRetryLoad: () => unawaited(_loadConversationState()),
       searchQuery: hasSearchQuery ? searchController.text : null,
@@ -235,7 +236,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       // says so, once the members' devices have been read.
       senderNameOf: isDirect
           ? null
-          : (message) => groupSenderName(message) ?? (groupSenderNamesRead ? l10n.chatGroupUnknownSender : null),
+          : (message) => groupSenderName(message, names) ?? (groupSenderNamesRead ? l10n.chatGroupUnknownSender : null),
       senderHandleOf: isDirect ? null : groupSenderHandle,
       // Asked here, above the shell, whose body no longer sees the keyboard.
       keyboardUp: MediaQuery.viewInsetsOf(context).bottom > 0,
@@ -246,7 +247,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     final typing = PresenceSelector<String?>(
       presence: controller.presenceTyping,
       select: (presence) => presence.typingHandleFor(widget.conversationId),
-      builder: (context, handle) => TypingIndicator(handle: handle, named: !isDirect),
+      builder: (context, handle) => TypingIndicator(
+        handle: handle,
+        name: isDirect || handle == null || conversation == null ? null : typingMemberTitle(conversation, handle, names),
+      ),
     );
 
     // The same chat on a phone and in the wide layout's second pane.
@@ -255,7 +259,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       conversation: conversation,
       title: conversation == null
           ? l10n.chatTitleFallback
-          : conversationTitle(l10n, conversation, localUserId: controller.localUserId),
+          : conversationTitle(l10n, conversation, names, localUserId: controller.localUserId),
       connecting: !controller.realtimeConnected,
       peerVerified: peerVerified,
       messageTtl: _messageTtl,

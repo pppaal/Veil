@@ -552,11 +552,13 @@ fails with `SessionRecipientChanged` without encrypting, upon which the
 messenger asks the directory and opens a new session. Approving a change
 makes every 1:1 conversation with that contact ask the directory again.
 
-Handles and display names are relayed by the server: a listing can name any
-account with any handle. Pins, verification and safety numbers are about the
-account (its user id), never the name. So a binding also ties the handle it was
-recorded with to its account, and a 1:1 that is not bound yet is held for one
-of three reasons, checked in this order by both clients:
+Handles are relayed by the server: a listing can name any account with any
+handle. The server keeps no display names: the mobile app shows the nicknames
+its user saved on the phone, the web app the handles. Pins, verification and
+safety numbers are about the account (its user id), never the name. So a
+binding also ties the handle it was recorded with to its account, and a 1:1
+that is not bound yet is held for one of three reasons, checked in this order
+by both clients:
 
 - its listed handle is one no honest server issues: outside the registration
   grammar of 3 to 32 characters of `a-z`, `0-9`, `.` and `_`, starting and

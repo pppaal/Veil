@@ -21,16 +21,13 @@ class ChooseHandleScreen extends ConsumerStatefulWidget {
   ConsumerState<ChooseHandleScreen> createState() => _ChooseHandleScreenState();
 }
 
-/// Characters an issued handle can hold (see [isIssuableHandle]).
-final _issuableCharacters = RegExp(r'^[a-z0-9._]*$');
-
 class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
   final _handleController = TextEditingController();
   bool _submitting = false;
 
-  // Set when a handle that breaks the rules was submitted; it goes once the
+  // The rule a submitted handle broke, named under the field until the
   // handle is changed.
-  bool _rejectedLocally = false;
+  HandleRule? _rejectedLocally;
 
   // The failure the user has typed over since it was shown: it goes once
   // they change the handle, and the next attempt shows its own.
@@ -43,8 +40,9 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
   }
 
   Future<void> _submit(String handle) async {
-    if (!isIssuableHandle(handle)) {
-      setState(() => _rejectedLocally = true);
+    final broken = handleRuleBroken(handle);
+    if (broken != null) {
+      setState(() => _rejectedLocally = broken);
       return;
     }
     final l10n = AppLocalizations.of(context);
@@ -75,10 +73,19 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
     final l10n = AppLocalizations.of(context);
     final working = _submitting || session.isAuthenticating;
     final error = session.errorMessage;
-    final breaksRules = handle.length > issuedHandleMaxLength || !_issuableCharacters.hasMatch(handle);
+    // Too long, or a character no handle can hold, shows while typing:
+    // more typing can't mend it. Too short, a dot or underscore at either
+    // end, or two in a row can be on the way to a good handle, so those show
+    // only once the handle is submitted, naming the rule it breaks.
+    final breaksRules = handle.length > issuedHandleMaxLength || !issuableHandleCharacters.hasMatch(handle);
+    final rejected = breaksRules ? HandleRule.characters : _rejectedLocally;
     final String? shownError;
-    if (!working && (breaksRules || _rejectedLocally)) {
-      shownError = l10n.authHandleInvalid;
+    if (!working && rejected != null) {
+      shownError = switch (rejected) {
+        HandleRule.characters => l10n.authHandleInvalid,
+        HandleRule.edges => l10n.authHandleEdges,
+        HandleRule.run => l10n.authHandleRun,
+      };
     } else if (working || error == null || error == _dismissedError) {
       shownError = null;
     } else {
@@ -101,7 +108,7 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
             autofocus: true,
             enabled: !_submitting,
             onChanged: (_) => setState(() {
-              _rejectedLocally = false;
+              _rejectedLocally = null;
               _dismissedError = ref.read(appSessionProvider).errorMessage;
             }),
             onSubmitted: (_) {

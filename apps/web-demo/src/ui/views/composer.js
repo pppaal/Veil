@@ -92,20 +92,45 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
     textarea.dispatchEvent(new Event('input'));
   }
 
+  // Ends the conversation's edit, sent or dropped, and gives back what was
+  // being written (and the reply it quoted) when the edit began.
+  function endEdit(convId) {
+    const editing = state.editing.get(convId);
+    if (!editing) return;
+    state.editing.delete(convId);
+    saveDraft(convId, editing.stashed.text);
+    if (editing.stashed.reply) state.replyDrafts.set(convId, editing.stashed.reply);
+  }
+
   // An edit in progress replaces the message's text; an unchanged or empty
-  // one just ends the edit.
+  // one just ends the edit. Either way the draft comes back.
   function sendTyped(textarea, convId) {
     const editing = state.editing.get(convId);
     if (editing) {
       const text = textarea.value.trim();
       const message = store.findMessage(convId, editing.id);
-      state.editing.delete(convId);
       clearBox(textarea);
+      endEdit(convId);
       store.notify('panels');
       if (message && text && text !== message.displayText) return send.edit(message, convId, text);
       return null;
     }
-    return send.sendText(convId, textarea.value.trim(), { onSealed: () => clearBox(textarea) });
+    const text = textarea.value.trim();
+    const replyId = state.replyDrafts.get(convId)?.id ?? null;
+    return send.sendText(convId, text, {
+      onSealed: () => {
+        // An edit begun while this was sealing set aside the text being sent
+        // (and the reply it quotes) to give back when the edit ends. It is
+        // sent now: nothing of it comes back, and the box keeps the edit.
+        const editing = state.editing.get(convId);
+        if (!editing) {
+          clearBox(textarea);
+          return;
+        }
+        if (editing.stashed.text.trim() === text) editing.stashed.text = '';
+        if (replyId && editing.stashed.reply?.id === replyId) editing.stashed.reply = null;
+      },
+    });
   }
 
   // The bar above the box while a reply or an edit is under way, with its
@@ -124,8 +149,7 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
     const editing = state.editing.get(convId);
     if (editing) {
       return bar(t('msg.editing'), editing.snippet, t('msg.cancelEdit'), () => {
-        state.editing.delete(convId);
-        state.drafts.delete(convId);
+        endEdit(convId);
         store.notify('panels');
       }, 'edit-banner');
     }
@@ -189,8 +213,7 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
           sendTyped(textarea, convId);
         } else if (event.key === 'Escape' && state.editing.has(convId)) {
           event.preventDefault();
-          state.editing.delete(convId);
-          state.drafts.delete(convId);
+          endEdit(convId);
           store.notify('panels');
         }
       });
@@ -206,20 +229,26 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
       return { node, textarea };
     },
 
-    // Quotes `message` in the next send of the conversation.
+    // Quotes `message` in the next send of the conversation; an edit under
+    // way is dropped first.
     startReply(convId, message) {
       const sender = message.senderDeviceId === state.me.deviceId ? state.me.handle : null;
-      state.editing.delete(convId);
+      endEdit(convId);
       state.replyDrafts.set(convId, { id: message.id, snippet: snippetOf(message, 60), sender });
       store.notify('panels');
       requestAnimationFrame(() => textareaOf(convId)?.focus());
     },
 
     // Puts our own `message` in the box to edit; Enter saves the edit, Esc
-    // or the bar's close button drops it.
+    // or the bar's close button drops it. What was being written waits
+    // aside until then (editing another message meanwhile keeps it there).
     startEdit(convId, message) {
+      const stashed = state.editing.get(convId)?.stashed ?? {
+        text: state.drafts.get(convId) ?? '',
+        reply: state.replyDrafts.get(convId) ?? null,
+      };
       state.replyDrafts.delete(convId);
-      state.editing.set(convId, { id: message.id, snippet: snippetOf(message, 60) });
+      state.editing.set(convId, { id: message.id, snippet: snippetOf(message, 60), stashed });
       state.drafts.set(convId, message.displayText);
       store.notify('panels');
       requestAnimationFrame(() => {

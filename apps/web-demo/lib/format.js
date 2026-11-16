@@ -2,6 +2,8 @@
 // and days are rendered in English, the app's only language.
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // A time of day as "2:15 PM".
 export function formatTime(date) {
@@ -18,17 +20,42 @@ export function dayKey(date) {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
-// A day as the dividers show it: "Today", "Yesterday", "Jan 5" within the
-// year, else "Dec 31, 2024".
+// A day as the dividers show it, as the phone's do (apps/mobile
+// chat_message_runs.dart chatDayLabel): "Today" (also for a message stamped
+// later than this clock reads, which the Chats row shows by its time),
+// "Yesterday", the weekday for the six days before ("Monday"), "Jan 5"
+// within the year, else "Dec 31, 2024".
 export function dayLabel(date, today = new Date()) {
   const d = date instanceof Date ? date : new Date(date);
-  if (dayKey(d) === dayKey(today)) return 'Today';
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (dayKey(d) === dayKey(yesterday)) return 'Yesterday';
+  const daysAgo = calendarDaysBetween(d, today);
+  if (daysAgo <= 0) return 'Today';
+  if (daysAgo === 1) return 'Yesterday';
+  if (daysAgo < 7) return WEEKDAY_NAMES[d.getDay()];
   const monthDay = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
   if (d.getFullYear() === today.getFullYear()) return monthDay;
   return `${monthDay}, ${d.getFullYear()}`;
+}
+
+// How many calendar days `later` is after `earlier`, each on the day it
+// falls on locally: 0 on the same day, 1 for the day before, whatever the
+// hours (a day with a clock change is 23 or 25 hours long).
+export function calendarDaysBetween(earlier, later) {
+  const from = Date.UTC(earlier.getFullYear(), earlier.getMonth(), earlier.getDate());
+  const to = Date.UTC(later.getFullYear(), later.getMonth(), later.getDate());
+  return Math.round((to - from) / 86_400_000);
+}
+
+// When a chat's last message was sent, as its row in Chats shows it (the
+// phone's Chats row too: apps/mobile message_time.dart listDate): the time
+// for today, "Yesterday", the short weekday ("Sat") for the six days
+// before, then the day as dayLabel writes it ("Mar 30", "Dec 31, 2024").
+export function listDate(date, now = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const daysAgo = calendarDaysBetween(d, now);
+  if (daysAgo <= 0) return formatTime(d);
+  if (daysAgo === 1) return 'Yesterday';
+  if (daysAgo < 7) return WEEKDAYS[d.getDay()];
+  return dayLabel(d, now);
 }
 
 // Bytes as a human-readable size; an empty string for an unknown one.

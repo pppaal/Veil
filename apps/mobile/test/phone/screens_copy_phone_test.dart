@@ -84,10 +84,28 @@ void main() {
       });
     });
 
+    // "Erases Veil from it" read as uninstalling the app. Sign out deletes
+    // what Veil keeps on this phone, the chats among it, and leaves no
+    // device that can open the account (one phone at a time); the app
+    // itself stays.
+    // The account itself stays on the server, its handle taken; what is lost
+    // is the way back in, which no backup or reset gives (the web's sign
+    // out says the same).
+    test('Sign out says what it deletes and what is lost, not that the app goes', () {
+      final body = l10n.settingsLogoutConfirmBody('alex');
+      expect(body, isNot(contains('Veil')), reason: 'the app is not what goes');
+      expect(body, isNot(contains('uninstall')));
+      expect(body, contains('signs this phone out'));
+      expect(body, contains('chats'));
+      expect(body, contains("You can't sign in as @alex again."));
+      expect(body, isNot(contains('account is gone')), reason: 'the account stays on the server');
+      expect(body.split(RegExp(r'(?<=[.!?])\s+')), hasLength(lessThanOrEqualTo(2)), reason: 'two short sentences');
+    });
+
     testWidgets('each account action says in its dialog what it erases, before the typed handle', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', size: phoneLarge, body: (world) async {
         for (final (key, title, body) in [
-          ('settings-logout', l10n.settingsLogoutConfirmTitle, l10n.settingsLogoutConfirmBody),
+          ('settings-logout', l10n.settingsLogoutConfirmTitle, l10n.settingsLogoutConfirmBody(selfHandle)),
           ('settings-delete-account', l10n.settingsDeleteAccountConfirmHeadline, l10n.settingsDeleteAccountBody),
         ]) {
           await scrollToRow(tester, key);
@@ -99,7 +117,7 @@ void main() {
           expect(said, findsOneWidget, reason: '$key says what it does');
           // What it erases, and that nothing brings it back.
           expect(body, anyOf(contains('erases'), contains('deletes')), reason: key);
-          expect(body, anyOf(contains('for good'), contains("can't be undone")), reason: key);
+          expect(body, anyOf(contains("can't sign in"), contains("can't be undone")), reason: key);
           final prompt =
               find.descendant(of: dialog, matching: find.text(l10n.settingsTypePhraseToContinue('@$selfHandle')));
           expect(tester.getRect(said).bottom, lessThan(tester.getRect(prompt).top), reason: 'read before typing');

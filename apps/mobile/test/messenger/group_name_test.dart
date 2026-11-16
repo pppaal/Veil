@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/peer_names.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../support/async_wait.dart';
@@ -37,7 +38,7 @@ void main() {
   tearDown(() => alice.dispose());
 
   String? title() => switch (alice.controller.conversationById(group)) {
-        final conversation? => conversationTitle(l10n, conversation, localUserId: 'user-alice'),
+        final conversation? => conversationTitle(l10n, conversation, PeerNames(const {}), localUserId: 'user-alice'),
         null => null,
       };
 
@@ -57,7 +58,8 @@ void main() {
     alice.api.failGroupFetches = 1;
     await alice.signIn();
     await waitFor(() => title() != null, reason: 'the group was not listed');
-    expect(title(), 'bob, carol', reason: 'the members the relay lists, without the user');
+    // By handle: the relay lists no names, and alice gave them no nicknames.
+    expect(title(), '@bob, @carol', reason: 'the members the relay lists, without the user');
 
     await alice.controller.refreshConversations();
     expect(title(), 'Moving day');

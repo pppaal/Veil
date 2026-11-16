@@ -173,6 +173,9 @@ test.describe('phone-width layout', () => {
     const { page } = phone;
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.locator('.conv-item', { hasText: `@ppeer${id}` }).click();
+    // The chat's bar is drawn after the click returns: measure it once it
+    // is there, not while the open is still under way.
+    await expect(page.locator('.panel-header').first()).toBeVisible();
     const bar = await page.locator('.topbar').boundingBox();
     const list = await page.locator('.sidebar').boundingBox();
     const header = await page.locator('.panel-header').first().boundingBox();

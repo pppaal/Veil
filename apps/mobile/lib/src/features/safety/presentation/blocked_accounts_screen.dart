@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
-import '../../contacts/data/contacts_providers.dart';
+import '../../conversations/presentation/peer_names.dart';
 import '../application/safety_accounts.dart';
 import '../data/blocked_accounts.dart';
 import '../data/safety_providers.dart';
@@ -36,9 +35,8 @@ class _BlockedAccountsScreenState extends ConsumerState<BlockedAccountsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final blocked = ref.watch(blockedAccountsProvider);
-    // The names come from the contacts and the chats: shown as they load.
-    ref.watch(contactsControllerProvider);
-    ref.watch(messengerControllerProvider);
+    // The names are the nicknames on this phone: shown as they load.
+    ref.watch(peerNamesProvider);
     final accounts = ref.read(safetyAccountsProvider);
 
     final Widget body;
@@ -79,7 +77,7 @@ class _BlockedAccountsScreenState extends ConsumerState<BlockedAccountsScreen> {
                 BlockedAccountRow(
                   key: ValueKey('blocked-${account.handle}'),
                   account: account,
-                  name: accounts.knownNameFor(account.handle),
+                  name: accounts.knownNameFor(userId: account.userId, handle: account.handle),
                   onUnblock: () => unblockAccount(context, userId: account.userId, handle: account.handle),
                 ),
             ],

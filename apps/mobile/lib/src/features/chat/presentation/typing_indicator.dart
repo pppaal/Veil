@@ -7,15 +7,18 @@ import '../../../shared/presentation/veil_ui.dart';
 /// Someone is typing: a small incoming bubble with three muted dots, on the
 /// side the peer's messages are on; nothing when no one is. In a 1:1 the
 /// dots are all (a screen reader hears that they are typing); a group
-/// ([named]) says beside them who it is.
+/// ([name]) says beside them who it is.
 class TypingIndicator extends StatelessWidget {
-  const TypingIndicator({super.key, required this.handle, this.named = true});
+  const TypingIndicator({super.key, required this.handle, this.name});
 
   /// The handle of who is typing, or null when no one is.
   final String? handle;
 
-  /// Whether to name them: in a group, where it could be anyone.
-  final bool named;
+  /// What to call them beside the dots, in a group, where it could be
+  /// anyone (as the group's bubbles call them); null in a 1:1.
+  final String? name;
+
+  bool get named => name != null;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +27,7 @@ class TypingIndicator extends StatelessWidget {
     }
     final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
-    final label = named ? l10n.chatTypingSuffix(handle!) : l10n.chatTypingUnnamed;
+    final label = named ? l10n.chatTypingSuffix(name!) : l10n.chatTypingUnnamed;
     return Padding(
       // In line with the peer's bubbles above it.
       padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xxs, VeilSpace.md, VeilSpace.xxs),

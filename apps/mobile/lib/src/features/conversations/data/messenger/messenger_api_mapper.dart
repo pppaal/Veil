@@ -140,7 +140,9 @@ class MessengerApiMapper {
       return ConversationPreview(
         id: id,
         peerHandle: peer.handle,
-        peerDisplayName: peer.displayName,
+        // The relay sends no name (ConversationMemberSummary): the screens
+        // name a peer from the nicknames on this phone.
+        peerDisplayName: null,
         recipientBundle: KeyBundle(
           userId: peer.userId,
           deviceId: '',
@@ -222,11 +224,7 @@ class MessengerApiMapper {
   }
 
   static GroupMember? _member(Object? raw) => switch (raw) {
-        {'userId': final String userId, 'handle': final String handle} =>
-          switch (raw['displayName']) {
-            final String? displayName => GroupMember(userId: userId, handle: handle, displayName: displayName),
-            _ => null,
-          },
+        {'userId': final String userId, 'handle': final String handle} => GroupMember(userId: userId, handle: handle),
         _ => null,
       };
 

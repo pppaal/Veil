@@ -36,11 +36,46 @@ test.describe('session lifecycle', () => {
     devices.push(device);
     const { page } = device;
 
+    // What is wrong with the handle shows under the field, in place of its
+    // hint and in the danger colour, until the handle changes; it is never
+    // a toast, so tapping again does not stack them.
+    const field = page.locator('#reg-handle');
+    const hint = page.locator('#reg-handle-hint');
+    await expect(field).toHaveAttribute('aria-describedby', 'reg-handle-hint');
+    await expect(hint).toHaveText("You can't change it later.");
     await page.click('#reg-btn');
-    await expect(toast(device, 'Enter a handle')).toBeVisible();
+    await page.click('#reg-btn');
+    await expect(hint).toHaveText('Enter a handle');
+    await expect(hint).toHaveClass(/field-error/);
+    await expect(field).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#toast-root .toast')).toHaveCount(0);
+    const dangerRgb = await page.evaluate(() => {
+      const probe = document.body.appendChild(document.createElement('span'));
+      probe.style.color = 'var(--danger)';
+      const rgb = getComputedStyle(probe).color;
+      probe.remove();
+      return rgb;
+    });
+    await expect(hint).toHaveCSS('color', dangerRgb);
     await page.fill('#reg-handle', 'Bad-Handle');
+    await expect(hint).toHaveText("You can't change it later.");
+    await expect(hint).not.toHaveClass(/field-error/);
+    await expect(field).not.toHaveAttribute('aria-invalid');
     await page.click('#reg-btn');
-    await expect(toast(device, 'Use lowercase letters, numbers and _ (up to 32).')).toBeVisible();
+    await expect(hint).toHaveText('Use 3 to 32 lowercase letters, numbers, dots or underscores.');
+    // The server's rules, one at a time.
+    for (const [typed, said] of [
+      ['ab', 'Use 3 to 32 lowercase letters, numbers, dots or underscores.'],
+      ['_sam', 'Start and end with a letter or number.'],
+      ['sam.', 'Start and end with a letter or number.'],
+      ['sa..m', "Don't put 2 dots or underscores in a row."],
+      ['sa._m', "Don't put 2 dots or underscores in a row."],
+    ]) {
+      await page.fill('#reg-handle', typed);
+      await page.click('#reg-btn');
+      await expect(hint).toHaveText(said);
+    }
+    await expect(page.locator('#toast-root .toast')).toHaveCount(0);
     await expect(page.locator('#auth-screen')).toBeVisible();
     await expect(page.locator('#restore-row')).toBeHidden();
     // Nothing is stored yet, so there is nothing to remove.
@@ -83,9 +118,19 @@ test.describe('session lifecycle', () => {
     devices.push(device);
     await device.page.fill('#reg-handle', device.handle);
     await device.page.click('#reg-btn');
-    await expect(toast(device, 'That handle is taken. Try another.')).toBeVisible();
+    await expect(device.page.locator('#reg-handle-hint')).toHaveText('That handle is taken. Try another.');
+    await expect(device.page.locator('#reg-handle')).toHaveAttribute('aria-invalid', 'true');
+    await expect(device.page.locator('#toast-root .toast')).toHaveCount(0);
     await expect(device.page.locator('#auth-screen')).toBeVisible();
     await expect(device.page.locator('#restore-row')).toBeHidden();
+    expectNoErrors(device);
+  });
+
+  // The form checks the server's rules, no narrower: a dot is allowed.
+  test('registers any handle the server takes, dots included', async ({ browser }) => {
+    const device = await register(browser, `ann.${id}`);
+    devices.push(device);
+    await expect(device.page.locator('#menu-me')).toContainText(`@ann.${id}`);
     expectNoErrors(device);
   });
 

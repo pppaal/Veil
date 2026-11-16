@@ -52,10 +52,12 @@ class PresenceTypingService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// A peer stopped typing, or a message of theirs came: nothing changes,
+  /// and no listener hears of it, when nobody was typing there.
   void typingStopped(String conversationId) {
     if (_disposed) return;
     _typingTimeouts.remove(conversationId)?.cancel();
-    _typingByConversation.remove(conversationId);
+    if (_typingByConversation.remove(conversationId) == null) return;
     notifyListeners();
   }
 

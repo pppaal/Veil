@@ -15,15 +15,20 @@ const _claimId = '3f2b9c7e-5a14-4d0b-9e2f-8c61a7d4b250';
 
 void main() {
   group('transfer code', () {
-    test('the box shows it without the prefix the copied code starts with', () {
-      expect(transferCodeForDisplay('VEIL_TRANSFER::session-1::token-1'), 'session-1::token-1');
-      expect(transferCodeForDisplay('session-1::token-1'), 'session-1::token-1');
+    test('is shown without the prefix the copied code starts with, the session and the token on a line each', () {
+      expect(transferCodeForDisplay('VEIL_TRANSFER::session-1::token-1'), 'session-1::\ntoken-1');
+      expect(transferCodeForDisplay('session-1::token-1'), 'session-1::\ntoken-1');
     });
 
-    test('is read as copied, as the box shows it, or as two labelled lines', () {
+    test('is read as copied, as shown, as typed off it, or as two labelled lines', () {
       for (final raw in [
         'VEIL_TRANSFER::session-1::token-1',
         'session-1::token-1',
+        transferCodeForDisplay('VEIL_TRANSFER::session-1::token-1'),
+        // Typed off the screen with a space or a break where its line ends.
+        'session-1:: token-1',
+        'session-1 ::\ntoken-1 ',
+        ' sess ion-1::tok en-1',
         'session session-1\ntoken token-1',
       ]) {
         final parsed = parseTransferCode(raw);
@@ -41,7 +46,8 @@ void main() {
         'VEIL_TRANSFER::session-1::',
         '::token-1',
         'a::b::c',
-        'session 1::token-1',
+        'session-1:token-1',
+        ' ::token-1',
       ]) {
         expect(parseTransferCode(raw), isNull, reason: raw);
       }

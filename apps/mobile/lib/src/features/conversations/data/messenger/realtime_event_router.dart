@@ -56,6 +56,10 @@ class RealtimeEventRouter {
   }
 
   static const _firstRecoveryDelay = Duration(seconds: 1);
+
+  // The kinds of an incoming message that do not end its sender's typing
+  // (see _onMessage). By the envelope's label, which only decides this.
+  static const _endsNoTyping = {MessageKind.reaction, MessageKind.system};
   static const _maxRecoveryDelay = Duration(seconds: 60);
 
   final RealtimeService _realtime;
@@ -208,6 +212,17 @@ class RealtimeEventRouter {
     if (message == null || message.isLocalNotice || (await _contents.withoutRetired([message])).isEmpty) return;
     final conversationId = message.envelope.conversationId;
     _store.mergeMessages(conversationId, [message]);
+    // A message from the other side is what was being typed: "typing…"
+    // ends as it shows. The typist's typing.stop may never come, as the
+    // relay throttles typing signals to one per 500 ms and drops the rest.
+    // A reaction or a line an app sent by itself (a screenshot notice) is
+    // not what was being typed, so it leaves the indicator to its own end.
+    // The summary names only the sending device, not its user, and the
+    // indicator holds one typist per chat, so in a group any member's
+    // message ends it, as any member's typing.stop does.
+    if (!message.isMine && !_endsNoTyping.contains(message.envelope.messageKind)) {
+      _presence.typingStopped(conversationId);
+    }
     unawaited(_contents.ingestAll([message]));
     if (!message.isMine && conversationId == _store.activeConversationId) {
       await _receipts.markRead(message.id);

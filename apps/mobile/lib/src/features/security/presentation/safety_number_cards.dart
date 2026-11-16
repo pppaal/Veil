@@ -13,7 +13,9 @@ import '../../../shared/presentation/veil_ui.dart';
 class SafetyPeerHeader extends StatelessWidget {
   const SafetyPeerHeader({super.key, required this.name, required this.handle, required this.verified});
 
-  final String name;
+  /// The nickname the user gave them, or null: then the handle is the
+  /// title, and is not repeated under it.
+  final String? name;
   final String handle;
   final bool verified;
 
@@ -24,19 +26,20 @@ class SafetyPeerHeader extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return Row(
       children: [
-        VeilAvatar(name: name, seed: handle, size: 56),
+        VeilAvatar(name: name ?? handle, seed: handle, size: 56),
         const SizedBox(width: VeilSpace.sm),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge),
-              Text(
-                '@$handle',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
-              ),
+              Text(name ?? '@$handle', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge),
+              if (name != null)
+                Text(
+                  '@$handle',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+                ),
             ],
           ),
         ),

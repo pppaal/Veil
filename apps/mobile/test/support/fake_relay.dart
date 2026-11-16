@@ -241,10 +241,11 @@ class FakeRelay {
       'createdAt': conversation.createdAt.toIso8601String(),
       'members': [
         for (final handle in conversation.memberHandles)
+          // What the relay lists of a member (ConversationMemberSummary):
+          // no name.
           {
             'userId': partiesByHandle[handle]!.userId,
             'handle': listed(handle),
-            'displayName': listed(handle),
           },
       ],
       'lastMessage': last,

@@ -20,6 +20,13 @@ import '../storage/secure_storage_service.dart';
 // Providers for platform services, storage and crypto: everything here
 // depends on core alone, so features and app composition build on it.
 
+/// The clock a screen reads to say when something happened: the time of
+/// a message sent today, "Yesterday", a weekday, a date. The phone's own;
+/// the layout gate and the store art fix it, so that a seeded morning reads
+/// as this morning on every run. Not the expiry clock, which follows the
+/// server (VeilMessengerController.expiryNow).
+final wallClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 final secureStorageProvider = Provider<SecureStorageService>((ref) {
   return SecureStorageService();
 });

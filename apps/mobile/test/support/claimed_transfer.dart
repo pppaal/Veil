@@ -7,6 +7,7 @@ import 'package:veil_mobile/src/core/security/device_step_up.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
+import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_providers.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
@@ -18,12 +19,16 @@ import 'memory_secure_store.dart';
 /// started again on the new device. Everything here talks to the relay in
 /// real time, so build it inside `tester.runAsync`.
 class ClaimedTransfer {
-  ClaimedTransfer._(this.relay, this.oldDevice, this.storage);
+  ClaimedTransfer._(this.relay, this.oldDevice, this.storage, this.oldSession, this.oldStorage);
 
   final FakeAccountRelay relay;
 
   /// The old device's half: it issues further codes and approves claims.
   final DeviceTransferController oldDevice;
+
+  /// The old device's signed-in session and keystore.
+  final AppSessionController oldSession;
+  final SecureStorageService oldStorage;
 
   /// The new device's keystore, holding the claim.
   final SecureStorageService storage;
@@ -83,7 +88,7 @@ class ClaimedTransfer {
       identity: pending.identity,
       authKey: pending.authKey,
     ));
-    return ClaimedTransfer._(relay, oldDevice, storage);
+    return ClaimedTransfer._(relay, oldDevice, storage, oldSession, oldStorage);
   }
 
   /// The new device's session after the app started again.
@@ -92,6 +97,25 @@ class ClaimedTransfer {
     await session.bootstrap();
     return session;
   }
+
+  /// The transfer screen of the old device, with its transfer open.
+  Widget oldApp() => ProviderScope(
+        overrides: [
+          appSessionProvider.overrideWith((ref) => oldSession),
+          apiClientProvider.overrideWithValue(relay),
+          secureStorageProvider.overrideWithValue(oldStorage),
+          cryptoAdapterProvider.overrideWithValue(createDefaultCryptoAdapter()),
+          deviceTransferControllerProvider.overrideWith((ref) => oldDevice),
+        ],
+        child: MaterialApp(
+          theme: VeilTheme.dark(),
+          debugShowCheckedModeBanner: false,
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const DeviceTransferScreen(),
+        ),
+      );
 
   /// The transfer screen of the new device, in [locale].
   Widget app(AppSessionController session, {String locale = 'en'}) {

@@ -408,8 +408,8 @@ void main() {
       await pumpFrames(tester, frames: 4);
       expect(world.relay.mutes['user-$selfHandle'], {chatConversationId: 8 * 3600});
       expect(findCopy(en.muteDoneFor(en.muteEightHours)), findsOneWidget);
-      // With the success glyph, as '@x blocked' and 'Report sent' are.
-      expect(toastGlyph(tester), VeilNotice.iconFor(VeilTone.good));
+      // Text only, as '@x blocked' and 'Report sent' are: no tone glyph.
+      expect(toastGlyph(tester), isNull);
       final kept = await tester.runAsync(() => MuteStore(world.storage.scoped(SecureScope.notifications)).read());
       expect(kept!.keys, [chatConversationId], reason: 'the mute is kept on this phone');
 
@@ -417,7 +417,7 @@ void main() {
       await openMenu(tester, 'unmute');
       expect(world.relay.mutes['user-$selfHandle'], isEmpty);
       expect(findCopy(en.muteUndone), findsOneWidget);
-      expect(toastGlyph(tester), VeilNotice.iconFor(VeilTone.good));
+      expect(toastGlyph(tester), isNull);
       await openMenu(tester, 'mute');
       await tester.tap(find.text(en.muteAlways));
       await pumpFrames(tester, frames: 4);

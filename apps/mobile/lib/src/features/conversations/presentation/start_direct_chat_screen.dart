@@ -50,7 +50,6 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
       showVeilToast(
         context,
         messenger.failedAsNotFound ? l10n.safetyAccountNotFound(handle) : l10n.startDirectHandleError,
-        tone: VeilTone.warn,
       );
       return;
     }

@@ -39,7 +39,7 @@ class SettingsDangerZone extends ConsumerWidget {
         if (context.mounted) context.go(thenGo);
       } catch (_) {
         if (!context.mounted) return;
-        showVeilToast(context, failed, tone: VeilTone.warn);
+        showVeilToast(context, failed);
       }
     }
 

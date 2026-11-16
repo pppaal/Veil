@@ -67,16 +67,15 @@ Future<void> _fileReport(SafetyFeedback feedback, ReportTarget target, _ReportCh
     return;
   }
   if (!choice.alsoBlock) {
-    feedback.say(l10n.reportSent, tone: VeilTone.good);
+    feedback.say(l10n.reportSent);
     return;
   }
   final blocked = await feedback.read(blockedAccountsProvider).block(target.userId, handle: target.handle);
   if (blocked) {
-    feedback.say(l10n.reportSentAndBlocked(target.handle), tone: VeilTone.good);
+    feedback.say(l10n.reportSentAndBlocked(target.handle));
   } else {
     feedback.say(
       l10n.reportSentBlockFailed(target.handle),
-      tone: VeilTone.warn,
       retry: () => blockAccount(feedback, userId: target.userId, handle: target.handle, announce: true),
     );
   }

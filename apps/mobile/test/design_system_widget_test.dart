@@ -853,14 +853,16 @@ void main() {
       expect(tester.getSize(find.widgetWithText(TextButton, 'Later')).height, greaterThanOrEqualTo(44));
     });
 
-    testWidgets('a toast is a snackbar on surfaceRaised with the tone as an icon', (tester) async {
+    // As Signal's, WhatsApp's and Telegram's: text, at most one action, and
+    // no tone icon, success or failure.
+    testWidgets('a toast is a snackbar on surfaceRaised, text only', (tester) async {
       await _pump(
         tester,
         _App(
           child: Scaffold(
             body: Builder(
               builder: (context) => TextButton(
-                onPressed: () => showVeilToast(context, 'Nickname saved', tone: VeilTone.good),
+                onPressed: () => showVeilToast(context, 'Nickname saved'),
                 child: const Text('Save'),
               ),
             ),
@@ -872,7 +874,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byType(SnackBar), findsOneWidget);
       expect(find.text('Nickname saved'), findsOneWidget);
-      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+      expect(find.descendant(of: find.byType(SnackBar), matching: find.byType(Icon)), findsNothing);
       expect(Theme.of(tester.element(find.byType(SnackBar))).snackBarTheme.backgroundColor,
           VeilPalette.dark.surfaceRaised);
     });

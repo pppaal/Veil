@@ -252,8 +252,6 @@ textarea::placeholder { color: var(--fg-muted); opacity: 1; }
 }
 .toast.leaving { opacity: 0; }
 .toast-message { flex: 1; min-width: 0; }
-.toast-error .toast-icon { color: var(--danger); }
-.toast-good .toast-icon { color: var(--good); }
 .toast .text-btn { min-height: 32px; margin: -6px -4px -6px 4px; font-weight: 600; }
 
 /* ---------- notices: a decision or an action the user has to take ---------- */

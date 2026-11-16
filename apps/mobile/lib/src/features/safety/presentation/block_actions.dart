@@ -60,11 +60,10 @@ Future<bool> blockAccount(
   if (!blocked) {
     feedback.say(
       l10n.blockFailed(handle),
-      tone: VeilTone.warn,
       retry: () => blockAccount(feedback, userId: userId, handle: handle, announce: announce),
     );
   } else if (announce) {
-    feedback.say(l10n.blockDone(handle), tone: VeilTone.good);
+    feedback.say(l10n.blockDone(handle));
   }
   return blocked;
 }
@@ -91,11 +90,10 @@ Future<bool> _unblock(
   if (!unblocked) {
     feedback.say(
       l10n.unblockFailed(handle),
-      tone: VeilTone.warn,
       retry: () => _unblock(feedback, userId: userId, handle: handle, announce: announce),
     );
   } else if (announce) {
-    feedback.say(l10n.unblockDone(handle), tone: VeilTone.good);
+    feedback.say(l10n.unblockDone(handle));
   }
   return unblocked;
 }

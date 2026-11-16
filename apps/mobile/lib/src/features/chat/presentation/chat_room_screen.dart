@@ -206,7 +206,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       final messenger = ref.read(messengerControllerProvider);
       if (next == null || next == previous || messenger.errorIsRelayInterruption) return;
       if (_loadFailed && messenger.messagesFor(widget.conversationId).isEmpty) return;
-      showVeilToast(context, veilErrorText(AppLocalizations.of(context), next), tone: VeilTone.warn);
+      showVeilToast(context, veilErrorText(AppLocalizations.of(context), next));
     });
 
     final banners = ChatStatusBanners(

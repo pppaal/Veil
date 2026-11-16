@@ -25,13 +25,12 @@ class SafetyFeedback {
   T read<T>(ProviderListenable<T> provider) => _container.read(provider);
 
   /// Shows [message] in a toast; [retry] adds a Retry that runs it.
-  void say(String message, {VeilTone tone = VeilTone.info, VoidCallback? retry}) {
+  void say(String message, {VoidCallback? retry}) {
     final session = _container.read(appSessionProvider);
     if (!_context.mounted || !session.isAuthenticated || session.locked) return;
     showVeilToast(
       _context,
       message,
-      tone: tone,
       actionLabel: retry == null ? null : l10n.commonRetry,
       onAction: retry,
     );

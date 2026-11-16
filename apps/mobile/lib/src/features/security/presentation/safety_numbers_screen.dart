@@ -287,7 +287,6 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         showVeilToast(
           context,
           AppLocalizations.of(context).safetyNumbersChangeReplaced,
-          tone: VeilTone.warn,
         );
       }
     } finally {
@@ -341,9 +340,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         VeilHaptics.medium();
         setState(() => _scanMismatch = true);
       case SafetyQrVerification.unsupportedVersion:
-        showVeilToast(context, l10n.safetyNumbersScanUnsupported, tone: VeilTone.warn);
+        showVeilToast(context, l10n.safetyNumbersScanUnsupported);
       case SafetyQrVerification.malformed:
-        showVeilToast(context, l10n.safetyNumbersScanInvalid, tone: VeilTone.warn);
+        showVeilToast(context, l10n.safetyNumbersScanInvalid);
     }
   }
 
@@ -371,7 +370,6 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       showVeilToast(
         context,
         AppLocalizations.of(context).safetyNumbersRotationFailed,
-        tone: VeilTone.warn,
       );
     } finally {
       if (mounted) setState(() => _renewing = false);

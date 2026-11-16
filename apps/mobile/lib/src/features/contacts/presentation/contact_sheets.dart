@@ -71,7 +71,7 @@ Future<void> showAddContactSheet(BuildContext context, WidgetRef ref) {
       // Said on the screen behind the sheet, once the sheet is gone.
       onAdded: (handle) {
         if (!context.mounted) return;
-        showVeilToast(context, l10n.contactsAdded(handle), tone: VeilTone.good);
+        showVeilToast(context, l10n.contactsAdded(handle));
       },
     ),
   );
@@ -179,7 +179,7 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
   Future<String?> account() async {
     final userId = await ref.read(safetyAccountsProvider).accountIdFor(contact.handle);
     if (userId == null && context.mounted) {
-      showVeilToast(context, l10n.safetyAccountNotFound(contact.handle), tone: VeilTone.warn);
+      showVeilToast(context, l10n.safetyAccountNotFound(contact.handle));
     }
     return userId;
   }
@@ -202,7 +202,7 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
     if (conversationId != null) {
       context.push('/chat/$conversationId');
     } else {
-      showVeilToast(context, l10n.contactsStartChatFailed, tone: VeilTone.warn);
+      showVeilToast(context, l10n.contactsStartChatFailed);
     }
   }
 
@@ -212,7 +212,6 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
     showVeilToast(
       context,
       removed ? l10n.contactsRemoved(contact.label) : l10n.contactsRemoveFailed,
-      tone: removed ? VeilTone.info : VeilTone.warn,
     );
   }
 

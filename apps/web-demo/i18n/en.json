@@ -39,6 +39,7 @@
   "conv.noMessages": "No messages yet",
   "conv.noResults": "No results for \"{query}\"",
   "conv.empty": "No chats yet",
+  "conv.refreshFailed": "Couldn't refresh chats",
   "notifyPrompt.title": "Turn on notifications",
   "notifyPrompt.body": "Get notified about new messages when this tab is in the background.",
   "notifyPrompt.later": "Not now",

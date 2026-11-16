@@ -122,7 +122,9 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
       const replyToId = state.replyDrafts.get(convId)?.id ?? null;
       await sendContent(conv, textContent(text, replyToId), {
         onSealed: () => {
-          if (replyToId) state.replyDrafts.delete(convId);
+          // Only the reply this text answers: one picked while it was being
+          // sealed is the next message's.
+          if (replyToId && state.replyDrafts.get(convId)?.id === replyToId) state.replyDrafts.delete(convId);
           onSealed();
           realtime.stopTyping(convId);
           onSent();

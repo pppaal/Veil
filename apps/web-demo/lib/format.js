@@ -3,6 +3,7 @@
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // A time of day as "2:15 PM".
 export function formatTime(date) {
@@ -19,14 +20,17 @@ export function dayKey(date) {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
-// A day as the dividers show it: "Today", "Yesterday", "Jan 5" within the
-// year, else "Dec 31, 2024".
+// A day as the dividers show it, as the phone's do (apps/mobile
+// chat_message_runs.dart chatDayLabel): "Today" (also for a message stamped
+// later than this clock reads, which the Chats row shows by its time),
+// "Yesterday", the weekday for the six days before ("Monday"), "Jan 5"
+// within the year, else "Dec 31, 2024".
 export function dayLabel(date, today = new Date()) {
   const d = date instanceof Date ? date : new Date(date);
-  if (dayKey(d) === dayKey(today)) return 'Today';
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (dayKey(d) === dayKey(yesterday)) return 'Yesterday';
+  const daysAgo = calendarDaysBetween(d, today);
+  if (daysAgo <= 0) return 'Today';
+  if (daysAgo === 1) return 'Yesterday';
+  if (daysAgo < 7) return WEEKDAY_NAMES[d.getDay()];
   const monthDay = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
   if (d.getFullYear() === today.getFullYear()) return monthDay;
   return `${monthDay}, ${d.getFullYear()}`;

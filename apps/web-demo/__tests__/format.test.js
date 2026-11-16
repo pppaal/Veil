@@ -45,6 +45,18 @@ describe('dayLabel', () => {
     expect(dayLabel(new Date(2026, 3, 14, 22), today)).toBe('Yesterday');
   });
 
+  // The divider in a chat names the same day its row in Chats does ("Mon"),
+  // in full, as the phone's divider does.
+  it('names the weekday for the six days before yesterday', () => {
+    expect(dayLabel(new Date(2026, 3, 13, 9), today)).toBe('Monday');
+    expect(dayLabel(new Date(2026, 3, 9, 9), today)).toBe('Thursday');
+    expect(dayLabel(new Date(2026, 3, 8, 9), today)).toBe('Apr 8');
+  });
+
+  it('calls a message stamped ahead of this clock today, as its Chats row shows its time', () => {
+    expect(dayLabel(new Date(2026, 3, 16, 0, 5), today)).toBe('Today');
+  });
+
   it('falls back to the month and day in the same year', () => {
     expect(dayLabel(new Date(2026, 0, 5), today)).toBe('Jan 5');
   });

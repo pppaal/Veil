@@ -91,12 +91,12 @@ class PeerNames {
   String memberTitle(GroupMember member) => memberName(member) ?? '@${member.handle}';
 
   /// The account each nickname that names none yet is to name, by handle:
-  /// the account this phone bound the handle to; with no binding, the one
-  /// account the chats listed now show under it (in a 1:1 not held, or as
-  /// a group member). Not an account bound or listed under another handle
-  /// too (an account has one handle), nor one listed only in a form no
-  /// server issues; and a handle bound or listed with two accounts gets
-  /// none yet.
+  /// the account this phone bound exactly that handle to; with no binding,
+  /// the one account the chats listed now show under it (in a 1:1 not
+  /// held, or as a group member). Not an account bound or listed under
+  /// another handle too (an account has one handle), nor one bound or
+  /// listed only in a form no server issues; and a handle bound or listed
+  /// with two accounts gets none yet.
   Map<String, String> claims() {
     final unclaimed = {
       for (final MapEntry(:key, :value) in _nicknames.entries)
@@ -122,11 +122,17 @@ class PeerNames {
         }
       }
     }
+    // Bound under exactly the handle: a 1:1 the user let through under
+    // 'Bob' is no binding of 'bob'.
+    final boundUnder = <String, Set<String>>{};
+    for (final peer in _bound.values) {
+      if (peer.userId.isNotEmpty) (boundUnder[peer.handle] ??= {}).add(peer.userId);
+    }
     bool underOneHandle(String userId, String handle) =>
         {...?_handlesOf[userId], ...?handlesOf[userId]}.every((other) => other == handle);
     return {
       for (final handle in unclaimed)
-        if ((_accountsOf[handle] ?? accountsUnder[handle]) case final accounts?
+        if ((boundUnder[handle] ?? accountsUnder[handle]) case final accounts?
             when accounts.length == 1 && underOneHandle(accounts.single, handle))
           handle: accounts.single,
     };

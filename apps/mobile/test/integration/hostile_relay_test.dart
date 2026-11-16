@@ -577,6 +577,28 @@ void main() {
       expect((await names()).peerName(alice.controller.conversationById('conv-am')!), isNull);
       expect(book.nicknames['bob']?.userId, bob.device.userId);
     });
+
+    // "Bob" is no handle a server gives out: the 1:1 is held, and once the
+    // user lets it through, it is bound to mallory under "Bob". That is no
+    // binding of @bob, so it cannot take the nickname from the real bob,
+    // whom the group lists under exactly 'bob'.
+    test('a 1:1 let through under "Bob" does not take the nickname from the real @bob', () async {
+      relay.listedHandles['alice'] = {'mallory': 'Bob'};
+      relay.addDirect('conv-am', 'mallory', 'alice');
+      await alice.controller.refreshConversations();
+      expect(alice.controller.conversationById('conv-am')!.peerHandle, 'Bob');
+      await waitFor(() => alice.controller.peerAccountHoldFor('conv-am') != null, reason: 'not held');
+      expect(alice.controller.peerAccountHoldFor('conv-am')!.reason, PeerAccountHoldReason.unissuedHandle);
+      await alice.controller.acknowledgePeerAccount('conv-am');
+      expect(alice.controller.peerAccountHoldFor('conv-am'), isNull);
+
+      final shown = await names();
+      expect(book.nicknames['bob']?.userId, bob.device.userId);
+      expect(shown.peerName(alice.controller.conversationById('conv-am')!), isNull);
+      // A handle bound or listed with two accounts, without regard to
+      // case, names neither: the real bob is called @bob too.
+      expect(shown.memberTitle(realBob()), '@bob');
+    });
   });
 
   group('a 1:1 the relay leaves out of one list and lists again with a verified contact', () {

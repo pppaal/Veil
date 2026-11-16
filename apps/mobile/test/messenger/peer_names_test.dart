@@ -212,6 +212,17 @@ void main() {
       expect(self.claims(), isEmpty);
     });
 
+    test('a 1:1 bound under "Bob", a handle no server issues, is no binding of @bob', () {
+      final mallory = {'conv-am': _peer('Bob', userId: 'user-mallory')};
+      final names = PeerNames(
+        const {'bob': bob},
+        bound: mallory,
+        listed: [_group('grp', const [GroupMember(userId: 'user-bob', handle: 'bob')])],
+      );
+      expect(names.claims(), {'bob': 'user-bob'});
+      expect(PeerNames(const {'bob': bob}, bound: mallory).claims(), isEmpty);
+    });
+
     test('nothing for a nickname that names an account already', () {
       final names = PeerNames({'bob': _of('bob', 'Bob Smith')}, listed: [_direct('conv-am', 'bob', userId: 'user-mallory')]);
       expect(names.claims(), isEmpty);

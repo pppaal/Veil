@@ -42,7 +42,7 @@ test.describe('one-time secret links', () => {
     watchErrors(late, errors);
     await late.goto(link);
     await late.click('#revealBtn');
-    await expect(late.locator('#goneMsg')).toHaveText('This link was already opened or has expired');
+    await expect(late.locator('#goneMsg')).toHaveText('This link was already opened, or it expired.');
 
     expect(errors).toEqual([]);
     await sender.close();

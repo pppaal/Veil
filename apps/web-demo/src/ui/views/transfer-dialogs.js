@@ -8,16 +8,17 @@
 // next claim (contract C-TRANSFER-RETRY): the dialog offers to try the same
 // code again.
 
+import { t } from '../../../i18n/i18n.js';
 import { WEB_DEVICE_NAME } from '../../domain/web-device.js';
 import { parseTransferCode } from '../../features/device-transfer.js';
-import { isAuthRejection } from '../../platform/api-client.js';
+import { ApiError, isAuthRejection } from '../../platform/api-client.js';
 import { $ } from '../dom.js';
 import { toast } from '../toast.js';
 
-const WAITING_FOR_APPROVAL = 'Waiting for approval on the old device…';
-const RETRYING = 'No answer from the server. Trying the same request again…';
-const USE_CODE = 'Use code';
-const TRY_AGAIN = 'Try again';
+// The relay's refusals that mean the move is over: it was closed, it
+// expired, or the old device can no longer approve it.
+const ENDED_CODES = new Set(['transfer_session_inactive', 'transfer_session_not_found', 'transfer_session_expired']);
+const hasEnded = (error) => error instanceof ApiError && ENDED_CODES.has(error.code);
 
 // transfer: src/app/services/device-transfer.js; session:
 // src/app/services/session.js; auth: src/ui/views/auth-view.js;
@@ -47,9 +48,9 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
       // is spent, so a completed transfer is one of the two ways it goes.
       closeOldDialog();
       await session.destroyIdentity();
-      toast('Transfer complete. The keys on this device were deleted.', 'good');
+      toast(t('transfer.old.done'), 'good');
     } else if (outcome === 'expired' || outcome === 'closed') {
-      setText('transfer-old-status', outcome === 'expired' ? 'The code expired after 5 minutes. Start again.' : 'This transfer was closed. Start again.');
+      setText('transfer-old-status', t(outcome === 'expired' ? 'transfer.old.expired' : 'transfer.old.closed'));
       $('transfer-old-approve').classList.add('hidden');
     }
     // 'session-ended' and 'cancelled': the session's end or the cancel
@@ -58,7 +59,7 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
 
   async function startOld() {
     if (!store.state.me) {
-      toast('Sign in first', 'error');
+      toast(t('transfer.signInFirst'), 'error');
       return;
     }
     stopOld();
@@ -69,37 +70,60 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
           setText('transfer-old-fingerprint', claim.claimantFingerprint);
           $('transfer-old-claim').classList.remove('hidden');
           $('transfer-old-approve').classList.remove('hidden');
-          setText('transfer-old-status', 'Check the fingerprint, then approve.');
+          // The box under it says what to check: one line, not two.
+          setText('transfer-old-status', '');
         },
-        onPollError: (error) => setText('transfer-old-status', 'Could not check the server: ' + error.message),
+        onPollError: () => setText('transfer-old-status', t('transfer.old.checkFailed')),
       });
-    } catch (error) {
-      toast('Could not start the transfer: ' + error.message, 'error');
+    } catch {
+      toast(t('transfer.old.startFailed'), 'error');
       return;
     }
     $('transfer-old-token').value = started.code;
-    // The dialog's first line already says to paste the code there.
-    setText('transfer-old-status', 'Waiting for the new device…');
+    setText('transfer-old-status', t('transfer.old.waiting'));
     $('transfer-old-claim').classList.add('hidden');
     $('transfer-old-approve').classList.add('hidden');
-    setText('transfer-old-cancel', 'Cancel');
-    dialogs.open('transfer-old-dialog', 'transfer-old-token');
+    setText('transfer-old-cancel', t('common.cancel'));
+    dialogs.open('transfer-old-dialog', 'transfer-old-copy');
     const outcome = await started.transfer.outcome;
     transfer.settled(started.transfer);
     await finishOld(outcome);
   }
 
+  // The code, copied to paste on the new device; where the clipboard is
+  // refused, the field is selected to copy by hand.
+  async function copyOld() {
+    const field = $('transfer-old-token');
+    try {
+      await navigator.clipboard.writeText(field.value);
+      toast(t('transfer.codeCopied'), 'good');
+    } catch {
+      field.focus();
+      field.select();
+      toast(t('clipboard.failed'), 'error');
+    }
+  }
+
+  // Approving moves the account and signs this browser out for good, so it
+  // asks first.
   async function approveOld() {
     const watch = transfer.current();
     if (!watch) return;
+    const ok = await confirm({
+      title: t('transfer.old.confirmTitle'),
+      body: t('transfer.old.confirmBody'),
+      okLabel: t('transfer.old.confirmOk'),
+      destructive: true,
+    });
+    if (!ok || transfer.current() !== watch) return;
     $('transfer-old-approve').disabled = true;
     try {
       await watch.approve();
-      setText('transfer-old-status', 'Approved. Waiting for the new device to finish…');
+      setText('transfer-old-status', t('transfer.old.approved'));
       $('transfer-old-approve').classList.add('hidden');
-      setText('transfer-old-cancel', 'Close');
-    } catch (error) {
-      toast('Could not approve: ' + error.message, 'error');
+      setText('transfer-old-cancel', t('common.close'));
+    } catch {
+      toast(t('transfer.old.approveFailed'), 'error');
     } finally {
       $('transfer-old-approve').disabled = false;
     }
@@ -124,7 +148,7 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     setText('transfer-new-error', '');
     setText('transfer-new-status', '');
     $('transfer-new-fingerprint').classList.add('hidden');
-    setText('transfer-new-claim', USE_CODE);
+    setText('transfer-new-claim', t('transfer.new.continue'));
     $('transfer-new-claim').disabled = false;
     incoming = null;
     dialogs.open('transfer-new-dialog', 'transfer-new-token');
@@ -135,9 +159,9 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
   function stopNew(started, error) {
     if (incoming !== null && incoming !== started) return;
     incoming = { ...started, stopped: true };
-    setText('transfer-new-error', error.message);
-    setText('transfer-new-status', 'The transfer could not be completed. Try again with the same code, or paste a new code.');
-    setText('transfer-new-claim', TRY_AGAIN);
+    setText('transfer-new-error', hasEnded(error) ? t('transfer.new.ended') : '');
+    setText('transfer-new-status', t('transfer.new.incomplete'));
+    setText('transfer-new-claim', t('transfer.new.tryAgain'));
     $('transfer-new-claim').disabled = false;
   }
 
@@ -146,7 +170,7 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     incoming = { ...incoming, stopped: false };
     $('transfer-new-claim').disabled = true;
     setText('transfer-new-error', '');
-    setText('transfer-new-status', WAITING_FOR_APPROVAL);
+    setText('transfer-new-status', t('transfer.new.waiting'));
     awaitNew();
   }
 
@@ -162,20 +186,20 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
   async function saveNew() {
     $('transfer-new-claim').disabled = true;
     setText('transfer-new-error', '');
-    setText('transfer-new-status', 'Saving the new keys…');
+    setText('transfer-new-status', t('transfer.new.saving'));
     let cleanupError;
     try {
       ({ cleanupError } = await transfer.storeIdentity(incoming));
-    } catch (error) {
-      setText('transfer-new-error', 'Could not save the new keys: ' + error.message);
-      setText('transfer-new-status', 'The transfer is complete, but the keys exist only in this tab. Do not close it. Save again.');
-      setText('transfer-new-claim', 'Save again');
+    } catch {
+      setText('transfer-new-error', t('transfer.new.saveFailed'));
+      setText('transfer-new-status', t('transfer.new.unsaved'));
+      setText('transfer-new-claim', t('transfer.new.saveAgain'));
       $('transfer-new-claim').disabled = false;
       // The dialog may have been closed while /complete was in flight.
       if ($('transfer-new-dialog').classList.contains('hidden')) dialogs.open('transfer-new-dialog', 'transfer-new-claim');
       return;
     }
-    if (cleanupError) toast('Some data of the previous account could not be deleted: ' + cleanupError.message, 'error');
+    if (cleanupError) toast(t('transfer.new.wipePartial'), 'error');
     incoming = null;
     dialogs.close('transfer-new-dialog');
     try {
@@ -185,11 +209,11 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     } catch (error) {
       // The transfer went through and the identity is stored here; only the
       // first sign-in failed, so the auth screen offers Retry.
-      toast('The transfer is complete, but signing in failed: ' + error.message, 'error');
+      toast(t('transfer.new.signInFailed'), 'error');
       await auth.show({ rejected: isAuthRejection(error) });
       return;
     }
-    toast('Transfer complete. You are signed in on this device.', 'good');
+    toast(t('transfer.new.done'), 'good');
     await session.enterApp();
   }
 
@@ -200,8 +224,8 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     try {
       completion = await transfer.awaitCompletion(started, {
         waiting: () => incoming === started,
-        onWaiting: () => setText('transfer-new-status', WAITING_FOR_APPROVAL),
-        onRetrying: () => setText('transfer-new-status', RETRYING),
+        onWaiting: () => setText('transfer-new-status', t('transfer.new.waiting')),
+        onRetrying: () => setText('transfer-new-status', t('transfer.new.retrying')),
       });
     } catch (error) {
       stopNew(started, error);
@@ -220,12 +244,12 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     const code = $('transfer-new-token').value.trim();
     const name = $('transfer-new-name').value.trim() || WEB_DEVICE_NAME;
     if (!code) {
-      setText('transfer-new-error', 'Enter the code');
+      setText('transfer-new-error', t('transfer.new.empty'));
       return;
     }
     const parsed = parseTransferCode(code);
     if (!parsed) {
-      setText('transfer-new-error', 'This is not a valid code');
+      setText('transfer-new-error', t('transfer.new.invalid'));
       return;
     }
     // Completing the transfer replaces the identity stored here, so ask now,
@@ -233,27 +257,28 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     const replacesIdentity = await session.hasStoredIdentity();
     if (replacesIdentity) {
       const ok = await confirm({
-        title: 'Replace the account in this browser',
-        body: 'When the transfer completes, the account stored in this browser is deleted for good. You will not be able to sign in to that handle again.',
-        okLabel: 'Continue',
+        title: t('transfer.new.replaceTitle'),
+        body: t('transfer.new.replaceBody'),
+        okLabel: t('transfer.new.replaceOk'),
         destructive: true,
       });
       if (!ok) return;
     }
     $('transfer-new-claim').disabled = true;
     setText('transfer-new-error', '');
-    setText('transfer-new-status', 'Creating new keys…');
+    setText('transfer-new-status', t('transfer.new.creatingKeys'));
     try {
       const { keys, published, fingerprint } = await transfer.newIdentity();
       setText('transfer-new-fingerprint-text', fingerprint);
       $('transfer-new-fingerprint').classList.remove('hidden');
-      setText('transfer-new-status', 'Contacting the server…');
+      setText('transfer-new-status', t('transfer.new.contacting'));
       const claimId = await transfer.claim(parsed, { name, keys, published });
       incoming = { ...parsed, claimId, keys, replacesIdentity };
-      setText('transfer-new-status', WAITING_FOR_APPROVAL);
+      setText('transfer-new-status', t('transfer.new.waiting'));
       awaitNew();
     } catch (error) {
-      setText('transfer-new-error', error.message);
+      setText('transfer-new-status', '');
+      setText('transfer-new-error', t(hasEnded(error) ? 'transfer.new.ended' : 'transfer.new.claimFailed'));
       $('transfer-new-claim').disabled = false;
     }
   }
@@ -279,13 +304,14 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
 
     mount() {
       $('transfer-old-cancel').addEventListener('click', cancelOld);
+      $('transfer-old-copy').addEventListener('click', copyOld);
       $('transfer-old-approve').addEventListener('click', approveOld);
       $('transfer-new-btn').addEventListener('click', openNew);
       $('transfer-new-cancel').addEventListener('click', cancelNew);
       $('transfer-new-claim').addEventListener('click', primaryNew);
       // Another code in the field makes the button a new claim again.
       $('transfer-new-token').addEventListener('input', () => {
-        if (incoming?.stopped) setText('transfer-new-claim', isStoppedCode() ? TRY_AGAIN : USE_CODE);
+        if (incoming?.stopped) setText('transfer-new-claim', t(isStoppedCode() ? 'transfer.new.tryAgain' : 'transfer.new.continue'));
       });
     },
   };

@@ -51,20 +51,13 @@ class ChatLoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A spinner alone; [label] is what a screen reader hears.
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(VeilSpace.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-            const SizedBox(height: VeilSpace.sm),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted),
-            ),
-          ],
+        child: Semantics(
+          label: label,
+          child: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
         ),
       ),
     );

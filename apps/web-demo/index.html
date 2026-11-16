@@ -18,16 +18,16 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' http://localhost:9000 http://127.0.0.1:9000; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="description" content="End-to-end encrypted messenger. No phone number, no backup." />
+<meta name="description" content="Veil is a messenger you sign up for with a handle, not a phone number." />
 <meta name="color-scheme" content="light dark" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Veil" />
-<meta property="og:description" content="End-to-end encrypted messenger. No phone number, no backup." />
+<meta property="og:description" content="Veil is a messenger you sign up for with a handle, not a phone number." />
 <meta property="og:site_name" content="Veil" />
 <meta property="og:image" content="./icon.svg" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="Veil" />
-<meta name="twitter:description" content="End-to-end encrypted messenger. No phone number, no backup." />
+<meta name="twitter:description" content="Veil is a messenger you sign up for with a handle, not a phone number." />
 <link rel="icon" type="image/svg+xml" href="./icon.svg" />
 <link rel="apple-touch-icon" href="./icon.svg" />
 <link rel="manifest" href="./manifest.json" />
@@ -44,32 +44,30 @@
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.6" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-split" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M12 4.5v15"/></symbol>
-  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.87 5.02L10.33 2.55H13.67L14.13 5.02L15.43 5.55L17.51 4.14L19.86 6.49L18.45 8.57L18.98 9.87L21.45 10.33V13.67L18.98 14.13L18.45 15.43L19.86 17.51L17.51 19.86L15.43 18.45L14.13 18.98L13.67 21.45H10.33L9.87 18.98L8.57 18.45L6.49 19.86L4.14 17.51L5.55 15.43L5.02 14.13L2.55 13.67V10.33L5.02 9.87L5.55 8.57L4.14 6.49L6.49 4.14L8.57 5.55Z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
   <symbol id="i-bell-off" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/><path d="M3.5 3.5l17 17"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-2.9 8-7 9.5-4.1-1.5-7-5.1-7-9.5V6z"/></symbol>
-  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l1 13h9l1-13"/><path d="M10 11v5.5M14 11v5.5"/></symbol>
   <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M19.5 11.5l-7.8 7.8a4.8 4.8 0 0 1-6.8-6.8l8.3-8.3a3.2 3.2 0 0 1 4.5 4.5l-8.2 8.2a1.6 1.6 0 0 1-2.3-2.3l7.4-7.4"/></symbol>
   <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.75"/><path d="M20.5 15.5l-4.5-4.5-9.5 8.5"/></symbol>
   <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></symbol>
   <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
-  <symbol id="i-check-double" viewBox="0 0 24 24"><path d="M2 12.5l4.5 4.5L16 7.5"/><path d="M11 16l1 1 9.5-9.5"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5v-3a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></symbol>
-  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5v-3a4 4 0 0 1 8 0v3"/></symbol>
-  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.75" r="1.1" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.25" r="1.1" fill="currentColor" stroke="none"/></symbol>
-  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
   <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9.5 7l-5 5 5 5"/><path d="M4.5 12H14a6 6 0 0 1 6 6v1"/></symbol>
   <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
   <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
   <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"/><path d="M14 3.5v5h5"/></symbol>
-  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></symbol>
-  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h1M9.5 10h1M13 10h1M16.5 10h1M8 14h8"/></symbol>
-  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+  <symbol id="i-compose" viewBox="0 0 24 24"><path d="M11.5 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/><path d="M17.6 3.6a1.9 1.9 0 0 1 2.8 2.8L12.5 14.3 9 15l.7-3.5z"/></symbol>
+  <!-- Delivery ticks, as Signal draws them: one outlined circle when sent,
+       two when delivered, two filled when read. The read checks are cut out
+       in the bubble's colour (--tick-cut). -->
+  <symbol id="i-tick-sent" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.6 12.2l2.3 2.3 4.4-4.6"/></symbol>
+  <symbol id="i-tick-delivered" viewBox="0 0 32 24"><circle cx="11" cy="12" r="8"/><path d="M17.31 4.9A8 8 0 1 1 17.31 19.1"/><path d="M7.6 12.2l2.3 2.3 4.4-4.6"/><path d="M19 12.4l1.9 1.9 3.6-3.8"/></symbol>
+  <symbol id="i-tick-read" viewBox="0 0 32 24"><path d="M17.31 4.9A8 8 0 1 1 17.31 19.1A9.5 9.5 0 0 0 17.31 4.9z" fill="currentColor" stroke="none"/><circle cx="11" cy="12" r="8" fill="currentColor" stroke="none"/><path d="M7.6 12.2l2.3 2.3 4.4-4.6" style="stroke: var(--tick-cut)"/><path d="M19 12.4l1.9 1.9 3.6-3.8" style="stroke: var(--tick-cut)"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4.5 19.5h15"/></symbol>
 </svg>
 
@@ -78,17 +76,7 @@
 <!-- AUTH SCREEN -->
 <section id="auth-screen" class="auth-screen">
   <div class="auth-column">
-    <h1 class="auth-title">Veil</h1>
-    <p class="auth-lede" data-i18n="appTagline">End-to-end encrypted messenger with no phone number and no backup</p>
-
-    <button type="button" id="auth-explainer-toggle" class="text-btn" aria-expanded="false" aria-controls="auth-explainer" data-i18n="auth.explainer.summary">How Veil works</button>
-    <div id="auth-explainer" class="auth-explainer hidden">
-      <p data-i18n-html="auth.explainer.body1">Your account lives in <strong>this browser</strong>. Messages are end-to-end encrypted:
-        the server stores only encrypted messages and cannot read them.</p>
-      <p data-i18n-html="auth.explainer.body2">There is no backup, no recovery and no password reset. If you lose this device or
-        clear the browser, your messages and your handle are gone. To move to another device, start the transfer from
-        this one.</p>
-    </div>
+    <h1 class="auth-title" data-i18n="appName">Veil</h1>
 
     <div id="restore-row" class="restore hidden">
       <div class="restore-row">
@@ -101,69 +89,63 @@
       </div>
       <div id="restore-rejected" class="notice hidden" role="alert">
         <svg class="i notice-icon tone-warn"><use href="#i-warning"/></svg>
-        <div class="notice-text" data-i18n="auth.restore.rejected">Could not connect to this account. This device may have been removed from it. Your keys are still in this browser.</div>
+        <div class="notice-text" id="restore-rejected-text"></div>
+        <div class="notice-actions">
+          <button id="restore-remove" class="text-btn text-btn-danger" data-i18n="auth.restore.delete">Remove from this browser</button>
+          <button id="restore-retry" class="text-btn" data-i18n="auth.restore.retry">Try again</button>
+        </div>
       </div>
-      <button id="restore-delete-btn" class="text-btn text-btn-danger" data-i18n="auth.restore.delete">Delete this identity</button>
     </div>
+    <!-- Shown only while this browser stores an account. -->
+    <button id="wipe-btn" class="text-btn text-btn-danger auth-wipe hidden"></button>
 
     <form id="register-form" class="auth-form" autocomplete="off" novalidate>
       <label class="field">
-        <span class="field-label" data-i18n="auth.form.handle">Handle</span>
+        <span class="field-label" data-i18n="auth.form.handle">Choose a handle</span>
         <input id="reg-handle" type="text" placeholder="alex" pattern="[a-z0-9_]+" maxlength="32" autocapitalize="off" autocorrect="off" spellcheck="false" />
-        <span class="field-hint" data-i18n="auth.form.handle.hint">Lowercase letters, digits and underscores. It can't be changed later.</span>
+        <span class="field-hint" data-i18n="auth.form.handle.hint">You can't change it later.</span>
       </label>
       <button id="reg-btn" type="submit" class="btn btn-primary btn-block btn-large" data-i18n="auth.form.start">Create account</button>
     </form>
+    <button id="transfer-new-btn" class="btn btn-secondary btn-block btn-large auth-secondary" data-i18n="auth.transfer.fromExisting">Move from another device</button>
 
-    <div class="auth-links">
-      <button id="transfer-new-btn" class="text-btn" data-i18n="auth.transfer.fromExisting">Move from another device</button>
-      <button id="wipe-btn" class="text-btn text-btn-danger" data-i18n="auth.wipe">Delete all Veil data from this browser</button>
-    </div>
+    <p class="auth-footer" data-i18n="auth.footer">There's no backup. If you clear this browser's data, you lose your account.</p>
   </div>
 </section>
 
 <!-- MAIN APP -->
 <div id="app" class="app hidden">
   <header class="topbar">
-    <button class="icon-btn icon-btn-only-mobile" id="back-to-list" aria-label="Back to chats">
-      <svg class="i"><use href="#i-back"/></svg>
-    </button>
     <div class="topbar-title">
-      <span class="topbar-name">Veil</span>
+      <span class="topbar-name" data-i18n="shell.title">Chats</span>
       <span class="conn-status hidden" id="conn-status" role="status"></span>
     </div>
     <div class="topbar-right">
+      <button class="icon-btn" id="new-chat-btn" aria-label="New chat"><svg class="i"><use href="#i-compose"/></svg></button>
       <button class="icon-btn" id="split-btn" title="Split view" aria-label="Split view" aria-pressed="false">
         <svg class="i"><use href="#i-split"/></svg>
       </button>
-      <button class="icon-btn" id="menu-btn" aria-label="Menu" aria-haspopup="menu">
+      <button class="icon-btn" id="menu-btn" aria-label="Menu" data-i18n-aria-label="shell.menu" aria-haspopup="menu">
         <svg class="i"><use href="#i-more"/></svg>
       </button>
     </div>
   </header>
 
-  <!-- An identity from before protocol v2 reads its history but cannot send. -->
+  <!-- An account from before protocol v2 reads its history but cannot send. -->
   <div id="legacy-banner" class="notice app-notice hidden" role="alert">
     <svg class="i notice-icon tone-warn"><use href="#i-warning"/></svg>
-    <div class="notice-text" data-i18n="legacy.banner">This browser's identity uses the old format. You can read its history but not send. Create a new identity to keep messaging.</div>
+    <div class="notice-text" data-i18n="legacy.banner">This account uses an old format. You can read old messages but not send. Create a new account to keep chatting.</div>
     <div class="notice-actions">
-      <button id="legacy-new-identity" class="text-btn" data-i18n="legacy.createNew">Create a new identity</button>
+      <button id="legacy-new-identity" class="text-btn" data-i18n="legacy.createNew">Create a new account</button>
     </div>
   </div>
 
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-me" id="sidebar-me"></div>
-    <div class="sidebar-actions">
-      <button id="new-chat-btn" class="btn btn-primary btn-block">
-        <svg class="i"><use href="#i-plus"/></svg>
-        New chat
-      </button>
-    </div>
     <div class="sidebar-search">
       <svg class="i search-icon"><use href="#i-search"/></svg>
-      <input id="search-input" type="text" placeholder="Search chats" aria-label="Search chats" autocomplete="off" />
+      <input id="search-input" type="text" placeholder="Search" aria-label="Search" data-i18n-placeholder="search.placeholder" data-i18n-aria-label="search.placeholder" autocomplete="off" />
     </div>
-    <nav class="conv-list" id="conv-list" aria-label="Chats"></nav>
+    <nav class="conv-list" id="conv-list" aria-label="Chats" data-i18n-aria-label="shell.title"></nav>
   </aside>
 
   <main class="main" id="main">
@@ -175,27 +157,28 @@
   <div class="dialog-backdrop hidden" id="new-chat-dialog" role="presentation">
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="new-chat-title">
       <div class="dialog-title" id="new-chat-title" data-i18n="newChat.title">New chat</div>
-      <div class="dialog-sub" data-i18n="newChat.sub">Enter their handle. They need an account on the same server.</div>
-      <input id="new-peer-input" type="text" placeholder="sam" aria-label="Handle" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <div class="prefix-field">
+        <span class="prefix" aria-hidden="true">@</span>
+        <input id="new-peer-input" type="text" placeholder="handle" aria-label="Handle" data-i18n-placeholder="newChat.placeholder" data-i18n-aria-label="newChat.inputLabel" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      </div>
       <div class="dialog-error" id="new-peer-error" role="alert" aria-live="polite"></div>
       <div class="dialog-actions">
         <button class="btn btn-ghost" id="new-cancel" data-i18n="newChat.cancel">Cancel</button>
-        <button class="btn btn-primary" id="new-confirm" data-i18n="newChat.start">Start</button>
+        <button class="btn btn-primary" id="new-confirm" data-i18n="newChat.start">Start chat</button>
       </div>
     </div>
   </div>
 
-  <!-- Menu dropdown -->
+  <!-- Menu dropdown: the signed-in account, then the actions. -->
   <div class="menu hidden" id="menu" role="menu">
-    <button class="menu-item" data-action="copy-handle" role="menuitem"><svg class="i"><use href="#i-copy"/></svg><span data-i18n="menu.copyHandle">Copy my handle</span></button>
-    <button class="menu-item" data-action="ws-info" role="menuitem"><svg class="i"><use href="#i-info"/></svg><span data-i18n="menu.connectionStatus">Connection status</span></button>
-    <button class="menu-item" data-action="transfer-start" role="menuitem"><svg class="i"><use href="#i-phone"/></svg><span data-i18n="menu.transferStart">Move to another device</span></button>
-    <button class="menu-item" data-action="toggle-sounds" role="menuitem"><svg class="i"><use href="#i-volume"/></svg><span data-i18n="menu.sounds">Sounds</span></button>
-    <button class="menu-item" data-action="show-help" role="menuitem"><svg class="i"><use href="#i-keyboard"/></svg><span data-i18n="menu.shortcuts">Keyboard shortcuts</span></button>
-    <button class="menu-item" data-action="open-settings" role="menuitem"><svg class="i"><use href="#i-settings"/></svg><span data-i18n="menu.settings">Settings</span></button>
-    <button class="menu-item" data-action="kakao-import" role="menuitem"><svg class="i"><use href="#i-download"/></svg><span data-i18n="menu.kakaoImport">Import a KakaoTalk export</span></button>
+    <div class="menu-me" id="menu-me"></div>
     <div class="menu-sep"></div>
-    <button class="menu-item menu-danger" data-action="wipe" role="menuitem"><svg class="i"><use href="#i-trash"/></svg><span data-i18n="menu.wipe">Sign out and delete keys</span></button>
+    <button class="menu-item" data-action="open-settings" role="menuitem" data-i18n="menu.settings">Settings</button>
+    <button class="menu-item" data-action="show-help" role="menuitem" data-i18n="menu.shortcuts">Keyboard shortcuts</button>
+    <button class="menu-item" data-action="transfer-start" role="menuitem" data-i18n="menu.transferStart">Move to another device…</button>
+    <button class="menu-item" data-action="kakao-import" role="menuitem" data-i18n="menu.kakaoImport">Import from KakaoTalk…</button>
+    <div class="menu-sep"></div>
+    <button class="menu-item menu-danger" data-action="wipe" role="menuitem" data-i18n="menu.wipe">Sign out…</button>
   </div>
 </div>
 
@@ -203,34 +186,38 @@
      authenticated session. -->
 <div class="dialog-backdrop hidden" id="transfer-old-dialog" role="presentation">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="transfer-old-title">
-    <div class="dialog-title" id="transfer-old-title">Move this account to another device</div>
-    <div class="dialog-sub">
-      Paste this code on the new device within 5 minutes. Approving signs this
-      device out of the account for good.
-    </div>
-    <textarea id="transfer-old-token" class="code-field" readonly rows="3" aria-label="Transfer code"></textarea>
-    <div class="dialog-status" id="transfer-old-status" role="status">Waiting…</div>
+    <div class="dialog-title" id="transfer-old-title" data-i18n="transfer.old.title">Move to another device</div>
+    <ol class="steps">
+      <li data-i18n="transfer.old.step1">1. On the new device, open Veil and choose Move from another device.</li>
+      <li data-i18n="transfer.old.step2">2. Paste this code there.</li>
+      <li data-i18n="transfer.old.step3">3. Check the fingerprint, then approve here.</li>
+    </ol>
+    <input id="transfer-old-token" class="code-field code-line" type="text" readonly aria-label="Transfer code" data-i18n-aria-label="transfer.code" spellcheck="false" />
+    <button class="btn btn-primary btn-block" id="transfer-old-copy"><svg class="i"><use href="#i-copy"/></svg><span data-i18n="transfer.old.copy">Copy code</span></button>
+    <div class="dialog-status" id="transfer-old-status" role="status"></div>
     <div id="transfer-old-claim" class="fingerprint-box hidden">
-      <div class="fingerprint-label">The new device is ready</div>
+      <div class="fingerprint-label" data-i18n="transfer.old.ready">The new device is ready</div>
       <div id="transfer-old-fingerprint" class="fingerprint"></div>
-      <div class="fingerprint-hint">Check that it matches the fingerprint on the new device, then approve.</div>
+      <div class="fingerprint-hint" data-i18n="transfer.old.fingerprintHint">Check that the new device shows the same fingerprint.</div>
     </div>
     <div class="dialog-actions">
-      <button class="btn btn-ghost" id="transfer-old-cancel">Cancel</button>
-      <button class="btn btn-primary hidden" id="transfer-old-approve">Approve and sign out this device</button>
+      <button class="btn btn-ghost" id="transfer-old-cancel" data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn-primary hidden" id="transfer-old-approve" data-i18n="transfer.old.approve">Approve</button>
     </div>
   </div>
 </div>
 
-<!-- Confirm dialog (destructive actions: wipe, logout). Lives at body root so
-     it works on both the auth screen and the main app. -->
+<!-- Confirm dialog (destructive actions: remove, sign out). Lives at body
+     root so it works on both the auth screen and the main app. The middle
+     button offers a safe alternative when a caller gives one. -->
 <div class="dialog-backdrop hidden" id="confirm-dialog" role="presentation">
   <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body">
-    <div class="dialog-title" id="confirm-title">Confirm</div>
+    <div class="dialog-title" id="confirm-title"></div>
     <div class="dialog-sub" id="confirm-body"></div>
     <div class="dialog-actions">
-      <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
-      <button class="btn btn-primary" id="confirm-ok">OK</button>
+      <button class="btn btn-ghost" id="confirm-cancel" data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn-ghost hidden" id="confirm-alt"></button>
+      <button class="btn btn-primary" id="confirm-ok"></button>
     </div>
   </div>
 </div>
@@ -239,23 +226,23 @@
      the auth screen (where #app is hidden). -->
 <div class="dialog-backdrop hidden" id="transfer-new-dialog" role="presentation">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="transfer-new-title">
-    <div class="dialog-title" id="transfer-new-title">Move from another device</div>
-    <div class="dialog-sub">Paste the code from your old device.</div>
+    <div class="dialog-title" id="transfer-new-title" data-i18n="auth.transfer.fromExisting">Move from another device</div>
+    <div class="dialog-sub" data-i18n="transfer.new.sub">Paste the code from your old device.</div>
     <label class="field">
-      <span class="field-label">Name for this device</span>
+      <span class="field-label" data-i18n="transfer.new.nameLabel">Device name</span>
       <input id="transfer-new-name" type="text" placeholder="Veil Web" maxlength="40" />
     </label>
-    <textarea id="transfer-new-token" class="code-field" rows="3" placeholder="Paste the code from the old device here" aria-label="Transfer code"></textarea>
+    <textarea id="transfer-new-token" class="code-field" rows="3" placeholder="Paste code" aria-label="Transfer code" data-i18n-placeholder="transfer.new.placeholder" data-i18n-aria-label="transfer.code"></textarea>
     <div id="transfer-new-fingerprint" class="fingerprint-box hidden">
-      <div class="fingerprint-label">This device's fingerprint</div>
+      <div class="fingerprint-label" data-i18n="transfer.new.fingerprintLabel">This device's fingerprint</div>
       <div id="transfer-new-fingerprint-text" class="fingerprint"></div>
-      <div class="fingerprint-hint">Check that it matches the fingerprint on the old device, then approve there.</div>
+      <div class="fingerprint-hint" data-i18n="transfer.new.fingerprintHint">Check that your old device shows the same, then approve there.</div>
     </div>
     <div class="dialog-error" id="transfer-new-error" role="alert" aria-live="polite"></div>
     <div class="dialog-status" id="transfer-new-status" role="status"></div>
     <div class="dialog-actions">
-      <button class="btn btn-ghost" id="transfer-new-cancel">Cancel</button>
-      <button class="btn btn-primary" id="transfer-new-claim">Use code</button>
+      <button class="btn btn-ghost" id="transfer-new-cancel" data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn-primary" id="transfer-new-claim" data-i18n="transfer.new.continue">Continue</button>
     </div>
   </div>
 </div>

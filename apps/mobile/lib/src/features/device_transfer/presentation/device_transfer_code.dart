@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
+import '../data/device_transfer_controller.dart' show transferCodePrefix;
 
 /// The two parts of a transfer code: the session the old device opened and
 /// the token that claims it.
@@ -11,19 +12,25 @@ class ParsedTransferCode {
   final String transferToken;
 }
 
-/// Reads a transfer code as the old device shows it
-/// (`VEIL_TRANSFER::<session>::<token>`), or as two lines starting with
-/// "session" and "token"; null for anything else.
+/// The code as the old phone's box shows it: `<session>::<token>`, without
+/// [transferCodePrefix], which means nothing to the person reading it.
+/// "Copy code" still copies the whole code.
+String transferCodeForDisplay(String code) =>
+    code.startsWith(transferCodePrefix) ? code.substring(transferCodePrefix.length) : code;
+
+/// Reads a transfer code as the old device copies it
+/// (`VEIL_TRANSFER::<session>::<token>`), as its box shows it
+/// (`<session>::<token>`), or as two lines starting with "session" and
+/// "token"; null for anything else.
 ParsedTransferCode? parseTransferCode(String raw) {
   if (raw.isEmpty) {
     return null;
   }
 
-  if (raw.startsWith('VEIL_TRANSFER::')) {
-    final parts = raw.split('::');
-    if (parts.length == 3) {
-      return ParsedTransferCode(sessionId: parts[1], transferToken: parts[2]);
-    }
+  final bare = transferCodeForDisplay(raw);
+  final parts = bare.split('::');
+  if (parts.length == 2 && parts.every((part) => part.isNotEmpty && !part.contains(RegExp(r'\s')))) {
+    return ParsedTransferCode(sessionId: parts[0], transferToken: parts[1]);
   }
 
   final lines = raw.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();

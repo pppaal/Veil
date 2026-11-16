@@ -33,7 +33,7 @@ export function createNotifications({ store, preferences, peerOf }) {
       if (document.visibilityState === 'visible') return;
       if (!('Notification' in window)) return;
       if (Notification.permission !== 'granted') return;
-      if (store.state.muted.has(message.conversationId)) return;
+      if (store.isMuted(message.conversationId)) return;
       const content = buildNotification({
         level: preferences.notificationLevel(),
         senderHandle: peerOf(message.conversationId)?.handle,

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -286,7 +287,6 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         showVeilToast(
           context,
           AppLocalizations.of(context).safetyNumbersChangeReplaced,
-          tone: VeilTone.warn,
         );
       }
     } finally {
@@ -305,6 +305,15 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     );
     if (compared != true || !mounted) return;
     await _acceptChange(data.pendingChange!, reverified: true);
+  }
+
+  // The code the contact pastes on their phone to compare both identities in
+  // one step: what the QR code held, as text, since no app here scans one.
+  Future<void> _copyMyCode(SafetyDetailData data, String remoteKey) async {
+    final copied = AppLocalizations.of(context).safetyNumbersCodeCopied;
+    await Clipboard.setData(ClipboardData(text: _qrPayload(data, remoteKey)));
+    if (!mounted) return;
+    showVeilToast(context, copied);
   }
 
   Future<void> _compareScannedCode(SafetyDetailData data) async {
@@ -331,9 +340,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         VeilHaptics.medium();
         setState(() => _scanMismatch = true);
       case SafetyQrVerification.unsupportedVersion:
-        showVeilToast(context, l10n.safetyNumbersScanUnsupported, tone: VeilTone.warn);
+        showVeilToast(context, l10n.safetyNumbersScanUnsupported);
       case SafetyQrVerification.malformed:
-        showVeilToast(context, l10n.safetyNumbersScanInvalid, tone: VeilTone.warn);
+        showVeilToast(context, l10n.safetyNumbersScanInvalid);
     }
   }
 
@@ -361,7 +370,6 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       showVeilToast(
         context,
         AppLocalizations.of(context).safetyNumbersRotationFailed,
-        tone: VeilTone.warn,
       );
     } finally {
       if (mounted) setState(() => _renewing = false);
@@ -405,10 +413,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   // The error itself is for a log, not for the user: it names internals.
   Widget _buildErrorBody(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return VeilEmptyState.error(
+    return VeilEmptyState(
       key: SafetyNumbersScreen.errorKey,
       title: l10n.safetyNumbersErrorTitle,
-      body: l10n.safetyNumbersErrorBody,
       action: VeilButton(
         label: l10n.safetyNumbersRetry,
         tone: VeilButtonTone.secondary,
@@ -418,26 +425,24 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     );
   }
 
-  // A row per member, their state as a word; how to compare is the footer.
+  // A row per member; only the verified ones are labelled, as Signal labels
+  // only the positive state in a list. No footer.
   Widget _buildGroupList(BuildContext context, SafetyGroupListData data) {
     final l10n = AppLocalizations.of(context);
     if (data.members.isEmpty) {
-      return VeilEmptyState(title: l10n.safetyNumbersNoMembersTitle, body: l10n.safetyNumbersNoMembersBody);
+      return VeilEmptyState(title: l10n.safetyNumbersNoMembersTitle);
     }
     return ListView(
       children: [
         VeilGroup(
           inset: 68,
-          footer: l10n.safetyNumbersGroupBody,
           children: [
             for (final member in data.members)
               VeilRow(
                 leading: VeilAvatar(name: member.title, seed: member.handle),
                 title: member.title,
                 subtitle: '@${member.handle}',
-                status: data.verifiedUserIds.contains(member.userId)
-                    ? (l10n.safetyNumbersVerified, VeilTone.good)
-                    : (l10n.safetyNumbersUnverified, VeilTone.info),
+                trailing: data.verifiedUserIds.contains(member.userId) ? const SafetyVerifiedMark(chevron: true) : null,
                 onTap: () => _openAndReload(_memberLocation(widget.conversationId, member.userId)),
               ),
           ],
@@ -446,10 +451,10 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     );
   }
 
-  // Content first: a change of the peer's identity is announced before
-  // anything else; then who the number is about and whether they are
-  // verified, the number to compare with how to compare it, and the action
-  // on it. The code to scan and the rest follow.
+  // Content first, as Signal's: a change of the peer's identity is announced
+  // before anything else; then who the number is about and whether they are
+  // verified, the number with one sentence on comparing it, the one action
+  // on it, and the codes to copy and paste as two quiet buttons.
   Widget _buildDetail(BuildContext context, SafetyDetailData data) {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
@@ -469,12 +474,13 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     const gap = SizedBox(height: VeilSpace.md);
     const section = SizedBox(height: VeilSpace.xl);
     final muted = theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted);
-    final howTo = Text(l10n.safetyNumbersDetailBody, style: muted);
-    final scan = VeilButton(
-      label: l10n.safetyNumbersScanAction,
-      tone: change == null ? VeilButtonTone.secondary : VeilButtonTone.ghost,
-      onPressed: _scanMismatch ? null : () => _compareScannedCode(data),
-    );
+    final howTo = Text(l10n.safetyNumbersDetailBody(data.peer.title), style: muted);
+    // The code to copy goes with the number on screen: the new one while a
+    // change waits.
+    Widget codes(String remoteKey) => SafetyCodeButtons(
+          onCopy: () => _copyMyCode(data, remoteKey),
+          onPaste: _scanMismatch ? null : () => _compareScannedCode(data),
+        );
 
     return ListView(
       padding: VeilShell.formPadding,
@@ -490,7 +496,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             tone: VeilTone.warn,
             margin: EdgeInsets.zero,
             title: l10n.safetyNumbersChangedElsewhereTitle,
-            message: l10n.safetyNumbersChangedElsewhereBody(data.peer.title),
+            message: l10n.safetyNumbersChangedElsewhereBody,
             actionLabel: l10n.safetyNumbersReviewChange,
             onAction: () => _openAndReload(_changeLocation(elsewhere)),
           ),
@@ -532,7 +538,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         ],
         if (change != null) ...[
           section,
-          ..._pendingChangeSection(context, data, change, scan: scan, howTo: howTo),
+          ..._pendingChangeSection(context, data, change, codes: codes(change.presentedKey), howTo: howTo),
         ] else if (elsewhere != null) ...[
           if (pin != null) ...[
             section,
@@ -545,23 +551,22 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           // How to compare, under the number it is about and above the
           // button that says it was done.
           howTo,
+          if (verified) ...[
+            const SizedBox(height: VeilSpace.xs),
+            Text(l10n.safetyNumbersVerifiedOn(_formatDate(pin.verifiedAt!, l10n)), style: muted),
+          ],
           section,
-          if (verified)
-            Text(
-              l10n.safetyNumbersVerifiedOn(_formatDate(pin.verifiedAt!, l10n)),
-              style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
-            )
-          else
+          if (!verified) ...[
             VeilButton(
               label: l10n.safetyNumbersMarkVerified,
               onPressed: _scanMismatch ? null : () => _markVerified(data),
             ),
-          const SizedBox(height: VeilSpace.xs),
-          scan,
-          section,
-          SafetyQrCard(content: _qrPayload(data, pin.identityKey)),
+            const SizedBox(height: VeilSpace.xs),
+          ],
+          codes(pin.identityKey),
         ],
-        if (data.isDirect) ...[
+        // Only with a number: before any pin there is no session to renew.
+        if (data.isDirect && pin != null) ...[
           section,
           VeilButton(
             label: _renewing ? l10n.safetyNumbersRotating : l10n.safetyNumbersRotateButton,
@@ -575,14 +580,14 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
 
   // The identity this conversation is held back on: its number, which the
   // user compares before accepting it, and the decision right under it. A
-  // verified contact is accepted only through a matching scanned code or an
+  // verified contact is accepted only through a matching pasted code or an
   // explicit affirmation that the new number was compared, never with a
-  // single tap. The pinned number follows for reference.
+  // single tap.
   List<Widget> _pendingChangeSection(
     BuildContext context,
     SafetyDetailData data,
     PendingIdentityChange change, {
-    required Widget scan,
+    required Widget codes,
     required Widget howTo,
   }) {
     final l10n = AppLocalizations.of(context);
@@ -616,15 +621,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         ),
       ],
       const SizedBox(height: VeilSpace.xs),
-      scan,
-      const SizedBox(height: VeilSpace.xl),
-      // The peer compares against the new key, so the code to show is the
+      // The peer compares against the new key, so the code to copy is the
       // one that goes with the new number.
-      SafetyQrCard(content: _qrPayload(data, change.presentedKey)),
-      if (data.pin != null) ...[
-        const SizedBox(height: VeilSpace.xl),
-        SafetyNumberCard(groups: formatSafetyNumber(data.number!), header: l10n.safetyNumbersCurrentNumberHeader),
-      ],
+      codes,
     ];
   }
 
@@ -661,4 +660,4 @@ Future<String> _safetyNumberOffThread(String localUserId, List<int> localKey, St
         ));
 
 String _formatDate(DateTime value, AppLocalizations l10n) =>
-    DateFormat.yMMMMd(l10n.localeName).format(value.toLocal());
+    DateFormat.yMMMd(l10n.localeName).format(value.toLocal());

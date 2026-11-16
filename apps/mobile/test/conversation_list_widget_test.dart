@@ -152,7 +152,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('Messages'), findsOneWidget);
+    // Nothing on this phone matched: the list says so in one line, and the
+    // open chat stays beside it.
+    expect(find.text('No results for "orbit"'), findsOneWidget);
+    expect(find.text('Messages'), findsNothing);
     expect(find.textContaining('Orbit relay window'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -205,7 +208,7 @@ void main() {
     expect(find.text('DIRECT CONVERSATIONS'), findsNothing);
   });
 
-  testWidgets('the Chats bar names the connection only while there is none', (tester) async {
+  testWidgets('the Chats bar is titled by the connection only while there is none', (tester) async {
     final realtime = _HeldRealtimeService();
     final controller = _buildController(
       adapter: createDefaultCryptoAdapter(),
@@ -242,11 +245,13 @@ void main() {
     // The bar is the shell's PreferredSize; nothing else on this page says
     // either word.
     Finder inBar(String text) => find.descendant(of: find.byType(PreferredSize), matching: find.text(text));
-    expect(inBar(l10n.navChats), findsOneWidget);
+    // The title says it in place of "Chats", as Telegram's does.
+    expect(inBar(l10n.navChats), findsNothing);
     expect(inBar(l10n.conversationsBarConnecting), findsOneWidget, reason: 'no live link yet');
 
     realtime.setConnected(true);
     await tester.pumpAndSettle();
+    expect(inBar(l10n.navChats), findsOneWidget);
     expect(inBar(l10n.conversationsBarConnecting), findsNothing, reason: 'a live link says nothing');
     expect(inBar(l10n.conversationsBarOffline), findsNothing);
 
@@ -344,9 +349,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Meet at the north gate'), findsOneWidget);
-    // Only text is previewed; other kinds keep their generic label.
-    expect(find.text('Screenshot taken'), findsNothing);
-    expect(find.text('Security notice'), findsOneWidget);
+    // A system line is previewed by its own words, as the chat shows it.
+    expect(find.text('Screenshot taken'), findsOneWidget);
+    expect(find.text('Security notice'), findsNothing);
   });
 
   group('a disappearing last message on a device whose clock runs 15 minutes fast', () {

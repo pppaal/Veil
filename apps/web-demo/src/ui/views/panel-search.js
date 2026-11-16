@@ -3,6 +3,7 @@
 // Each conversation keeps its own search (open, query, position) while the
 // session lasts.
 
+import { t } from '../../../i18n/i18n.js';
 import { highlightRuns, searchMatches, stepMatch } from '../../domain/search.js';
 import { el, iconButton } from '../dom.js';
 
@@ -54,7 +55,7 @@ export function createPanelSearch({ store }) {
         return true;
       };
 
-      const input = el('input', { type: 'text', placeholder: 'Find in chat…', 'aria-label': 'Search messages' });
+      const input = el('input', { type: 'text', placeholder: t('chat.searchPlaceholder'), 'aria-label': t('chat.searchPlaceholder') });
       input.value = search.query;
       input.addEventListener('input', () => {
         search.query = input.value;
@@ -77,10 +78,10 @@ export function createPanelSearch({ store }) {
       });
       return el('div', { class: 'panel-search', role: 'search' }, [
         input,
-        el('span', { class: 'count' }, [total > 0 ? `${search.idx + 1}/${total}` : (query ? '0/0' : '')]),
-        iconButton('chevron-up', 'Previous match', { title: 'Previous match (Shift+Enter)', onclick: () => step(true) }),
-        iconButton('chevron-down', 'Next match', { title: 'Next match (Enter)', onclick: () => step(false) }),
-        iconButton('close', 'Close search', { title: 'Close (Esc)', onclick: () => close(convId) }),
+        el('span', { class: 'count' }, [total > 0 ? t('chat.searchPosition', { index: search.idx + 1, count: total }) : (query ? t('chat.searchNoResults') : '')]),
+        iconButton('chevron-up', t('chat.searchPrevious'), { onclick: () => step(true) }),
+        iconButton('chevron-down', t('chat.searchNext'), { onclick: () => step(false) }),
+        iconButton('close', t('chat.searchClose'), { onclick: () => close(convId) }),
       ]);
     },
 

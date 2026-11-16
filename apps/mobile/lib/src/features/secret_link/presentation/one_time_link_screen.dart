@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
@@ -11,8 +10,8 @@ import '../data/one_time_link_service.dart';
 
 /// Compose a one-time secret link: type a secret, encrypt on-device, store
 /// only the ciphertext, and share the resulting burn-after-read link. The
-/// form comes first, with what the link does under it; the link that was
-/// made follows, and last what such a link does not protect.
+/// form, with the one rule of such a link under it, then the button; the
+/// link that was made follows.
 class OneTimeLinkScreen extends StatefulWidget {
   const OneTimeLinkScreen({super.key, OneTimeLinkService? service}) : _service = service;
 
@@ -89,13 +88,13 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.only(bottom: VeilSpace.xxl),
         children: [
+          const SizedBox(height: VeilSpace.md),
           VeilGroup(
-            header: l10n.oneTimeLinkSecretLabel,
             footer: l10n.oneTimeLinkFooter,
             children: [
               VeilRow.field(
-                // The group's header names the field on screen; a screen
-                // reader hears it on the field itself.
+                // The hint names the field on screen; a screen reader hears
+                // its name on the field itself.
                 field: Semantics(
                   label: l10n.oneTimeLinkSecretLabel,
                   child: TextField(
@@ -109,7 +108,6 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
               ),
               VeilRow(
                 title: l10n.oneTimeLinkUsePassphrase,
-                subtitle: l10n.oneTimeLinkUsePassphraseCaption,
                 switchValue: _usePass,
                 onSwitch: _busy
                     ? null
@@ -155,25 +153,15 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
             const SizedBox(height: VeilSpace.lg),
             _CreatedLink(key: _resultKey, link: link),
           ],
-          // What such a link does not protect, set apart from the form: the
-          // one place it is said.
-          const SizedBox(height: VeilSpace.md),
-          VeilGroup(
-            header: l10n.oneTimeLinkLimitsLabel,
-            children: [
-              for (final limit in [l10n.oneTimeLinkLimitHolder, l10n.oneTimeLinkLimitReader, l10n.oneTimeLinkLimitRelay])
-                _Paragraph(limit),
-            ],
-          ),
         ],
       ),
     );
   }
 }
 
-/// The link that was made: its QR code, the link itself with the button
-/// that copies it, and under them when it is deleted unopened and, if it
-/// was sealed with one, the reminder to send its passphrase apart.
+/// The link that was made: the link itself and the button that copies it,
+/// and under them when it is deleted unopened and, if it was sealed with
+/// one, the reminder to send its passphrase apart.
 class _CreatedLink extends StatelessWidget {
   const _CreatedLink({super.key, required this.link});
 
@@ -192,58 +180,22 @@ class _CreatedLink extends StatelessWidget {
       footer: notes.isEmpty ? null : notes.join(' '),
       children: [
         Padding(
-          padding: const EdgeInsets.all(VeilSpace.md),
-          child: Center(
-            // A QR code is read dark on light, whatever the theme.
-            child: DecoratedBox(
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(VeilRadius.md)),
-              child: Padding(
-                padding: const EdgeInsets.all(VeilSpace.sm),
-                child: QrImageView(data: link.url, size: 180, padding: EdgeInsets.zero, backgroundColor: Colors.white),
-              ),
-            ),
+          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.sm),
+          child: SelectableText(
+            link.url,
+            style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', height: 1.4),
           ),
         ),
-        Padding(
-          padding: const EdgeInsetsDirectional.only(start: VeilSpace.md, end: VeilSpace.xxs),
-          child: Row(
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: VeilSpace.sm),
-                  child: SelectableText(
-                    link.url,
-                    style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', height: 1.4),
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: l10n.oneTimeLinkCopy,
-                icon: const Icon(Icons.copy_outlined, size: 20),
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: link.url));
-                  if (context.mounted) showVeilToast(context, l10n.oneTimeLinkCopied);
-                },
-              ),
-            ],
-          ),
+        VeilRow(
+          title: l10n.oneTimeLinkCopy,
+          leading: const Icon(Icons.copy_outlined, size: 20),
+          trailing: const SizedBox.shrink(),
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: link.url));
+            if (context.mounted) showVeilToast(context, l10n.oneTimeLinkCopied);
+          },
         ),
       ],
-    );
-  }
-}
-
-/// A sentence as a row of its own: plain body text, wrapping as it needs.
-class _Paragraph extends StatelessWidget {
-  const _Paragraph(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: 11),
-      child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
     );
   }
 }

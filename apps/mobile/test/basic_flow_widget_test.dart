@@ -10,10 +10,9 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
-import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
+import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
-import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
 
 void main() {
   testWidgets('onboarding warning keeps no-recovery copy explicit',
@@ -29,30 +28,25 @@ void main() {
     expect(find.text('Before you start'), findsOneWidget);
     expect(
       find.textContaining(
-          'If you lose this phone, you lose this account and its messages.'),
+          'If you lose the phone, your account and messages are gone for good.'),
       findsOneWidget,
     );
-    expect(find.text('I understand there is no way to recover a lost account'), findsOneWidget);
+    expect(find.text("I understand a lost account can't be recovered"), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
   });
 
   testWidgets(
-      'create account screen keeps transfer and no-restore copy visible',
+      'the handle screen creates the account and offers the move from another phone',
       (tester) async {
     await tester.pumpWidget(
       const ProviderScope(
         child: _TestApp(
-          child: CreateAccountScreen(),
+          child: ChooseHandleScreen(),
         ),
       ),
     );
 
-    await tester.scrollUntilVisible(
-      find.text('Continue'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
     expect(find.text('Move from another phone'), findsOneWidget);
   });
 
@@ -96,67 +90,6 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('Use biometrics'), findsOneWidget);
-  });
-
-  testWidgets('the devices screen shows the trusted devices of the account', (tester) async {
-    // Tall enough for the three devices at once: the list builds what is
-    // near the screen.
-    tester.view.physicalSize = const Size(800, 2000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final storage = SecureStorageService(_MemorySecureKeyValueStore());
-    final sessionController = AppSessionController(
-      storage,
-      VeilApiClient(baseUrl: 'http://localhost:3000/v1'),
-      createDefaultCryptoAdapter(),
-      cacheService: _MemoryConversationCache(),
-    );
-    sessionController.state = const AppSessionState(
-      accessToken: 'token',
-      userId: 'user-1',
-      deviceId: 'device-current',
-      handle: 'atlas',
-      displayName: 'Atlas',
-      onboardingAccepted: true,
-      locked: false,
-      initializing: false,
-    );
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          appSessionProvider.overrideWith((ref) => sessionController),
-          apiClientProvider.overrideWithValue(_FakeSettingsApiClient()),
-        ],
-        child: const _TestApp(
-          child: TrustedDevicesScreen(),
-        ),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-
-    expect(find.text('Devices'), findsOneWidget);
-    expect(find.text('Pixel Fold'), findsOneWidget);
-    expect(find.text('Old iPhone'), findsOneWidget);
-    expect(find.text('MacBook Air'), findsOneWidget);
-    // Each device says its state as a word; nothing counts what the list
-    // already shows.
-    expect(find.text('Stale'), findsOneWidget);
-    expect(find.textContaining('·'), findsNothing);
-    expect(find.text('This device'), findsOneWidget);
-    expect(find.text('Revoked'), findsOneWidget);
-    expect(find.text('Revoke'), findsOneWidget);
-    // One line on when a device was last seen. The server keeps only the
-    // UTC day of device activity: it is shown as that day, a bare date with
-    // no time of day that never happened and no time zone after it.
-    expect(find.text('Last seen Apr 1'), findsOneWidget);
-    expect(find.text('Revoked Apr 1'), findsOneWidget);
-    expect(find.text('Approved by Pixel Fold'), findsOneWidget);
-    expect(find.textContaining('UTC'), findsNothing);
-    expect(find.textContaining(RegExp(r'\d\d:\d\d')), findsNothing);
-    // Synced and active said again what last seen says.
-    expect(find.textContaining(RegExp(r'^Last (synced|active)')), findsNothing);
   });
 }
 
@@ -273,71 +206,4 @@ class _MemoryConversationCache implements ConversationCacheService {
 
   @override
   Future<void> upsertPendingMessage(PendingMessageRecord pending) async {}
-}
-
-class _FakeSettingsApiClient extends VeilApiClient {
-  _FakeSettingsApiClient() : super(baseUrl: 'http://localhost:3000/v1');
-
-  @override
-  Future<Map<String, dynamic>> listDevices(String accessToken) async {
-    return {
-      'activeDeviceId': 'device-current',
-      'items': [
-        {
-          'id': 'device-current',
-          'deviceName': 'Pixel Fold',
-          'platform': 'android',
-          'isActive': true,
-          'trustState': 'current',
-          'revokedAt': null,
-          'trustedAt': DateTime.utc(2026, 4, 1, 8, 0, 0).toIso8601String(),
-          'joinedFromDeviceId': null,
-          'joinedFromDeviceName': null,
-          'joinedFromPlatform': null,
-          'createdAt': DateTime.utc(2026, 4, 1, 8, 0, 0).toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 2).toIso8601String(),
-          'lastSyncAt': DateTime.utc(2026, 4, 2).toIso8601String(),
-          'lastTrustedActivityAt':
-              DateTime.utc(2026, 4, 2).toIso8601String(),
-        },
-        {
-          'id': 'device-old',
-          'deviceName': 'Old iPhone',
-          'platform': 'ios',
-          'isActive': false,
-          'trustState': 'revoked',
-          // Noon UTC: the revoked day is shown in the phone's local time,
-          // and noon is Apr 1 from UTC-12 to UTC+11, so the expectation
-          // below holds wherever the suite runs.
-          'revokedAt': DateTime.utc(2026, 4, 1, 12, 0, 0).toIso8601String(),
-          'trustedAt': DateTime.utc(2026, 3, 10, 8, 0, 0).toIso8601String(),
-          'joinedFromDeviceId': null,
-          'joinedFromDeviceName': null,
-          'joinedFromPlatform': null,
-          'createdAt': DateTime.utc(2026, 3, 10, 8, 0, 0).toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 1).toIso8601String(),
-          'lastSyncAt': null,
-          'lastTrustedActivityAt':
-              DateTime.utc(2026, 4, 1).toIso8601String(),
-        },
-        {
-          'id': 'device-laptop',
-          'deviceName': 'MacBook Air',
-          'platform': 'macos',
-          'isActive': true,
-          'trustState': 'stale',
-          'revokedAt': null,
-          'trustedAt': DateTime.utc(2026, 3, 20, 8, 0, 0).toIso8601String(),
-          'joinedFromDeviceId': 'device-current',
-          'joinedFromDeviceName': 'Pixel Fold',
-          'joinedFromPlatform': 'android',
-          'createdAt': DateTime.utc(2026, 3, 20, 8, 0, 0).toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 1).toIso8601String(),
-          'lastSyncAt': DateTime.utc(2026, 3, 30).toIso8601String(),
-          'lastTrustedActivityAt':
-              DateTime.utc(2026, 4, 1).toIso8601String(),
-        },
-      ],
-    };
-  }
 }

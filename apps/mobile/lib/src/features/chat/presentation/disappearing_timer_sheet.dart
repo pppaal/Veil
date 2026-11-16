@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import 'chat_room_labels.dart';
 
 class _TtlOption {
   const _TtlOption({required this.label, required this.duration});
@@ -18,6 +19,7 @@ List<_TtlOption> _ttlOptions(AppLocalizations l10n) => <_TtlOption>[
       _TtlOption(label: l10n.chatTtl5m, duration: const Duration(minutes: 5)),
       _TtlOption(label: l10n.chatTtl1h, duration: const Duration(hours: 1)),
       _TtlOption(label: l10n.chatTtl1d, duration: const Duration(days: 1)),
+      _TtlOption(label: l10n.chatTtl1w, duration: const Duration(days: 7)),
     ];
 
 /// The label of the disappearing-message timer [current] (null is off).
@@ -26,7 +28,8 @@ String disappearingTimerLabel(AppLocalizations l10n, Duration? current) {
   for (final option in _ttlOptions(l10n)) {
     if (option.duration == current) return option.label;
   }
-  return l10n.chatTtlCustom;
+  // A timer another app set that this sheet does not offer ("2 days").
+  return formatDurationLabel(l10n, current);
 }
 
 /// Offers the disappearing-message timers, marking the one [current]
@@ -62,7 +65,7 @@ Future<({Duration? ttl})?> showDisappearingTimerSheet(
                   padding: const EdgeInsets.fromLTRB(VeilSpace.md, 0, VeilSpace.md, VeilSpace.xs),
                   child: Text(l10n.chatTtlSheetTitle, style: theme.textTheme.titleLarge),
                 ),
-                // One line under the choices says when a timer starts; no
+                // One line under the choices says what the timer does; no
                 // row repeats it in a caption of its own.
                 VeilGroup(
                   footer: l10n.chatTtlSheetFooter,

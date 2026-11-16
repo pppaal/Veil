@@ -9,28 +9,31 @@ import '../../../shared/presentation/veil_ui.dart';
 // same ones at the top of the chat's pane (see ChatPaneBar).
 
 /// Who a chat is with: their avatar, the name with the verified mark, and
-/// under it one muted line: the disappearing timer while one is set (it
-/// changes what is sent), otherwise whether they are online, their handle,
-/// or how many are in a group.
+/// under it one muted line: their handle or how many are in a group, then
+/// the disappearing timer while one is set ("@jonas · ⏱ 1 day"). While the
+/// app has no connection the line says "Connecting…" instead (Telegram).
+/// Peers never see each other online, so the line never says it.
 class ChatBarTitle extends StatelessWidget {
   const ChatBarTitle({
     super.key,
     required this.title,
     required this.detail,
     required this.verified,
-    required this.online,
     required this.timerLabel,
+    this.connecting = false,
     this.avatarSeed,
     this.group = false,
   });
 
   final String title;
 
-  /// The line under the title when the peer is not online: their handle, or
-  /// how many members a group has. Null when there is nothing to add.
+  /// The handle of a 1:1 peer, or how many members a group has. Null when
+  /// there is nothing to add.
   final String? detail;
   final bool verified;
-  final bool online;
+
+  /// Whether the app is waiting for its connection to the server.
+  final bool connecting;
 
   /// The disappearing timer in force, or null when messages stay.
   final String? timerLabel;
@@ -48,7 +51,8 @@ class ChatBarTitle extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
     final subtitleStyle = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted, height: 1.2);
-    final presence = online ? l10n.chatSubtitleOnline : detail;
+    final detail = connecting ? l10n.conversationsBarConnecting : this.detail;
+    final timerLabel = connecting ? null : this.timerLabel;
 
     final text = Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -73,25 +77,29 @@ class ChatBarTitle extends StatelessWidget {
             ],
           ],
         ),
-        if (presence != null || timerLabel != null) ...[
+        if (detail != null || timerLabel != null) ...[
           const SizedBox(height: 2),
           Row(
             children: [
-              if (timerLabel == null)
-                Flexible(child: Text(presence!, maxLines: 1, overflow: TextOverflow.ellipsis, style: subtitleStyle)),
-              if (timerLabel != null) ...[
-                Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: palette.warning),
-                const SizedBox(width: 2),
-                // The glyph says the messages disappear; the words say when,
-                // which fits a 360 px bar. A screen reader hears both.
+              if (detail != null)
                 Flexible(
                   child: Text(
-                    timerLabel!,
-                    semanticsLabel: l10n.chatTimerTooltip(timerLabel!),
+                    timerLabel == null ? detail : '$detail · ',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: subtitleStyle,
                   ),
+                ),
+              if (timerLabel != null) ...[
+                Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: palette.textMuted),
+                const SizedBox(width: 2),
+                // The glyph says the messages disappear; the words say when.
+                // A screen reader hears both.
+                Text(
+                  timerLabel,
+                  semanticsLabel: l10n.chatTimerTooltip(timerLabel),
+                  maxLines: 1,
+                  style: subtitleStyle,
                 ),
               ],
             ],
@@ -112,15 +120,16 @@ class ChatBarTitle extends StatelessWidget {
   }
 }
 
-/// One entry of a chat's menu: what it says, its glyph, and what it does.
-/// A [destructive] one is drawn in the danger colour.
+/// One entry of a chat's menu: what it says and what it does, in plain
+/// text with no glyph. A [destructive] one is drawn in the danger colour;
+/// [divided] puts a line above it.
 class ChatMenuEntry {
   const ChatMenuEntry({
     required this.key,
     required this.label,
-    required this.icon,
     required this.onSelected,
     this.destructive = false,
+    this.divided = false,
   });
 
   /// Names the entry, uniquely within a menu: 'timer', 'mute' or 'unmute',
@@ -128,15 +137,18 @@ class ChatMenuEntry {
   /// and tests find its item by the key 'chat-menu-' plus this.
   final String key;
   final String label;
-  final IconData icon;
   final VoidCallback onSelected;
   final bool destructive;
+  final bool divided;
 }
 
 /// The actions of a chat's bar, plain icon buttons: the safety number (a
 /// 1:1 opens the peer's, a group the list of its members with each one's),
 /// the search, and a menu with the rest ([menu]: the disappearing timer,
-/// notifications, reporting and blocking).
+/// notifications, reporting and blocking). Each is 44 square, the smallest
+/// tap target the app allows, not Material's 48: at 360 wide the three at
+/// 48 left a verified "Sam Rivera" cut to "Sam Rive…", where WhatsApp fits
+/// a short name beside its three.
 class ChatBarActions extends StatelessWidget {
   const ChatBarActions({
     super.key,
@@ -149,22 +161,38 @@ class ChatBarActions extends StatelessWidget {
   final VoidCallback onOpenSearch;
   final List<ChatMenuEntry> menu;
 
+  /// The size of each action.
+  static const double actionSize = 44;
+
+  static final ButtonStyle _actionStyle = IconButton.styleFrom(
+    minimumSize: const Size.square(actionSize),
+    maximumSize: const Size.square(actionSize),
+    padding: EdgeInsets.zero,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
-    final textStyle = Theme.of(context).textTheme.bodyLarge;
+    final theme = Theme.of(context);
+    final textStyle = theme.textTheme.bodyLarge;
+    // The menu is drawn in surfaceRaised, which in dark is the colour of
+    // the hairline `stroke`: the divider takes the stronger one there.
+    final dividerColor = theme.brightness == Brightness.dark ? palette.strokeStrong : palette.stroke;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
           tooltip: l10n.safetyNumbersTitle,
           onPressed: onOpenSafetyNumbers,
+          style: _actionStyle,
           icon: const Icon(Icons.verified_user_outlined),
         ),
         IconButton(
           tooltip: l10n.chatSearchTooltip,
           onPressed: onOpenSearch,
+          style: _actionStyle,
           icon: const Icon(Icons.search),
         ),
         PopupMenuButton<String>(
@@ -172,6 +200,8 @@ class ChatBarActions extends StatelessWidget {
           tooltip: l10n.chatMenuTooltip,
           position: PopupMenuPosition.under,
           color: palette.surfaceRaised,
+          style: _actionStyle,
+          padding: EdgeInsets.zero,
           icon: const Icon(Icons.more_vert_outlined),
           // The items were built when the menu opened; this runs with the
           // menu of the latest build. An entry is found by its key, so one
@@ -183,19 +213,15 @@ class ChatBarActions extends StatelessWidget {
             }
           },
           itemBuilder: (context) => [
-            for (final entry in menu)
+            for (final entry in menu) ...[
+              if (entry.divided) PopupMenuDivider(height: 1, color: dividerColor),
               PopupMenuItem<String>(
                 key: ValueKey('chat-menu-${entry.key}'),
                 value: entry.key,
                 height: 44,
-                child: Row(
-                  children: [
-                    Icon(entry.icon, size: VeilIconSize.md, color: entry.destructive ? palette.danger : palette.textMuted),
-                    const SizedBox(width: VeilSpace.sm),
-                    Text(entry.label, style: textStyle?.copyWith(color: entry.destructive ? palette.danger : null)),
-                  ],
-                ),
+                child: Text(entry.label, style: textStyle?.copyWith(color: entry.destructive ? palette.danger : null)),
               ),
+            ],
           ],
         ),
       ],

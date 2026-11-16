@@ -23,6 +23,17 @@ class ContactEntry {
   final String? avatarPath;
   final DateTime addedAt;
 
+  /// Whether there is a name to show above the handle: a nickname this
+  /// device gave them, or the name their account set.
+  bool get hasName => (nickname?.trim().isNotEmpty ?? false) || (displayName?.trim().isNotEmpty ?? false);
+
+  /// The first line of their row: the name, or with none the handle with its
+  /// "@", alone (M26: never the bare handle over the same handle again).
+  String get title => hasName ? label : '@$handle';
+
+  /// The line under it: the handle, when the first line is a name.
+  String? get handleLine => hasName ? '@$handle' : null;
+
   String get label {
     final trimmedNickname = nickname?.trim();
     if (trimmedNickname != null && trimmedNickname.isNotEmpty) {
@@ -99,6 +110,9 @@ class ContactsController extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// Whether the last failure was the server not finding the account.
+  bool get failedAsNotFound => userFacingErrorCodeOf(_errorMessage ?? '') == UserFacingErrorCode.notFound;
 
   Future<bool> addContact({required String handle, String? nickname}) async {
     final token = _accessToken;

@@ -4,17 +4,21 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_old_device_panel.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
-import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
-// The old device's three steps, and the controls of the step in hand under
-// them, in the states a screenshot run does not reach: a session that ran
-// out, what an approval came to, and a failure.
+// The old phone's half of a move, as Signal's: a start screen of three
+// plain numbered lines and "Get code"; then the code with "Copy code", how
+// long it holds, the new phone's code and "Approve". These are the states a
+// screenshot run does not reach: a session that ran out, what an approval
+// came to, and a failure.
 
 final _en = lookupAppLocalizations(const Locale('en'));
 final _now = DateTime(2026, 4, 2, 12);
 const _code = 'VEIL_TRANSFER::session-1::token-1';
+
+// What the box shows of it: no prefix, which no one reads.
+const _shown = 'session-1::token-1';
 
 // [expiresAt] null is a device that has no session open.
 Future<void> _pump(
@@ -36,7 +40,6 @@ Future<void> _pump(
     home: Scaffold(
       body: SingleChildScrollView(
         child: TransferOldDevicePanel(
-          isAuthenticated: true,
           isBusy: false,
           transferSessionId: expiresAt == null ? null : 'session-1',
           transferCode: expiresAt == null ? null : _code,
@@ -48,89 +51,85 @@ Future<void> _pump(
           onIssue: () {},
           onApprove: () {},
           onCopyCode: () {},
-          onClear: () {},
           now: _now,
-          stepsFooter: _en.deviceTransferOldPhoneNeeded,
         ),
       ),
     ),
   ));
 }
 
-List<StepRow> _steps(WidgetTester tester) => tester.widgetList<StepRow>(find.byType(StepRow)).toList();
-
-// The step [finder]'s words stand in.
-int _stepOf(WidgetTester tester, Finder finder) =>
-    tester.widget<StepRow>(find.ancestor(of: finder, matching: find.byType(StepRow))).number;
-
-// Whether [finder]'s widget is one of the controls under the steps.
-bool _underTheSteps(WidgetTester tester, Finder finder) =>
-    find.ancestor(of: finder, matching: find.byType(StepRow)).evaluate().isEmpty &&
-    tester.getRect(finder).top >= tester.getRect(find.byType(StepRow).last).bottom;
+final _steps = [_en.deviceTransferOldStep1, _en.deviceTransferOldStep2, _en.deviceTransferOldStep3];
 
 void main() {
-  testWidgets('a session that ran out hides its code and asks for a new one with the first step', (tester) async {
+  testWidgets('before a code: three plain numbered lines, then "Get code"', (tester) async {
+    await _pump(tester, status: null, expiresAt: null);
+
+    final issue = find.widgetWithText(FilledButton, _en.deviceTransferIssueToken);
+    for (final (index, line) in _steps.indexed) {
+      expect(find.text(line), findsOneWidget);
+      expect(line, startsWith('${index + 1}. '));
+      expect(tester.getRect(find.text(line)).bottom, lessThanOrEqualTo(tester.getRect(issue).top));
+    }
+    // Text, not a stepper: no check marks, no circles.
+    expect(find.byIcon(Icons.check), findsNothing);
+    expect(tester.widget<FilledButton>(issue).onPressed, isNotNull);
+    expect(find.text(_en.deviceTransferOldIssueExpiredBody), findsNothing);
+  });
+
+  testWidgets('a session that ran out hides its code and asks for a new one on the start screen', (tester) async {
     await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.subtract(const Duration(minutes: 1)));
 
-    expect([for (final step in _steps(tester)) step.state],
-        [StepRowState.current, StepRowState.upcoming, StepRowState.upcoming]);
-    // Said in the first step, with the button for a new code under the steps.
     final issue = find.widgetWithText(FilledButton, _en.deviceTransferIssueToken);
-    expect(_stepOf(tester, find.text(_en.deviceTransferOldIssueExpiredBody)), 1);
-    expect(_stepOf(tester, find.text(_en.deviceTransferStatusExpired)), 1);
-    expect(_underTheSteps(tester, issue), isTrue);
+    final expired = find.text(_en.deviceTransferOldIssueExpiredBody);
+    expect(expired, findsOneWidget);
+    expect(tester.getRect(expired).bottom, lessThanOrEqualTo(tester.getRect(issue).top));
     expect(tester.widget<FilledButton>(issue).onPressed, isNotNull);
     // A code nobody can use is not offered for copying, and nothing is
     // approved against it.
-    expect(find.text(_code), findsNothing);
+    expect(find.text(_shown), findsNothing);
     expect(find.byType(SelectableText), findsNothing);
-    expect(find.byTooltip(_en.deviceTransferCopyPayload), findsNothing);
+    expect(find.text(_en.deviceTransferCopyPayload), findsNothing);
     expect(find.byType(TextField), findsNothing);
     expect(find.text(_en.deviceTransferApproveClaim), findsNothing);
-    expect(find.text(_en.deviceTransferStatusTokenReady), findsNothing, reason: 'it is not ready any more');
-    // That the old phone is needed is said once, under the steps.
-    expect(find.text(_en.deviceTransferOldPhoneNeeded), findsOneWidget);
   });
 
-  testWidgets('a live session says in the first step that its code is ready, and shows it under the steps',
+  testWidgets('a live session: the code, "Copy code" under it, how long it holds, then the new phone\'s code and Approve',
       (tester) async {
     await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.add(const Duration(minutes: 4)));
 
-    // One step is in hand: handing the code over, until the new phone's
-    // code is typed in.
-    expect([for (final step in _steps(tester)) step.state],
-        [StepRowState.done, StepRowState.current, StepRowState.upcoming]);
-    expect(_stepOf(tester, find.text(_en.deviceTransferStatusTokenReady)), 1);
-    final code = find.text(_code);
-    expect(_underTheSteps(tester, code), isTrue);
-    final copy = find.byTooltip(_en.deviceTransferCopyPayload);
-    expect(copy, findsOneWidget);
-    expect(tester.getSize(copy).height, greaterThanOrEqualTo(44));
-    expect(find.widgetWithText(FilledButton, _en.deviceTransferIssueToken), findsNothing);
-    expect(find.text(_en.deviceTransferStatusExpired), findsNothing);
-    // The claim field, then what approving leads to, then the button.
+    final heading = find.text(_en.deviceTransferOldHandTitle);
+    final code = find.text(_shown);
+    final copy = find.widgetWithText(OutlinedButton, _en.deviceTransferCopyPayload);
+    final expiry = find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryInMinutes(4)));
     final field = find.byType(TextField);
-    final consequence = find.text(_en.deviceTransferApproveFooter);
     final approve = find.widgetWithText(FilledButton, _en.deviceTransferApproveClaim);
-    expect(tester.getRect(code).bottom, lessThanOrEqualTo(tester.getRect(field).top));
-    expect(tester.getRect(field).bottom, lessThanOrEqualTo(tester.getRect(consequence).top));
-    expect(tester.getRect(consequence).bottom, lessThanOrEqualTo(tester.getRect(approve).top));
+    for (final finder in [heading, code, copy, expiry, field, approve]) {
+      expect(finder, findsOneWidget);
+    }
+    expect(tester.getSize(copy).height, greaterThanOrEqualTo(44));
+    // Top to bottom, in that order.
+    final order = [heading, code, copy, expiry, field, approve];
+    for (var i = 1; i < order.length; i++) {
+      expect(tester.getRect(order[i - 1]).bottom, lessThanOrEqualTo(tester.getRect(order[i]).top));
+    }
+    expect(tester.widget<TextField>(field).decoration!.labelText, _en.deviceTransferClaimInputLabel);
+    expect(find.widgetWithText(FilledButton, _en.deviceTransferIssueToken), findsNothing);
+    // The copied code's prefix is for the parser, not the reader.
+    expect(find.textContaining('VEIL'), findsNothing);
+    expect(find.text(_en.deviceTransferOldStep1), findsNothing, reason: 'the instructions were the start screen');
   });
 
-  testWidgets('once the new phone\'s code is typed in, approving is the step in hand', (tester) async {
-    final claim = TextEditingController();
-    await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.add(const Duration(minutes: 4)), claim: claim);
+  // A real code is longer than a phone is wide; drawn whole it wrapped into
+  // a block of machine text. "Copy code" copies the whole of it.
+  testWidgets('the code is one line that ends in "…" when it does not fit', (tester) async {
+    await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.add(const Duration(minutes: 4)), view: const Size(360, 3000));
 
-    await tester.enterText(find.byType(TextField), 'claim-7');
-    await tester.pump();
-    expect([for (final step in _steps(tester)) step.state],
-        [StepRowState.done, StepRowState.done, StepRowState.current]);
-
-    // Cleared, it is the code's turn again.
-    await tester.enterText(find.byType(TextField), '');
-    await tester.pump();
-    expect([for (final step in _steps(tester)) step.state],
-        [StepRowState.done, StepRowState.current, StepRowState.upcoming]);
+    final code = tester.widget<Text>(find.text(_shown));
+    expect(code.maxLines, 1);
+    expect(code.softWrap, isFalse);
+    expect(code.overflow, TextOverflow.ellipsis);
+    final box = tester.getSize(find.byKey(const ValueKey('transfer-code')));
+    expect(box.height, lessThan(44), reason: 'one line, whatever the code\'s length');
   });
 
   testWidgets('what an approval came to is said under the button that approves, in green', (tester) async {
@@ -140,7 +139,7 @@ void main() {
       expiresAt: _now.add(const Duration(minutes: 4)),
     );
 
-    final approved = find.text(_en.deviceTransferStatusClaimApproved('claim-7', 'AB12 CD34'));
+    final approved = find.text(_en.deviceTransferStatusClaimApproved);
     expect(approved, findsOneWidget);
     final approve = find.widgetWithText(FilledButton, _en.deviceTransferApproveClaim);
     expect(tester.getRect(approve).bottom, lessThanOrEqualTo(tester.getRect(approved).top));
@@ -148,12 +147,11 @@ void main() {
     expect(tester.widget<Text>(approved).style?.color, context.veilPalette.success);
     expect(find.byType(VeilNotice), findsNothing, reason: 'good news is a line, not a notice');
     // This phone's part is done.
-    expect([for (final step in _steps(tester)) step.state],
-        [StepRowState.done, StepRowState.done, StepRowState.done]);
+    expect(tester.widget<FilledButton>(approve).onPressed, isNull);
   });
 
-  // A failure used to stand above the first step, a screenful away from
-  // the button that was tapped.
+  // A failure used to stand above the steps, a screenful away from the
+  // button that was tapped.
   testWidgets('a failed approval is said under the button that approves', (tester) async {
     await _pump(
       tester,
@@ -174,9 +172,20 @@ void main() {
         reason: 'the last thing that happened is the failure');
   });
 
+  testWidgets('a claim waiting for approval puts no line under the button: the dialog shows it', (tester) async {
+    await _pump(
+      tester,
+      status: const TransferClaimWaiting('claim-7', 'AB12 CD34'),
+      expiresAt: _now.add(const Duration(minutes: 4)),
+    );
+    expect(find.byType(TransferStepResult), findsNothing);
+    expect(find.textContaining('AB12'), findsNothing);
+  });
+
   testWidgets('a failed approval comes into view on a phone, where the button is at the foot of the screen',
       (tester) async {
-    const phone = Size(360, 640);
+    // A phone with the keyboard up: less room than the screen holds.
+    const phone = Size(360, 300);
     final open = _now.add(const Duration(minutes: 4));
     await _pump(tester, status: const TransferTokenReady(), expiresAt: open, view: phone);
     final approve = find.widgetWithText(FilledButton, _en.deviceTransferApproveClaim);
@@ -197,107 +206,64 @@ void main() {
     expect(tester.getRect(approve).top, greaterThanOrEqualTo(0));
   });
 
-  testWidgets('a screen that opens with a result on it opens at its top', (tester) async {
-    await _pump(
-      tester,
-      status: const TransferClaimApproved('claim-7', 'AB12 CD34'),
-      expiresAt: _now.add(const Duration(minutes: 4)),
-      view: const Size(360, 640),
-    );
-    await tester.pump();
-    await tester.pump();
-
-    expect(tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels, 0);
-    expect(tester.getRect(find.byType(StepRow).first).top, 0);
-    expect(tester.getRect(find.byType(TransferStepResult)).top, greaterThan(640), reason: 'below the fold, unmoved');
-  });
-
   testWidgets('a failure to issue is said above the button that issues', (tester) async {
     await _pump(tester, status: null, expiresAt: null, errorMessage: 'The relay did not answer.');
 
     final failure = find.text('The relay did not answer.');
     expect(failure, findsOneWidget);
     expect(find.byType(VeilNotice), findsNothing, reason: 'a line, not a box');
-    expect(_underTheSteps(tester, failure), isTrue);
     final issue = find.widgetWithText(FilledButton, _en.deviceTransferIssueToken);
+    expect(tester.getRect(find.text(_en.deviceTransferOldStep3)).bottom, lessThanOrEqualTo(tester.getRect(failure).top));
     expect(tester.getRect(failure).bottom, lessThanOrEqualTo(tester.getRect(issue).top));
     expect(tester.widget<FilledButton>(issue).onPressed, isNotNull, reason: 'issuing can be tried again');
   });
 
-  testWidgets('a build with no relay says so in the first step and does not offer to issue', (tester) async {
+  testWidgets('a build with no relay says so above the button, and does not offer to issue', (tester) async {
     await _pump(tester, status: const TransferNeedsApi(), expiresAt: null);
 
-    expect(_stepOf(tester, find.text(_en.deviceTransferStatusNeedsApi)), 1);
     final issue = find.widgetWithText(FilledButton, _en.deviceTransferIssueToken);
+    final needsApi = find.text(_en.deviceTransferStatusNeedsApi);
+    expect(needsApi, findsOneWidget);
+    expect(tester.getRect(needsApi).bottom, lessThanOrEqualTo(tester.getRect(issue).top));
     expect(tester.widget<FilledButton>(issue).onPressed, isNull);
   });
 
-  group('a step', () {
-    // (The test font draws every letter as a square, so a title is far
-    // wider here than on a device; what is measured holds for any font.)
-    Future<void> pumpStep(
-      WidgetTester tester, {
-      required double width,
-      required String title,
-      required String status,
-    }) {
-      tester.view
-        ..physicalSize = Size(width, 600)
-        ..devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      return tester.pumpWidget(MaterialApp(
+  group('the approve dialog', () {
+    Future<Future<bool>> open(WidgetTester tester) async {
+      late Future<bool> result;
+      await tester.pumpWidget(MaterialApp(
         theme: VeilTheme.dark(),
-        home: Scaffold(
-          body: StepRow(
-            number: 2,
-            title: title,
-            state: StepRowState.current,
-            body: 'This device creates its own keys and sends a claim that only the old device can approve.',
-            status: status,
-            statusTone: VeilTone.danger,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => result = confirmTransferApproval(context, fingerprint: 'AB12 CD34'),
+              child: const Text('open'),
+            ),
           ),
         ),
       ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      return result;
     }
 
-    // The width the step's words were given, and the widest they could be:
-    // the row less its padding, the disc and the gap after it.
-    double given(WidgetTester tester) => tester
-        .renderObject<RenderBox>(
-          find.descendant(of: find.textContaining('This device creates'), matching: find.byType(RichText)),
-        )
-        .constraints
-        .maxWidth;
-    double whole(WidgetTester tester) =>
-        tester.getSize(find.byType(StepRow)).width - 2 * VeilSpace.md - StepRow.disc - VeilSpace.sm;
-
-    testWidgets('puts a state that does not fit beside the title under it, and its words keep the whole width',
+    testWidgets('names the key fingerprint the new phone shows and what moving does, before anything is signed',
         (tester) async {
-      await pumpStep(tester, width: 320, title: 'Register this device', status: 'Claim expired');
-      expect(tester.takeException(), isNull);
-
-      final title = tester.getRect(find.text('Register this device'));
-      final state = tester.getRect(find.text('Claim expired'));
-      final words = tester.getRect(find.textContaining('This device creates'));
-      expect(state.top, greaterThanOrEqualTo(title.bottom), reason: 'under the title');
-      expect(state.left, closeTo(title.left, 1));
-      expect(state.bottom, lessThanOrEqualTo(words.top), reason: 'above the words, not beside them');
-      expect(given(tester), closeTo(whole(tester), 2.5));
+      final result = await open(tester);
+      expect(find.text(_en.deviceTransferApproveTitle), findsOneWidget);
+      expect(find.text(_en.deviceTransferApproveBody('AB12 CD34')), findsOneWidget);
+      await tester.tap(find.text(_en.commonCancel));
+      await tester.pumpAndSettle();
+      expect(await result, isFalse);
     });
 
-    testWidgets('keeps a state that fits on the title\'s line, at its end', (tester) async {
-      await pumpStep(tester, width: 400, title: 'Issue', status: 'Expired');
-      expect(tester.takeException(), isNull);
-
-      final title = tester.getRect(find.text('Issue'));
-      final state = tester.getRect(find.text('Expired'));
-      final row = tester.getRect(find.byType(StepRow));
-      final words = tester.getRect(find.textContaining('This device creates'));
-      expect(state.center.dy, closeTo(title.center.dy, 2));
-      expect(state.left, greaterThan(title.right));
-      expect(row.right - state.right, closeTo(VeilSpace.md, 2), reason: 'at the end of the line');
-      expect(state.bottom, lessThanOrEqualTo(words.top));
-      expect(given(tester), closeTo(whole(tester), 2.5));
+    testWidgets('"Move account" is the only way to approve', (tester) async {
+      final result = await open(tester);
+      await tester.tap(find.text(_en.deviceTransferApproveAction));
+      await tester.pumpAndSettle();
+      expect(await result, isTrue);
     });
   });
 }

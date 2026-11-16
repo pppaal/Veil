@@ -1,7 +1,8 @@
-// Which conversations are open and shown: the tab strip, the split view
-// with a second panel, and the narrow layout's switch between the list and
-// a chat.
+// Which conversations are open and shown: the tab strip (app.css shows it
+// once a second chat is open), the split view with a second panel, and the
+// narrow layout's switch between the list and a chat.
 
+import { t } from '../../../i18n/i18n.js';
 import { shownHandle } from '../../domain/handles.js';
 import { $, el, icon, isNarrowLayout } from '../dom.js';
 import { toast } from '../toast.js';
@@ -40,7 +41,7 @@ export function createTabs({ store, stack, history }) {
 
   function toggleSplit() {
     if (isNarrowLayout()) {
-      toast('Split view is only available on a desktop', 'error');
+      toast(t('tabs.splitNeedsWidth'), 'error');
       return;
     }
     state.splitView = !state.splitView;
@@ -48,7 +49,7 @@ export function createTabs({ store, stack, history }) {
     $('split-btn').setAttribute('aria-pressed', String(state.splitView));
     if (state.splitView) {
       state.secondaryConv = state.openTabs.find((id) => id !== state.activeConv) || null;
-      if (!state.secondaryConv) toast('Open a second chat to use split view', 'good');
+      if (!state.secondaryConv) toast(t('tabs.splitNeedsSecond'));
     } else {
       state.secondaryConv = null;
     }
@@ -63,8 +64,8 @@ export function createTabs({ store, stack, history }) {
     if (state.secondaryConv === convId) className += ' secondary';
     const closeButton = el('span', {
       class: 'tab-close',
-      'aria-label': 'Close tab',
-      title: 'Close tab',
+      'aria-label': t('tabs.close'),
+      title: t('tabs.close'),
       role: 'button',
       onclick: (event) => {
         event.stopPropagation();
@@ -77,7 +78,7 @@ export function createTabs({ store, stack, history }) {
         activate(convId);
         store.notify('sidebar', 'tabs', 'panels');
       },
-      title: peer?.handle ? '@' + shownHandle(peer.handle) : 'Chat',
+      title: '@' + shownHandle(peer?.handle),
     }, [el('span', {}, ['@' + shownHandle(peer?.handle)]), closeButton]);
   }
 
@@ -96,13 +97,16 @@ export function createTabs({ store, stack, history }) {
       $('tab-strip').replaceChildren(...state.openTabs.map(tab));
     },
 
+    // A phone's back from a chat to the list (the chat header's back
+    // button; src/ui/views/chat-view.js).
+    backToList() {
+      state.activeConv = null;
+      $('app').classList.remove('viewing-chat');
+      store.notify('sidebar', 'panels');
+    },
+
     mount() {
       $('split-btn').addEventListener('click', toggleSplit);
-      $('back-to-list').addEventListener('click', () => {
-        state.activeConv = null;
-        $('app').classList.remove('viewing-chat');
-        store.notify('sidebar', 'panels');
-      });
     },
   };
 }

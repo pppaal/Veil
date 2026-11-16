@@ -7,6 +7,12 @@
 // Topics: 'sidebar', 'panels', 'tabs', and 'session-reset' when the signed-in
 // session's state is dropped (sign-out, rejection, wipe, transfer).
 
+import { isMutedAt } from '../domain/mute.js';
+
+// mutedConversations: convId -> when the mute ends (ms) or null, or ids
+// alone for mutes with no end (src/domain/mute.js).
+const muteMap = (muted) => (muted instanceof Map ? new Map(muted) : new Map([...muted].map((id) => [id, null])));
+
 export function createStore({ mutedConversations = [], soundsEnabled = false } = {}) {
   const state = {
     me: null, // session record: handle, userId, deviceId, identity keys (src/crypto/identity.js), tokens
@@ -17,15 +23,16 @@ export function createStore({ mutedConversations = [], soundsEnabled = false } =
     activeConv: null, // primary panel convId (or an opened Kakao archive's id)
     secondaryConv: null, // split view's right panel convId
     splitView: false,
-    online: new Set(), // userIds from presence.update
     typing: new Map(), // convId -> Map<userId, { handle, expiresAt }>
     replyDrafts: new Map(), // convId -> { id, snippet, sender } awaiting send
+    editing: new Map(), // convId -> { id, snippet } of our message being edited in the composer
     // Unsent text is plaintext: it lives in memory only, never on disk.
     drafts: new Map(), // convId -> text
     focusClaims: new Set(), // convIds whose composer takes focus on the next draw
     searches: new Map(), // convId -> { open, query, idx }
     scrollTops: new Map(), // convId -> last scrollTop of its message list
-    muted: new Set(mutedConversations),
+    muted: muteMap(mutedConversations), // convId -> end of the mute (ms) or null
+    blocked: null, // userIds this account blocked, as the server last listed them; null until it has
     archives: [], // Kakao archive sidebar rows (src/platform/persist.js kakaoArchiveMeta)
     soundsEnabled,
   };
@@ -48,6 +55,10 @@ export function createStore({ mutedConversations = [], soundsEnabled = false } =
     conversation: (convId) => state.conversations.find((conv) => conv.id === convId),
     messagesOf,
     isOnScreen: (convId) => convId === state.activeConv || convId === state.secondaryConv,
+    // Whether the conversation's notifications are off right now.
+    isMuted: (convId) => isMutedAt(state.muted, convId, Date.now()),
+    // Whether this account blocked the user, as far as this browser knows.
+    isBlocked: (userId) => Boolean(userId && state.blocked?.has(userId)),
 
     // A message of a conversation, from its loaded list or as its last message.
     findMessage(convId, messageId) {
@@ -86,11 +97,12 @@ export function createStore({ mutedConversations = [], soundsEnabled = false } =
       state.openTabs = [];
       state.splitView = false;
       state.replyDrafts.clear();
+      state.editing.clear();
       state.drafts.clear();
       state.searches.clear();
       state.scrollTops.clear();
-      state.online.clear();
       state.typing.clear();
+      state.blocked = null;
     },
   };
 }

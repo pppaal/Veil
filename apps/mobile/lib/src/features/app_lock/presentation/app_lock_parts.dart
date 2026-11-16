@@ -1,3 +1,6 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/security/app_lock_service.dart';
 import '../../../l10n/generated/app_localizations.dart';
 
 // What the lock screen says about itself: the outcome of the last attempt
@@ -48,4 +51,55 @@ String formatAppLockRetry(AppLocalizations l10n, Duration? remaining) {
   if (seconds <= 0) return l10n.appLockRetryNow;
   if (seconds < 60) return l10n.appLockRetrySeconds(seconds);
   return l10n.appLockRetryMinutes((seconds / 60).ceil());
+}
+
+/// The button that unlocks with the phone's biometrics, named after the
+/// method it has ("Use Face ID").
+String biometricUnlockLabel(AppLocalizations l10n, BiometricKind kind) => switch (kind) {
+      BiometricKind.faceId => l10n.appLockUseFaceId,
+      BiometricKind.touchId => l10n.appLockUseTouchId,
+      BiometricKind.fingerprint => l10n.appLockUseFingerprint,
+      BiometricKind.unknown => l10n.appLockUseBiometrics,
+    };
+
+/// A PIN field of the lock screen and of its setup: digits, obscured, no
+/// suggestions, no selection. With [underline] (the lock screen) it is a
+/// line under the digits, with no box, as Signal's PIN entry: a filled box
+/// read as a second button over the disabled Unlock.
+TextField appLockPinField({
+  required TextEditingController controller,
+  required String hint,
+  String? label,
+  String? errorText,
+  ValueChanged<String>? onChanged,
+  TextAlign textAlign = TextAlign.start,
+  bool dense = false,
+  ({Color rest, Color focused, Color error})? underline,
+}) {
+  UnderlineInputBorder rule(Color color, double width) =>
+      UnderlineInputBorder(borderSide: BorderSide(color: color, width: width));
+  return TextField(
+    controller: controller,
+    obscureText: true,
+    keyboardType: TextInputType.number,
+    enableSuggestions: false,
+    autocorrect: false,
+    enableInteractiveSelection: false,
+    textAlign: textAlign,
+    onChanged: onChanged,
+    decoration: InputDecoration(
+      labelText: label,
+      hintText: hint,
+      errorText: errorText,
+      errorMaxLines: 3,
+      // The lock screen's field is the design system's 44.
+      isDense: dense ? true : null,
+      filled: underline == null ? null : false,
+      border: underline == null ? null : rule(underline.rest, 1),
+      enabledBorder: underline == null ? null : rule(underline.rest, 1),
+      focusedBorder: underline == null ? null : rule(underline.focused, 2),
+      errorBorder: underline == null ? null : rule(underline.error, 1),
+      focusedErrorBorder: underline == null ? null : rule(underline.error, 2),
+    ),
+  );
 }

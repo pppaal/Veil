@@ -6,7 +6,6 @@ import '../../../app/app_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_first_fit.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
@@ -18,7 +17,8 @@ import 'system_notice_bubble.dart';
 /// The message area of a chat: a loading, failed or empty state, or the
 /// messages with their reactions and, above the first, a button that loads
 /// older history. Each message is built under its key in [messageKeys], so
-/// the screen can scroll one into view.
+/// the screen can scroll one into view. While a chat search runs, every
+/// message stays and its query is drawn in bold ([searchQuery]).
 ///
 /// Messages run in groups: one sender's messages within five minutes of
 /// each other on the same day share a group, 2 px apart with the tail on the
@@ -42,9 +42,8 @@ class ChatMessageList extends ConsumerWidget {
     required this.onResolveAttachment,
     required this.onReact,
     this.loadFailed = false,
-    this.loadFailedReason,
     this.onRetryLoad,
-    this.onVerifyPeer,
+    this.searchQuery,
     this.senderNameOf,
     this.senderHandleOf,
     this.keyboardUp = false,
@@ -69,19 +68,17 @@ class ChatMessageList extends ConsumerWidget {
   final String? highlightedMessageId;
   final DateFormat sentAtFormat;
   final Future<void> Function(String attachmentId) onResolveAttachment;
-  final void Function(ChatMessage message) onReact;
+
+  /// A long press on [message], whose row is at [anchor] on screen.
+  final void Function(ChatMessage message, Rect anchor) onReact;
 
   /// Whether the history could not be fetched; with nothing loaded the area
-  /// then says so, with [loadFailedReason] when the messenger gave one, and
-  /// offers [onRetryLoad].
+  /// then says so and offers [onRetryLoad].
   final bool loadFailed;
-  final String? loadFailedReason;
   final VoidCallback? onRetryLoad;
 
-  /// Opens the peer's safety number from the empty chat, before the first
-  /// message; null where there is nothing to compare (a contact already
-  /// verified, a group).
-  final VoidCallback? onVerifyPeer;
+  /// The query of a running chat search, drawn in bold in the messages.
+  final String? searchQuery;
 
   /// Who of a group wrote a message, as far as this device knows; null in
   /// a 1:1, where the side a bubble is on says it.
@@ -96,9 +93,8 @@ class ChatMessageList extends ConsumerWidget {
   static const double groupGap = VeilSpace.xs;
 
 
-  /// Whether the keyboard is open, which an empty chat answers with its
-  /// compact form: the title and the button. The screen asks, from above
-  /// the shell whose body no longer knows about the keyboard.
+  /// Whether the keyboard is open. The screen asks, from above the shell
+  /// whose body no longer knows about the keyboard.
   final bool keyboardUp;
 
   /// Space around the messages, inside the area they scroll in.
@@ -114,9 +110,8 @@ class ChatMessageList extends ConsumerWidget {
 
     if (messages.isEmpty && loadFailed) {
       return _CenteredState(
-        child: VeilEmptyState.error(
+        child: VeilEmptyState(
           title: l10n.chatLoadFailedTitle,
-          body: loadFailedReason ?? l10n.chatLoadFailedBody,
           action: onRetryLoad == null
               ? null
               : VeilButton(
@@ -130,42 +125,18 @@ class ChatMessageList extends ConsumerWidget {
     }
 
     if (messages.isEmpty) {
-      // Nothing to read yet, and the composer is right below: the state says
-      // what every messenger says here, that messages are end-to-end
-      // encrypted, and offers the one thing worth doing before the first
-      // message, comparing safety numbers. Above an open keyboard there is
-      // no room for the line: the title and the button then show alone.
-      Widget emptyState({required bool compact}) => VeilEmptyState(
-            compact: compact,
-            title: l10n.chatEmptyTitle,
-            body: l10n.chatEmptyEncrypted,
-            action: onVerifyPeer == null
-                ? null
-                : VeilButton(
-                    expanded: false,
-                    tone: VeilButtonTone.secondary,
-                    label: l10n.chatEmptyVerifyAction,
-                    onPressed: onVerifyPeer,
-                  ),
-          );
-      return Center(
-        child: VeilFirstThatFits(
-          children: [
-            if (!keyboardUp) emptyState(compact: false),
-            SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              child: emptyState(compact: true),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (hasSearchQuery && filteredMessages.isEmpty) {
+      // Nothing to read yet: one muted line, as Telegram's "No messages here
+      // yet". The safety number is in the bar.
       return _CenteredState(
-        child: VeilEmptyState(
-          title: l10n.chatSearchEmptyTitle,
-          body: l10n.chatSearchEmptyBody,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(VeilSpace.xxl),
+            child: Text(
+              l10n.chatEmptyTitle,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: context.veilPalette.textMuted),
+            ),
+          ),
         ),
       );
     }
@@ -326,6 +297,16 @@ class ChatMessageList extends ConsumerWidget {
       senderSeed: senderSeed,
       position: position,
       highlighted: message.id == highlightedMessageId,
+      searchQuery: searchQuery,
+      reactions: message.reactions.isEmpty
+          ? null
+          : ReactionChipsRow(
+              message: message,
+              // Watched only where a message has reactions to mark as this
+              // user's own.
+              myUserId: ref.watch(appSessionProvider).userId,
+              onChipTap: (emoji) => controller.toggleReaction(message, emoji),
+            ),
       sentAtFormat: sentAtFormat,
       decryptFuture: decryptFuture,
       onResolveAttachment: onResolveAttachment,
@@ -346,27 +327,16 @@ class ChatMessageList extends ConsumerWidget {
               .retryPendingMessages(conversationId)
           : null,
     );
-    final reactive = GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onLongPress: () => onReact(message),
-      child: bubble,
-    );
-    if (message.reactions.isEmpty) {
-      return reactive;
-    }
-    return Column(
-      crossAxisAlignment:
-          message.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        reactive,
-        ReactionChipsRow(
-          message: message,
-          // Watched only where a message has reactions to mark as this
-          // user's own.
-          myUserId: ref.watch(appSessionProvider).userId,
-          onChipTap: (emoji) => controller.toggleReaction(message, emoji),
-        ),
-      ],
+    return Builder(
+      builder: (rowContext) => GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onLongPress: () {
+          final box = rowContext.findRenderObject();
+          if (box is! RenderBox || !box.hasSize) return;
+          onReact(message, box.localToGlobal(Offset.zero) & box.size);
+        },
+        child: bubble,
+      ),
     );
   }
 }

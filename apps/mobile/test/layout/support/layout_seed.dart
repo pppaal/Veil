@@ -1,24 +1,29 @@
+import 'package:flutter/widgets.dart' show Locale;
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/storage/in_memory_message_content_store.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../../support/fake_relay.dart';
 import 'layout_world.dart';
 
-// What the layout cases show: eight conversations with names of every
-// length, one chat with a real exchange in it (a long message, a reply, an
-// attachment, a long link, a disappearing message, a system notice), one
-// conversation with no message yet, a group for the cases that ask for one,
-// contacts and devices.
+// What the layout cases show: the chats of an ordinary Tuesday morning,
+// April 7, 2026, with the names and the short lines of people texting.
+// Sam's chat is the one most cases open; its history from the evening
+// before holds the long message and the long link, above the first screen,
+// where a person scrolls up to them (the chat-room-history case). Priya's
+// chat holds the one notice from the other side, Jonas's the disappearing
+// timer, Lena's nothing yet, and the group the cases that ask for one.
+// Then contacts.
 
 /// Peers by handle, with the name the relay lists them under. One of them
 /// set no name and is listed by handle; one name is long enough to overflow
 /// a row.
 const peerNames = <String, String?>{
   peerHandle: 'Sam Rivera',
-  'priya': 'Priya Nair',
+  noticeChatPeerHandle: 'Priya Nair',
   timerChatPeerHandle: 'Jonas Weber',
   'alexandra': 'Alexandra Montgomery-Whitfield',
   'mia': 'Mia Chen',
@@ -26,6 +31,29 @@ const peerNames = <String, String?>{
   'tom_walsh': null,
   emptyChatPeerHandle: 'Lena Fischer',
 };
+
+/// The peer whose chat holds a system notice, and that chat.
+const noticeChatPeerHandle = 'priya';
+const noticeChatConversationId = 'conv-$noticeChatPeerHandle';
+
+/// The notice in that chat: Priya took a screenshot, and her phone said so
+/// under her handle.
+const screenshotNotice = '@$noticeChatPeerHandle took a screenshot';
+
+/// The message of Sam's that the legacy case shows as sent from an older
+/// app: his first of the morning.
+const legacyMessageBody = 'did the lease come through?';
+
+/// The host of the long link in Sam's history, for the case that looks for
+/// it.
+const longLinkHost = 'rentals.example.com';
+
+/// The newest message of Sam's chat (his) and the newest of ours there, the
+/// newest of Jonas's chat (ours) and the newest of the group (Omar's).
+const latestChatLine = 'perfect. see you saturday';
+const latestOwnChatLine = 'door code is 4417';
+const latestTimerChatLine = 'see you at 9';
+const latestGroupLine = 'I can bring the van after 6';
 
 void seedParties(FakeRelay relay, LayoutIdentities identities) {
   relay.addParty(RelayParty(
@@ -46,8 +74,22 @@ void seedParties(FakeRelay relay, LayoutIdentities identities) {
   }
 }
 
+/// When a line was sent: April [day], 2026, at [hour]:[minute] in the
+/// gate's time zone (UTC), so the list and the bubbles read like a real
+/// morning.
+class _At {
+  const _At(this.hour, this.minute, {this.day = 7});
+
+  final int day;
+  final int hour;
+  final int minute;
+
+  DateTime get time => DateTime.utc(2026, 4, day, hour, minute);
+}
+
 class _Line {
   const _Line(
+    this.at,
     this.mine,
     this.body, {
     this.kind = MessageKind.text,
@@ -56,59 +98,98 @@ class _Line {
     this.from,
   });
 
+  final _At at;
   final bool mine;
   final String body;
   final MessageKind kind;
   final bool attachment;
+
+  /// Sent to disappear a day later.
   final bool expires;
 
   /// Who of a group wrote it, when it is not this device's user.
   final String? from;
 }
 
-const _chat = <_Line>[
-  _Line(false, 'Did the signed lease come through on your side?'),
-  _Line(true, 'Yes. Sending the scan here so it never touches email.'),
-  _Line(true, 'lease-signed.pdf', kind: MessageKind.file, attachment: true),
+// Sam's chat. The evening before: the long message and the long link, as a
+// person writes them.
+const _samsEvening = <_Line>[
   _Line(
+    _At(21, 2, day: 6),
     false,
-    'Got it, thank you. Before we send the deposit I want to go over three things: the move-in date moved '
-    'to the 14th, the landlord wants the first two months up front, and the clause about subletting is '
-    'stricter than the draft we saw last week. Can you read section 7 again tonight and tell me if it '
-    'still works for you? I would rather lose a day than sign something we have to fight about later.',
+    'ok so the landlord wants two months up front and the sublet clause changed again. '
+    "can you read section 7 before we sign? I really don't want to argue about it later",
   ),
-  _Line(true, 'Reading it now.'),
-  _Line(false, 'The registry entry is at https://registry.example.org/property/KR-11680-2026-0419-0031/owners?verify=true'),
-  _Line(false, 'Screenshot taken', kind: MessageKind.system),
-  _Line(true, 'Account number for the deposit, gone in a week.', expires: true),
-  _Line(true, "Section 7 is fine. Let's sign tomorrow."),
+  _Line(_At(21, 5, day: 6), true, 'will do tomorrow morning'),
+  _Line(
+    _At(21, 6, day: 6),
+    false,
+    'this is the place btw https://$longLinkHost/berlin/kreuzberg/two-room-flat-with-balcony-and-courtyard-view-4417',
+  ),
 ];
+
+// The morning: short lines, a file, a disappearing message.
+const _samsMorning = <_Line>[
+  _Line(_At(8, 49), false, legacyMessageBody),
+  _Line(_At(8, 51), true, 'yes, just signed it'),
+  _Line(_At(8, 52), true, 'lease-signed.pdf', kind: MessageKind.file, attachment: true),
+  _Line(_At(9, 3), false, 'got it, thanks'),
+  _Line(_At(9, 10), false, 'they moved move-in to the 14th'),
+  _Line(_At(9, 17), true, 'even better'),
+];
+
+// How the morning ends: the disappearing message and Sam's last word. Where
+// his safety number changed instead, the chat ends on the line that says
+// so (its text is the phone's own, filled in by seedConversations) and two
+// messages of ours after it, which the warnings cases show as not sent.
+const _samsEnd = <_Line>[
+  _Line(_At(9, 38), true, latestOwnChatLine, expires: true),
+  _Line(_At(9, 45), false, latestChatLine),
+];
+const _samsKeyChange = <_Line>[
+  _Line(_At(9, 30), true, '', kind: MessageKind.system),
+  _Line(_At(9, 38), true, latestOwnChatLine, expires: true),
+  _Line(_At(9, 40), true, "call me when you're there"),
+];
+
+const _chat = [..._samsEvening, ..._samsMorning, ..._samsEnd];
 
 /// How many messages the chat's conversation holds.
 int get chatLineCount => _chat.length;
 
-// The last message of every other conversation, oldest conversation first.
-// One conversation has none yet.
-const _others = <String, _Line?>{
-  emptyChatPeerHandle: null,
-  'tom_walsh': _Line(true, 'Can you send me the address again?'),
-  'omar': _Line(false, 'Photo from the site visit', kind: MessageKind.image),
-  'mia': _Line(false, 'The second mock-up is closer, but the header still feels heavy to me.'),
-  'alexandra': _Line(false, 'Voice note', kind: MessageKind.voice),
-  timerChatPeerHandle: _Line(true, 'See you at nine.'),
-  'priya': _Line(false, "I'll send the slides here tomorrow."),
+// Every other chat, oldest first. Omar sent a photo and Alexandra a voice
+// message, neither with words; Lena's chat has no message yet.
+const _others = <String, List<_Line>>{
+  emptyChatPeerHandle: [],
+  'tom_walsh': [_Line(_At(8, 7), true, "what's the address again?")],
+  'omar': [_Line(_At(8, 14), false, '', kind: MessageKind.image)],
+  'mia': [_Line(_At(8, 21), false, 'can you send the photos from saturday?')],
+  'alexandra': [_Line(_At(8, 28), false, '', kind: MessageKind.voice)],
+  timerChatPeerHandle: [
+    _Line(_At(8, 30), true, 'You set disappearing messages to 1 day', kind: MessageKind.system),
+    _Line(_At(8, 35), true, latestTimerChatLine, expires: true),
+  ],
+  noticeChatPeerHandle: [
+    _Line(_At(8, 31), false, 'is the deck final?'),
+    _Line(_At(8, 33), true, 'almost, one more pass tonight'),
+    _Line(_At(8, 36), false, screenshotNotice, kind: MessageKind.system),
+    _Line(_At(8, 42), false, "I'll bring the slides tomorrow"),
+  ],
 };
 
 /// The group of the group cases: this user and three of the peers, in a
 /// legacy group (frames through the pairwise engine, like every 1:1 here).
 const groupConversationId = 'conv-group';
-const groupMemberHandles = [peerHandle, 'priya', 'omar'];
+const groupMemberHandles = [peerHandle, noticeChatPeerHandle, 'omar'];
+
+/// The group's name, as its creator typed it in New group.
+const groupName = 'Moving day';
 
 const _group = <_Line>[
-  _Line(false, 'The movers can do the 14th or the 16th.', from: peerHandle),
-  _Line(false, 'The 14th works for me.', from: 'priya'),
-  _Line(true, "14th then. I'll book the lift for the morning."),
-  _Line(false, 'I can bring the van after six, if someone helps me carry the shelves down.', from: 'omar'),
+  _Line(_At(9, 52), false, 'movers can do the 14th or 16th', from: peerHandle),
+  _Line(_At(9, 59), false, '14th works for me', from: noticeChatPeerHandle),
+  _Line(_At(10, 6), true, "14th then, I'll book the lift"),
+  _Line(_At(10, 13), false, latestGroupLine, from: 'omar'),
 ];
 
 /// How many messages the group's conversation holds.
@@ -116,15 +197,23 @@ int get groupLineCount => _group.length;
 
 /// Fills the relay with the conversations above and stores the content of
 /// this device's own messages, which no device can decrypt back. With
-/// [withGroup] the newest conversation is the group.
-Future<void> seedConversations(FakeRelay relay, LayoutMemoryCache cache, {bool withGroup = false}) async {
+/// [withGroup] the newest conversation is the group. With [keyChange]
+/// Sam's chat ends on the change of his safety number.
+Future<void> seedConversations(
+  FakeRelay relay,
+  LayoutMemoryCache cache, {
+  bool withGroup = false,
+  bool keyChange = false,
+}) async {
   final sealer = createDefaultCryptoAdapter();
-  final day = DateTime.utc(2026, 4, 7, 8);
-  var minute = 0;
+  // The lines are dated April; what disappears must still be there today.
+  final expiresAt = DateTime.now().toUtc().add(const Duration(hours: 23));
+  final keyChangeNotice = lookupAppLocalizations(const Locale('en')).chatNoticeIdentityChanged;
 
   Future<void> send(String conversationId, String peer, _Line line) async {
     final sender = line.mine ? selfHandle : peer;
     final recipient = line.mine ? peer : selfHandle;
+    final body = line.kind == MessageKind.system && line.body.isEmpty ? keyChangeNotice : line.body;
     final attachment = line.attachment
         ? const AttachmentReference(
             attachmentId: '6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f',
@@ -136,12 +225,12 @@ Future<void> seedConversations(FakeRelay relay, LayoutMemoryCache cache, {bool w
             nonce: 'nonce',
           )
         : null;
-    final expiresAt = line.expires ? DateTime.now().toUtc().add(const Duration(days: 6, hours: 12)) : null;
+    final expiry = line.expires ? expiresAt : null;
     final envelope = await sealer.messaging.encryptMessage(
       conversationId: conversationId,
       senderDeviceId: 'dev-$sender',
       recipientUserId: 'user-$recipient',
-      body: line.body,
+      body: body,
       messageKind: line.kind,
       recipientBundle: KeyBundle(
         userId: 'user-$recipient',
@@ -150,7 +239,7 @@ Future<void> seedConversations(FakeRelay relay, LayoutMemoryCache cache, {bool w
         identityPublicKey: 'ik',
         signedPrekeyBundle: 'spk',
       ),
-      expiresAt: expiresAt,
+      expiresAt: expiry,
       attachment: attachment,
     );
     final stored = relay.inject(
@@ -158,7 +247,7 @@ Future<void> seedConversations(FakeRelay relay, LayoutMemoryCache cache, {bool w
       conversationId: conversationId,
       envelope: sealer.envelopeCodec.encodeApiEnvelope(envelope),
     );
-    final sentAt = day.add(Duration(minutes: minute += 7));
+    final sentAt = line.at.time;
     stored['serverReceivedAt'] = sentAt.toIso8601String();
     if (!line.mine) return;
     stored['deliveredAt'] = sentAt.add(const Duration(seconds: 2)).toIso8601String();
@@ -167,44 +256,58 @@ Future<void> seedConversations(FakeRelay relay, LayoutMemoryCache cache, {bool w
       conversationId: conversationId,
       serverMessageId: stored['id'] as String,
       senderDeviceId: 'dev-$selfHandle',
-      body: line.body,
+      body: body,
       kind: line.kind,
       attachment: attachment,
-      innerExpiresAt: expiresAt,
+      innerExpiresAt: expiry,
       status: MessageContentStatus.ok,
       createdAt: sentAt,
       updatedAt: sentAt,
     ));
   }
 
-  for (final entry in _others.entries) {
-    relay.addDirect('conv-${entry.key}', selfHandle, entry.key);
-    if (entry.value case final line?) await send('conv-${entry.key}', entry.key, line);
+  // A 1:1 and its lines. The other side read every message of ours that
+  // they answered; the ones after their last word are delivered.
+  Future<void> seedDirect(String peer, List<_Line> lines) async {
+    final conversationId = 'conv-$peer';
+    relay.addDirect(conversationId, selfHandle, peer);
+    for (final line in lines) {
+      await send(conversationId, peer, line);
+    }
+    final messages = relay.conversations[conversationId]!.messages;
+    final lastAnswer = messages.lastIndexWhere((message) =>
+        message['senderDeviceId'] != 'dev-$selfHandle' && message['messageType'] != MessageKind.system.name);
+    for (final message in messages.take(lastAnswer + 1)) {
+      if (message['deliveredAt'] != null) message['readAt'] = message['deliveredAt'];
+    }
   }
-  relay.addDirect(chatConversationId, selfHandle, peerHandle);
-  for (final line in _chat) {
-    await send(chatConversationId, peerHandle, line);
+
+  for (final MapEntry(key: peer, value: lines) in _others.entries) {
+    await seedDirect(peer, lines);
   }
-  // The peer read everything but the last message.
-  final history = relay.conversations[chatConversationId]!.messages;
-  for (final message in history.take(history.length - 1)) {
-    if (message['deliveredAt'] != null) message['readAt'] = message['deliveredAt'];
-  }
+  await seedDirect(peerHandle, [..._samsEvening, ..._samsMorning, ...keyChange ? _samsKeyChange : _samsEnd]);
   if (!withGroup) return;
-  relay.addGroup(groupConversationId, [selfHandle, ...groupMemberHandles], useSenderKeys: false);
+  relay.addGroup(groupConversationId, [selfHandle, ...groupMemberHandles], useSenderKeys: false, name: groupName);
   for (final line in _group) {
     await send(groupConversationId, line.from ?? peerHandle, line);
   }
 }
 
-/// The devices the settings screen lists.
-const _deviceNames = ['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone'];
+const _transferSessionId = layoutTransferSessionId;
 
-const _transferSessionId = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d';
-const _transferToken = 'vt_3QmZ8xT1uKcR7pLwN5sYhB2dJ9aFgE4o';
+/// The relay's ids for a move, shaped as production's (randomUUID).
+const layoutTransferSessionId = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d';
+const layoutClaimId = '3f2b9c7e-5a14-4d0b-9e2f-8c61a7d4b250';
+
+/// A claimant fingerprint as the relay writes it: SHA-256 in 16 groups of 4.
+const layoutClaimFingerprint = '9f2c 41ab 07de 5c33 e18a 6b40 d2f7 0c95 7a1e 33b8 c604 f5d9 28e1 b07c 4d6a 91f3';
+
+// The relay's transfer token is randomUUID() too.
+const _transferToken = 'c47d2e19-8a3b-4f60-b915-2e7a0d6c3f84';
 
 /// What a case types into a search field: a part of two names (Sam Rivera,
-/// Priya Nair) and of nothing else, and a word of two messages.
+/// Priya Nair) and of nothing else, and a word of two of Sam's messages
+/// (his first of the morning and the name of the file).
 const conversationSearchQuery = 'ri';
 const chatSearchQuery = 'lease';
 
@@ -243,7 +346,7 @@ Future<List<String>> seedHistory(FakeRelay relay, {required String peer, require
 }
 
 /// The relay as alex's device reaches it, with the routes the screens
-/// outside the messenger call: contacts, the device list and the old-device
+/// outside the messenger call: contacts, signing out and the old-device
 /// half of a transfer.
 class LayoutRelayClient extends FakeRelayClient {
   LayoutRelayClient(super.relay, super.me);
@@ -280,8 +383,8 @@ class LayoutRelayClient extends FakeRelayClient {
     };
   }
 
-  // What the contacts tab, the start screens and the device list ask the
-  // relay to change, kept for the test that asked. A handle the relay has no
+  // What the contacts tab, the start screens and Sign out ask the relay to
+  // change, kept for the test that asked. A handle the relay has no
   // party for is refused, as a real relay refuses it.
   final List<String> addedContacts = [];
   final Set<String> removedContacts = {};
@@ -339,7 +442,8 @@ class LayoutRelayClient extends FakeRelayClient {
     final handles = (body['memberHandles'] as List<dynamic>? ?? const <dynamic>[]).cast<String>();
     handles.forEach(_requireParty);
     createdGroups.add(Map<String, dynamic>.of(body));
-    final group = relay.addGroup('conv-new-group-${createdGroups.length}', [me.handle, ...handles], useSenderKeys: false);
+    final group = relay.addGroup('conv-new-group-${createdGroups.length}', [me.handle, ...handles],
+        useSenderKeys: false, name: body['name'] as String);
     return {
       'conversation': {'id': group.id},
     };
@@ -351,48 +455,20 @@ class LayoutRelayClient extends FakeRelayClient {
     return const {};
   }
 
-  @override
-  Future<Map<String, dynamic>> logoutAuth(String accessToken, {String? refreshToken}) async => const {};
+  /// What the next step-up challenge (the first step of Sign out and
+  /// Delete account) is refused with; unset, it goes to the network, which
+  /// a test does not reach.
+  Object? challengeError;
 
   @override
-  Future<Map<String, dynamic>> listDevices(String accessToken) async {
-    Map<String, dynamic> device(
-      String id,
-      String name,
-      String platform,
-      String trust, {
-      required DateTime trustedAt,
-      String? joinedFrom,
-      bool revoked = false,
-    }) =>
-        {
-          'id': id,
-          'deviceName': name,
-          'platform': platform,
-          'isActive': !revoked,
-          'trustState': trust,
-          'revokedAt': revoked ? DateTime.utc(2026, 4, 1, 9).toIso8601String() : null,
-          'trustedAt': trustedAt.toIso8601String(),
-          'joinedFromDeviceId': joinedFrom == null ? null : me.deviceId,
-          'joinedFromDeviceName': joinedFrom,
-          'joinedFromPlatform': joinedFrom == null ? null : 'android',
-          'createdAt': trustedAt.toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 2).toIso8601String(),
-          'lastSyncAt': DateTime.utc(2026, 3, 30).toIso8601String(),
-          'lastTrustedActivityAt': DateTime.utc(2026, 4, 2).toIso8601String(),
-        };
-    // The laptop has gone quiet, until a test revokes it.
-    final laptopRevoked = revokedDevices.contains('dev-laptop');
-    return {
-      'activeDeviceId': me.deviceId,
-      'items': [
-        device(me.deviceId, _deviceNames[0], 'android', 'current', trustedAt: DateTime.utc(2026, 4, 1, 8)),
-        device('dev-laptop', _deviceNames[1], 'macos', laptopRevoked ? 'revoked' : 'stale',
-            trustedAt: DateTime.utc(2026, 3, 20, 8), joinedFrom: _deviceNames[0], revoked: laptopRevoked),
-        device('dev-old', _deviceNames[2], 'ios', 'revoked', trustedAt: DateTime.utc(2026, 3, 10, 8), revoked: true),
-      ],
-    };
+  Future<Map<String, dynamic>> challenge(Map<String, dynamic> body) {
+    final error = challengeError;
+    if (error != null) throw error;
+    return super.challenge(body);
   }
+
+  @override
+  Future<Map<String, dynamic>> logoutAuth(String accessToken, {String? refreshToken}) async => const {};
 
   @override
   Future<Map<String, dynamic>> initTransfer(String accessToken, String deviceId) async => {

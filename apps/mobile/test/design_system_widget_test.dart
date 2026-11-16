@@ -662,7 +662,7 @@ void main() {
       expect((decorationOf(tester, bubbles.at(3)).borderRadius! as BorderRadius).bottomLeft, const Radius.circular(6));
     });
 
-    testWidgets('fills: brand for mine, surfaceAlt for theirs and for a failed send with its line', (tester) async {
+    testWidgets('fills: brand for mine, surfaceAlt for theirs; a failed send keeps its fill, with a glyph and its line', (tester) async {
       await _pump(
         tester,
         const _App(
@@ -683,7 +683,10 @@ void main() {
       expect(decorationOf(tester, bubbles.at(0)).boxShadow, isNull);
       expect(decorationOf(tester, bubbles.at(0)).border, isNull);
       expect(decorationOf(tester, bubbles.at(1)).color, palette.surfaceAlt);
-      expect(decorationOf(tester, bubbles.at(2)).color, palette.surfaceAlt);
+      // A failed send keeps its own fill; the glyph beside it and the line
+      // under it say it failed, as Signal draws one.
+      expect(decorationOf(tester, bubbles.at(2)).color, palette.primary);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
       expect(find.text('Not sent. Tap to retry.'), findsOneWidget);
       expect(tester.widget<Text>(find.text('Not sent. Tap to retry.')).style?.color, palette.danger);
       final highlighted = decorationOf(tester, bubbles.at(3));
@@ -850,14 +853,16 @@ void main() {
       expect(tester.getSize(find.widgetWithText(TextButton, 'Later')).height, greaterThanOrEqualTo(44));
     });
 
-    testWidgets('a toast is a snackbar on surfaceRaised with the tone as an icon', (tester) async {
+    // As Signal's, WhatsApp's and Telegram's: text, at most one action, and
+    // no tone icon, success or failure.
+    testWidgets('a toast is a snackbar on surfaceRaised, text only', (tester) async {
       await _pump(
         tester,
         _App(
           child: Scaffold(
             body: Builder(
               builder: (context) => TextButton(
-                onPressed: () => showVeilToast(context, 'Nickname saved', tone: VeilTone.good),
+                onPressed: () => showVeilToast(context, 'Nickname saved'),
                 child: const Text('Save'),
               ),
             ),
@@ -869,7 +874,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byType(SnackBar), findsOneWidget);
       expect(find.text('Nickname saved'), findsOneWidget);
-      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+      expect(find.descendant(of: find.byType(SnackBar), matching: find.byType(Icon)), findsNothing);
       expect(Theme.of(tester.element(find.byType(SnackBar))).snackBarTheme.backgroundColor,
           VeilPalette.dark.surfaceRaised);
     });

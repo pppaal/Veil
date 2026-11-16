@@ -64,13 +64,12 @@ test.describe('VEIL web demo — message actions', () => {
     await myBubble.click({ button: 'right' });
     await expect(sender.page.locator('.msg-action-menu')).toBeVisible();
 
-    // Stub window.prompt so the test doesn't block on the native dialog.
-    await sender.page.evaluate(() => {
-      // eslint-disable-next-line no-undef
-      (window as any).prompt = () => 'edited body';
-    });
-
+    // Edit puts the text in the composer under an "Editing message" bar;
+    // Enter saves it.
     await sender.page.locator('.msg-action-menu .msg-action-item:has-text("Edit")').click();
+    await expect(sender.page.locator('.edit-banner')).toBeVisible();
+    await ta.fill('edited body');
+    await ta.press('Enter');
 
     // Edit lands locally + propagates to recv via WS.
     await expect(myBubble.locator('.msg-edited')).toBeVisible({ timeout: 5_000 });

@@ -26,6 +26,13 @@ class DecryptedMessageCache {
     return content?.kind == MessageKind.text ? content!.body : null;
   }
 
+  /// Body of the latest message when it is text or a system line that
+  /// opened; null otherwise.
+  String? bodyFor(String conversationId) {
+    final content = _latest[conversationId];
+    return content?.kind == MessageKind.text || content?.kind == MessageKind.system ? content!.body : null;
+  }
+
   /// Decrypted kind of the latest message, or null until it opened. Never
   /// the envelope's unauthenticated kind.
   MessageKind? kindFor(String conversationId) => _latest[conversationId]?.kind;

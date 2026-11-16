@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/secret_link/data/one_time_link.dart';
 import 'package:veil_mobile/src/features/secret_link/data/one_time_link_service.dart';
@@ -18,9 +17,8 @@ import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 import '../layout/support/phone_layout_probe.dart';
 import '../support/copy_finder.dart';
 
-// The one-time link screen on a phone: the form first with what the link
-// does under it, then the link that was made, then what such a link does
-// not protect.
+// The one-time link screen on a phone: the form first with the one rule of
+// such a link under it, then the button, then the link that was made.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -77,13 +75,16 @@ void main() {
     await pumpFrames(tester, frames: 4);
   }
 
-  testWidgets('opens on the secret, the passphrase switch and the button; the limits follow', (tester) async {
+  testWidgets('opens on the secret, the passphrase switch and the button, and says the rule once', (tester) async {
     await open(tester);
     expect(find.byType(VeilShell), findsOneWidget);
     expect(tester.widget<VeilShell>(find.byType(VeilShell)).grouped, isTrue, reason: 'a grouped page');
     final field = tester.getRect(find.byType(TextField));
-    final passphrase = tester.getRect(find.byType(Switch));
+    // The switch row has no line under its words, so its switch sits close
+    // to the field: the words mark where the row starts.
+    final passphrase = tester.getRect(find.text(en.oneTimeLinkUsePassphrase));
     final button = tester.getRect(find.byType(FilledButton));
+    expect(find.byType(Switch), findsOneWidget);
     expect(field.top, lessThan(140), reason: 'the field is the first thing under the bar');
     expect(field.bottom, lessThan(passphrase.top));
     expect(passphrase.bottom, lessThan(button.top));
@@ -93,14 +94,14 @@ void main() {
     final footer = tester.getRect(find.text(en.oneTimeLinkFooter));
     expect(footer.top, greaterThan(passphrase.bottom));
     expect(footer.bottom, lessThan(button.top));
-    // The header names the field on screen; a screen reader hears the name
-    // on the field itself.
+    // The hint names the field on screen; a screen reader hears the name on
+    // the field itself.
     final semantics = tester.ensureSemantics();
     await tester.pump();
     expect(tester.getSemantics(find.byType(TextField)).label, contains(en.oneTimeLinkSecretLabel));
     semantics.dispose();
 
-    // Then what it does not protect, sentence by sentence.
+    // No section of caveats follows the button.
     final said = <String>[];
     void collect() {
       for (final element in find.byType(Text).evaluate()) {
@@ -111,17 +112,13 @@ void main() {
 
     collect();
     await scrollToEnd(tester, onPage: (_) async => collect());
-    final order = [
-      en.oneTimeLinkFooter,
-      en.oneTimeLinkCreate,
-      en.oneTimeLinkLimitsLabel,
-      en.oneTimeLinkLimitHolder,
-      en.oneTimeLinkLimitReader,
-      en.oneTimeLinkLimitRelay,
-    ];
+    final order = [en.oneTimeLinkFooter, en.oneTimeLinkCreate];
     expect([for (final text in said) if (order.contains(text)) text], order);
+    expect(said.skipWhile((text) => text != en.oneTimeLinkCreate).skip(1).where((text) => text != en.oneTimeLinkTitle),
+        isEmpty,
+        reason: 'nothing under the button before a link is made');
     // The footer is the one place the screen says the link opens once.
-    expect([for (final text in said) if (text.contains('once')) text], [en.oneTimeLinkFooter, en.oneTimeLinkLimitReader]);
+    expect([for (final text in said) if (text.contains('once')) text], [en.oneTimeLinkFooter]);
     expect(tester.takeException(), isNull);
   });
 
@@ -153,7 +150,7 @@ void main() {
     expect(findCopyContaining(en.oneTimeLinkSendPassphraseApart), findsOneWidget);
   });
 
-  testWidgets('shows the link with its code and its expiry, and copies it', (tester) async {
+  testWidgets('shows the link and its expiry, and copies it', (tester) async {
     final copied = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
       if (call.method == 'Clipboard.setData') copied.add((call.arguments as Map)['text'] as String);
@@ -163,27 +160,27 @@ void main() {
 
     // With the keyboard still up, as it is when the button is pressed.
     await open(tester, keyboardHeight: 300);
-    expect(find.byType(QrImageView, skipOffstage: false), findsNothing);
+    expect(find.byType(SelectableText, skipOffstage: false), findsNothing);
     await tester.enterText(find.byType(TextField), secret);
     await tester.pump();
     await tapCreate(tester);
 
     final link = tester.widget<SelectableText>(find.byType(SelectableText, skipOffstage: false)).data!;
     expect(link, startsWith('https://relay.example.org/demo/s.html#link-7.k.'));
-    expect(find.byType(QrImageView, skipOffstage: false), findsOneWidget);
+    expect(find.byType(SelectableText, skipOffstage: false), findsOneWidget);
     // When the relay deletes it unopened, as the relay answered.
     expect(findCopyContaining('Apr 8'), findsOneWidget);
     expect(findCopyContaining(en.oneTimeLinkSendPassphraseApart), findsNothing, reason: 'no passphrase was set');
-    // The code is brought on screen: it appears under the button, which the
+    // The link is brought on screen: it appears under the button, which the
     // keyboard leaves at the bottom edge of a 360x640 phone.
-    final result = tester.getRect(find.byType(QrImageView, skipOffstage: false));
+    final result = tester.getRect(find.byType(SelectableText, skipOffstage: false));
     expect(result.top, greaterThanOrEqualTo(24 + 52));
     expect(result.bottom, lessThanOrEqualTo(640 - 300));
 
-    // The link is drawn in monospace, with its copy button beside it.
+    // The link is drawn in monospace, with "Copy link" under it.
     expect(tester.widget<SelectableText>(find.byType(SelectableText, skipOffstage: false)).style?.fontFamily,
         'monospace');
-    final copy = find.byTooltip(en.oneTimeLinkCopy, skipOffstage: false);
+    final copy = find.ancestor(of: find.text(en.oneTimeLinkCopy, skipOffstage: false), matching: find.byType(VeilRow));
     expect(tester.getSize(copy).shortestSide, greaterThanOrEqualTo(44));
     await Scrollable.ensureVisible(tester.element(copy), alignment: 0.5);
     await tester.pump();
@@ -224,7 +221,7 @@ void main() {
 
       await flipSwitch(tester);
       expect(shownLink(), findsNothing, reason: 'a link with its key inside beside a form that says "locked"');
-      expect(find.byType(QrImageView, skipOffstage: false), findsNothing);
+      expect(find.byType(SelectableText, skipOffstage: false), findsNothing);
       expect(note(), findsNothing, reason: 'nothing on screen is locked with a passphrase');
       expect(tester.widget<FilledButton>(find.byType(FilledButton, skipOffstage: false)).onPressed, isNull,
           reason: 'the next link waits for its passphrase');
@@ -287,7 +284,7 @@ void main() {
       await tester.enterText(find.byType(TextField).first, 'The door code is 4472');
       await pumpFrames(tester, frames: 2);
       expect(shownLink(), findsNothing, reason: 'the link carries the secret that was replaced');
-      expect(find.byType(QrImageView, skipOffstage: false), findsNothing);
+      expect(find.byType(SelectableText, skipOffstage: false), findsNothing);
       expect(service.secrets, [secret, secret], reason: 'no link was made for what was typed since');
     });
 
@@ -321,7 +318,7 @@ void main() {
       await pumpFrames(tester, frames: 4);
 
       expect(shownLink(), findsNothing, reason: 'the link does not carry what the field says now');
-      expect(find.byType(QrImageView, skipOffstage: false), findsNothing);
+      expect(find.byType(SelectableText, skipOffstage: false), findsNothing);
       expect(create(tester).onPressed, isNotNull, reason: 'ready to seal what the field says');
     });
   });
@@ -348,7 +345,7 @@ void main() {
     // Plain text, not a notice: the button above it is the retry.
     expect(find.byType(VeilNotice), findsNothing);
     expect(tester.getTopLeft(failure).dy, greaterThanOrEqualTo(tester.getBottomLeft(find.byType(FilledButton)).dy));
-    expect(find.byType(QrImageView), findsNothing);
+    expect(find.byType(SelectableText), findsNothing);
     expect(create(tester).onPressed, isNotNull, reason: 'ready for another try');
     // The field may have scrolled out above the button: it is still there.
     expect(tester.widget<TextField>(find.byType(TextField, skipOffstage: false)).controller!.text, secret);
@@ -359,7 +356,7 @@ void main() {
     await tapCreate(tester);
     expect(posted, hasLength(1));
     expect(findCopy(en.oneTimeLinkFailed), findsNothing);
-    expect(find.byType(QrImageView, skipOffstage: false), findsOneWidget);
+    expect(find.byType(SelectableText, skipOffstage: false), findsOneWidget);
   });
 }
 

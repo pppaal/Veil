@@ -8,10 +8,11 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import 'onboarding_action_scaffold.dart';
 
-/// The privacy notice and the consent to it. The notice scrolls, one group
-/// per heading; the box that gives consent and the button that goes on stay
-/// under it, so they are in reach from the first line to the last. The
-/// button does nothing until the box is ticked.
+/// The privacy notice and the consent to it. The notice reads as a
+/// document: a small bold heading, then its items as plain paragraphs. The
+/// box that gives consent and the button that goes on stay under it, so
+/// they are in reach from the first line to the last. The button does
+/// nothing until the box is ticked.
 class PrivacyConsentScreen extends ConsumerStatefulWidget {
   const PrivacyConsentScreen({super.key});
 
@@ -34,24 +35,20 @@ class _PrivacyConsentScreenState extends ConsumerState<PrivacyConsentScreen> {
 
     return OnboardingActionScaffold(
       title: l10n.privacyConsentTitle,
-      grouped: true,
-      listPadding: const EdgeInsets.only(bottom: VeilSpace.md),
+      listPadding: const EdgeInsets.fromLTRB(VeilSpace.md, 0, VeilSpace.md, VeilSpace.md),
+      divider: true,
       actions: [
         // The box and its sentence are one row to tap, and one checkbox
         // with its sentence to a screen reader.
-        VeilGroup(
-          children: [
-            CheckboxListTile(
-              value: _consentChecked,
-              onChanged: (value) => setState(() => _consentChecked = value ?? false),
-              controlAffinity: ListTileControlAffinity.leading,
-              // The box, not its tap area, lines up with the text above.
-              contentPadding: const EdgeInsetsDirectional.only(start: VeilSpace.xxs, end: VeilSpace.md),
-              title: Text(l10n.privacyConsentAgree, style: Theme.of(context).textTheme.bodyMedium),
-            ),
-          ],
+        CheckboxListTile(
+          value: _consentChecked,
+          onChanged: (value) => setState(() => _consentChecked = value ?? false),
+          controlAffinity: ListTileControlAffinity.leading,
+          // The box, not its tap area, lines up with the text above.
+          contentPadding: const EdgeInsetsDirectional.only(start: VeilSpace.xxs, end: VeilSpace.md),
+          title: Text(l10n.privacyConsentAgree, style: Theme.of(context).textTheme.bodyMedium),
         ),
-        const SizedBox(height: VeilSpace.sm),
+        const SizedBox(height: VeilSpace.xs),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
           child: VeilButton(label: l10n.privacyConsentAccept, onPressed: _consentChecked ? _accept : null),
@@ -111,7 +108,7 @@ class _PrivacyConsentScreenState extends ConsumerState<PrivacyConsentScreen> {
   }
 }
 
-/// One heading of the notice and its items, a row each.
+/// One heading of the notice and its items, a plain paragraph each.
 class _NoticeGroup extends StatelessWidget {
   const _NoticeGroup({required this.header, required this.items});
 
@@ -120,19 +117,23 @@ class _NoticeGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.bodyMedium;
-    return VeilGroup(
-      header: header,
-      children: [
-        for (final item in items)
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 44),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: 11),
-              child: Align(alignment: AlignmentDirectional.centerStart, child: Text(item, style: style)),
-            ),
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: VeilSpace.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            header: true,
+            child: Text(header, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
           ),
-      ],
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(top: VeilSpace.xs),
+              child: Text(item, style: theme.textTheme.bodyMedium),
+            ),
+        ],
+      ),
     );
   }
 }

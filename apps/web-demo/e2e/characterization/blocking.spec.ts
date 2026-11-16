@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   bubbleTexts,
   chooseAction,
+  chooseChatMenuItem,
   closeAll,
   expectNoErrors,
   openMenuItem,
@@ -16,7 +17,7 @@ import {
   type Device,
 } from './support';
 
-// Blocking from a message, and what Settings lists: a block cuts the direct
+// Blocking from the chat's menu, and what Settings lists: a block cuts the direct
 // conversation off at the relay (a send is refused), Settings lists the
 // blocked account until it is unblocked, and the list says when it is empty
 // and when it could not be loaded, in the words of the Settings label.
@@ -44,7 +45,7 @@ test.describe('blocking', () => {
   test('with nobody blocked, Settings says so', async () => {
     await openMenuItem(alice, 'open-settings');
     const dialog = alice.page.locator('#settings-dialog');
-    await expect(dialog.locator('[data-blocked-section] .settings-label')).toHaveText('Blocked accounts');
+    await expect(dialog.locator('[data-blocked-section] .settings-section-title')).toHaveText('Blocked accounts');
     await expect(dialog.locator('.blocked-empty')).toHaveText('No blocked accounts');
     await expect(dialog.locator('.blocked-row')).toHaveCount(0);
     await dialog.locator('#settings-close').click();
@@ -52,10 +53,10 @@ test.describe('blocking', () => {
   });
 
   test('a block refuses their sends, and unblocking from Settings lets the retry through', async () => {
-    await chooseAction(alice, 'hi alice', 'Block');
+    await chooseChatMenuItem(alice, 'Block');
     await expect(alice.page.locator('#confirm-title')).toHaveText(`Block @${bob.handle}?`);
     // Not a silent block: the dialog says what Bob sees below.
-    await expect(alice.page.locator('#confirm-body')).toContainText("They aren't told, but their direct messages to you will fail");
+    await expect(alice.page.locator('#confirm-body')).toContainText('Their messages to you will show as not sent');
     await alice.page.click('#confirm-ok');
     await expect(toast(alice, `@${bob.handle} blocked`)).toBeVisible();
 
@@ -75,15 +76,48 @@ test.describe('blocking', () => {
     await expect(dialog.locator('.blocked-empty')).toHaveText('No blocked accounts');
     await dialog.locator('#settings-close').click();
 
-    await bob.page.locator('.msg-group.me .msg-action', { hasText: 'Send again' }).click();
+    await bob.page.locator('.msg-group.me .msg-action', { hasText: 'Retry' }).click();
     await expect.poll(() => bubbleTexts(alice), { timeout: 15_000 }).toContain('are you there?');
     await expect(bob.page.locator('.msg-group.me .msg-status.failed')).toHaveCount(0);
     await expect(rowOf(bob, 'are you there?')).toHaveCount(1);
     expectNoErrors(alice, bob);
   });
 
+  // As mobile: the composer's place holds one line and Unblock, and the
+  // menu offers Unblock where Block was. It holds after a reload, from the
+  // server's list.
+  test('a blocked chat says so where the composer was, and its menu offers Unblock in place of Block', async () => {
+    const { page } = alice;
+    await chooseChatMenuItem(alice, 'Block');
+    await page.click('#confirm-ok');
+    await expect(toast(alice, `@${bob.handle} blocked`)).toBeVisible();
+    const bar = page.locator('.panel .panel-blocked');
+    await expect(bar).toContainText(`You blocked @${bob.handle}.`);
+    await expect(page.locator('.panel .panel-input')).toHaveCount(0);
+
+    await page.locator('.panel-header .chat-menu-btn').first().click();
+    await expect(page.locator('.chat-menu .menu-item')).toHaveText(['Mute notifications', 'Unblock', 'Report…', 'Clear chat history…']);
+    await expect(page.locator('.chat-menu .menu-danger')).toHaveText(['Clear chat history…']);
+    await page.locator('.panel-header .chat-menu-btn').first().click();
+    await expect(page.locator('.chat-menu')).toHaveCount(0);
+
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.locator('.conv-item', { hasText: `@${bob.handle}` }).click();
+    await expect(page.locator('.panel .panel-blocked')).toContainText(`You blocked @${bob.handle}.`);
+
+    // Unblock asks nothing: it is undone as easily.
+    await page.locator('.panel .panel-blocked button', { hasText: 'Unblock' }).click();
+    await expect(toast(alice, `@${bob.handle} unblocked`)).toBeVisible();
+    await expect(page.locator('.panel .panel-blocked')).toHaveCount(0);
+    await expect(page.locator('.panel .panel-input textarea')).toBeVisible();
+    await page.locator('.panel-header .chat-menu-btn').first().click();
+    await expect(page.locator('.chat-menu .menu-item')).toHaveText(['Mute notifications', 'Report…', 'Block…', 'Clear chat history…']);
+    await page.locator('.panel-header .chat-menu-btn').first().click();
+    expectNoErrors(alice);
+  });
+
   test('an unblock the server refuses keeps the row', async () => {
-    await chooseAction(alice, 'are you there?', 'Block');
+    await chooseChatMenuItem(alice, 'Block');
     await alice.page.click('#confirm-ok');
     await expect(toast(alice, `@${bob.handle} blocked`)).toBeVisible();
     await alice.page.route('**/v1/safety/blocks/*', (route) =>
@@ -94,7 +128,7 @@ test.describe('blocking', () => {
     await openMenuItem(alice, 'open-settings');
     const dialog = alice.page.locator('#settings-dialog');
     await dialog.locator('.blocked-row .unblock').click();
-    await expect(toast(alice, 'Could not unblock: try later')).toBeVisible();
+    await expect(toast(alice, `Couldn't unblock @${bob.handle}. Try again.`)).toBeVisible();
     await expect(dialog.locator('.blocked-row')).toHaveCount(1);
     await expect(dialog.locator('.blocked-empty')).toHaveCount(0);
     await dialog.locator('#settings-close').click();
@@ -110,17 +144,18 @@ test.describe('blocking', () => {
     await chooseAction(alice, 'are you there?', 'Report');
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('.dialog-sub')).toHaveText(
-      'The report includes your account, theirs, the reason and which chat and message, but not what it says.',
+      "We get both accounts, the reason and which message, but not what it says. They won't be told.",
     );
     await expect(dialog.locator('.choice span')).toHaveText([
       'Spam',
+      'Scam or fraud',
       'Harassment',
       'Pretending to be someone',
-      'Child sexual abuse',
       'Violence or threats',
-      'Scam or fraud',
+      'Child sexual abuse',
       'Something else',
     ]);
+    await expect(dialog.locator('.check-row')).toHaveText(`Also block @${bob.handle}`);
     await dialog.locator('#report-title').click();
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
@@ -137,7 +172,7 @@ test.describe('blocking', () => {
       route.fulfill({ status: 503, json: { code: 'internal_error', message: 'try later' } }));
     await openMenuItem(alice, 'open-settings');
     const dialog = alice.page.locator('#settings-dialog');
-    await expect(dialog.locator('.blocked-empty')).toHaveText('Could not load blocked accounts');
+    await expect(dialog.locator('.blocked-empty')).toHaveText("Couldn't load blocked accounts");
     await expect(dialog.locator('.blocked-row')).toHaveCount(0);
     await dialog.locator('#settings-close').click();
     await alice.page.unroute('**/v1/safety/blocks');

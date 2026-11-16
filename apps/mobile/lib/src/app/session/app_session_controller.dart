@@ -237,21 +237,6 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     );
   }
 
-  Future<void> revokeListedDevice(String deviceId) async {
-    final accessToken = state.accessToken;
-    final currentDeviceId = state.deviceId;
-    if (accessToken == null || deviceId.isEmpty) {
-      return;
-    }
-
-    if (currentDeviceId == deviceId) {
-      await revokeCurrentDevice();
-      return;
-    }
-
-    await _apiClient.revokeDevice(accessToken, deviceId);
-  }
-
   /// Deletes the account, signed with this device's auth key (C-PROOF).
   /// Local state is wiped only once the relay deleted it: a refused or
   /// unanswered request leaves the account alive, and this device is the

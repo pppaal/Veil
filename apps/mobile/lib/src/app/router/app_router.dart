@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/veil_theme.dart';
 import '../../features/app_lock/presentation/app_lock_screen.dart';
 import '../../features/auth/presentation/choose_handle_screen.dart';
-import '../../features/auth/presentation/create_account_screen.dart';
 import '../../features/chat/presentation/chat_room_screen.dart';
 import '../../features/secret_link/presentation/one_time_link_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
@@ -21,9 +20,7 @@ import '../../features/onboarding/presentation/splash_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/safety/presentation/blocked_accounts_screen.dart';
 import '../../features/security/presentation/safety_numbers_screen.dart';
-import '../../features/security_status/presentation/security_status_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
-import '../../features/settings/presentation/trusted_devices_screen.dart';
 import '../app_state.dart';
 import 'main_tab_shell.dart';
 import 'route_guard.dart';
@@ -114,11 +111,6 @@ List<RouteBase> _buildRoutes() {
           _veilFadePage(state, const OnboardingWarningScreen()),
     ),
     GoRoute(
-      path: '/create-account',
-      pageBuilder: (context, state) =>
-          _veilFadePage(state, const CreateAccountScreen()),
-    ),
-    GoRoute(
       path: '/choose-handle',
       pageBuilder: (context, state) =>
           _veilFadePage(state, const ChooseHandleScreen()),
@@ -166,10 +158,6 @@ List<RouteBase> _buildRoutes() {
       pageBuilder: (context, state) => _veilPushPage(state, const ProfileScreen()),
     ),
     GoRoute(
-      path: '/trusted-devices',
-      pageBuilder: (context, state) => _veilPushPage(state, const TrustedDevicesScreen()),
-    ),
-    GoRoute(
       path: '/blocked-accounts',
       pageBuilder: (context, state) => _veilPushPage(state, const BlockedAccountsScreen()),
     ),
@@ -182,11 +170,6 @@ List<RouteBase> _buildRoutes() {
       path: '/device-transfer',
       pageBuilder: (context, state) =>
           _veilPushPage(state, const DeviceTransferScreen()),
-    ),
-    GoRoute(
-      path: '/security-status',
-      pageBuilder: (context, state) =>
-          _veilPushPage(state, const SecurityStatusScreen()),
     ),
     GoRoute(
       path: '/safety-numbers/:conversationId',

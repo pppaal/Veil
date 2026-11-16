@@ -15,8 +15,8 @@ import 'phone_app.dart';
 
 // The contacts tab on a phone: the list is the screen, adding a contact is
 // an action of the bar, and the sheets (add, actions, nickname) keep their
-// button above the keyboard. What the server keeps of the list is said in
-// the add sheet, where one adds to it.
+// button above the keyboard. The add sheet is a field, an optional name and
+// a button, with no note under them (Threema, Session).
 
 ContactEntry _contact(String label) =>
     ContactEntry(handle: 'h', displayName: label, nickname: null, avatarPath: null, addedAt: DateTime.utc(2026));
@@ -93,7 +93,7 @@ void main() {
       // Nothing but the list: no notice above it or under it.
       expect(find.byType(VeilNotice), findsNothing);
       await scrollToEnd(tester);
-      expect(findCopy(en.contactsNotice), findsNothing);
+      expect(find.textContaining('server'), findsNothing);
       // Full-bleed rows around a 40 avatar, with room above and below it.
       final first = tester.getRect(rows().first);
       expect(first.left, 0);
@@ -103,36 +103,42 @@ void main() {
     });
   });
 
-  testWidgets('files names under their first letter, which heads each run of the list', (tester) async {
+  // As Telegram's contacts: one run of names in order, no letter over them.
+  testWidgets('lists the names in one run, in order, with no letter headers', (tester) async {
     await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
-      const prefix = 'contacts-index-';
-      final headers = <String>[];
+      final labels = <String>[];
       void collect() {
-        for (final element in find.byType(VeilGroup).evaluate()) {
-          if (element.widget.key case ValueKey<String>(:final value) when value.startsWith(prefix)) {
-            final letter = value.substring(prefix.length);
-            if (!headers.contains(letter)) headers.add(letter);
-          }
+        for (final row in tester.widgetList<ContactRow>(rows())) {
+          if (!labels.contains(row.contact.label)) labels.add(row.contact.label);
         }
       }
 
       collect();
       await scrollToEnd(tester, onPage: (_) async => collect());
-      // A contact who set no name is filed under the handle's first letter.
-      expect(headers, ['A', 'J', 'L', 'M', 'O', 'P', 'S', 'T']);
-      expect(find.byKey(const ValueKey('${prefix}T')), findsOneWidget);
+      final sorted = [...labels]..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      expect(labels, sorted);
+      expect(labels.length, greaterThan(4));
+      for (final group in tester.widgetList<VeilGroup>(find.byType(VeilGroup, skipOffstage: false))) {
+        expect(group.header, isNull, reason: 'no letter heads a run');
+      }
+      expect(find.byKey(const ValueKey('contacts-list'), skipOffstage: false), findsOneWidget);
+    });
+  });
 
-      // Each letter is its run's group header, in the muted colour of every
-      // header: in the faintest text colour the letters were hard to tell
-      // apart.
-      tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
+  // M26: an account with no name is its handle, once, with its "@".
+  testWidgets('a contact with no name is one line, its @handle', (tester) async {
+    await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
+      final row = find.byWidgetPredicate((widget) => widget is ContactRow && widget.contact.handle == 'tom_walsh',
+          skipOffstage: false);
+      await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
       await pumpFrames(tester, frames: 2);
-      final group = tester.widget<VeilGroup>(find.byKey(const ValueKey('${prefix}A')));
-      expect(group.header, 'A');
-      // The header comes before the rows (whose avatar shows an A as well).
-      final letter = find.descendant(of: find.byKey(const ValueKey('${prefix}A')), matching: find.text('A')).first;
-      final index = tester.widget<Text>(letter).style!;
-      expect(index.color, tester.element(letter).veilPalette.textMuted);
+      expect(find.descendant(of: row, matching: find.text('@tom_walsh')), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.text('tom_walsh')), findsNothing);
+      // A contact with a name keeps it over the handle.
+      final sam = tester.widget<ContactRow>(
+          find.byWidgetPredicate((widget) => widget is ContactRow && widget.contact.handle == peerHandle, skipOffstage: false));
+      expect(sam.contact.title, 'Sam Rivera');
+      expect(sam.contact.handleLine, '@$peerHandle');
     });
   });
 
@@ -172,8 +178,9 @@ void main() {
       expect(fields, findsNWidgets(2));
       expect(tester.widget<FilledButton>(save).onPressed, isNull, reason: 'nothing to save yet');
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300), reason: 'the button is above the keyboard');
-      expect(inSheet(findCopy(en.contactsNotice, skipOffstage: false)), findsOneWidget,
-          reason: 'what the server keeps is said where one adds');
+      // No helper and no footer: the field, the name and the button.
+      expect(tester.widget<TextField>(fields.first).decoration!.helperText, isNull);
+      expect(inSheet(find.textContaining('server', skipOffstage: false)), findsNothing);
 
       // A handle the relay does not know.
       await tester.enterText(fields.first, 'nobody');
@@ -181,18 +188,19 @@ void main() {
       await tester.tap(save);
       await pumpFrames(tester, frames: 4);
       expect(find.byType(BottomSheet), findsOneWidget, reason: 'the sheet stays for another try');
-      expect(inSheet(findCopy(en.contactsAddFailed)), findsOneWidget);
+      // Not found is said as such; any other failure is contactsAddFailed.
+      expect(inSheet(findCopy(en.safetyAccountNotFound('nobody'))), findsOneWidget);
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300), reason: 'still above the keyboard');
       expect(world.api.addedContacts, isEmpty);
       expect(tester.takeException(), isNull);
 
-      // The refusal is the handle field's error, in place of its helper.
-      expect(tester.widget<TextField>(fields.first).decoration!.errorText, en.contactsAddFailed);
+      // The refusal is the handle field's error.
+      expect(tester.widget<TextField>(fields.first).decoration!.errorText, en.safetyAccountNotFound('nobody'));
       await tester.enterText(fields.first, '@icarus');
       await pumpFrames(tester, frames: 2);
       expect(tester.widget<TextField>(fields.first).decoration!.errorText, isNull,
           reason: 'a new handle clears the refusal');
-      expect(inSheet(findCopy(en.contactsAddFailed)), findsNothing);
+      expect(inSheet(findCopy(en.safetyAccountNotFound('nobody'))), findsNothing);
       await tester.enterText(fields.last, 'Ica');
       await tester.tap(save);
       await pumpFrames(tester, frames: 6);
@@ -232,11 +240,13 @@ void main() {
     await withPhoneApp(tester, identities, location: '/contacts', body: (world) async {
       await tester.tap(find.text('Lena Fischer'));
       await pumpFrames(tester, frames: 4);
-      // Five rows under the contact, Block and Remove in red; nothing in the
-      // sheet pretends to a profile the server does not keep.
-      expect(inSheet(find.byType(VeilRow)), findsNWidgets(5));
+      // Five rows under the contact, led by Message, and only Block in red;
+      // nothing in the sheet pretends to a profile the server does not keep.
+      final actionRows = inSheet(find.byType(VeilRow));
+      expect([for (final row in tester.widgetList<VeilRow>(actionRows)) row.title],
+          [en.contactsStartChat, en.contactsEditNickname, en.contactsRemove, en.reportAction, en.blockAction]);
       expect(tester.widget<VeilRow>(inSheet(find.widgetWithText(VeilRow, en.blockAction))).destructive, isTrue);
-      expect(tester.widget<VeilRow>(inSheet(find.widgetWithText(VeilRow, en.contactsRemove))).destructive, isTrue);
+      expect(tester.widget<VeilRow>(inSheet(find.widgetWithText(VeilRow, en.contactsRemove))).destructive, isFalse);
       expect(inSheet(find.byType(FilledButton)), findsNothing);
       await tester.tap(find.text(en.contactsRemove));
       await pumpFrames(tester, frames: 6);

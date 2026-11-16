@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
@@ -6,6 +7,7 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_read_glyph.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
@@ -59,18 +61,20 @@ double? _progressValue(WidgetTester tester) =>
 
 void main() {
   group('MessageAttachmentCard', () {
-    testWidgets('in a build that cannot open attachments: the kind, the size and the line that says so',
+    testWidgets('in a build that cannot open attachments: the name, the type and size, and the line that says so',
         (tester) async {
       await tester.pumpWidget(_app(MessageAttachmentCard(
         attachment: _reference('application/pdf', 3 * 1024 * 1024),
+        name: 'lease-signed.pdf',
         resolving: false,
         downloadError: null,
         onResolve: null,
       )));
 
       expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
-      expect(find.text('Document'), findsOneWidget);
-      expect(find.text('3.0 MB'), findsOneWidget);
+      // One card says it all, as WhatsApp's file card does.
+      expect(find.text('lease-signed.pdf'), findsOneWidget);
+      expect(find.text('PDF · 3.0 MB'), findsOneWidget);
       expect(find.text(l10n.chatAttachmentCannotOpen), findsOneWidget);
       expect(find.byType(TextButton), findsNothing);
       // Nothing restates that the file is encrypted, and no pill or banner.
@@ -100,8 +104,7 @@ void main() {
         onResolve: () => resolved++,
       )));
 
-      expect(find.text('Photo'), findsOneWidget);
-      expect(find.text('512 B'), findsOneWidget);
+      expect(find.text('Photo · 512 B'), findsOneWidget);
       final resolve = tester.widget<TextButton>(find.widgetWithText(TextButton, l10n.chatAttachmentResolvingAction));
       expect(resolve.onPressed, isNull);
       expect(find.text(l10n.chatAttachmentTicketFailed), findsOneWidget);
@@ -248,22 +251,50 @@ void main() {
     }
 
     // The bubble is as wide as its widest line. On a short message that is
-    // the meta, which must then fit on the one line it was measured for.
+    // the meta, which must then fit on the one line it was measured for. A
+    // read message shows Signal's two filled circles, and no word.
     for (final body in ['ok', 'Yes', 'Sure, see you then']) {
-      testWidgets('a read "$body": "Read" sits on the line of the time', (tester) async {
+      testWidgets('a read "$body": its glyph sits on the line of the time, with no word', (tester) async {
         await pumpBubble(tester, body, message(state: MessageDeliveryState.read));
         final time = tester.getRect(find.text('09:17'));
-        final read = tester.getRect(find.text(l10n.chatDeliveryRead));
-        expect(read.center.dy, closeTo(time.center.dy, 1), reason: '"Read" wrapped under the time');
+        final read = tester.getRect(find.byType(MessageReadGlyph));
+        expect(find.byType(MessageReadGlyph), findsOneWidget);
+        expect(find.text(l10n.chatDeliveryRead), findsNothing);
+        expect(read.center.dy, closeTo(time.center.dy, 1), reason: 'the glyph wrapped under the time');
         expect(read.left, greaterThan(time.right));
       });
     }
 
-    // The bubble itself is the retry: there is no button in it.
+    testWidgets('sent, delivered and waiting each have their glyph', (tester) async {
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.sent));
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.delivered));
+      expect(find.byIcon(Icons.check_circle_outline), findsNWidgets(2));
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.pending));
+      expect(find.byIcon(Icons.schedule), findsOneWidget);
+    });
+
+    // Read is two filled circles with the checks cut out in the bubble's
+    // fill, in the box "delivered" takes, so the time stays put.
+    testWidgets('read cuts its checks in the bubble fill, in the box delivered takes', (tester) async {
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.delivered));
+      final delivered = tester.getSize(
+        find.ancestor(of: find.byIcon(Icons.check_circle_outline).first, matching: find.byType(SizedBox)).first,
+      );
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.read));
+      final glyph = tester.widget<MessageReadGlyph>(find.byType(MessageReadGlyph));
+      expect(glyph.cutColor, VeilBubble.fillOf(VeilPalette.dark, isMine: true));
+      expect(find.byIcon(Icons.check_circle), findsNothing);
+      expect(tester.getSize(find.byType(MessageReadGlyph)), delivered);
+    });
+
+    // The bubble itself is the retry: there is no button in it. It keeps
+    // its colour, with a red glyph beside it.
     testWidgets('a failed send says so under it, and a tap on the bubble retries it once', (tester) async {
       var retried = 0;
       await pumpBubble(tester, 'see you at 6', message(state: MessageDeliveryState.failed), onRetry: () => retried++);
       expect(find.text(l10n.chatNotSentTapToRetry), findsOneWidget);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
       expect(find.byType(TextButton), findsNothing);
       await tester.tap(find.text('see you at 6'));
       await tester.pump();
@@ -278,7 +309,7 @@ void main() {
     });
 
     for (final mine in [true, false]) {
-      testWidgets('a disappearing "ok" (${mine ? 'own' : 'theirs'}): the time left sits on the line of the time',
+      testWidgets('a disappearing "ok" (${mine ? 'own' : 'theirs'}): the timer glyph sits on the line of the time',
           (tester) async {
         await pumpBubble(
           tester,
@@ -291,6 +322,76 @@ void main() {
         expect(timer.left, greaterThan(time.right));
       });
     }
+  });
+
+  group('MessageReadGlyph', () {
+    // Two filled circles stacked plainly fuse into one pill, and the second
+    // hides the first check's long arm. Each check must lie whole inside
+    // what is drawn of its own circle: the front disc, or the crescent left
+    // of the back one outside the ring.
+    test('each check lies whole inside what is drawn of its circle', () {
+      final g = MessageReadGlyph.geometry(MessageReadGlyph.size);
+      final half = g.stroke / 2;
+      Iterable<Offset> along(List<Offset> points) sync* {
+        for (var i = 0; i < points.length - 1; i++) {
+          for (var t = 0.0; t <= 1.0; t += 0.05) {
+            yield Offset.lerp(points[i], points[i + 1], t)!;
+          }
+        }
+      }
+
+      for (final p in along(g.frontCheck)) {
+        expect((p - g.front).distance + half, lessThan(g.radius), reason: 'front check leaves its disc at $p');
+      }
+      for (final p in along(g.backCheck)) {
+        expect((p - g.back).distance + half, lessThan(g.radius), reason: 'back check leaves its circle at $p');
+        expect((p - g.front).distance - half, greaterThan(g.ring), reason: 'back check runs into the ring at $p');
+      }
+      expect(g.ring, greaterThan(g.radius), reason: 'no gap between the circles');
+      expect(g.back.dx - g.front.dx, greaterThan(g.ring - g.radius + g.radius), reason: 'the circles barely overlap');
+      final right = g.back.dx + g.radius;
+      expect(g.front.dx - g.radius, greaterThanOrEqualTo(0));
+      expect(right, lessThanOrEqualTo(MessageReadGlyph.size.width));
+    });
+
+    testWidgets('drawn, both checks show in the bubble fill and both discs in the glyph colour', (tester) async {
+      const fill = Color(0xFF1F5FD6);
+      const ink = Color(0xFFDCE7FB);
+      const scale = 8.0;
+      tester.view.physicalSize = MessageReadGlyph.size * scale;
+      tester.view.devicePixelRatio = scale;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(const ColoredBox(
+        color: fill,
+        child: Align(alignment: Alignment.topLeft, child: MessageReadGlyph(color: ink, cutColor: fill)),
+      ));
+      final g = MessageReadGlyph.geometry(MessageReadGlyph.size);
+      final renderView = tester.binding.renderViews.first;
+      final bytes = await tester.runAsync(() async {
+        final image = await (renderView.debugLayer! as OffsetLayer).toImage(renderView.paintBounds, pixelRatio: 1);
+        final data = await image.toByteData();
+        image.dispose();
+        return data!;
+      });
+      final width = (MessageReadGlyph.size.width * scale).round();
+      Color at(Offset p) {
+        final i = ((p.dy * scale).floor() * width + (p.dx * scale).floor()) * 4;
+        return Color.fromARGB(255, bytes!.getUint8(i), bytes.getUint8(i + 1), bytes.getUint8(i + 2));
+      }
+
+      // Each arm of each check is cut out along its length.
+      for (final check in [g.frontCheck, g.backCheck]) {
+        for (var i = 0; i < 2; i++) {
+          for (final t in [0.25, 0.5, 0.75, 1.0]) {
+            final p = Offset.lerp(check[i], check[i + 1], t)!;
+            expect(at(p), fill, reason: 'a check arm is not cut out at $p');
+          }
+        }
+      }
+      // Above each check, the disc and the crescent are drawn.
+      expect(at(g.front.translate(0, -g.radius * 0.75)), ink);
+      expect(at(g.back.translate(g.radius * 0.45, -g.radius * 0.75)), ink);
+    });
   });
 
   group('ReactionChipsRow', () {
@@ -313,7 +414,7 @@ void main() {
           ],
         );
 
-    testWidgets('groups reactions by emoji, most used first, and marks the ones this user added to',
+    testWidgets('groups reactions by emoji, most used first, counts from two, and marks this user\'s',
         (tester) async {
       final tapped = <String>[];
       await tester.pumpWidget(_app(ReactionChipsRow(
@@ -326,7 +427,8 @@ void main() {
           .widgetList<Text>(find.descendant(of: find.byType(Wrap), matching: find.byType(Text)))
           .map((text) => text.data)
           .toList();
-      expect(texts, ['❤️', '2', '👍', '1']);
+      // A single reaction shows its emoji alone, as WhatsApp's does.
+      expect(texts, ['❤️', '2', '👍']);
 
       final palette = tester.element(find.byType(Wrap)).veilPalette;
       Color? fillOf(String emoji) => (tester
@@ -372,19 +474,6 @@ void main() {
       expect(formatDurationLabel(l10n, const Duration(seconds: 10)), l10n.chatDurationSeconds(10));
       expect(formatDurationLabel(l10n, const Duration(minutes: 90)), l10n.chatDurationHours(1));
       expect(formatDurationLabel(l10n, const Duration(days: 2)), l10n.chatDurationDays(2));
-    });
-
-    test('with the relay down, the banner names what waits, failed sends first', () {
-      String recovery({int failed = 0, int queued = 0, int uploading = 0}) => networkRecoveryMessage(
-            l10n: l10n,
-            failedCount: failed,
-            queuedCount: queued,
-            uploadingCount: uploading,
-            nextRetryAt: null,
-          );
-      expect(recovery(failed: 1, queued: 2, uploading: 3), l10n.chatNetworkRecoveryFailed(1, l10n.chatRetryResumes));
-      expect(recovery(queued: 2, uploading: 3), l10n.chatNetworkRecoveryUploading(3, l10n.chatRetryResumes));
-      expect(recovery(queued: 2), l10n.chatNetworkRecoveryQueued(2, l10n.chatRetryResumes));
     });
   });
 }

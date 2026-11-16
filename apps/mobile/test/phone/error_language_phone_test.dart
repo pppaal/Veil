@@ -9,7 +9,6 @@ import 'package:veil_mobile/src/features/conversations/data/veil_messenger_contr
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_old_device_panel.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
-import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/splash_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_notice.dart';
@@ -107,7 +106,7 @@ void main() {
     });
   });
 
-  testWidgets('a new device says a failed login in the ARB\'s words, in the step in hand', (tester) async {
+  testWidgets('a new device says a failed login in the ARB\'s words, under the button in hand', (tester) async {
     await withPhoneApp(tester, identities,
         location: '/device-transfer',
         account: LayoutAccount.signedOut,
@@ -115,10 +114,9 @@ void main() {
       expect(find.byType(DeviceTransferScreen), findsOneWidget);
       final failure = findCopy(_en.errorRelayFailed);
       expect(failure, findsOneWidget);
-      // With the first step's controls, under the steps.
-      expect(tester.getRect(failure).top, greaterThanOrEqualTo(tester.getRect(find.byType(StepRow).last).bottom));
+      // Under the first screen's one button.
       expect(tester.getRect(failure).top,
-          greaterThanOrEqualTo(tester.getRect(find.widgetWithText(FilledButton, _en.deviceTransferImportPayload)).bottom));
+          greaterThanOrEqualTo(tester.getRect(find.widgetWithText(FilledButton, _en.commonContinue)).bottom));
       // One line, not a box.
       expect(find.byType(VeilNotice), findsNothing);
       expect(findCopy(UserFacingErrorCode.relayFailed.sentence), findsNothing);
@@ -128,7 +126,6 @@ void main() {
   testWidgets('an old device says a failed approval in the ARB\'s words', (tester) async {
     final now = DateTime(2026, 4, 2, 12);
     Widget panel(String error) => _alone(TransferOldDevicePanel(
-          isAuthenticated: true,
           isBusy: false,
           transferSessionId: 'session-1',
           transferCode: 'VEIL_TRANSFER::session-1::token-1',
@@ -140,9 +137,7 @@ void main() {
           onIssue: () {},
           onApprove: () {},
           onCopyCode: () {},
-          onClear: () {},
           now: now,
-          stepsFooter: _en.deviceTransferOldPhoneNeeded,
         ));
     tester.view
       ..physicalSize = const Size(400, 3000)

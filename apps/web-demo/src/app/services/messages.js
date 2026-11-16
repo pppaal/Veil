@@ -4,6 +4,7 @@
 // (src/features/secure-messaging.js). Only envelopes are cached
 // (src/platform/persist.js); views are rebuilt through the same ingest path.
 
+import { t } from '../../../i18n/i18n.js';
 import { byLastActivity } from '../../domain/conversations.js';
 import { ingestMessage } from '../../domain/ingest.js';
 import { isPendingId, pendingId } from '../../domain/local-messages.js';
@@ -40,6 +41,7 @@ export function createMessages({ store, stack }) {
       retire: (envelope) => stack.secure.retire(envelope),
       media: stack.media,
       previous: content === undefined ? previous : null,
+      label: t,
     });
     if (previous && view.media !== null && view.media === previous.media) {
       for (const field of MEDIA_STATE_FIELDS) if (previous[field] !== undefined) view[field] = previous[field];

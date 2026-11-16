@@ -41,20 +41,19 @@ For iOS simulator, replace `10.0.2.2` with `localhost`.
 2. Accept the onboarding warning.
 3. Create account A with a handle such as `icarus`.
 4. Set a PIN when the app lock screen appears.
-5. Open settings and note the bound device id.
+5. Open Settings and check the account's handle on the profile row.
 6. Start a direct chat to another registered handle.
-7. Send an opaque text message.
-8. Open attachment preview and send an encrypted attachment placeholder.
-9. Open security status and confirm no backup/no recovery messaging.
-10. Open device transfer and run:
+7. Send a text message.
+8. Confirm Settings has no paragraph on backup: the no-recovery wording is in Before you start and in the Sign out and Delete account dialogs.
+9. Open Settings > Move to a new phone and run:
    - init transfer
    - import payload on the new device
    - register the new-device claim
    - approve that claim on the old device
    - complete transfer on the new device
-11. Confirm the old device session is cleared after completion.
-12. On a fresh bound session, open settings and test `Revoke this device`.
-13. Confirm the app returns to account creation and the old bearer token no longer works.
+10. Confirm the old device session is cleared after completion.
+11. On a fresh session, open Settings, choose `Sign out` and type the handle to confirm.
+12. Confirm the app returns to account creation and the old bearer token no longer works.
 
 ## 4. Current demo limitations
 

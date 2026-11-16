@@ -195,12 +195,22 @@ void main() {
       expect(opened.map((message) => message.body.length).reduce((a, b) => a > b ? a : b), greaterThan(150),
           reason: 'one message is long');
       expect(opened.where((message) => message.attachment != null), hasLength(1));
-      expect(opened.where((message) => message.messageKind == MessageKind.system), hasLength(1));
+      expect(opened.where((message) => message.body.contains(longLinkHost)), hasLength(1), reason: 'one link is long');
+      expect(opened.where((message) => message.messageKind == MessageKind.system), isEmpty,
+          reason: 'the chat of the everyday cases has no notice');
       expect(messages.where((message) => message.isMine), isNotEmpty, reason: 'both sides wrote');
       expect(messages.where((message) => !message.isMine), isNotEmpty, reason: 'both sides wrote');
       expect(messages.where((message) => message.expiresAt != null), hasLength(1));
       expect(await messenger.isPeerVerified(chatConversationId), isTrue);
       expect(messenger.messagesFor(emptyChatConversationId), isEmpty);
+
+      await messenger.loadConversationMessages(noticeChatConversationId);
+      final notices = [
+        for (final message in messenger.messagesFor(noticeChatConversationId))
+          if (await messenger.decryptMessage(message) case DecryptedMessage(isOk: true, messageKind: MessageKind.system))
+            message,
+      ];
+      expect(notices, hasLength(1), reason: 'the notice case has its notice');
       world.dispose();
 
       final withGroup = await LayoutWorld.create(
@@ -303,6 +313,7 @@ Future<LayoutFindings> _render(
     attention: screenCase.attention,
     bootstrapping: screenCase.bootstrapping,
     transferStarted: screenCase.transferStarted,
+    transferClaimed: screenCase.transferClaimed,
     withGroup: screenCase.withGroup,
   );
 

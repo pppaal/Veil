@@ -30,6 +30,7 @@ import { createSession } from './src/app/services/session.js';
 import { createStore } from './src/app/store.js';
 import { createConfirm } from './src/ui/confirm.js';
 import { createDialogs } from './src/ui/dialogs.js';
+import { applyTheme } from './src/ui/dom.js';
 import { createSounds } from './src/ui/sounds.js';
 import { toast } from './src/ui/toast.js';
 import { createAppShell } from './src/ui/views/app-shell.js';
@@ -41,7 +42,7 @@ import { createHelpDialog } from './src/ui/views/help-dialog.js';
 import { createKakaoImport } from './src/ui/views/kakao-import.js';
 import { createKeyChangeBanner } from './src/ui/views/key-change-banner.js';
 import { createMentions } from './src/ui/views/mentions.js';
-import { copyHandle, createMenu, showConnectionStatus } from './src/ui/views/menu.js';
+import { copyHandle, createMenu } from './src/ui/views/menu.js';
 import { createMessageActions } from './src/ui/views/message-actions.js';
 import { createMessageList } from './src/ui/views/message-list.js';
 import { createNewChatDialog } from './src/ui/views/new-chat-dialog.js';
@@ -56,16 +57,17 @@ import { createTabs } from './src/ui/views/tabs.js';
 import { createTransferDialogs } from './src/ui/views/transfer-dialogs.js';
 import { createVoiceRecorder } from './src/ui/views/voice-recorder.js';
 
-// The strings load before anything renders, so the static page and the
-// dictionary say the same thing before the user sees it.
+// The saved theme, or the system's, paints first; the strings load before
+// anything renders, so the static page and the dictionary say the same
+// thing before the user sees it.
+const preferences = createPreferences();
+applyTheme(preferences.theme());
 await initI18n();
 
-const preferences = createPreferences();
 const store = createStore({ mutedConversations: preferences.mutedConversations(), soundsEnabled: preferences.soundsEnabled() });
 const dialogs = createDialogs(document);
 const confirm = createConfirm(dialogs);
-const shell = createAppShell({ store, preferences });
-shell.applyTheme();
+const shell = createAppShell({ store });
 
 // The stack's hooks reach services built below; none fires before the
 // stored identity is loaded at the very end.
@@ -132,14 +134,14 @@ const messageList = createMessageList({ store, send, outbox, startReply: compose
 const safetyDialog = createSafetyDialog({ identityTrust, dialogs });
 const keyChangeBanner = createKeyChangeBanner({ identityTrust, safetyDialog, confirm });
 const panelSearch = createPanelSearch({ store });
-const chat = createChatView({ store, stack, messages, messageList, composer, keyChangeBanner, safetyDialog, panelSearch, safety, confirm });
-const forwardDialog = createForwardDialog({ store, stack, composer });
 const reportDialog = createReportDialog({ safety, dialogs });
-const messageActions = createMessageActions({ store, send, safety, composer, forwardDialog, reportDialog, confirm });
+const chat = createChatView({ store, stack, messages, messageList, composer, keyChangeBanner, safetyDialog, panelSearch, reportDialog, safety, confirm, backToList: tabs.backToList });
+const forwardDialog = createForwardDialog({ store, stack, composer });
+const messageActions = createMessageActions({ store, send, composer, forwardDialog, reportDialog, confirm });
 const auth = createAuthView({ stack, session, confirm });
 const transferDialogs = createTransferDialogs({ store, transfer, session, auth, dialogs, confirm });
 const settings = createSettingsDialog({ store, preferences, safety });
-const help = createHelpDialog({ store });
+const help = createHelpDialog();
 
 store.subscribe('sidebar', sidebar.render);
 store.subscribe('panels', chat.render);
@@ -153,10 +155,8 @@ store.subscribe('session-reset', () => {
 createMenu({
   actions: {
     'copy-handle': () => copyHandle(store.state.me.handle),
-    'ws-info': () => showConnectionStatus(realtime.isConnected(), history.POLL_MS),
     'transfer-start': () => transferDialogs.startOld(),
-    wipe: () => auth.confirmAndDestroyIdentity(),
-    'toggle-sounds': () => settings.toggleSounds(),
+    wipe: () => auth.confirmAndSignOut(() => transferDialogs.startOld()),
     'show-help': () => help.open(),
     'open-settings': () => settings.open(),
     'kakao-import': () => kakao.openDialog(),

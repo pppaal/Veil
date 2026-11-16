@@ -18,13 +18,15 @@ import { toFragment } from '../markdown-dom.js';
 import { openImageZoom } from './image-preview.js';
 
 // The delivery state of an own message as the sprite draws it
-// (src/domain/message-groups.js deliveryStatus).
+// (src/domain/message-groups.js deliveryStatus): a clock while it waits, then
+// Signal's check circles, one when sent, two when delivered, two filled when
+// read. The state is a word only for assistive technology.
 const STATUS_ICONS = Object.freeze({
   pending: 'clock',
   failed: 'warning',
-  sent: 'check',
-  delivered: 'check-double',
-  read: 'check-double',
+  sent: 'tick-sent',
+  delivered: 'tick-delivered',
+  read: 'tick-read',
 });
 
 // send: src/app/services/send.js; outbox: src/app/services/outbox.js;
@@ -76,8 +78,8 @@ export function createMessageList({ store, send, outbox, startReply }) {
       anchor.click();
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (error) {
-      toast(t('media.downloadFailed', { error: error.message || 'unknown' }), 'error');
+    } catch {
+      toast(t('media.downloadFailed'), 'error');
     }
   }
 
@@ -87,7 +89,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
       return el('img', {
         class: 'msg-inline-image',
         src: url,
-        alt: 'image',
+        alt: KIND_LABELS.image,
         onclick: (event) => {
           event.stopPropagation();
           openImageZoom(url);
@@ -107,16 +109,19 @@ export function createMessageList({ store, send, outbox, startReply }) {
     return KIND_LABELS.voice;
   }
 
-  // File names are sender-controlled: the sanitized name and the real
-  // extension show separately.
+  // File names are sender-controlled: the sanitized name, and under it the
+  // real extension as the type ("PDF · 2.3 MB"), as a file card shows them.
   function fileChip(message) {
     const name = message.media?.name ?? message._localFile?.name ?? t('media.file');
     const sizeBytes = message.media?.sizeBytes ?? message._localFile?.sizeBytes ?? 0;
     const extension = message.media?.extension ?? fileExtension(name);
+    const type = extension ? extension.toUpperCase() : t('media.file');
     const size = formatBytes(sizeBytes);
     return el('button', {
       class: 'msg-file-chip',
       type: 'button',
+      title: t('media.download'),
+      'aria-label': `${name}, ${t('media.download')}`,
       onclick: (event) => {
         event.stopPropagation();
         downloadFile(message);
@@ -125,11 +130,9 @@ export function createMessageList({ store, send, outbox, startReply }) {
       el('div', { class: 'msg-file-chip-icon' }, [icon('file')]),
       el('div', { class: 'msg-file-chip-meta' }, [
         el('div', { class: 'msg-file-chip-name' }, [name]),
-        el('div', { class: 'msg-file-chip-size' }, [
-          extension ? el('span', { class: 'msg-file-chip-ext' }, ['.' + extension]) : null,
-          size ? t('media.clickToDownload', { size }) : 'Click to download',
-        ]),
+        el('div', { class: 'msg-file-chip-size' }, [size ? t('media.clickToDownload', { type, size }) : type]),
       ]),
+      icon('download', 'msg-file-chip-download'),
     ]);
   }
 
@@ -152,8 +155,9 @@ export function createMessageList({ store, send, outbox, startReply }) {
     }
   }
 
-  // Chips per emoji with a count, ours highlighted; a click toggles ours
-  // through the same end-to-end path as the action menu.
+  // Chips per emoji, ours highlighted, with a count from two on (as on
+  // mobile); a click toggles ours through the same end-to-end path as the
+  // action menu.
   function reactionsRow(message, reactions) {
     const tally = reactionTally(reactions, state.me?.deviceId);
     if (tally.size === 0) return null;
@@ -164,7 +168,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
         event.stopPropagation();
         send.react(message.id, emoji);
       },
-    }, [el('span', {}, [emoji]), ' ', el('span', { class: 'msg-reaction-count' }, [String(entry.count)])])));
+    }, [el('span', {}, [emoji]), entry.count > 1 ? el('span', { class: 'msg-reaction-count' }, [String(entry.count)]) : null])));
   }
 
   // The quoted message at the top of a reply, behind a rule.
@@ -174,8 +178,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
   }
 
   // Time, and for our own messages the delivery state, at the end of the
-  // last bubble of a run: one tick for sent, two for delivered, two and the
-  // word for read. Assistive technology hears the state as a word.
+  // last bubble of a run. Assistive technology hears the state as a word.
   function bubbleMeta(group) {
     const last = group.msgs.at(-1);
     const time = timeOfDay(sentAt(last, Date.now()));
@@ -186,7 +189,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
       time,
       el('span', { class: 'msg-status ' + status, title: label }, [
         icon(STATUS_ICONS[status]),
-        el('span', { class: status === 'read' ? 'msg-status-word' : 'sr-only' }, [label]),
+        el('span', { class: 'sr-only' }, [label]),
       ]),
     ]);
   }
@@ -209,6 +212,8 @@ export function createMessageList({ store, send, outbox, startReply }) {
     if (message._status === 'pending') classes.push('pending');
     if (message._status === 'failed') classes.push('failed');
     if (message.deletedAt) classes.push('msg-deleted-bubble');
+    // A message that could not be opened says why in plain text.
+    if (message.kind === 'locked') classes.push('msg-locked');
     const replyButton = isPendingId(message.id) ? null : el('button', {
       class: 'msg-reply-btn',
       'aria-label': t('msg.action.reply'),
@@ -274,7 +279,6 @@ export function createMessageList({ store, send, outbox, startReply }) {
     if (shown.length === 0) {
       list.appendChild(el('div', { class: 'panel-empty' }, [
         el('div', { class: 'empty-title' }, [t('msg.empty.title')]),
-        el('div', { class: 'empty-sub' }, [t('msg.empty.sub')]),
       ]));
     }
     return list;

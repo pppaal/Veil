@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -11,10 +12,34 @@ abstract class LocalUnlockAuthenticator {
   Future<bool> authenticateBiometric();
 }
 
-class DeviceLocalUnlockAuthenticator implements LocalUnlockAuthenticator {
+/// The kind of biometrics a phone unlocks with, so the lock screen can name
+/// it ("Use Face ID") instead of saying "biometrics".
+enum BiometricKind { unknown, faceId, touchId, fingerprint }
+
+/// An authenticator that can tell which kind of biometrics the phone has.
+abstract class BiometricKindSource {
+  Future<BiometricKind> biometricKind();
+}
+
+class DeviceLocalUnlockAuthenticator implements LocalUnlockAuthenticator, BiometricKindSource {
   DeviceLocalUnlockAuthenticator(this._localAuth);
 
   final LocalAuthentication _localAuth;
+
+  @override
+  Future<BiometricKind> biometricKind() async {
+    try {
+      final available = await _localAuth.getAvailableBiometrics();
+      final apple = defaultTargetPlatform == TargetPlatform.iOS;
+      if (apple && available.contains(BiometricType.face)) return BiometricKind.faceId;
+      if (available.contains(BiometricType.fingerprint)) {
+        return apple ? BiometricKind.touchId : BiometricKind.fingerprint;
+      }
+      return BiometricKind.unknown;
+    } on PlatformException {
+      return BiometricKind.unknown;
+    }
+  }
 
   @override
   Future<bool> canUseBiometrics() async {
@@ -87,6 +112,12 @@ class AppLockService {
   final SecureStorageService _secureStorage;
 
   Future<bool> canUseBiometrics() => _authenticator.canUseBiometrics();
+
+  /// Which biometrics the phone has, when the authenticator can tell.
+  Future<BiometricKind> biometricKind() async {
+    final Object authenticator = _authenticator;
+    return authenticator is BiometricKindSource ? authenticator.biometricKind() : BiometricKind.unknown;
+  }
 
   Future<bool> hasPin() => _secureStorage.hasPin();
 

@@ -4,9 +4,9 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
 /// The composer's send button: a 32dp brand circle with an up arrow, inside
-/// a 44x44 tap target. The composer shows it only while there is a draft to
-/// send. Without [onPressed] its square stays empty, so the field does not
-/// change width under the first character typed.
+/// a 44x44 tap target. It is there only while there is a draft to send:
+/// without [onPressed] it takes no room, and the field has the whole width
+/// until the first character slides the button in (iMessage).
 class SendButton extends StatelessWidget {
   const SendButton({super.key, required this.onPressed, required this.semanticLabel});
 
@@ -25,7 +25,7 @@ class SendButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onPressed = this.onPressed;
-    if (onPressed == null) return const SizedBox.square(dimension: extent);
+    if (onPressed == null) return const SizedBox.shrink();
     final palette = context.veilPalette;
     return Semantics(
       button: true,

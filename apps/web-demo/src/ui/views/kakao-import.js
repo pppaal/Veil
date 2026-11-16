@@ -3,6 +3,7 @@
 // a read-only archive, listed under the conversations and opened in the
 // panel area. The bytes never leave the device.
 
+import { t } from '../../../i18n/i18n.js';
 import { parseKakaoExport } from '../../../lib/kakao-import.js';
 import { $, avatarFor, el } from '../dom.js';
 import { dayKey, dayLabel, timeOfDay } from '../time.js';
@@ -11,7 +12,7 @@ import { toast } from '../toast.js';
 const MAX_EXPORT_BYTES = 50 * 1024 * 1024;
 
 const messageCount = (parsed) => parsed.messages.filter((message) => message.kind === 'msg').length;
-const messagesLabel = (count) => `${count} ${count === 1 ? 'message' : 'messages'}, read only`;
+const messagesLabel = (count) => (count === 1 ? t('kakao.oneMessage') : t('kakao.messages', { count }));
 
 function archivePanel(archive) {
   const list = el('div', { class: 'archive-msgs' });
@@ -45,11 +46,11 @@ function archivePanel(archive) {
     el('div', { class: 'panel-header' }, [
       avatarFor(archive.title || 'kakao', 'sm'),
       el('div', { class: 'panel-title' }, [
-        el('div', { class: 'name' }, [archive.title || 'KakaoTalk archive']),
+        el('div', { class: 'name' }, [archive.title || t('kakao.archive')]),
         el('div', { class: 'sub' }, [messagesLabel(archive.messageCount)]),
       ]),
     ]),
-    el('div', { class: 'kakao-archive-banner' }, ['KakaoTalk archive. Read only. Stored in this browser only.']),
+    el('div', { class: 'kakao-archive-banner' }, [t('kakao.banner')]),
     list,
   ]);
 }
@@ -64,7 +65,7 @@ export function createKakaoImport({ store, archives }) {
     if (!panels) return;
     const archive = await archives.open(meta.id);
     if (!archive) {
-      toast('Could not open the archive', 'error');
+      toast(t('kakao.openFailed'), 'error');
       return;
     }
     panels.replaceChildren(archivePanel(archive));
@@ -76,14 +77,14 @@ export function createKakaoImport({ store, archives }) {
     rows() {
       if (state.archives.length === 0) return [];
       return [
-        el('div', { class: 'conv-section', dataset: { kakaoSection: '1' } }, ['KakaoTalk archives']),
+        el('div', { class: 'conv-section', dataset: { kakaoSection: '1' } }, [t('kakao.archives')]),
         ...state.archives.map((meta) => el('button', {
           class: 'conv-item',
           onclick: () => openArchive(meta),
         }, [
           avatarFor(meta.title || 'kakao', 'md'),
           el('div', { class: 'conv-meta' }, [
-            el('div', { class: 'conv-row1' }, [el('span', { class: 'conv-name' }, [meta.title || 'Archive'])]),
+            el('div', { class: 'conv-row1' }, [el('span', { class: 'conv-name' }, [meta.title || t('kakao.untitled')])]),
             el('div', { class: 'conv-preview' }, [messagesLabel(meta.messageCount)]),
           ]),
         ])),
@@ -94,18 +95,12 @@ export function createKakaoImport({ store, archives }) {
       const fileInput = el('input', { type: 'file', id: 'kakao-file', class: 'kakao-file', accept: '.txt,text/plain' });
       const preview = el('div', { id: 'kakao-preview', class: 'kakao-import-summary hidden' });
       const error = el('div', { class: 'dialog-error', id: 'kakao-error', role: 'alert', 'aria-live': 'polite' });
-      const cancelButton = el('button', { class: 'btn btn-ghost', id: 'kakao-cancel' }, ['Cancel']);
-      const confirmButton = el('button', { class: 'btn btn-primary', id: 'kakao-confirm', disabled: 'disabled' }, ['Save as archive']);
+      const cancelButton = el('button', { class: 'btn btn-ghost', id: 'kakao-cancel' }, [t('common.cancel')]);
+      const confirmButton = el('button', { class: 'btn btn-primary', id: 'kakao-confirm', disabled: 'disabled' }, [t('kakao.save')]);
       const backdrop = el('div', { class: 'dialog-backdrop', role: 'presentation' }, [
         el('div', { class: 'dialog dialog-wide', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'kakao-title' }, [
-          el('div', { class: 'dialog-title', id: 'kakao-title' }, ['Import a KakaoTalk export']),
-          el('div', { class: 'dialog-sub' }, [
-            'In KakaoTalk, open the chat, then its settings, then ',
-            el('strong', {}, ['Export chat']),
-            ', and choose the text file (.txt). Pick that file here. It is saved as a ',
-            el('strong', {}, ['read-only archive']),
-            ' that never leaves this browser.',
-          ]),
+          el('div', { class: 'dialog-title', id: 'kakao-title' }, [t('kakao.title')]),
+          el('div', { class: 'dialog-sub' }, [t('kakao.howTo'), el('strong', {}, [t('kakao.exportChat')]), t('kakao.howToEnd')]),
           fileInput,
           preview,
           error,
@@ -121,27 +116,28 @@ export function createKakaoImport({ store, archives }) {
         const file = fileInput.files?.[0];
         if (!file) return;
         if (!file.name.endsWith('.txt')) {
-          error.textContent = 'Only .txt files are supported.';
+          error.textContent = t('kakao.wrongType');
           return;
         }
         if (file.size > MAX_EXPORT_BYTES) {
-          error.textContent = 'The file is larger than 50 MB. Split the export first.';
+          error.textContent = t('kakao.tooBig');
           return;
         }
         try {
           parsed = parseKakaoExport(await file.text());
           title = file.name.replace(/\.txt$/i, '');
           const { participants, errors } = parsed;
-          const more = participants.length > 4 ? ` and ${participants.length - 4} more` : '';
+          const shown = participants.slice(0, 4).join(', ');
+          const names = participants.length > 4 ? t('kakao.more', { names: shown, count: participants.length - 4 }) : shown;
           preview.replaceChildren(...[
-            el('div', {}, [el('strong', {}, [String(messageCount(parsed))]), ' messages']),
-            el('div', {}, [el('strong', {}, [String(participants.length)]), ` participants (${participants.slice(0, 4).join(', ')}${more})`]),
-            errors.length > 0 ? el('div', {}, [`${errors.length} lines could not be read (you can still continue)`]) : null,
+            el('div', {}, [messagesLabel(messageCount(parsed))]),
+            el('div', {}, [t('kakao.participants', { count: participants.length, names })]),
+            errors.length > 0 ? el('div', {}, [t('kakao.unreadLines', { count: errors.length })]) : null,
           ].filter(Boolean));
           preview.classList.remove('hidden');
           confirmButton.disabled = false;
-        } catch (failure) {
-          error.textContent = 'Could not read the file: ' + (failure.message || 'unknown');
+        } catch {
+          error.textContent = t('kakao.readFailed');
         }
       });
 
@@ -155,12 +151,12 @@ export function createKakaoImport({ store, archives }) {
         confirmButton.disabled = true;
         try {
           await archives.save(title, parsed);
-          toast('Saved as an archive', 'good');
+          toast(t('kakao.saved'), 'good');
           close();
           await archives.load();
           store.notify('sidebar');
-        } catch (failure) {
-          error.textContent = 'Could not save: ' + (failure.message || 'unknown');
+        } catch {
+          error.textContent = t('kakao.saveFailed');
           confirmButton.disabled = false;
         }
       });

@@ -8,8 +8,10 @@ import '../../../shared/presentation/veil_ui.dart';
 /// blocked: one line saying so, and Unblock. Nothing can be sent until then:
 /// the server refuses it.
 class BlockedComposerLine extends StatelessWidget {
-  const BlockedComposerLine({super.key, required this.onUnblock});
+  const BlockedComposerLine({super.key, required this.handle, required this.onUnblock});
 
+  /// The blocked peer's handle, which the line names.
+  final String handle;
   final VoidCallback onUnblock;
 
   @override
@@ -23,7 +25,7 @@ class BlockedComposerLine extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              l10n.blockedComposerLine,
+              l10n.blockedComposerLine(handle),
               style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
             ),
           ),

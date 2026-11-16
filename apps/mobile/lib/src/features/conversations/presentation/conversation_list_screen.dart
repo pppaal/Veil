@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
-import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
@@ -46,9 +45,6 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
   bool _searchingArchive = false;
   DateTime? _archiveNextBeforeSentAt;
   String? _archiveNextBeforeMessageId;
-  MessageSearchSenderFilter _senderFilter = MessageSearchSenderFilter.all;
-  MessageSearchTypeFilter _typeFilter = MessageSearchTypeFilter.all;
-  MessageSearchDateFilter _dateFilter = MessageSearchDateFilter.any;
   bool _restoredUiState = false;
 
   @override
@@ -79,9 +75,6 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     }
     _searchController.text = restored.query;
     _selectedConversationId = restored.selectedConversationId;
-    _senderFilter = restored.senderFilter;
-    _typeFilter = restored.typeFilter;
-    _dateFilter = restored.dateFilter;
     _navigationRequestCounter = restored.lastNavigationRequestId;
   }
 
@@ -136,9 +129,6 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           archiveHasMore:
               _archiveNextBeforeSentAt != null && _archiveNextBeforeMessageId != null,
           searchController: _searchController,
-          senderFilter: _senderFilter,
-          typeFilter: _typeFilter,
-          dateFilter: _dateFilter,
           timeFormat: _timeFormat,
           selectedConversationId: isWideLayout ? _selectedConversationId : null,
           onSelectConversation: (conversationId) {
@@ -165,38 +155,22 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
             context.push('/chat/${result.conversationId}', extra: target);
           },
           onLoadMoreMessageResults: () => unawaited(_loadMoreArchiveResults()),
-          onSenderFilterChanged: (value) {
-            setState(() => _senderFilter = value);
-            _persistUiState();
-            unawaited(_runArchiveSearch());
-          },
-          onTypeFilterChanged: (value) {
-            setState(() => _typeFilter = value);
-            _persistUiState();
-            unawaited(_runArchiveSearch());
-          },
-          onDateFilterChanged: (value) {
-            setState(() => _dateFilter = value);
-            _persistUiState();
-            unawaited(_runArchiveSearch());
-          },
         );
 
         final l10n = AppLocalizations.of(context);
-        // Starting a chat is the bar's one action. The security status is
-        // under Settings, a tab of the bar below.
+        // Starting a chat is the bar's one action.
         const barActions = [_NewConversationButton()];
-        // The connection is named only while there is none.
-        final connection = controller.realtimeConnected
-            ? null
+        // While there is no connection the bar's title says so in place of
+        // "Chats".
+        final title = controller.realtimeConnected
+            ? l10n.navChats
             : controller.errorIsRelayInterruption
                 ? l10n.conversationsBarOffline
                 : l10n.conversationsBarConnecting;
 
         if (!isWideLayout) {
           return VeilShell(
-            title: l10n.navChats,
-            subtitle: connection,
+            title: title,
             actions: barActions,
             child: ConversationListPhone(view: view),
           );
@@ -227,22 +201,23 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
                 width: ConversationListScreen.listPaneWidth,
                 child: Column(
                   children: [
-                    ChatPaneBar(title: l10n.navChats, subtitle: connection, actions: barActions),
+                    ChatPaneBar(title: title, actions: barActions),
                     Expanded(child: ConversationListPhone(view: view)),
                   ],
                 ),
               ),
               Container(width: 0.5, color: palette.stroke),
               Expanded(
-                // With no chat at all the list says so and offers "New chat";
-                // the pane beside it stays empty rather than say it again.
+                // With no chat open the pane says one muted line, also when
+                // there is no chat at all: the list beside it has the empty
+                // state and its button.
                 child: selectedConversation == null
-                    ? conversations.isEmpty
-                        ? const SizedBox.shrink()
-                        : VeilEmptyState(
-                            title: l10n.conversationsChoosePaneTitle,
-                            body: l10n.conversationsChoosePaneBody,
-                          )
+                    ? Center(
+                        child: Text(
+                          l10n.conversationsChoosePaneTitle,
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: palette.textMuted),
+                        ),
+                      )
                     : ChatRoomScreen(
                         conversationId: selectedConversation.id,
                         embedded: true,
@@ -279,9 +254,6 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         ConversationListViewState(
           query: _searchController.text,
           selectedConversationId: _selectedConversationId,
-          senderFilter: _senderFilter,
-          typeFilter: _typeFilter,
-          dateFilter: _dateFilter,
           lastNavigationRequestId: _navigationRequestCounter,
         ),
       ),
@@ -305,29 +277,18 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       return;
     }
 
-    final senderFilter = _senderFilter;
-    final typeFilter = _typeFilter;
-    final dateFilter = _dateFilter;
     final requestId = ++_archiveSearchRequestId;
     if (mounted) {
       setState(() => _searchingArchive = true);
     }
 
     final page = await ref.read(messengerControllerProvider).searchMessageArchive(
-          query: MessageSearchQuery(
-            query: query,
-            senderFilter: senderFilter,
-            typeFilter: typeFilter,
-            dateFilter: dateFilter,
-          ),
+          query: MessageSearchQuery(query: query),
         );
 
     if (!mounted ||
         requestId != _archiveSearchRequestId ||
-        _searchController.text.trim() != query ||
-        senderFilter != _senderFilter ||
-        typeFilter != _typeFilter ||
-        dateFilter != _dateFilter) {
+        _searchController.text.trim() != query) {
       return;
     }
 
@@ -347,18 +308,12 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       return;
     }
 
-    final senderFilter = _senderFilter;
-    final typeFilter = _typeFilter;
-    final dateFilter = _dateFilter;
     final requestId = ++_archiveSearchRequestId;
     setState(() => _searchingArchive = true);
 
     final page = await ref.read(messengerControllerProvider).searchMessageArchive(
           query: MessageSearchQuery(
             query: query,
-            senderFilter: senderFilter,
-            typeFilter: typeFilter,
-            dateFilter: dateFilter,
             beforeSentAt: beforeSentAt,
             beforeMessageId: beforeMessageId,
           ),
@@ -366,10 +321,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
 
     if (!mounted ||
         requestId != _archiveSearchRequestId ||
-        _searchController.text.trim() != query ||
-        senderFilter != _senderFilter ||
-        typeFilter != _typeFilter ||
-        dateFilter != _dateFilter) {
+        _searchController.text.trim() != query) {
       return;
     }
 
@@ -384,51 +336,18 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
 
 const String _conversationListViewStateStorageKey = 'conversation-list-view-state';
 
-/// Starts a chat from the Chats bar: a 1:1 by handle, or a group, from a
-/// menu of the two.
+/// Starts a chat from the Chats bar: the New chat screen, where "New group"
+/// is the first row.
 class _NewConversationButton extends StatelessWidget {
   const _NewConversationButton();
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final palette = context.veilPalette;
-    return PopupMenuButton<String>(
+    return IconButton(
       tooltip: l10n.conversationsNewTooltip,
-      position: PopupMenuPosition.under,
-      color: palette.surfaceRaised,
-      onSelected: (route) => context.push(route),
-      itemBuilder: (context) => [
-        PopupMenuItem(
-          value: '/start-chat',
-          height: 44,
-          child: _NewConversationItem(icon: Icons.chat_bubble_outline, label: l10n.conversationsNewChat),
-        ),
-        PopupMenuItem(
-          value: '/start-group',
-          height: 44,
-          child: _NewConversationItem(icon: Icons.group_add_outlined, label: l10n.conversationsNewGroup),
-        ),
-      ],
+      onPressed: () => context.push('/start-chat'),
       icon: const Icon(Icons.edit_outlined),
-    );
-  }
-}
-
-class _NewConversationItem extends StatelessWidget {
-  const _NewConversationItem({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: VeilIconSize.md, color: context.veilPalette.textMuted),
-        const SizedBox(width: VeilSpace.sm),
-        Text(label, style: Theme.of(context).textTheme.bodyLarge),
-      ],
     );
   }
 }

@@ -60,18 +60,19 @@ test.describe('a contact verified by safety number', () => {
     await expect(dialog.locator('#safety-their-code')).toBeFocused();
     expect((await dialog.locator('#safety-number').innerText()).trim()).toBe(bobNumber);
     expect(bobNumber.replace(/\s/g, '')).toMatch(/^\d{60}$/);
-    await expect(dialog).not.toContainText('You have verified this key.');
+    await expect(dialog.locator('.safety-status')).toHaveCount(0);
+    await expect(dialog.locator('.dialog-sub')).toHaveText(`Check these numbers match @${bob.handle}'s screen, in person or on a call.`);
 
     await dialog.locator('#safety-their-code').fill('not their code');
-    await dialog.locator('button', { hasText: 'Compare code' }).click();
-    await expect(dialog.locator('.dialog-error')).toHaveText('The codes do not match. Do not trust this key.');
+    await dialog.locator('button', { hasText: 'Compare' }).click();
+    await expect(dialog.locator('.dialog-error')).toHaveText(`These don't match. Don't mark @${bob.handle} as verified.`);
     await dialog.locator('#safety-their-code').fill(bobCode);
-    await dialog.locator('button', { hasText: 'Compare code' }).click();
+    await dialog.locator('button', { hasText: 'Compare' }).click();
     await expect(dialog).toHaveCount(0);
     await expect(toast(alice, `@${bob.handle} verified`)).toBeVisible();
 
     const again = await openSafetyDialog(alice.page);
-    await expect(again).toContainText('You have verified this key.');
+    await expect(again.locator('.safety-status')).toHaveText('Verified');
     await again.locator('button', { hasText: 'Cancel' }).click();
     await expect(again).toHaveCount(0);
     expectNoErrors(alice, bob);
@@ -107,7 +108,7 @@ test.describe('a contact verified by safety number', () => {
     const code = (await dialog.locator('.safety-copy-code').getAttribute('data-code')) ?? '';
     expect(code.length).toBeGreaterThan(40);
     await dialog.locator('.safety-copy-code').click();
-    await expect(toast(alice, 'Verification code copied')).toBeVisible();
+    await expect(toast(alice, 'Code copied')).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { copied: string[] }).copied)).toEqual([code]);
     await expect(dialog.locator('#safety-my-code')).toBeHidden();
     await close(dialog);
@@ -133,11 +134,9 @@ test.describe('a contact verified by safety number', () => {
       if (size) await page.setViewportSize(size);
       const fonts = await field.evaluate((node) => [getComputedStyle(node).fontFamily, getComputedStyle(document.body).fontFamily]);
       expect(fonts[0], 'the body font, not the monospace one').toBe(fonts[1]);
-      await expect(dialog.getByLabel('Your verification code')).toHaveValue(code);
-      await expect(dialog.locator('#safety-my-code-hint')).toHaveText(
-        "This browser didn't let the page copy. Select the code and copy it yourself.",
-      );
-      await expect(toast(alice, 'Verification code copied')).toHaveCount(0);
+      await expect(dialog.getByLabel('Your code')).toHaveValue(code);
+      await expect(dialog.locator('#safety-my-code-hint')).toHaveText('Your browser blocked copying. Select the code and copy it.');
+      await expect(toast(alice, 'Code copied')).toHaveCount(0);
       await close(dialog);
     }
     expectNoErrors(alice, bob);
@@ -165,10 +164,8 @@ test.describe('a contact verified by safety number', () => {
     const { page } = alice;
     const banner = page.locator('.key-change-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
-    await expect(banner.locator('.key-change-text')).toHaveText(
-      `@${bob.handle}'s safety number changed. You had verified them, so compare the new number before you trust it.`,
-    );
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message (safety number changed)');
+    await expect(banner.locator('.key-change-text')).toHaveText(`@${bob.handle}'s safety number changed and is no longer verified.`);
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Locked until you review the new safety number');
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     // Meanwhile Alice goes on writing to the key she verified.
     await expect(page.locator('.panel-input textarea')).toBeEnabled();
@@ -177,7 +174,7 @@ test.describe('a contact verified by safety number', () => {
 
     await banner.locator('button', { hasText: 'Compare safety number' }).click();
     const dialog = page.locator('#safety-dialog');
-    await expect(dialog).toContainText('This is a new key that has not been accepted yet. Only verify it after comparing it with them.');
+    await expect(dialog).toContainText(`This is @${bob.handle}'s new key. Verify it only after comparing it with them.`);
     await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
     await expect(banner).toHaveCount(0);
@@ -214,21 +211,26 @@ test.describe('a contact never verified', () => {
     const banner = page.locator('.key-change-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `@${dave.handle}'s safety number changed. Messages from the new key stay locked until you review it.`,
+      `@${dave.handle} has a new safety number. Their new messages stay locked until you review it.`,
     );
+    await expect(banner.locator('.key-change-decline')).toHaveText('Decline');
     await expect(page.locator('.conv-item', { hasText: `@${dave.handle}` }).locator('.conv-preview')).toHaveText('Safety number changed');
     await expect(page.locator('.panel-input textarea')).toBeEnabled();
     await send(carol, 'while the banner shows');
     await expect.poll(() => bubbleTexts(dave), { timeout: 15_000 }).toContain('while the banner shows');
 
     await banner.locator('.key-change-decline').click();
-    await expect(page.locator('#confirm-title')).toHaveText(`Decline this key for @${dave.handle}?`);
+    await expect(page.locator('#confirm-title')).toHaveText('Decline this key?');
+    await expect(page.locator('#confirm-body')).toHaveText(
+      `Messages sent with it stay locked, and you won't be asked again. This chat keeps using @${dave.handle}'s old key.`,
+    );
+    await expect(page.locator('#confirm-ok')).toHaveText('Decline');
     await page.click('#confirm-cancel');
     await expect(banner).toBeVisible();
     await banner.locator('.key-change-decline').click();
     await page.click('#confirm-ok');
     await expect(banner).toHaveCount(0);
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
+    await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked')).toHaveCount(1);
     await send(carol, 'still talking to dave');
     await expect.poll(() => bubbleTexts(dave), { timeout: 15_000 }).toContain('still talking to dave');
     expectNoErrors(carol, dave);
@@ -240,8 +242,8 @@ test.describe('a contact never verified', () => {
     const banner = page.locator('.key-change-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await banner.locator('button', { hasText: 'Review' }).click();
-    await expect(page.locator('#confirm-title')).toHaveText(`Accept @${dave.handle}'s new key?`);
-    await expect(page.locator('#confirm-ok')).toHaveText('Accept new key');
+    await expect(page.locator('#confirm-title')).toHaveText(`Accept @${dave.handle}'s new safety number?`);
+    await expect(page.locator('#confirm-ok')).toHaveText('Accept');
     await page.click('#confirm-ok');
     await expect(banner).toHaveCount(0);
     await expect.poll(() => bubbleTexts(carol), { timeout: 15_000 }).toContain('relay try two');

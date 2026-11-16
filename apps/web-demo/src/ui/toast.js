@@ -1,10 +1,8 @@
 // Transient notices at the top of the screen.
 
-import { $, el, icon } from './dom.js';
+import { $, el } from './dom.js';
 
 const FADE_MS = 220;
-// The kind of a toast shows only as its leading icon.
-const KIND_ICONS = { good: 'check', error: 'warning' };
 
 function fadeOutLater(node, afterMs) {
   setTimeout(() => {
@@ -13,10 +11,11 @@ function fadeOutLater(node, afterMs) {
   }, afterMs);
 }
 
-// kind: '' (neutral), 'good' or 'error'; errors stay up longer.
+// kind: '' (neutral), 'good' or 'error'. A toast is text only, as
+// Signal's, WhatsApp's and Telegram's are: the kind sets only how a screen
+// reader hears it (an error is an alert) and how long it stays up.
 export function toast(message, kind = '') {
-  const node = el('div', { class: `toast ${kind ? `toast-${kind}` : ''}`, role: kind === 'error' ? 'alert' : 'status' }, [
-    KIND_ICONS[kind] ? icon(KIND_ICONS[kind], 'toast-icon') : null,
+  const node = el('div', { class: 'toast', role: kind === 'error' ? 'alert' : 'status' }, [
     el('span', { class: 'toast-message' }, [message]),
   ]);
   $('toast-root').appendChild(node);

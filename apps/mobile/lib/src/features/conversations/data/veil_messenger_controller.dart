@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../app/app_session_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
+import '../../../core/errors/user_facing_error.dart';
 import '../../../core/identity/identity_key_value_backend.dart';
 import '../../../core/identity/trusted_identity_resolver.dart';
 import '../../../core/identity/trusted_identity_store.dart';
@@ -97,6 +98,12 @@ class VeilMessengerController extends ChangeNotifier {
   bool get isBusy => _services.ops.isBusy;
   bool get realtimeConnected => _services.realtime.connected;
   String? get errorMessage => _services.ops.errorMessage;
+  String? get errorCode => _services.ops.errorCode;
+
+  /// Whether the last action failed because the server knows no such
+  /// handle (or answers as if it did not, across a block).
+  bool get failedAsNotFound =>
+      errorCode == 'handle_not_found' || userFacingErrorCodeOf(errorMessage ?? '') == UserFacingErrorCode.notFound;
 
   /// Whether [errorMessage] only says that the relay link dropped while
   /// sends were queued (see MessengerOperationRunner.noteRelayInterrupted).
@@ -125,6 +132,10 @@ class VeilMessengerController extends ChangeNotifier {
   /// Decrypted kind of the conversation's latest message, or null until it
   /// has opened. Never the envelope's unauthenticated kind.
   MessageKind? lastMessageKindFor(String conversationId) => _services.latest.kindFor(conversationId);
+
+  /// Decrypted body of the latest message when it is text or a system line
+  /// that opened; null otherwise.
+  String? lastMessageBodyFor(String conversationId) => _services.latest.bodyFor(conversationId);
 
   List<ChatMessage> messagesFor(String conversationId) => List.unmodifiable(_services.store.messagesOf(conversationId));
   bool hasMoreHistoryFor(String conversationId) => _services.store.pagingFor(conversationId).hasMoreHistory;

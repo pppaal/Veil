@@ -11,6 +11,26 @@ abstract final class LocalNoticeCodes {
   static const senderKeysKept = 'group.sender_keys_kept';
   static const groupMemberAdded = 'group.member_added';
   static const groupMemberRemoved = 'group.member_removed';
+
+  /// The disappearing timer of the chat changed; the code carries the new
+  /// timer in seconds after a colon, or none when it was turned off.
+  /// [timerSetByYou] when this phone changed it, [timerSet] when the server
+  /// said it changed (its event names no one).
+  static const timerSetByYou = 'timer.set_by_you';
+  static const timerSet = 'timer.set';
+}
+
+/// The notice that the disappearing timer of [conversationId] is now
+/// [seconds] (null: off). Each change is a notice of its own.
+LocalNotice timerChangeNotice(
+  String conversationId, {
+  required int? seconds,
+  required bool byYou,
+  required List<ChatMessage> conversationMessages,
+  required DateTime now,
+}) {
+  final code = '${byYou ? LocalNoticeCodes.timerSetByYou : LocalNoticeCodes.timerSet}:${seconds ?? ''}';
+  return _notice(conversationId, code, '${now.microsecondsSinceEpoch}', conversationMessages, now);
 }
 
 /// A notice row and the code it shows.

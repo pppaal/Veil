@@ -10,6 +10,7 @@ import 'conversation_crypto_router.dart';
 import 'conversation_peer_bindings.dart';
 import 'decrypted_message_cache.dart';
 import 'disappearing_messages_service.dart';
+import 'group_names.dart';
 import 'local_notice.dart';
 import 'local_notice_writer.dart';
 import 'message_content_service.dart';
@@ -243,6 +244,7 @@ class ConversationSyncService {
     }
     await _announceMemberChanges(stillCurrent);
     await _disappearing.reconcile();
+    await fillGroupNames(_store, _apiClient, _mapper, session.accessToken, stillCurrent);
     // What the list names that this device never loaded is fetched now, so
     // each row can say what its last message is without its chat being opened.
     unawaited(_latest.loadUnheld(syncConversation, now: _apiClient.serverClock.boundedNow(), stillWanted: stillCurrent));

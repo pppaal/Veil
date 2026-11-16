@@ -53,6 +53,16 @@ ConversationPreview _preview({
 }
 
 void main() {
+  test('keeps the name this device fetched for a group, which the list never carries', () {
+    const name = GroupMeta(name: 'Moving day', memberCount: 4);
+    final local = _preview().copyWith(id: 'conv-group', type: ConversationType.group, groupMeta: name);
+    final listed = _preview().copyWith(id: 'conv-group', type: ConversationType.group);
+
+    expect(mergeConversationPreviews([local], [listed]).single.groupMeta, same(name));
+    // A conversation that is no longer a group has no group name.
+    expect(mergeConversationPreviews([local], [_preview().copyWith(id: 'conv-group')]).single.groupMeta, isNull);
+  });
+
   test('keeps the local session and bundle when the server has none', () {
     final local = _preview(bundle: _fullBundle, session: _session());
 

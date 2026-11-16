@@ -39,15 +39,20 @@ consequence. The app states it in a few fixed places only
 ([mobile-design-system.md](mobile-design-system.md), section 9), in these
 words:
 
-- Before you start, before the account is created: "If you lose this phone,
-  you lose this account and its messages. There is no backup and no way to
-  recover it."
-- The Security footer in Settings: "There is no backup, no password reset
-  and no way for anyone, including us, to recover an account."
-- Move to a new phone: "You need the old phone. If it is gone, the account
-  is gone."
-- The confirm dialogs of Sign out (signing out erases this phone's keys),
-  Wipe this device, Revoke and Delete account.
+- Before you start, before the account is created: "Your account lives on
+  this phone." / "If you lose the phone, your account and messages are gone
+  for good." / "To move to a new phone later, you'll need this one.", with
+  the checkbox "I understand a lost account can't be recovered".
+- The confirm dialog of Sign out: "This signs this phone out and erases Veil
+  from it. You lose the account for good."
+- The confirm dialog of Delete account: "This deletes your account, messages
+  and contacts from this phone and the server, and the groups you created,
+  for everyone in them. It can't be undone." (The server deletes every group
+  the account owns, AccountService.deleteAccount, and neither app offers to
+  hand a group over first.)
+- App lock setup, for the PIN: "If you forget your PIN, there's no way to
+  reset it."
 
-It is not repeated on Create account, App lock, Chats, the Security rows or
-the splash, and it is never a slogan.
+Both Settings dialogs ask the user to type their own handle first. It is not
+repeated in Settings itself, on Choose a handle, Chats, the transfer screens
+or the splash, and it is never a slogan.

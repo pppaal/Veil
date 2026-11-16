@@ -161,6 +161,21 @@ class MessengerApiMapper {
     return null;
   }
 
+  /// What a group is called, from the relay's answer for one group
+  /// (GroupsService.getGroup); null when it names none.
+  GroupMeta? groupMeta(Map<String, dynamic> response) {
+    final name = response['name'];
+    final description = response['description'];
+    if (name is! String || name.trim().isEmpty || (description != null && description is! String)) return null;
+    final members = response['members'];
+    return GroupMeta(
+      name: name.trim(),
+      description: description as String?,
+      isPublic: response['isPublic'] == true,
+      memberCount: members is List ? members.length : 0,
+    );
+  }
+
   /// The id of the conversation a create call answered with.
   String? createdConversationId(Map<String, dynamic> response) => switch (response['conversation']) {
         {'id': final String id} => id,

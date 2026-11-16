@@ -108,9 +108,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Orbit relay window'), findsOneWidget);
-    // Delivered is two ticks, the word only for a screen reader.
+    // Delivered is two check circles, the word only for a screen reader.
     expect(find.text('Delivered'), findsNothing);
-    expect(find.byIcon(Icons.done_all), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_outline), findsNWidgets(2));
     expect(
       find.byWidgetPredicate((widget) => widget is Semantics && (widget.properties.label ?? '').contains('Delivered')),
       findsOneWidget,
@@ -123,14 +123,16 @@ void main() {
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('1 match'), findsOneWidget);
-    expect(find.text('Orbit relay window'), findsOneWidget);
+    // The bar under the messages counts the hits; the hit's word is bold.
+    expect(find.text('1 of 1'), findsOneWidget);
+    expect(find.textContaining('Orbit relay window', findRichText: true), findsOneWidget);
 
+    // Nothing matched: the bar says so, and every message stays.
     await tester.enterText(find.widgetWithText(TextField, 'Search this chat'), 'nothing like it');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
-    expect(find.text('No matches'), findsOneWidget);
-    expect(find.text('Orbit relay window'), findsNothing);
+    expect(find.text('No results'), findsOneWidget);
+    expect(find.text('Orbit relay window'), findsOneWidget);
   });
 
   testWidgets('chat room loads older history pages on demand', (tester) async {
@@ -248,7 +250,14 @@ void main() {
 
       expect(controller.messagesFor('conv-1'), hasLength(1));
       expect(find.text('Orbit relay window'), findsOneWidget);
-      expect(find.textContaining(RegExp(r'^Expires in (9|10)m$')), findsOneWidget);
+      // A timer glyph on the bubble; the time left is for a screen reader.
+      expect(find.byIcon(Icons.timer_outlined), findsWidgets);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Semantics && RegExp(r'Expires in (9|10)m$').hasMatch(widget.properties.label ?? ''),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('is hidden once the relay counts it expired too', (tester) async {
@@ -317,8 +326,8 @@ void main() {
 
     expect(controller.conversationById('conv-1')!.recipientBundle.userId, 'user-peer');
     expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.ownHandle);
-    expect(find.text('Another account under your name'), findsOneWidget);
-    expect(find.textContaining('listed under your own name, @atlas'), findsOneWidget);
+    expect(find.text('Another account under your handle'), findsOneWidget);
+    expect(find.textContaining('No one else can have @atlas'), findsOneWidget);
 
     // Acknowledging it asks first; backing out keeps it held.
     await tester.tap(find.text('Talk to this account'));
@@ -327,7 +336,7 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.ownHandle);
-    expect(find.text('Another account under your name'), findsOneWidget);
+    expect(find.text('Another account under your handle'), findsOneWidget);
 
     await tester.tap(find.text('Talk to this account'));
     await tester.pumpAndSettle();
@@ -458,7 +467,9 @@ class _TestApp extends StatelessWidget {
       theme: VeilTheme.dark(),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: child,
+      // A Scaffold, as every screen the chat is shown in has: its toasts
+      // need one.
+      home: Scaffold(body: child),
     );
   }
 }

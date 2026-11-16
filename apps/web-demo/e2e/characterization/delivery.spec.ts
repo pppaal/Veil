@@ -41,9 +41,12 @@ test.describe('a send the relay does not take at once', () => {
     await send(alice, 'refused, then retried');
     const failed = rowOf(alice, 'refused, then retried');
     await expect(page.locator('.msg-group.me .msg-status.failed')).toHaveCount(1);
-    await expect(toast(alice, 'refused once')).toBeVisible();
+    // What failed, in the app's words; the server's own wording stays off
+    // the screen.
+    await expect(toast(alice, 'Not sent')).toBeVisible();
+    await expect(toast(alice, 'refused once')).toHaveCount(0);
 
-    await page.locator('.msg-group.me .msg-action', { hasText: 'Send again' }).click();
+    await page.locator('.msg-group.me .msg-action', { hasText: 'Retry' }).click();
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toEqual(['first', 'refused, then retried']);
     await expect(failed).toHaveCount(1);
     await expect(page.locator('.msg-group.me .msg-status.failed')).toHaveCount(0);

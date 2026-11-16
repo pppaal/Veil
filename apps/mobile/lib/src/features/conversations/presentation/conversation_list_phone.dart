@@ -4,19 +4,21 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../safety/data/safety_providers.dart';
 import '../data/conversation_models.dart';
+import '../data/veil_messenger_controller.dart';
 import 'conversation_list_labels.dart';
 import 'conversation_list_parts.dart';
 import 'conversation_row.dart';
+import 'group_last_sender.dart';
 
 /// The Chats list, content first: the search field, then the chats as
-/// full-bleed rows. Search filters and the messages a search found appear
-/// only while a query is typed, and a sync error only while there is one.
-/// The connection state is the bar's (see ConversationListScreen); while
-/// the first list is on its way nothing is shown under the field.
+/// full-bleed rows. While a query is typed the rows are the chats and the
+/// messages it matched, each under its heading, and a part with no match is
+/// left out. A failed refresh is one line with Retry, only while it holds.
+/// The connection state is the bar's title (see ConversationListScreen);
+/// while the first list is on its way nothing is shown under the field.
 ///
 /// A phone shows it as the screen. The wide layout shows the same list as
 /// its first pane, with the open conversation's row marked.
@@ -35,6 +37,7 @@ class ConversationListPhone extends ConsumerWidget {
     final loadingFirstList = conversations.isEmpty && controller.isBusy && !hasSearchQuery;
     final localUserId = view.session.userId;
     final error = controller.errorMessage;
+    final noResults = hasSearchQuery && conversations.isEmpty && view.archiveResults.isEmpty && !view.searchingArchive;
     // A narrow phone gets the 64 px row.
     final dense = MediaQuery.sizeOf(context).width < 380;
 
@@ -51,37 +54,24 @@ class ConversationListPhone extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.xs, VeilSpace.md, VeilSpace.xs),
               child: _SearchField(controller: view.searchController, hasQuery: hasSearchQuery),
             ),
-            if (hasSearchQuery)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
-                child: Row(
-                  children: [
-                    for (final (index, chip) in conversationSearchFilterChips(l10n, view).indexed) ...[
-                      if (index > 0) const SizedBox(width: VeilSpace.xs),
-                      chip,
-                    ],
-                  ],
-                ),
-              ),
             // A dropped link to the server is the bar's "Connecting…", not a
             // failure: what is queued goes out by itself once it is back.
             if (error != null && !controller.errorIsRelayInterruption)
-              Padding(
-                padding: const EdgeInsets.only(top: VeilSpace.xxs, bottom: VeilSpace.xs),
-                child: VeilNotice(
-                  title: l10n.conversationsSyncIssueTitle,
-                  message: veilErrorText(l10n, error),
-                  tone: VeilTone.warn,
-                  actionLabel: l10n.commonRetry,
-                  onAction: controller.refreshConversations,
-                ),
-              ),
-            if (hasSearchQuery) ConversationListHeader(label: l10n.conversationsSectionLabel),
+              _SyncFailedLine(onRetry: controller.refreshConversations),
+            if (hasSearchQuery && conversations.isNotEmpty) ConversationListHeader(label: l10n.conversationsSectionLabel),
             if (loadingFirstList)
               const SizedBox.shrink()
+            else if (noResults)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xxl),
+                child: Text(
+                  l10n.conversationsNoMatchTitle(view.searchController.text.trim()),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted),
+                ),
+              )
             else if (conversations.isEmpty && hasSearchQuery)
-              VeilEmptyState(title: l10n.conversationsNoMatchTitle, body: l10n.conversationsNoMatchBody)
+              const SizedBox.shrink()
             else if (conversations.isEmpty)
               // In the middle of the space under the field, a little above
               // its centre. That space is a floor, not a height: when the
@@ -93,7 +83,6 @@ class ConversationListPhone extends ConsumerWidget {
                 ),
                 child: VeilEmptyState(
                   title: l10n.conversationsNoneYetTitle,
-                  body: l10n.conversationsNoneYetBody,
                   action: VeilButton(
                     expanded: false,
                     onPressed: () => context.push('/start-chat'),
@@ -116,8 +105,14 @@ class ConversationListPhone extends ConsumerWidget {
                         // no handle of its own.
                         seed: item.type == ConversationType.group ? item.id : item.peerHandle,
                         group: item.type == ConversationType.group,
-                        snippet: conversationPreviewLine(l10n, item, controller),
-                        timestamp: view.timeFormat.format(item.updatedAt),
+                        snippet: conversationPreviewLine(
+                          l10n,
+                          item,
+                          controller,
+                          groupSender: _groupSender(ref, item, controller),
+                        ),
+                        // A chat with no message yet has no time to show.
+                        timestamp: item.lastEnvelope == null ? '' : view.timeFormat.format(item.updatedAt),
                         semanticLabel: conversationRowSemantics(l10n, item, localUserId: localUserId),
                         unreadCount: item.unreadCount,
                         unreadLabel: item.unreadCount > 0 ? l10n.conversationsUnreadSemantics(item.unreadCount) : null,
@@ -138,6 +133,41 @@ class ConversationListPhone extends ConsumerWidget {
 
   /// The height of the search field's row above the chats.
   static const double _searchRowExtent = 60;
+
+  // Who wrote a group's last message, when someone else did.
+  static String? _groupSender(WidgetRef ref, ConversationPreview item, VeilMessengerController controller) {
+    if (item.type != ConversationType.group) return null;
+    final last = controller.messagesFor(item.id).lastOrNull;
+    if (last == null || last.isMine || last.isLocalNotice) return null;
+    return ref.watch(groupLastSenderProvider((conversationId: item.id, deviceId: last.senderDeviceId))).valueOrNull;
+  }
+}
+
+/// A refresh of the list that failed: one line under the search field, and
+/// Retry at its end.
+class _SyncFailedLine extends StatelessWidget {
+  const _SyncFailedLine({required this.onRetry});
+
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(start: VeilSpace.md, end: VeilSpace.xxs),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              l10n.conversationsSyncIssueTitle,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted),
+            ),
+          ),
+          VeilButton(expanded: false, tone: VeilButtonTone.ghost, label: l10n.commonRetry, onPressed: onRetry),
+        ],
+      ),
+    );
+  }
 }
 
 class _SearchField extends StatelessWidget {

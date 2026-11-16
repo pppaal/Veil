@@ -1,23 +1,35 @@
 // The new direct chat dialog (#new-chat-dialog in index.html): a peer's
 // handle in, the conversation open in a tab.
 
+import { t } from '../../../i18n/i18n.js';
 import { normalizeHandle } from '../../domain/composer-text.js';
+import { ApiError } from '../../platform/api-client.js';
 import { trapFocus } from '../confirm.js';
 import { $ } from '../dom.js';
 
 const DIALOG_ID = 'new-chat-dialog';
 
+// The server answers an unknown handle with a 404; anything else is a
+// failure to reach it or to start the chat, and its wording stays off the
+// screen.
+const isNotFound = (error) => error instanceof ApiError && (error.status === 404 || error.code === 'handle_not_found');
+
 // history: src/app/services/history-sync.js; tabs: src/ui/views/tabs.js;
 // dialogs: src/ui/dialogs.js.
 export function createNewChatDialog({ store, stack, history, tabs, dialogs }) {
+  const showError = (text) => {
+    $('new-peer-error').textContent = text;
+  };
+
   async function start() {
-    const peer = normalizeHandle($('new-peer-input').value);
+    // The field shows a fixed "@"; a pasted "@sam" means sam.
+    const peer = normalizeHandle($('new-peer-input').value).replace(/^@+/, '');
     if (!peer) {
-      $('new-peer-error').textContent = 'Enter a handle';
+      showError(t('auth.form.handle.missing'));
       return;
     }
     if (peer === store.state.me.handle) {
-      $('new-peer-error').textContent = "You can't chat with yourself";
+      showError(t('newChat.self'));
       return;
     }
     $('new-confirm').disabled = true;
@@ -27,7 +39,7 @@ export function createNewChatDialog({ store, stack, history, tabs, dialogs }) {
       await history.loadConversations();
       await tabs.open(created.conversation.id);
     } catch (error) {
-      $('new-peer-error').textContent = error.message;
+      showError(isNotFound(error) ? t('newChat.notFound', { handle: peer }) : t('newChat.failed'));
     } finally {
       $('new-confirm').disabled = false;
     }
@@ -37,7 +49,7 @@ export function createNewChatDialog({ store, stack, history, tabs, dialogs }) {
     mount() {
       $('new-chat-btn').addEventListener('click', () => {
         $('new-peer-input').value = '';
-        $('new-peer-error').textContent = '';
+        showError('');
         dialogs.open(DIALOG_ID, 'new-peer-input');
       });
       $('new-cancel').addEventListener('click', () => dialogs.close(DIALOG_ID));

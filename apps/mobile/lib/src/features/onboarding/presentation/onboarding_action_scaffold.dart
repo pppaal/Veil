@@ -13,6 +13,7 @@ class OnboardingActionScaffold extends StatelessWidget {
     this.title,
     this.grouped = false,
     this.listPadding = const EdgeInsets.all(VeilSpace.md),
+    this.divider = false,
     required this.children,
     required this.actions,
   });
@@ -28,6 +29,11 @@ class OnboardingActionScaffold extends StatelessWidget {
   /// Around what scrolls.
   final EdgeInsetsGeometry listPadding;
 
+  /// Whether a hairline sets the pinned controls off from what scrolls under
+  /// them: always on a grouped page, and on a white page whose text is
+  /// longer than the screen.
+  final bool divider;
+
   /// What scrolls.
   final List<Widget> children;
 
@@ -38,7 +44,7 @@ class OnboardingActionScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
     final pinned = Padding(
-      padding: EdgeInsets.only(top: grouped ? VeilSpace.sm : 0, bottom: VeilSpace.md),
+      padding: EdgeInsets.only(top: grouped || divider ? VeilSpace.sm : 0, bottom: VeilSpace.md),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -51,7 +57,7 @@ class OnboardingActionScaffold extends StatelessWidget {
       child: Column(
         children: [
           Expanded(child: ListView(padding: listPadding, children: children)),
-          if (grouped)
+          if (grouped || divider)
             DecoratedBox(
               decoration: BoxDecoration(border: Border(top: BorderSide(color: palette.stroke, width: 0.5))),
               child: pinned,

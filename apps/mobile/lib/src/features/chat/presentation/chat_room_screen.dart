@@ -23,6 +23,7 @@ import 'chat_phone_layout.dart';
 import 'chat_room_dialogs.dart';
 import 'chat_room_labels.dart';
 import 'chat_safety_menu.dart';
+import 'chat_search_bar.dart';
 import 'chat_status_banners.dart';
 import 'disappearing_timer_sheet.dart';
 import 'group_sender_names.dart';
@@ -32,8 +33,7 @@ import 'presence_selector.dart';
 import 'typing_indicator.dart';
 
 // These were declared here before the screen was split up.
-export 'chat_room_labels.dart'
-    show formatRetryCountdown, messageBubbleSemanticsLabel, messageDeliveryLabel, messageDeliveryTone;
+export 'chat_room_labels.dart' show messageBubbleSemanticsLabel, messageDeliveryLabel, messageDeliveryTone;
 
 /// A chat. On a phone it is a screen of its own; [embedded], it is the
 /// second pane of the wide layout, beside the conversation list. Both show
@@ -102,20 +102,26 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         .listen(_handlePlatformSecurityEvent);
   }
 
+  // A screenshot of the chat is a line in it on both sides, as Telegram and
+  // Session do it: "@sam took a screenshot" for the others, "You took a
+  // screenshot" here. The haptic is the only other sign.
   void _handlePlatformSecurityEvent(PlatformSecurityEvent event) {
     if (!mounted) return;
     if (event == PlatformSecurityEvent.screenshotDetected) {
       final l10n = AppLocalizations.of(context);
+      final handle = ref.read(appSessionProvider).handle ?? '';
       VeilHaptics.heavy();
-      showVeilToast(context, l10n.chatScreenshotToast, tone: VeilTone.warn);
       unawaited(
         ref.read(messengerControllerProvider).sendSystemNotice(
               conversationId: widget.conversationId,
-              body: l10n.chatScreenshotSystemNotice,
+              body: l10n.chatScreenshotSystemNotice(handle),
             ),
       );
     }
   }
+
+  @override
+  void showSearchHit(String messageId) => unawaited(scrollToMessage(messageId));
 
   @override
   void didUpdateWidget(covariant ChatRoomScreen oldWidget) {
@@ -194,24 +200,21 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
 
     final isDirect = conversation?.type == ConversationType.direct;
     syncGroupSenderNames(conversation, messages);
-    // With nothing loaded, the message area says why and offers to retry:
-    // one statement of the error, not a banner above it as well.
-    final loadFailedShown = _loadFailed && messages.isEmpty;
-    // The note about a dropped relay link is not why a load failed.
-    final error = controller.errorIsRelayInterruption ? null : controller.errorMessage;
+    // A failure while the chat is open is a toast, as in Signal; a history
+    // that could not load says so in the message area instead.
+    ref.listen<String?>(messengerControllerProvider.select((messenger) => messenger.errorMessage), (previous, next) {
+      final messenger = ref.read(messengerControllerProvider);
+      if (next == null || next == previous || messenger.errorIsRelayInterruption) return;
+      if (_loadFailed && messenger.messagesFor(widget.conversationId).isEmpty) return;
+      showVeilToast(context, veilErrorText(AppLocalizations.of(context), next));
+    });
 
     final banners = ChatStatusBanners(
       controller: controller,
       conversationId: widget.conversationId,
       conversation: conversation,
-      messages: messages,
-      hasSearchQuery: hasSearchQuery,
-      searching: isSearchingMessages,
-      searchHitCount: filteredMessages.length,
       onReviewIdentity: _openSafetyNumbers,
       onAcknowledgeHold: _acknowledgePeerAccount,
-      onRetryFailed: () => ref.read(messengerControllerProvider).retryPendingMessages(widget.conversationId),
-      errorShownBelow: loadFailedShown,
     );
     final messageList = ChatMessageList(
       conversationId: widget.conversationId,
@@ -223,12 +226,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       hasSearchQuery: hasSearchQuery,
       scrollController: _scrollController,
       messageKeys: messageKeys,
-      highlightedMessageId: highlightedMessageId,
+      highlightedMessageId: currentSearchHit ?? highlightedMessageId,
       sentAtFormat: _sentAtFormat,
       loadFailed: _loadFailed,
-      loadFailedReason: error == null ? null : veilErrorText(l10n, error),
       onRetryLoad: () => unawaited(_loadConversationState()),
-      onVerifyPeer: isDirect && !peerVerified ? _openSafetyNumbers : null,
+      searchQuery: hasSearchQuery ? searchController.text : null,
       // A group message this device can attribute to none of the members
       // says so, once the members' devices have been read.
       senderNameOf: isDirect
@@ -254,7 +256,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       title: conversation == null
           ? l10n.chatTitleFallback
           : conversationTitle(l10n, conversation, localUserId: controller.localUserId),
-      presence: controller.presenceTyping,
+      connecting: !controller.realtimeConnected,
       peerVerified: peerVerified,
       messageTtl: _messageTtl,
       searchController: searchController,
@@ -271,15 +273,21 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
             messageTtl: _messageTtl,
             busy: controller.isBusy,
           ),
+      searchBar: ChatSearchBar(
+        hasQuery: hasSearchQuery,
+        searching: isSearchingMessages,
+        count: searchHitCount,
+        index: searchHitIndex,
+        onOlder: showOlderSearchHit,
+        onNewer: showNewerSearchHit,
+      ),
     );
   }
 
   // Hidden once expired on the messenger's expiry clock, as the messenger
   // retires them, never on the device clock.
   List<ChatMessage> _filteredMessages(List<ChatMessage> messages, {required DateTime now}) {
-    return searchMatches(messages
-        .where((message) => !isMessageExpired(message.expiresAt, now: now))
-        .toList());
+    return messages.where((message) => !isMessageExpired(message.expiresAt, now: now)).toList();
   }
 
   Future<void> _loadConversationState() async {
@@ -349,7 +357,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     await showAttachmentTicketDialog(context, url);
   }
 
-  Future<void> _showReactionPicker(ChatMessage message) async {
+  Future<void> _showReactionPicker(ChatMessage message, Rect anchor) async {
     final controller = ref.read(messengerControllerProvider);
     final decrypted = await controller.decryptMessage(message);
     if (!mounted || (decrypted.isOk && decrypted.messageKind == MessageKind.system)) {
@@ -363,10 +371,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         groupSenderUserId: groupSenderUserId, groupSenderHandle: groupSenderHandle);
     if (!canReact && report == null) return;
     VeilHaptics.selection();
-    await showReactionPickerSheet(
+    // The message list on screen, so a menu that shows alone keeps clear of
+    // what is under the list.
+    final list = _scrollController.hasClients ? _scrollController.position.context.notificationContext : null;
+    final box = list?.findRenderObject();
+    await showMessageActions(
       context,
+      anchor: anchor,
+      isMine: message.isMine,
       onSelected: canReact ? (emoji) => controller.toggleReaction(message, emoji) : null,
       onReport: report,
+      messages: box is RenderBox && box.hasSize ? box.localToGlobal(Offset.zero) & box.size : null,
     );
   }
 }

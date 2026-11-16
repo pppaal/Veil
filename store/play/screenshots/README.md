@@ -6,12 +6,12 @@ section 4). Upload them in file-name order.
 
 | File | Screen |
 |---|---|
-| `01-choose-handle.png` | Choose a handle, with a handle typed in |
+| `01-choose-handle.png` | Choose a handle, with "alex" typed in |
 | `02-chats.png` | Chats: a group and five one-to-one chats |
-| `03-chat.png` | A chat with Sam Rivera: his message with a reaction, two replies (the first read and disappearing, the second delivered), Sam typing |
+| `03-chat.png` | Sam Rivera's chat from 09:03 on: his news with a thumbs-up, two replies (the second disappearing), his last word, Sam typing |
 | `04-move-to-a-new-phone.png` | Move to a new phone, on the old phone, before it asks for a code |
 | `05-app-lock.png` | The lock screen with a PIN typed in |
-| `06-settings.png` | Settings, from Appearance (with Blocked accounts under the Privacy switches) to the footer of the Security group |
+| `06-settings.png` | The top of Settings as it opens, from the profile row down |
 
 The feature graphic is [`../feature-graphic.png`](../feature-graphic.png),
 1024 x 500: the app icon and the word Veil on white, and no other text.
@@ -40,8 +40,9 @@ What the test does:
 
 - It opens each screen the way the layout gate does: the real route table
   over the fake server and the seeded account in
-  `apps/mobile/test/layout/support`. The names and messages are the gate's
-  (Alex Kim, Sam Rivera, Priya Nair, Jonas Weber, Mia Chen and the others).
+  `apps/mobile/test/layout/support`. The names and messages are the gate's:
+  a Tuesday morning of Alex Kim's chats with Sam Rivera, Priya Nair, Jonas
+  Weber, Mia Chen and the others, in short lines.
 - The theme is light. The phone is 411 x 731 dp at density 2.625 (420 dpi,
   a Pixel's), which is exactly 1080 x 1920 pixels. The 24 dp status bar is
   left empty.
@@ -60,13 +61,14 @@ What the test does:
 - No list may cut through a line of text or a bubble at the screen's top or
   bottom edge; the tool fails if one does.
 - The Chats shot leaves out three of the seeded chats: two whose last
-  messages are a voice note and a photo, which the app cannot send, and one
-  with no messages yet.
-- The chat shot keeps Sam's long message and the two replies after it, and
-  leaves out the rest of the seeded chat: the PDF the user sent (the app
-  cannot send attachments) and the two messages about it, a long link and a
-  short reply that would push Sam's message off the screen, and the system
-  notice "Screenshot taken", a placeholder no Veil client writes.
+  messages are a voice message and a photo, which the app cannot send, and
+  one with no messages yet.
+- The chat shot keeps the morning from Sam's message after the file on. It
+  leaves out the evening before, where the gate keeps a long message and a
+  long link, and the first lines of the morning with the PDF the user sent
+  (the app cannot send attachments).
+- The Settings shot is not scrolled. Should a line sit across the bottom
+  edge, the list moves up just far enough for it to be whole.
 - The PNGs are 8-bit RGB without alpha, as Play asks.
 
 Nothing is drawn around a screen: no caption, frame, gradient or device.

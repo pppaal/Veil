@@ -12,7 +12,8 @@ import 'veil_ui.dart';
 /// On a white page it keeps 12dp from the sides ([margin]); inside a
 /// [VeilGroup] it is a row, with no margin and no corners. [dense] is one
 /// 44dp row, for a chat with no height to spare: the icon, one line with an
-/// ellipsis and the button.
+/// ellipsis and the button. Where the height is there, [denseLines] lets
+/// that line wrap instead of losing its end.
 class VeilNotice extends StatelessWidget {
   const VeilNotice({
     super.key,
@@ -21,6 +22,7 @@ class VeilNotice extends StatelessWidget {
     this.tone = VeilTone.info,
     this.icon,
     this.dense = false,
+    this.denseLines = 1,
     this.actionLabel,
     this.onAction,
     this.margin,
@@ -33,6 +35,10 @@ class VeilNotice extends StatelessWidget {
   /// Replaces the tone's own icon.
   final IconData? icon;
   final bool dense;
+
+  /// How many lines the text of a [dense] notice may take before it ends
+  /// in an ellipsis.
+  final int denseLines;
   final String? actionLabel;
   final VoidCallback? onAction;
 
@@ -75,7 +81,7 @@ class VeilNotice extends StatelessWidget {
               child: Text(
                 line,
                 semanticsLabel: title == null ? message : '$title  $message',
-                maxLines: 1,
+                maxLines: denseLines,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleSmall,
               ),

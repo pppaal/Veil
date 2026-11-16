@@ -28,7 +28,7 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
     // Held for the handle it is listed under (src/domain/peer-bindings.js
     // hold): the row says so instead of previewing what it holds.
     const hold = directPeer ? stack.bindings.hold(conv.id, directPeer) : null;
-    const muted = state.muted.has(conv.id);
+    const muted = store.isMuted(conv.id);
     let className = 'conv-item';
     if (isActive) className += ' active';
     if (muted) className += ' muted';
@@ -56,10 +56,14 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
         list.replaceChildren();
         return;
       }
-      list.replaceChildren(
-        el('div', { class: 'conv-empty' }, [query ? t('conv.noResults', { query }) : t('conv.empty')]),
-        ...archiveRows(),
-      );
+      // No chats: the title and the one thing to do. No results: one line.
+      const empty = query
+        ? el('div', { class: 'conv-empty' }, [t('conv.noResults', { query })])
+        : el('div', { class: 'conv-empty' }, [
+          el('div', { class: 'conv-empty-title' }, [t('conv.empty')]),
+          el('button', { class: 'btn btn-primary btn-compact', onclick: () => $('new-chat-btn').click() }, [t('newChat.title')]),
+        ]);
+      list.replaceChildren(empty, ...archiveRows());
       return;
     }
     const now = expiryNow();

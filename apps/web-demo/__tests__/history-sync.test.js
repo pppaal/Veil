@@ -4,7 +4,7 @@
 // history would show there under that conversation's peer. And a direct
 // conversation bound to its peer keeps that peer whatever the list says.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createHistorySync } from '../src/app/services/history-sync.js';
 import { createMessages } from '../src/app/services/messages.js';
@@ -16,6 +16,7 @@ import { createHistoryMarks } from '../src/domain/history.js';
 import { isShown } from '../src/domain/ingest.js';
 import { groupMessages } from '../src/domain/message-groups.js';
 import { createPeerResolver, HoldReason } from '../src/domain/peer-bindings.js';
+import { ApiError } from '../src/platform/api-client.js';
 import { createMemoryKv } from '../src/platform/kv.js';
 import { CONVERSATION } from './support/devices.js';
 import { conversation, createEndpoint, directoryEntryOf, serverMessage } from './support/messaging.js';
@@ -40,7 +41,7 @@ async function sendText(from, text, conversationId = CONVERSATION) {
 // whose answers the test sets: relay.list for GET /conversations, and
 // relay.histories for each conversation's messages. stack.peerOf and
 // stack.shownPeer resolve as the app's do (src/app/messaging-stack.js).
-async function aliceSync() {
+async function aliceSync({ toast = () => {} } = {}) {
   const { alice, bob, directory } = await conversation();
   const carol = await createEndpoint({ userId: 'u-carol', deviceId: 'd-carol', handle: 'carol', directory });
   directory.set('carol', directoryEntryOf(carol));
@@ -76,7 +77,7 @@ async function aliceSync() {
   });
   Object.assign(stack, { peerOf, shownPeer });
   const messages = createMessages({ store, stack });
-  const sync = createHistorySync({ store, stack, messages, outbox: { drain() {} }, isRealtimeConnected: () => true, toast: () => {} });
+  const sync = createHistorySync({ store, stack, messages, outbox: { drain() {} }, isRealtimeConnected: () => true, toast });
   return { alice, bob, carol, directory, relay, store, stack, sync };
 }
 
@@ -272,4 +273,36 @@ describe('a new conversation whose list puts our own entry under a known handle'
       }
     });
   }
+});
+
+// A failed refresh of the list never shows the browser's or the server's
+// words ("Failed to fetch"). Offline, the list's title already says so and
+// nothing else does; anything else is one line, mobile's words.
+describe('a failed refresh of the chat list', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function failing(error) {
+    const toasts = [];
+    const { stack, sync } = await aliceSync({ toast: (message, kind) => toasts.push([message, kind]) });
+    stack.authedApi = async () => {
+      throw error;
+    };
+    await sync.loadConversations();
+    return toasts;
+  }
+
+  it('says nothing when the request never reached the server', async () => {
+    expect(await failing(new TypeError('Failed to fetch'))).toEqual([]);
+  });
+
+  it('says nothing while the browser is offline, whatever failed', async () => {
+    vi.stubGlobal('navigator', { onLine: false });
+    expect(await failing(new ApiError(503, 'Service Unavailable'))).toEqual([]);
+  });
+
+  it('says "Couldn\'t refresh chats" for anything else, never the server\'s text', async () => {
+    const toasts = await failing(new ApiError(500, 'internal relay failure: pg pool exhausted'));
+    expect(toasts).toEqual([['conv.refreshFailed', 'error']]);
+    expect(JSON.stringify(toasts)).not.toContain('relay');
+  });
 });

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
@@ -26,51 +26,50 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final muted = ref.watch(conversationMutesProvider).isMuted(conversationId);
     final peer = _directPeer(conversation);
     final blocked = peer != null && ref.watch(blockedAccountsProvider).isBlocked(peer.userId);
+    final report = peer == null
+        ? null
+        : ChatMenuEntry(
+            key: 'report',
+            label: l10n.reportAction,
+            divided: true,
+            onSelected: () => showReportSheet(
+              context,
+              ReportTarget(userId: peer.userId, handle: peer.handle, conversationId: conversationId, offerBlock: true),
+            ),
+          );
+    // What changes the chat first, then after a line what is about the
+    // person: Report, and Block last in red (Signal, WhatsApp). A blocked
+    // peer's chat has no timer, since nothing can be sent there, and offers
+    // Unblock where the timer was.
     return [
-      // The timer is for what is sent here, and nothing can be sent to a
-      // blocked peer: the line in the composer's place says so.
-      if (!blocked)
-        ChatMenuEntry(key: 'timer', label: l10n.chatTtlSheetTitle, icon: Icons.timer_outlined, onSelected: onPickTimer),
       if (muted)
         ChatMenuEntry(
           key: 'unmute',
           label: l10n.muteUnmute,
-          icon: Icons.notifications_outlined,
           onSelected: () => unmuteConversation(context, conversationId),
         )
       else
         ChatMenuEntry(
           key: 'mute',
           label: l10n.muteTitle,
-          icon: Icons.notifications_off_outlined,
           onSelected: () => showMuteSheet(context, conversationId),
         ),
-      if (peer != null) ...[
+      if (blocked)
         ChatMenuEntry(
-          key: 'report',
-          label: l10n.reportAction,
-          icon: Icons.flag_outlined,
-          onSelected: () => showReportSheet(
-            context,
-            ReportTarget(userId: peer.userId, handle: peer.handle, conversationId: conversationId, offerBlock: true),
-          ),
+          key: 'unblock',
+          label: l10n.unblockAction,
+          onSelected: () => unblockAccount(context, userId: peer.userId, handle: peer.handle),
+        )
+      else
+        ChatMenuEntry(key: 'timer', label: l10n.chatTtlSheetTitle, onSelected: onPickTimer),
+      if (report != null) report,
+      if (peer != null && !blocked)
+        ChatMenuEntry(
+          key: 'block',
+          label: l10n.blockAction,
+          destructive: true,
+          onSelected: () => confirmAndBlock(context, userId: peer.userId, handle: peer.handle),
         ),
-        if (blocked)
-          ChatMenuEntry(
-            key: 'unblock',
-            label: l10n.unblockAction,
-            icon: Icons.block_outlined,
-            onSelected: () => unblockAccount(context, userId: peer.userId, handle: peer.handle),
-          )
-        else
-          ChatMenuEntry(
-            key: 'block',
-            label: l10n.blockAction,
-            icon: Icons.block_outlined,
-            destructive: true,
-            onSelected: () => confirmAndBlock(context, userId: peer.userId, handle: peer.handle),
-          ),
-      ],
     ];
   }
 
@@ -87,6 +86,7 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final peer = _directPeer(conversation);
     if (peer == null || !ref.watch(blockedAccountsProvider).isBlocked(peer.userId)) return null;
     return BlockedComposerLine(
+      handle: peer.handle,
       onUnblock: () => unblockAccount(context, userId: peer.userId, handle: peer.handle),
     );
   }

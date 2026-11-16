@@ -1,6 +1,6 @@
 # App Store screenshot specification
 
-This document defines the screenshots needed to submit **Veil Messenger**
+This document defines the screenshots needed to submit **Veil: Encrypted Messenger**
 to the Apple App Store: the device sizes and pixel dimensions Apple
 requires in 2025/2026, the shot list mapped to what the app really does,
 and how to capture them.
@@ -97,37 +97,35 @@ on iPad needs 6 more: the 13" iPad set (§1).
 
 ## 4. Shot list
 
-Six screenshots, in carousel order. Each shows a real screen of the shipped
-app. The first two or three matter most: they are what most people see
-without scrolling.
+Six screenshots, in carousel order, the same six screens as the Google Play
+set. Each shows a real screen of the shipped app. The first two or three
+matter most: they are what most people see without scrolling.
 
-| # | Screen | What it shows | Caption (if any) |
-|---|---|---|---|
-| 1 | **Choose a handle** | Sign-up with a handle: no phone number, no email, no real name. | "Sign up with a handle, not a phone number." |
-| 2 | **Chats** | One-to-one and group chats. | "Only you and the people you talk to can read your chats." |
-| 3 | **A chat** | Message thread with reactions, a disappearing-message timer, typing indicator, optional read receipts. | "Messages are end-to-end encrypted. The server never sees them in plaintext." |
-| 4 | **Move to a new phone** | The old phone must be there and approve; the handle moves to keys made on the new phone, the old phone is signed out, and message history does not move. | "Move your handle to a new phone. The old one signs out." |
-| 5 | **App lock** | Local app lock with a PIN and biometrics (Face ID / Touch ID). | "Lock the app with a PIN or biometrics." |
-| 6 | **Settings** | Appearance, privacy switches, the Security group and its footer. | "No ads and no tracking." |
+| # | Screen | What it shows |
+|---|---|---|
+| 1 | **Choose a handle** | The handle field with "alex" typed, and Create account. |
+| 2 | **Chats** | A group and five one-to-one chats. |
+| 3 | **A chat** | Sam Rivera's chat from 09:03 on: a thumbs-up on his news, two replies (the second disappearing), Sam typing. |
+| 4 | **Move to a new phone** | The old phone's start screen: three numbered steps and Get code. |
+| 5 | **App lock** | The lock screen with a PIN typed in. |
+| 6 | **Settings** | The top of Settings as it opens: the profile row, Appearance, Privacy and Security. |
 
 Notes:
 
-- Shots 1 to 3 come from the iOS Flutter app (`apps/mobile`), not the web
-  demo. Crypto on mobile is the full Double Ratchet (X25519 + HKDF-SHA256 +
-  AES-256-GCM, Ed25519 device signatures).
+- The shots come from the iOS Flutter app (`apps/mobile`), not the web
+  demo.
 - Shot 2: the Chats list shows no unread count (the app does not keep
-  one), so the shot has none. Leave out chats whose last message is a voice
-  note or a photo: the app cannot send either.
+  one), so the shot has none. Leave out the chats whose last message is a
+  voice message or a photo (the app cannot send either) and the chat with
+  no messages yet.
 - Shot 3: text messages only. Sending attachments is switched off in the
   mobile app, and it has no voice messages or calls, so the shot shows none
-  of them. Keep any visible message text ordinary and safe.
-- Shot 4 (Move to a new phone): show the transfer as an action taken with
-  the old phone present. **Do not** imply backup or recovery: Veil has
+  of them.
+- Shot 4 (Move to a new phone): show the move as something done with the
+  old phone in hand. **Do not** imply backup or recovery: Veil has
   neither. Misleading "restore/backup" framing risks App Review rejection
   and contradicts the metadata.
 - Shot 5 (App lock): show PIN entry or the biometric prompt.
-- Shot 6: show what `metadata-en.txt` and `app-privacy-answers.md` already
-  declare; add no claim of its own.
 
 ---
 
@@ -135,13 +133,14 @@ Notes:
 
 - **Language:** English only. Do not create screenshot sets for other
   locales; the app has no other language.
-- **Captions:** optional. If used, one plain sentence above the screen,
-  never covering the status bar or core UI. No gradients, no device
-  mock-ups, no badges or pills on the art.
+- **No captions:** like the Google Play set, each shot is the screen alone.
+  No text over or above it, no gradients, no device mock-ups, no badges or
+  pills on the art.
 - **Status bar:** clean (full signal, full battery, no active call banner),
   with the same time on every shot (for example 9:41).
-- **Content safety:** use the demo names the layout gate uses (Alex Kim,
-  Sam Rivera, Priya Nair, Jonas Weber, Mia Chen) and neutral sample
+- **Content:** the layout gate's demo account
+  (`apps/mobile/test/layout/support/layout_seed.dart`): Alex Kim, Sam
+  Rivera, Priya Nair, Jonas Weber, Mia Chen and tom_walsh, and their short
   messages. No real personal data and no phone numbers anywhere (the app
   does not use them).
 - **Consistency:** same demo accounts, same avatars and one theme (light or
@@ -150,6 +149,7 @@ Notes:
   ([`../play/screenshots/`](../play/screenshots/README.md)). Its status
   bar strip is blank because a test draws it; the iPhone captures keep the
   clean status bar described above.
+
 
 ---
 

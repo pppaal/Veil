@@ -1,38 +1,21 @@
-An end-to-end encrypted messenger with no phone number, no email and no real name.
-Veil is a chat app where even the server can't read your messages. Instead
-of finding people by phone number, you give them your handle.
+Veil is a messenger you sign up for with a handle. No phone number, no email, no real name.
 
-■ How it works
-• Sign up with a handle. No phone number, no email, no real name.
-• Every message is end-to-end encrypted on-device. Servers never see your messages in plaintext.
-• There is no account recovery. If you lose your phone, you lose the account and its messages.
+Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
-■ Encryption
-• X25519 key exchange and AES-256-GCM encryption
-• Ed25519 device signatures
-• HKDF-SHA256 key derivation
-• Messages are encrypted on your device and stored on the server only as ciphertext until they expire, at most 30 days.
-
-■ Features
 • One-to-one and group chats
-• Typing indicators, online status and optional read receipts
+• Disappearing messages
+• Read receipts and typing indicators you can turn off
+• Safety numbers to check who you're talking to
+• One-time links for a password or a note
 • App lock with a PIN or biometrics
 • Block or report someone, and mute a chat
 • Move your account to a new phone
-• English
 
-■ Who it's for
-• Anyone who wants to message without giving out a phone number
-• Journalists, activists and anyone else who needs private conversations
+There is no backup and no account recovery. If you lose your phone, you lose the account and its messages.
 
-■ Privacy
-• No ads, no tracking and no third-party analytics.
-• The privacy policy says what the server stores and links the published list of every field it keeps.
-• Designed to meet Korea's PIPA requirements.
-• Open source: anyone can read the code.
-
-■ One phone at a time
 Veil runs on one phone at a time. Moving to a new phone moves your handle to it and signs the old phone out. Your message history does not move.
+
+No ads, no tracking and no third-party analytics. The code is open source.
 
 Privacy policy: https://pppaal.github.io/Veil/
 Contact: privacy@veil.app

@@ -54,6 +54,12 @@ test.describe('device transfer', () => {
     await expect(oldDialog).toBeVisible();
     await expect(alice.page.locator('#transfer-old-status')).toHaveText('Waiting for the new device…');
     await expect(alice.page.locator('#transfer-old-approve')).toBeHidden();
+    await expect(alice.page.locator('#transfer-old-dialog .steps li')).toHaveText([
+      '1. On the new device, open Veil and choose Move from another device.',
+      '2. Paste this code there.',
+      '3. Check the fingerprint, then approve here.',
+    ]);
+    await expect(alice.page.locator('#transfer-old-copy')).toHaveText('Copy code');
     const code = await alice.page.locator('#transfer-old-token').inputValue();
     expect(code).toMatch(/^[A-Za-z0-9+/]+$/);
 
@@ -64,14 +70,16 @@ test.describe('device transfer', () => {
     // The same name for every browser, never its platform string.
     await expect(page.locator('#transfer-new-name')).toHaveValue('Veil Web');
     await page.click('#transfer-new-claim');
-    await expect(page.locator('#transfer-new-error')).toHaveText('Enter the code');
+    await expect(page.locator('#transfer-new-claim')).toHaveText('Continue');
+    await expect(page.locator('#transfer-new-error')).toHaveText('Paste the code first');
     await page.fill('#transfer-new-token', 'not a code');
     await page.click('#transfer-new-claim');
-    await expect(page.locator('#transfer-new-error')).toHaveText('This is not a valid code');
+    await expect(page.locator('#transfer-new-error')).toHaveText("That code isn't valid.");
 
     await page.fill('#transfer-new-token', code);
     await page.click('#transfer-new-claim');
-    await expect(page.locator('#confirm-title')).toHaveText('Replace the account in this browser');
+    await expect(page.locator('#confirm-title')).toHaveText('Replace the account in this browser?');
+    await expect(page.locator('#confirm-ok')).toHaveText('Replace');
     await page.click('#confirm-cancel');
     await expect(page.locator('#transfer-new-fingerprint')).toBeHidden();
     await page.click('#transfer-new-claim');
@@ -79,18 +87,30 @@ test.describe('device transfer', () => {
 
     const fingerprint = page.locator('#transfer-new-fingerprint-text');
     await expect(fingerprint).toHaveText(/^([0-9a-f]{4} ){15}[0-9a-f]{4}$/);
-    await expect(page.locator('#transfer-new-status')).toHaveText('Waiting for approval on the old device…');
+    await expect(page.locator('#transfer-new-status')).toHaveText('Waiting for your old device…');
     await expect(alice.page.locator('#transfer-old-fingerprint')).toHaveText(await fingerprint.innerText(), { timeout: 10_000 });
-    await expect(alice.page.locator('#transfer-old-status')).toHaveText('Check the fingerprint, then approve.');
+    // The fingerprint box says what to check; the status line steps aside.
+    await expect(alice.page.locator('#transfer-old-claim .fingerprint-hint')).toHaveText('Check that the new device shows the same fingerprint.');
+    await expect(alice.page.locator('#transfer-old-status')).toHaveText('');
+    // Approving asks first: it signs this browser out for good.
     await alice.page.click('#transfer-old-approve');
+    await expect(alice.page.locator('#confirm-title')).toHaveText('Move your account to the new device?');
+    await expect(alice.page.locator('#confirm-body')).toHaveText(
+      "This browser is then signed out and its keys are deleted. Your messages don't move.",
+    );
+    await alice.page.click('#confirm-cancel');
+    await expect(alice.page.locator('#transfer-old-approve')).toBeVisible();
+    await alice.page.click('#transfer-old-approve');
+    await expect(alice.page.locator('#confirm-ok')).toHaveText('Move account');
+    await alice.page.click('#confirm-ok');
 
     await expect(page.locator('#app')).toBeVisible({ timeout: 15_000 });
-    await expect(toast(spare, 'Transfer complete. You are signed in on this device.')).toBeVisible();
+    await expect(toast(spare, "You're signed in.")).toBeVisible();
     await expect(newDialog).toBeHidden();
-    await expect(page.locator('#sidebar-me')).toContainText(`@${alice.handle}`);
+    await expect(page.locator('#menu-me')).toContainText(`@${alice.handle}`);
 
     await expect(alice.page.locator('#auth-screen')).toBeVisible({ timeout: 15_000 });
-    await expect(toast(alice, 'Transfer complete. The keys on this device were deleted.')).toBeVisible();
+    await expect(toast(alice, 'Your account is on the new device now.')).toBeVisible();
     await expect(alice.page.locator('#restore-row')).toBeHidden();
     await expect(oldDialog).toBeHidden();
 
@@ -99,7 +119,7 @@ test.describe('device transfer', () => {
     expect(kept).toEqual([]);
     await page.reload();
     await expect(page.locator('#app')).toBeVisible();
-    await expect(page.locator('#sidebar-me')).toContainText(`@${alice.handle}`);
+    await expect(page.locator('#menu-me')).toContainText(`@${alice.handle}`);
     // What the relay stored for the handle's devices: the old one scrubbed
     // with its revocation, the new one under the name the dialog offered.
     expect(await relayState(`/__test/devices/${alice.handle}`)).toEqual([
@@ -156,10 +176,11 @@ test.describe('device transfer completion', () => {
 
     await relay('/__test/lose-completion');
     await old.page.click('#transfer-old-approve');
+    await old.page.click('#confirm-ok');
 
     await expect(fresh.page.locator('#app')).toBeVisible({ timeout: 15_000 });
-    await expect(toast(fresh, 'Transfer complete. You are signed in on this device.')).toBeVisible();
-    await expect(fresh.page.locator('#sidebar-me')).toContainText(`@${old.handle}`);
+    await expect(toast(fresh, "You're signed in.")).toBeVisible();
+    await expect(fresh.page.locator('#menu-me')).toContainText(`@${old.handle}`);
     await expect(old.page.locator('#auth-screen')).toBeVisible({ timeout: 15_000 });
     expectNoErrors(fresh);
   });
@@ -175,7 +196,9 @@ test.describe('device transfer completion', () => {
     // complete the transfer, for good.
     await relay('/__test/revoke', { handle: old.handle });
     const { page } = fresh;
-    await expect(page.locator('#transfer-new-error')).toHaveText('Old trusted device is unavailable; transfer cannot proceed', { timeout: 10_000 });
+    // What happened in the app's words, never the server's.
+    await expect(page.locator('#transfer-new-error')).toHaveText('This move has ended. Start again on your old device.', { timeout: 10_000 });
+    await expect(page.locator('#transfer-new-status')).toHaveText("Couldn't finish the move. Try again, or paste a new code.");
     await expect(page.locator('#transfer-new-claim')).toHaveText('Try again');
     await expect(page.locator('#transfer-new-claim')).toBeEnabled();
 
@@ -192,9 +215,9 @@ test.describe('device transfer completion', () => {
 
     // Another code is a new claim.
     await page.fill('#transfer-new-token', 'not a code');
-    await expect(page.locator('#transfer-new-claim')).toHaveText('Use code');
+    await expect(page.locator('#transfer-new-claim')).toHaveText('Continue');
     await page.click('#transfer-new-claim');
-    await expect(page.locator('#transfer-new-error')).toHaveText('This is not a valid code');
+    await expect(page.locator('#transfer-new-error')).toHaveText("That code isn't valid.");
     expectNoErrors(fresh);
   });
 });

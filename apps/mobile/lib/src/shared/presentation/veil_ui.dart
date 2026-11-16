@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/veil_theme.dart';
-import 'veil_notice.dart';
 
 export 'veil_avatar.dart';
 export 'veil_bubble.dart';
@@ -101,14 +100,14 @@ class VeilButton extends StatelessWidget {
 }
 
 /// What a screen shows where its content would be and there is none: a
-/// title, one line under it and at most one button, centred in the space
-/// left. [icon], if any, is a plain 40dp glyph. [compact] (above an open
-/// keyboard) is the title and the button only.
+/// title, at most one line under it and at most one button, centred in the
+/// space left. [icon], if any, is a plain 40dp glyph. [compact] (above an
+/// open keyboard) is the title and the button only.
 class VeilEmptyState extends StatelessWidget {
   const VeilEmptyState({
     super.key,
     required this.title,
-    required this.body,
+    this.body,
     this.icon,
     this.action,
     this.compact = false,
@@ -118,13 +117,13 @@ class VeilEmptyState extends StatelessWidget {
   const VeilEmptyState.error({
     super.key,
     required this.title,
-    required this.body,
+    this.body,
     this.action,
     this.compact = false,
   }) : icon = Icons.error_outline;
 
   final String title;
-  final String body;
+  final String? body;
   final IconData? icon;
   final Widget? action;
   final bool compact;
@@ -148,10 +147,10 @@ class VeilEmptyState extends StatelessWidget {
                 const SizedBox(height: VeilSpace.md),
               ],
               Text(title, style: titleStyle, textAlign: TextAlign.center),
-              if (!compact) ...[
+              if (!compact && body != null) ...[
                 const SizedBox(height: VeilSpace.xs),
                 Text(
-                  body,
+                  body!,
                   style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
                   textAlign: TextAlign.center,
                   maxLines: 2,
@@ -171,9 +170,9 @@ class VeilEmptyState extends StatelessWidget {
 }
 
 /// A short message at the bottom of the screen for something that just
-/// happened. The tone shows only as a leading icon; information has none.
-/// [actionLabel] and [onAction] add one text button, such as Retry after
-/// something failed.
+/// happened: text only, as Signal's, WhatsApp's and Telegram's snackbars
+/// are, with no tone icon, success and failure alike. [actionLabel] and
+/// [onAction] add one text button, such as Retry after something failed.
 ///
 /// Every toast closes by itself, one with a button too (Flutter would keep
 /// that until it is tapped): it is drawn above every screen, so one left
@@ -183,11 +182,9 @@ class VeilEmptyState extends StatelessWidget {
 void showVeilToast(
   BuildContext context,
   String message, {
-  VeilTone tone = VeilTone.info,
   String? actionLabel,
   VoidCallback? onAction,
 }) {
-  final palette = context.veilPalette;
   final messenger = ScaffoldMessenger.of(context);
   final action = actionLabel == null || onAction == null ? null : SnackBarAction(label: actionLabel, onPressed: onAction);
   messenger.clearSnackBars();
@@ -196,15 +193,7 @@ void showVeilToast(
       action: action,
       duration: action == null ? const Duration(seconds: 4) : const Duration(seconds: 8),
       persist: action != null && MediaQuery.accessibleNavigationOf(context),
-      content: Row(
-        children: [
-          if (tone != VeilTone.info) ...[
-            Icon(VeilNotice.iconFor(tone), size: 20, color: veilToneColor(palette, tone)),
-            const SizedBox(width: VeilSpace.sm),
-          ],
-          Expanded(child: Text(message)),
-        ],
-      ),
+      content: Text(message),
     ),
   );
 }

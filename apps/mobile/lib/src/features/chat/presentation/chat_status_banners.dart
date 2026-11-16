@@ -2,22 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_first_fit.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
-import 'chat_room_labels.dart';
 
-/// What sits between a chat's bar and its messages: a notice for each thing
-/// the user has to decide or act on (an identity change or held account
-/// that pauses the 1:1, a key change of the peer's that waits in another
-/// chat, sends still waiting), each with its action inside it; then, as one
-/// plain line each, the messenger's error and a running search. An error
-/// has no action of its own to offer, so it is a line, not a notice. A
-/// quiet chat shows nothing here: the bar carries the verified mark, and the
-/// messages keep the height.
+/// What sits between a chat's bar and its messages: a banner only while the
+/// user has to decide something (an identity change or held account that
+/// pauses the 1:1, a key change of the peer's that waits in another chat),
+/// each with its action inside it. A send that failed says so on its
+/// bubble, the connection is the bar's subtitle and an error is a toast, as
+/// in Signal: a quiet chat shows nothing here.
 ///
 /// Given less height than its notices need, it shows each warning as one
 /// full-bleed row (title and action), and only when even those do not fit
@@ -28,43 +24,21 @@ class ChatStatusBanners extends StatelessWidget {
     required this.controller,
     required this.conversationId,
     required this.conversation,
-    required this.messages,
-    required this.hasSearchQuery,
-    required this.searching,
-    required this.searchHitCount,
     required this.onReviewIdentity,
     required this.onAcknowledgeHold,
-    required this.onRetryFailed,
-    this.errorShownBelow = false,
   });
 
   final VeilMessengerController controller;
   final String conversationId;
   final ConversationPreview? conversation;
-
-  /// Every loaded message of the conversation, expired ones included.
-  final List<ChatMessage> messages;
-  final bool hasSearchQuery;
-  final bool searching;
-  final int searchHitCount;
   final VoidCallback onReviewIdentity;
   final void Function(PeerAccountHold hold, String handle) onAcknowledgeHold;
-  final VoidCallback onRetryFailed;
-
-  /// Whether the message area already says what the messenger's error is
-  /// (a history that could not be loaded), so no banner repeats it.
-  final bool errorShownBelow;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final notices = _notices(l10n);
-    final error = _errorLine(l10n);
-    final lines = [
-      if (error != null) error,
-      if (hasSearchQuery) searching ? l10n.chatSearchSearching : l10n.chatSearchMatchCount(searchHitCount),
-    ];
-    if (notices.isEmpty && lines.isEmpty) return const SizedBox.shrink();
+    if (notices.isEmpty) return const SizedBox.shrink();
     return VeilFirstThatFits(
       children: [
         // A gap under the last notice as over the first: a message scrolled
@@ -82,16 +56,15 @@ class ChatStatusBanners extends StatelessWidget {
                   title: notice.title,
                   message: notice.message,
                   tone: notice.tone,
+                  dense: notice.oneLine,
+                  // There is room here: a title too long for the row wraps
+                  // rather than end in "…" ("Safety number changed in a
+                  // group you share" does not fit a 360dp phone).
+                  denseLines: 2,
                   actionLabel: notice.actionLabel,
                   onAction: notice.onAction,
                 ),
               ],
-              for (final (index, line) in lines.indexed)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                      VeilSpace.md, notices.isEmpty && index == 0 ? 0 : VeilSpace.xs, VeilSpace.md, 0),
-                  child: _line(context, line),
-                ),
             ],
           ),
         ),
@@ -106,28 +79,22 @@ class ChatStatusBanners extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (notices.isNotEmpty)
-                  VeilGroup(
-                    // Grey rows edge to edge: a line that started at the text
-                    // would leave a notch of page colour at the start.
-                    inset: 0,
-                    children: [
-                      for (final notice in notices)
-                        VeilNotice(
-                          dense: true,
-                          title: notice.title,
-                          message: notice.message,
-                          tone: notice.tone,
-                          actionLabel: notice.actionLabel,
-                          onAction: notice.onAction,
-                        ),
-                    ],
-                  ),
-                for (final line in lines)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xxs),
-                    child: _line(context, line, maxLines: 2),
-                  ),
+                VeilGroup(
+                  // Grey rows edge to edge: a line that started at the text
+                  // would leave a notch of page colour at the start.
+                  inset: 0,
+                  children: [
+                    for (final notice in notices)
+                      VeilNotice(
+                        dense: true,
+                        title: notice.title,
+                        message: notice.message,
+                        tone: notice.tone,
+                        actionLabel: notice.actionLabel,
+                        onAction: notice.onAction,
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -136,37 +103,11 @@ class ChatStatusBanners extends StatelessWidget {
     );
   }
 
-  Widget _line(BuildContext context, String text, {int? maxLines}) {
-    return Text(
-      text,
-      maxLines: maxLines,
-      overflow: maxLines == null ? null : TextOverflow.ellipsis,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
-    );
-  }
-
-  /// The messenger's error, in the app's words, when this chat should say
-  /// it: not the note about a dropped link (this chat's waiting sends below
-  /// say that, or it is another chat's business), and not when the message
-  /// area already says why nothing loaded.
-  String? _errorLine(AppLocalizations l10n) {
-    final error = controller.errorMessage;
-    if (error == null || controller.errorIsRelayInterruption || errorShownBelow) return null;
-    return veilErrorText(l10n, error);
-  }
-
   /// The warnings, most pressing first.
   List<_Notice> _notices(AppLocalizations l10n) {
     final conversation = this.conversation;
     final isDirect = conversation?.type == ConversationType.direct;
-    final pendingCount = controller.pendingCountFor(conversationId);
-    final failedCount = messages.where((message) => message.hasFailed).length;
-    final uploadingCount =
-        messages.where((message) => message.deliveryState == MessageDeliveryState.uploading).length;
-    final queuedCount = messages.where((message) => message.deliveryState == MessageDeliveryState.pending).length;
-    final nextRetryAt = controller.nextRetryAtForConversation(conversationId);
     final accountHold = isDirect ? controller.peerAccountHoldFor(conversationId) : null;
-    final connected = controller.realtimeConnected;
     final changeHere = isDirect && controller.pendingIdentityChangeFor(conversationId) != null;
     // The peer presented another key in a conversation they share with the
     // user (a group), which holds it for review. This 1:1 still talks to
@@ -186,11 +127,13 @@ class ChatStatusBanners extends StatelessWidget {
           actionLabel: l10n.chatIdentityChangedReview,
           onAction: onReviewIdentity,
         ),
+      // One line and its action: the decision waits in the group.
       if (changeElsewhere)
         _Notice(
-          title: l10n.chatIdentityChangedElsewhereTitle,
-          message: l10n.chatIdentityChangedElsewhereBody,
+          title: null,
+          message: l10n.chatIdentityChangedElsewhereTitle,
           tone: VeilTone.warn,
+          oneLine: true,
           actionLabel: l10n.chatIdentityChangedReview,
           onAction: onReviewIdentity,
         ),
@@ -214,36 +157,6 @@ class ChatStatusBanners extends StatelessWidget {
           tone: VeilTone.warn,
           actionLabel: l10n.chatAccountHoldAcknowledge,
           onAction: () => onAcknowledgeHold(accountHold, conversation?.peerHandle ?? ''),
-        ),
-      if (pendingCount > 0)
-        _Notice(
-          // Sends that failed are said once, in one line with its action:
-          // a title over it would say the same thing twice.
-          title: !connected
-              ? l10n.chatBannerRelayReconnecting
-              : failedCount > 0
-                  ? null
-                  : l10n.chatBannerQueuedLocally,
-          message: !connected
-              ? networkRecoveryMessage(
-                  l10n: l10n,
-                  failedCount: failedCount,
-                  queuedCount: queuedCount,
-                  uploadingCount: uploadingCount,
-                  nextRetryAt: nextRetryAt,
-                )
-              : failedCount > 0
-                  ? l10n.chatBannerFailedSends(failedCount)
-                  : uploadingCount > 0
-                      ? l10n.chatBannerUploadingAttachments(uploadingCount)
-                      : l10n.chatBannerQueuedMessages(queuedCount),
-          tone: failedCount > 0
-              ? VeilTone.danger
-              : !connected
-                  ? VeilTone.warn
-                  : VeilTone.info,
-          actionLabel: failedCount > 0 ? l10n.chatRetryFailedSendsAction : null,
-          onAction: failedCount > 0 ? onRetryFailed : null,
         ),
     ];
   }
@@ -284,6 +197,7 @@ class _Notice {
     required this.title,
     required this.message,
     required this.tone,
+    this.oneLine = false,
     this.actionLabel,
     this.onAction,
   });
@@ -292,6 +206,9 @@ class _Notice {
   final String? title;
   final String message;
   final VeilTone tone;
+
+  /// Drawn as one row even with room for more.
+  final bool oneLine;
   final String? actionLabel;
   final VoidCallback? onAction;
 }

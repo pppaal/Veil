@@ -8,19 +8,22 @@ import { isLegacyIdentity } from '../../crypto/identity.js';
 import { shownHandle } from '../../domain/handles.js';
 import { isGone, isShown } from '../../domain/ingest.js';
 import { isPendingId } from '../../domain/local-messages.js';
-import { muteSecondsFromMinutes } from '../../domain/mute.js';
 import { reactionsByTarget } from '../../domain/reactions.js';
 import { $, avatarFor, el, icon, iconButton } from '../dom.js';
+import { shortcutLabel } from '../keys.js';
 import { toast } from '../toast.js';
+import { createChatMenu } from './chat-menu.js';
 import { holdTextKey } from './key-change-banner.js';
 
 // Near enough to the bottom to follow new messages down.
 const NEAR_BOTTOM_PX = 120;
 
 // messageList, composer, keyChangeBanner, safetyDialog, panelSearch: the
-// views a panel is made of; messages: src/app/services/messages.js;
-// safety: src/app/services/safety.js; confirm: src/ui/confirm.js.
-export function createChatView({ store, stack, messages, messageList, composer, keyChangeBanner, safetyDialog, panelSearch, safety, confirm }) {
+// views a panel is made of; reportDialog: what the menu's Report opens;
+// messages: src/app/services/messages.js; safety:
+// src/app/services/safety.js; confirm: src/ui/confirm.js; backToList: a
+// phone's way from the chat to the list (src/ui/views/tabs.js).
+export function createChatView({ store, stack, messages, messageList, composer, keyChangeBanner, safetyDialog, panelSearch, reportDialog, safety, confirm, backToList }) {
   const { state } = store;
   const readMarked = new Set(); // message ids this session marked read
   const observers = new Map(); // convId -> IntersectionObserver
@@ -70,8 +73,8 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     try {
       await stack.secure.forgetConversation(convId, Math.max(0, ...known.map((message) => message.conversationOrder ?? 0)));
       for (const message of known) await messages.uncache(message);
-    } catch (error) {
-      toast(t('history.deleteFailed', { error: error.message }), 'error');
+    } catch {
+      toast(t('history.deleteFailed'), 'error');
       return;
     }
     messages.setMessages(convId, []);
@@ -79,29 +82,12 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     store.notify('sidebar', 'panels');
   }
 
-  // The bell shows whether the conversation is muted.
-  function showMuted(button, muted) {
-    button.setAttribute('aria-pressed', String(muted));
-    button.replaceChildren(icon(muted ? 'bell-off' : 'bell'));
-  }
+  const chatMenu = createChatMenu({ store, safety, reportDialog, confirm, clearHistory: deleteLocalHistory });
 
-  // Unmuted, a click asks how long to mute for; muted, it unmutes.
-  async function toggleMute(convId, button) {
-    if (state.muted.has(convId)) {
-      await safety.setMute(convId, null);
-      showMuted(button, false);
-      return;
-    }
-    const minutes = window.prompt(t('chat.mutePrompt'), '60');
-    if (!minutes) return;
-    await safety.setMute(convId, muteSecondsFromMinutes(minutes));
-    showMuted(button, true);
-  }
-
-  // Typing beats presence; otherwise the line under the name stays empty.
+  // Only typing shows under the name: nothing tells this device whether a
+  // contact is online.
   function subtitle(conv, peer) {
     if (peer && state.typing.get(conv.id)?.has(peer.userId)) return { text: t('chat.typing'), className: 'sub typing' };
-    if (peer && state.online.has(peer.userId)) return { text: t('chat.online'), className: 'sub online' };
     return { text: '', className: 'sub' };
   }
 
@@ -123,28 +109,47 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     return badge;
   }
 
+  // On a phone the chat takes the whole screen and the list's bar is
+  // hidden, so the chat's own bar leads with the way back (app.css shows
+  // the button only there), as Signal, WhatsApp and Telegram do. Only the
+  // main panel has it.
   function header(conv, peer, directPeer, legacyIdentity) {
     const sub = subtitle(conv, peer);
-    const mute = iconButton('bell', t('chat.muteToggle'), {
-      class: 'icon-btn mute-toggle',
-      onclick: (event) => toggleMute(conv.id, event.currentTarget),
-    });
-    showMuted(mute, state.muted.has(conv.id));
+    const muted = store.isMuted(conv.id);
+    const back = conv.id === state.activeConv
+      ? iconButton('back', t('shell.back'), { class: 'icon-btn icon-btn-only-mobile panel-back', id: 'back-to-list', onclick: backToList })
+      : null;
     return el('div', { class: 'panel-header' }, [
+      back,
       avatarFor(peer?.handle ?? '?', 'sm'),
       el('div', { class: 'panel-title' }, [
         el('div', { class: 'panel-title-row' }, [
           el('div', { class: 'name' }, ['@' + shownHandle(peer?.handle)]),
           directPeer && !legacyIdentity ? verifiedBadge(conv.id) : null,
+          muted ? el('span', { class: 'muted-mark', title: t('mute.doneAlways') }, [icon('bell-off'), el('span', { class: 'sr-only' }, [t('mute.doneAlways')])]) : null,
         ]),
         el('div', { class: sub.className }, [sub.text]),
       ]),
       el('div', { class: 'panel-actions' }, [
-        iconButton('search', t('chat.findShortcut'), { title: t('chat.find'), onclick: () => panelSearch.open(conv.id) }),
+        iconButton('search', t('chat.findShortcut', { shortcut: shortcutLabel('F') }), { onclick: () => panelSearch.open(conv.id) }),
         directPeer && !legacyIdentity ? iconButton('shield', t('safety.open'), { onclick: () => safetyDialog.open(conv.id, directPeer) }) : null,
-        iconButton('trash', t('history.delete'), { onclick: () => deleteLocalHistory(conv.id) }),
-        mute,
+        iconButton('more', t('chat.menu'), {
+          class: 'icon-btn chat-menu-btn',
+          'aria-haspopup': 'menu',
+          onclick: (event) => chatMenu.open(event.currentTarget, conv.id, directPeer),
+        }),
       ]),
+    ]);
+  }
+
+  // Where the composer was, while this account blocks the peer: one line
+  // and the way back (WhatsApp's "You blocked this contact", mobile's
+  // blocked chat). Unblock asks nothing: it is undone as easily.
+  function blockedBar(peer) {
+    const handle = shownHandle(peer.handle);
+    return el('div', { class: 'panel-blocked' }, [
+      el('span', { class: 'panel-blocked-line' }, [t('chat.blockedLine', { handle })]),
+      el('button', { class: 'text-btn', type: 'button', onclick: () => safety.unblock(peer.userId, handle) }, [t('chat.unblock')]),
     ]);
   }
 
@@ -172,6 +177,10 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     // server issues) opens and sends nothing until the user chooses to talk
     // to that account.
     const directPeer = stack.peerOf(conv.id);
+    // Whom this account blocked is asked once a session, the first time a
+    // chat with someone is drawn; the answer redraws it.
+    if (directPeer) safety.loadBlocked();
+    const blocked = Boolean(directPeer && store.isBlocked(directPeer.userId));
     const keyChanged = Boolean(directPeer && stack.trust.pendingChange(directPeer.userId));
     const hold = directPeer ? stack.bindings.hold(conv.id, directPeer) : null;
     const legacyIdentity = isLegacyIdentity(state.me);
@@ -190,11 +199,13 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     }
     const list = messageList.render(convId, { shown, reactions, peerHandle: peer?.handle, group: !directPeer });
     list.addEventListener('scroll', () => state.scrollTops.set(convId, list.scrollTop));
-    const { node: composerNode, textarea } = composer.render(convId, {
-      frozen: legacyIdentity || !directPeer || Boolean(hold),
-      placeholder,
-      peerHandle: peer?.handle,
-    });
+    const { node: composerNode, textarea } = blocked
+      ? { node: blockedBar(directPeer), textarea: null }
+      : composer.render(convId, {
+        frozen: legacyIdentity || !directPeer || Boolean(hold),
+        placeholder,
+        peerHandle: peer?.handle,
+      });
     const panel = el('div', { class: 'panel', dataset: { conv: convId } }, [
       header(conv, peer, directPeer, legacyIdentity),
       hold ? keyChangeBanner.renderHold(convId, directPeer, hold) : null,
@@ -208,7 +219,7 @@ export function createChatView({ store, stack, messages, messageList, composer, 
       list.scrollTop = followBottom ? list.scrollHeight : scrollTop;
       if (state.focusClaims.has(convId) && state.activeConv === convId) {
         state.focusClaims.delete(convId);
-        textarea.focus();
+        textarea?.focus();
       }
     });
     if (store.isOnScreen(convId)) requestAnimationFrame(() => observeReads(convId, list));

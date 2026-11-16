@@ -9,9 +9,9 @@ import '../data/contact_index.dart';
 import '../data/contacts_providers.dart';
 import 'contact_sheets.dart';
 
-/// The contacts tab: the list is the screen. Search leads it and scrolls
-/// away with it, a letter heads each run of names, and adding a contact is
-/// an action of the bar.
+/// The contacts tab: the list is the screen, one run of names in order
+/// with no letter headers (Telegram). Search leads it and scrolls away with
+/// it, and adding a contact is an action of the bar.
 class ContactsScreen extends ConsumerStatefulWidget {
   const ContactsScreen({super.key});
 
@@ -40,7 +40,10 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
     final l10n = AppLocalizations.of(context);
     final controller = ref.watch(contactsControllerProvider);
     final searching = _searchController.text.trim().isNotEmpty;
-    final sections = sectionContacts(filterContacts(controller.contacts, _searchController.text));
+    final contacts = [
+      for (final section in sectionContacts(filterContacts(controller.contacts, _searchController.text)))
+        ...section.contacts,
+    ];
 
     return VeilShell(
       title: l10n.navContacts,
@@ -79,18 +82,27 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 ),
               ),
             ),
-            // Only while the last load failed: the list shown is the one
-            // that loaded before.
+            // Only while the last load failed: one line and Retry over the
+            // list that loaded before.
             if (controller.loadFailed)
-              SliverPadding(
-                padding: const EdgeInsets.only(top: VeilSpace.xs, bottom: VeilSpace.xxs),
-                sliver: SliverToBoxAdapter(
-                  child: VeilNotice(
-                    title: l10n.contactsErrorTitle,
-                    message: l10n.contactsErrorBody,
-                    tone: VeilTone.warn,
-                    actionLabel: l10n.commonRetry,
-                    onAction: controller.refresh,
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(start: VeilSpace.md, end: VeilSpace.xxs),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          l10n.contactsErrorTitle,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+                        ),
+                      ),
+                      VeilButton(
+                        expanded: false,
+                        tone: VeilButtonTone.ghost,
+                        label: l10n.commonRetry,
+                        onPressed: controller.refresh,
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -103,13 +115,11 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                   ),
                 ),
               )
-            else if (sections.isEmpty)
+            else if (contacts.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: VeilEmptyState(
                   title: searching ? l10n.contactsEmptySearchTitle : l10n.contactsEmptyTitle,
-                  body: searching ? l10n.contactsEmptySearchBody : l10n.contactsEmptyBody,
-                  icon: searching ? null : Icons.people_outline,
                   action: searching
                       ? null
                       : VeilButton(
@@ -122,24 +132,20 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.only(bottom: VeilSpace.lg),
-                sliver: SliverList.builder(
-                  itemCount: sections.length,
-                  itemBuilder: (context, index) {
-                    final section = sections[index];
-                    return VeilGroup(
-                      key: ValueKey('contacts-index-${section.letter}'),
-                      header: section.letter,
-                      inset: ContactRow.textInset,
-                      children: [
-                        for (final contact in section.contacts)
-                          ContactRow(
-                            contact: contact,
-                            onTap: () => showContactActionsSheet(context, ref, contact),
-                          ),
-                      ],
-                    );
-                  },
+                padding: const EdgeInsets.only(top: VeilSpace.xs, bottom: VeilSpace.lg),
+                sliver: SliverToBoxAdapter(
+                  child: VeilGroup(
+                    key: const ValueKey('contacts-list'),
+                    inset: ContactRow.textInset,
+                    children: [
+                      for (final contact in contacts)
+                        ContactRow(
+                          key: ValueKey('contact-${contact.handle}'),
+                          contact: contact,
+                          onTap: () => showContactActionsSheet(context, ref, contact),
+                        ),
+                    ],
+                  ),
                 ),
               ),
           ],
@@ -173,8 +179,8 @@ class ContactRow extends StatelessWidget {
       child: VeilRow(
         leading: VeilAvatar(name: contact.label, seed: contact.handle),
         // A name and a handle are their owner's words: drawn as typed.
-        title: contact.label,
-        subtitle: '@${contact.handle}',
+        title: contact.title,
+        subtitle: contact.handleLine,
         trailing: const SizedBox.shrink(),
         onTap: onTap,
       ),

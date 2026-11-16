@@ -1,7 +1,8 @@
 // The composer under a conversation: the text box with its in-memory
-// draft, the reply banner, the send button, the voice button, and the image
-// and file pickers (also fed by dropping an image on it).
+// draft, the reply or edit bar above it, the send button, the voice button,
+// and the image and file pickers (also fed by dropping an image on it).
 
+import { t } from '../../../i18n/i18n.js';
 import { MESSAGE_MAX_CHARS } from '../../domain/composer-text.js';
 import { snippetOf } from '../../domain/conversations.js';
 import { shownHandle } from '../../domain/handles.js';
@@ -15,6 +16,12 @@ const FILE_MAX_BYTES = 25 * 1024 * 1024;
 const MAX_HEIGHT_PX = 116;
 
 const textareaOf = (convId) => document.querySelector(`.panel[data-conv="${convId}"] .panel-input textarea`);
+
+// As tall as its text, up to five lines.
+function fitHeight(textarea) {
+  textarea.style.height = 'auto';
+  textarea.style.height = Math.min(textarea.scrollHeight, MAX_HEIGHT_PX) + 'px';
+}
 
 function pickFile(accept, onPicked) {
   const input = el('input', { type: 'file', accept });
@@ -44,7 +51,7 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
       kind: 'image',
       blob: file,
       contentType: file.type,
-      failureLabel: 'Image not sent',
+      failureLabel: t('composer.imageNotSent'),
       local: { _imageUrl: URL.createObjectURL(file) },
     });
     if (sent) sounds.playSend();
@@ -57,7 +64,7 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
       blob: file,
       contentType: file.type || 'application/octet-stream',
       name,
-      failureLabel: 'File not sent',
+      failureLabel: t('composer.fileNotSent'),
       local: { _localFile: { name, sizeBytes: file.size } },
     });
     if (sent) sounds.playSend();
@@ -72,39 +79,62 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
         return;
       }
       if (file.size > FILE_MAX_BYTES) {
-        toast('The file is larger than 25 MB', 'error');
+        toast(t('composer.fileTooBig'), 'error');
         return;
       }
       sendFile(convId, file);
     });
   }
 
+  function clearBox(textarea) {
+    textarea.value = '';
+    textarea.style.height = 'auto';
+    textarea.dispatchEvent(new Event('input'));
+  }
+
+  // An edit in progress replaces the message's text; an unchanged or empty
+  // one just ends the edit.
   function sendTyped(textarea, convId) {
-    return send.sendText(convId, textarea.value.trim(), {
-      onSealed: () => {
-        textarea.value = '';
-        textarea.style.height = 'auto';
-        textarea.dispatchEvent(new Event('input'));
-      },
-    });
+    const editing = state.editing.get(convId);
+    if (editing) {
+      const text = textarea.value.trim();
+      const message = store.findMessage(convId, editing.id);
+      state.editing.delete(convId);
+      clearBox(textarea);
+      store.notify('panels');
+      if (message && text && text !== message.displayText) return send.edit(message, convId, text);
+      return null;
+    }
+    return send.sendText(convId, textarea.value.trim(), { onSealed: () => clearBox(textarea) });
+  }
+
+  // The bar above the box while a reply or an edit is under way, with its
+  // cancel button.
+  function bar(meta, snippet, cancelLabel, onCancel, className = '') {
+    return el('div', { class: `reply-banner ${className}`.trim() }, [
+      el('div', { class: 'reply-banner-body' }, [
+        el('div', { class: 'reply-banner-meta' }, [meta]),
+        el('div', { class: 'reply-banner-snippet' }, [snippet]),
+      ]),
+      iconButton('close', cancelLabel, { class: 'icon-btn reply-banner-close', onclick: onCancel }),
+    ]);
   }
 
   function replyBanner(convId, peerHandle) {
+    const editing = state.editing.get(convId);
+    if (editing) {
+      return bar(t('msg.editing'), editing.snippet, t('msg.cancelEdit'), () => {
+        state.editing.delete(convId);
+        state.drafts.delete(convId);
+        store.notify('panels');
+      }, 'edit-banner');
+    }
     const draft = state.replyDrafts.get(convId);
     if (!draft) return null;
-    return el('div', { class: 'reply-banner' }, [
-      el('div', { class: 'reply-banner-body' }, [
-        el('div', { class: 'reply-banner-meta' }, ['Reply to @' + shownHandle(draft.sender ?? peerHandle)]),
-        el('div', { class: 'reply-banner-snippet' }, [draft.snippet]),
-      ]),
-      iconButton('close', 'Cancel reply', {
-        class: 'icon-btn reply-banner-close',
-        onclick: () => {
-          state.replyDrafts.delete(convId);
-          store.notify('panels');
-        },
-      }),
-    ]);
+    return bar(t('msg.replyTo', { handle: shownHandle(draft.sender ?? peerHandle) }), draft.snippet, t('msg.cancelReply'), () => {
+      state.replyDrafts.delete(convId);
+      store.notify('panels');
+    });
   }
 
   function attachButton(className, iconName, label, title, onClick) {
@@ -115,31 +145,31 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
     // The composer of a conversation; a frozen one takes no text, and its
     // placeholder says why. Returns { node, textarea }.
     render(convId, { frozen, placeholder, peerHandle }) {
-      const textarea = el('textarea', { placeholder, rows: '1', 'aria-label': 'Message', maxlength: String(MESSAGE_MAX_CHARS) });
+      const textarea = el('textarea', { placeholder, rows: '1', 'aria-label': t('msg.input.placeholder'), maxlength: String(MESSAGE_MAX_CHARS) });
       textarea.disabled = frozen;
       const draft = state.drafts.get(convId);
       if (draft) textarea.value = draft.slice(0, MESSAGE_MAX_CHARS);
       // Shown only while there is a draft to send (app.css hides it disabled).
-      const sendButton = el('button', { class: 'send-btn', type: 'button', 'aria-label': 'Send', title: 'Send', onclick: () => sendTyped(textarea, convId) }, [
+      const sendButton = el('button', { class: 'send-btn', type: 'button', 'aria-label': t('composer.send'), title: t('composer.send'), onclick: () => sendTyped(textarea, convId) }, [
         el('span', { class: 'send-circle' }, [icon('arrow-up')]),
       ]);
       const voiceButton = voice.button(convId);
       voiceButton.disabled = frozen;
-      const fileButton = attachButton('file-btn image-btn', 'paperclip', 'Attach a file', 'Attach a file (PDF, video or other)', () => pickAnyFile(convId));
-      const imageButton = attachButton('image-btn', 'image', 'Attach an image', 'Attach an image', () => pickFile(IMAGE_ACCEPT, (file) => offerImage(convId, file)));
+      const fileButton = attachButton('file-btn image-btn', 'paperclip', t('composer.attachFile'), t('composer.attachFile'), () => pickAnyFile(convId));
+      const imageButton = attachButton('image-btn', 'image', t('composer.attachImage'), t('composer.attachImage'), () => pickFile(IMAGE_ACCEPT, (file) => offerImage(convId, file)));
 
       // On every input: grow, send typing, keep the draft. maxlength holds
       // typing back, but a paste can still land over the cap at once.
       textarea.addEventListener('input', () => {
         if (textarea.value.length > MESSAGE_MAX_CHARS) {
           textarea.value = textarea.value.slice(0, MESSAGE_MAX_CHARS);
-          toast(`The message was cut to ${MESSAGE_MAX_CHARS.toLocaleString()} characters`, 'error');
+          toast(t('composer.cut', { max: MESSAGE_MAX_CHARS.toLocaleString() }), 'error');
         }
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, MAX_HEIGHT_PX) + 'px';
+        fitHeight(textarea);
         const hasText = textarea.value.trim().length > 0;
         sendButton.disabled = frozen || !hasText;
-        if (hasText) realtime.startTyping(convId);
+        // Editing an old message is not typing a new one.
+        if (hasText && !state.editing.has(convId)) realtime.startTyping(convId);
         else realtime.stopTyping(convId);
         saveDraft(convId, textarea.value);
       });
@@ -157,10 +187,17 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
         if (event.key === 'Enter' && !event.shiftKey && !composing && !event.isComposing) {
           event.preventDefault();
           sendTyped(textarea, convId);
+        } else if (event.key === 'Escape' && state.editing.has(convId)) {
+          event.preventDefault();
+          state.editing.delete(convId);
+          state.drafts.delete(convId);
+          store.notify('panels');
         }
       });
       // A draft carried across a redraw keeps its send button.
       sendButton.disabled = frozen || textarea.value.trim().length === 0;
+      // ...and its height, once the box is on the page.
+      if (textarea.value) requestAnimationFrame(() => fitHeight(textarea));
 
       const node = el('div', { class: 'panel-input-wrap' }, [
         replyBanner(convId, peerHandle),
@@ -172,9 +209,25 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
     // Quotes `message` in the next send of the conversation.
     startReply(convId, message) {
       const sender = message.senderDeviceId === state.me.deviceId ? state.me.handle : null;
+      state.editing.delete(convId);
       state.replyDrafts.set(convId, { id: message.id, snippet: snippetOf(message, 60), sender });
       store.notify('panels');
       requestAnimationFrame(() => textareaOf(convId)?.focus());
+    },
+
+    // Puts our own `message` in the box to edit; Enter saves the edit, Esc
+    // or the bar's close button drops it.
+    startEdit(convId, message) {
+      state.replyDrafts.delete(convId);
+      state.editing.set(convId, { id: message.id, snippet: snippetOf(message, 60) });
+      state.drafts.set(convId, message.displayText);
+      store.notify('panels');
+      requestAnimationFrame(() => {
+        const textarea = textareaOf(convId);
+        if (!textarea) return;
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      });
     },
 
     // Puts `text` in the conversation's composer for the user to send again;

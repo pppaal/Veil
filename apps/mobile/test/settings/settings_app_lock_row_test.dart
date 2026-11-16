@@ -12,7 +12,6 @@ import 'package:veil_mobile/src/core/security/app_lock_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
-import 'package:veil_mobile/src/features/settings/data/trusted_devices.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
@@ -100,7 +99,7 @@ class _App {
 /// Screens the rows do not reach stand in as their paths; Settings and the
 /// lock screen are the real ones.
 List<RouteBase> _routes() => [
-      for (final path in const ['/splash', '/privacy-consent', '/onboarding', '/create-account', '/choose-handle', '/conversations'])
+      for (final path in const ['/splash', '/privacy-consent', '/onboarding', '/choose-handle', '/conversations'])
         GoRoute(path: path, builder: (_, __) => Scaffold(body: Text(path))),
       GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
       GoRoute(path: '/lock', builder: (_, __) => const AppLockScreen()),
@@ -117,7 +116,6 @@ ProviderContainer _container(_Lock lock, SecureStorageService storage) {
     appSessionProvider.overrideWith((ref) => session),
     appRoutesProvider.overrideWithValue(_routes()),
     appLockServiceProvider.overrideWithValue(lock),
-    trustedDevicesProvider.overrideWith((ref) async => const TrustedDeviceList.empty()),
   ]);
 }
 

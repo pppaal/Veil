@@ -8,20 +8,24 @@ import '../../../shared/presentation/veil_ui.dart';
 import '../../attachments/attachments_feature.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
+import '../../conversations/presentation/conversation_list_logic.dart';
 import 'chat_room_labels.dart';
 import 'decrypt_status_view.dart';
 import 'message_attachment_views.dart';
-import 'message_expiry_label.dart';
+import 'message_expiration.dart';
+import 'message_read_glyph.dart';
 
 /// One message as a bubble on its sender's side: who of a group wrote it
 /// (the first bubble of a run, in the sender's tint), the decrypted text or
 /// the line for a message that did not open, any attachment, and the meta
-/// at its end: the time, the ticks of the user's own messages ("Read" in
-/// words once read) and the time left on a disappearing one.
+/// at its end: the time, a status glyph on the user's own messages and a
+/// timer glyph on a disappearing one. Words for them are a screen reader's.
+/// [reactions] overlap the bubble's foot on the side away from its tail.
 ///
-/// A send that failed is a grey bubble with "Not sent. Tap to retry." under
-/// it, and a tap on it retries. A message from an older version, whose
-/// sender is not proven, says so in a line under the bubble.
+/// A send that failed keeps its bubble, with a red glyph beside it and
+/// "Not sent. Tap to retry." under it, and a tap on it retries. A message
+/// from an older version, whose sender is not proven, says so in a line
+/// under the bubble.
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
@@ -39,6 +43,8 @@ class MessageBubble extends StatelessWidget {
     this.senderName,
     this.senderSeed,
     this.position = VeilBubblePosition.single,
+    this.reactions,
+    this.searchQuery,
   });
 
   final ChatMessage message;
@@ -64,6 +70,15 @@ class MessageBubble extends StatelessWidget {
   /// Where the bubble sits in its run of bubbles from the same sender.
   final VeilBubblePosition position;
 
+  /// The reactions on the message (ReactionChipsRow), if any.
+  final Widget? reactions;
+
+  /// A chat search's query, drawn in bold where the text holds it.
+  final String? searchQuery;
+
+  /// How far the reactions overlap the bubble's foot.
+  static const double reactionOverlap = 6;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -71,8 +86,8 @@ class MessageBubble extends StatelessWidget {
     final palette = context.veilPalette;
     final failed = message.hasFailed;
     // The colours VeilBubble fills with: own bubbles are the brand fill,
-    // everything else (theirs, failed, a search hit) a grey or raised one.
-    final onBrand = message.isMine && !failed && !highlighted;
+    // everything else (theirs, a search hit) a grey or raised one.
+    final onBrand = message.isMine && !highlighted;
     final textColor = onBrand ? Colors.white : palette.text;
     final metaColor = onBrand ? palette.outgoingMeta : palette.textMuted;
     final metaStyle = theme.textTheme.labelSmall?.copyWith(color: metaColor);
@@ -87,11 +102,22 @@ class MessageBubble extends StatelessWidget {
         // the envelope carries a bare pointer.
         final attachment = decrypted?.attachment;
         final attachmentId = attachment?.attachmentId;
+        final query = searchQuery?.trim() ?? '';
         final body = switch (status) {
           null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle?.copyWith(color: metaColor)),
-          DecryptStatus.ok ||
-          DecryptStatus.legacyUnauthenticated =>
-            decrypted!.body.isEmpty && attachment != null ? null : Text(decrypted.body, style: bodyStyle),
+          // An attachment's text is its name, which the card holds.
+          DecryptStatus.ok || DecryptStatus.legacyUnauthenticated when attachment != null => null,
+          DecryptStatus.ok || DecryptStatus.legacyUnauthenticated when query.isNotEmpty => Text.rich(
+              TextSpan(
+                children: buildSearchHighlightTextSpans(
+                  text: decrypted!.body,
+                  query: query,
+                  baseStyle: bodyStyle,
+                  highlightStyle: bodyStyle?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          DecryptStatus.ok || DecryptStatus.legacyUnauthenticated => Text(decrypted!.body, style: bodyStyle),
           _ => DecryptFailureLine(status: status, color: metaColor),
         };
         final bubble = VeilBubble(
@@ -132,6 +158,7 @@ class MessageBubble extends StatelessWidget {
                   if (body != null) const SizedBox(height: VeilSpace.xs),
                   MessageAttachmentCard(
                     attachment: attachment,
+                    name: decrypted!.body,
                     resolving: attachmentId != null && isResolvingAttachment(attachmentId),
                     downloadError: attachmentId == null ? null : attachmentDownloadError(attachmentId),
                     onResolve: kAttachmentsEnabled ? () => onResolveAttachment(attachment.attachmentId) : null,
@@ -141,18 +168,44 @@ class MessageBubble extends StatelessWidget {
                 const SizedBox(height: VeilSpace.xxs),
                 Align(
                   alignment: AlignmentDirectional.centerEnd,
-                  child: _Meta(message: message, sentAtFormat: sentAtFormat, expiryNow: expiryNow, style: metaStyle),
+                  child: _Meta(
+                    message: message,
+                    sentAtFormat: sentAtFormat,
+                    expiryNow: expiryNow,
+                    style: metaStyle,
+                    bubbleFill: VeilBubble.fillOf(palette, isMine: message.isMine, highlighted: highlighted),
+                  ),
                 ),
               ],
             ),
           ),
         );
-        if (status != DecryptStatus.legacyUnauthenticated) return bubble;
+        final reactions = this.reactions;
+        // The chips' 44 px tap row moves up so the chip drawn in its middle
+        // overlaps the bubble by 6, as WhatsApp's do, on the side away from
+        // the tail; the whole row still takes the tap.
+        final withReactions = reactions == null
+            ? bubble
+            : Column(
+                crossAxisAlignment: message.isMine ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  bubble,
+                  Transform.translate(
+                    offset: const Offset(0, -(44 - 28) / 2 - reactionOverlap),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xs),
+                      child: reactions,
+                    ),
+                  ),
+                ],
+              );
+        if (status != DecryptStatus.legacyUnauthenticated) return withReactions;
         return Column(
           crossAxisAlignment: message.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            bubble,
+            withReactions,
             Padding(
               padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xxs, VeilSpace.sm, 0),
               child: Text(
@@ -166,8 +219,13 @@ class MessageBubble extends StatelessWidget {
     );
 
     final retry = onRetryMessage;
+    final expiresAt = message.expiresAt;
     return Semantics(
-      label: messageBubbleSemanticsLabel(l10n, message),
+      // The words the glyphs stand for: how far it got, when it goes.
+      label: [
+        messageBubbleSemanticsLabel(l10n, message),
+        if (expiresAt != null) formatMessageExpiry(l10n, expiresAt, now: expiryNow()),
+      ].join(' '),
       onTapHint: failed && retry != null ? l10n.chatRetrySend : null,
       child: Align(
         alignment: message.isMine ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
@@ -187,46 +245,46 @@ class MessageBubble extends StatelessWidget {
 }
 
 /// The meta at the end of a bubble: the time, then on the user's own
-/// messages how far it got (a tick when sent, two when delivered, two and
-/// the word "Read" once read), then the time left on a disappearing one.
-/// The words "Sent" and "Delivered" are not written: a screen reader hears
-/// them from messageBubbleSemanticsLabel.
+/// messages how far it got (Signal's glyphs: a clock while it waits, one
+/// outlined check circle when sent, two when delivered, two filled once
+/// read), then a timer glyph on a disappearing one. No words: a screen
+/// reader hears them from the bubble's label.
 class _Meta extends StatelessWidget {
-  const _Meta({required this.message, required this.sentAtFormat, required this.expiryNow, required this.style});
+  const _Meta({
+    required this.message,
+    required this.sentAtFormat,
+    required this.expiryNow,
+    required this.style,
+    required this.bubbleFill,
+  });
 
   final ChatMessage message;
   final DateFormat sentAtFormat;
   final DateTime Function() expiryNow;
   final TextStyle? style;
 
+  /// The bubble's fill, which the read glyph's checks are cut out in.
+  final Color bubbleFill;
+
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final color = style?.color;
     final state = message.deliveryState;
-    final IconData? tick = !message.isMine
+    final Widget? status = !message.isMine
         ? null
         : switch (state) {
-            MessageDeliveryState.pending => Icons.schedule,
-            MessageDeliveryState.uploading => Icons.upload,
+            MessageDeliveryState.pending ||
+            MessageDeliveryState.uploading =>
+              Icon(Icons.schedule, size: VeilIconSize.xs, color: color),
             MessageDeliveryState.failed => null,
-            MessageDeliveryState.sent => Icons.done,
-            MessageDeliveryState.delivered || MessageDeliveryState.read => Icons.done_all,
+            MessageDeliveryState.sent => Icon(Icons.check_circle_outline, size: VeilIconSize.xs, color: color),
+            MessageDeliveryState.delivered => _TwoOutlinedCircles(color: color),
+            MessageDeliveryState.read => MessageReadGlyph(color: color ?? Colors.white, cutColor: bubbleFill),
           };
     final items = <Widget>[
       Text(sentAtFormat.format(message.sentAt), style: style),
-      if (tick != null) Icon(tick, size: 16, color: color),
-      if (message.isMine && state == MessageDeliveryState.read)
-        Text(l10n.chatDeliveryRead, style: style?.copyWith(fontWeight: FontWeight.w600)),
-      if (message.expiresAt != null)
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: color),
-            const SizedBox(width: 2),
-            Flexible(child: MessageExpiryLabel(expiresAt: message.expiresAt!, now: expiryNow, style: style)),
-          ],
-        ),
+      if (message.expiresAt != null) Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: color),
+      if (status != null) status,
     ];
     // One line, wrapping only when the bubble cannot be that wide. The gap
     // is padding on each item rather than the Wrap's spacing: the bubble
@@ -241,6 +299,27 @@ class _Meta extends StatelessWidget {
               ? item
               : Padding(padding: const EdgeInsetsDirectional.only(start: VeilSpace.xxs), child: item),
       ],
+    );
+  }
+}
+
+/// Two outlined check circles, the second overlapping the first: delivered.
+class _TwoOutlinedCircles extends StatelessWidget {
+  const _TwoOutlinedCircles({required this.color});
+
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: VeilIconSize.xs + 6,
+      height: VeilIconSize.xs,
+      child: Stack(
+        children: [
+          Icon(Icons.check_circle_outline, size: VeilIconSize.xs, color: color),
+          Positioned(left: 6, child: Icon(Icons.check_circle_outline, size: VeilIconSize.xs, color: color)),
+        ],
+      ),
     );
   }
 }

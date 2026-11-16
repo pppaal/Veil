@@ -103,6 +103,10 @@ class FakeAccountRelay extends VeilApiClient {
 
   String _id(String prefix) => '$prefix-${++_ids}';
 
+  // A claim id as the relay makes one (randomUUID): 36 characters, which is
+  // what the new phone shows the user to type on the old one.
+  String _uuid() => '3f2b9c7e-5a14-4d0b-9e2f-${(++_ids).toRadixString(16).padLeft(12, '0')}';
+
   int callsTo(String route) => calls.where((call) => call == route).length;
 
   FakeAccountUser userOf(FakeAccountDevice device) =>
@@ -215,7 +219,7 @@ class FakeAccountRelay extends VeilApiClient {
     }
     final publicIdentityKey = body['publicIdentityKey'] as String;
     final claim = session.claim = FakeTransferClaim(
-      claimId: _id('claim'),
+      claimId: _uuid(),
       authPublicKey: authPublicKey,
       publicIdentityKey: publicIdentityKey,
       claimantFingerprint: _fingerprint(authPublicKey, publicIdentityKey),

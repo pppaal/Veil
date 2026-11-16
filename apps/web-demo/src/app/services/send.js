@@ -36,7 +36,8 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
     } else if (error instanceof LegacyIdentityError) {
       toast(t('legacy.composerFrozen'), 'error');
     } else {
-      toast(`${label}: ${error?.message || 'unknown'}`, 'error');
+      // What failed, never the server's wording.
+      toast(label, 'error');
     }
   }
 
@@ -87,13 +88,12 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
       // memory only, for Retry to queue again (src/app/services/outbox.js).
       optimistic._envelope = envelope;
       markFailed(optimistic);
-      toast(`${failureLabel}: ${error.message}`, 'error');
+      toast(failureLabel, 'error');
       return null;
     }
-    if (delivered.queued) {
-      if (!delivered.sessionEnded) toast(t('send.queued'));
-      return null;
-    }
+    // Queued while offline: the bubble's clock and the bar's "Offline" say
+    // so.
+    if (delivered.queued) return null;
     const view = await messages.ingest(delivered.message, { previous: optimistic });
     for (const field of LOCAL_MEDIA_FIELDS) if (optimistic[field] !== undefined) view[field] ??= optimistic[field];
     store.putOwnMessage(conv.id, clientMessageId, view);
@@ -193,8 +193,8 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
         : null;
       try {
         await stack.authedApi(`/messages/${messageId}`, { method: 'DELETE' });
-      } catch (error) {
-        toast(t('send.deleteFailed', { error: error.message }), 'error');
+      } catch {
+        toast(t('send.deleteFailed'), 'error');
       }
       return captured;
     },

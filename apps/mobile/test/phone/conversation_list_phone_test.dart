@@ -80,15 +80,15 @@ void main() {
         for (final row in tester.widgetList<ConversationRow>(find.byType(ConversationRow))) row.title: row.snippet,
       };
       expect(previews, hasLength(8));
-      expect(previews['Sam Rivera'], "Section 7 is fine. Let's sign tomorrow.");
-      expect(previews['Jonas Weber'], 'See you at nine.');
-      expect(previews['Mia Chen'], 'The second mock-up is closer, but the header still feels heavy to me.');
+      expect(previews['Sam Rivera'], latestChatLine);
+      expect(previews['Jonas Weber'], latestTimerChatLine);
+      expect(previews['Mia Chen'], 'can you send the photos from saturday?');
       // Only text is quoted: other kinds are named by what they are.
       expect(previews['Omar Haddad'], 'Photo');
       expect(previews['Alexandra Montgomery-Whitfield'], 'Voice message');
       expect(previews['Lena Fischer'], 'No messages yet');
       expect(previews.values, isNot(contains('Encrypted message')));
-      expect(find.text("Section 7 is fine. Let's sign tomorrow."), findsOneWidget, reason: 'drawn on its row');
+      expect(find.text(latestChatLine), findsOneWidget, reason: 'drawn on its row');
 
       expect(find.byType(ChatRoomScreen), findsNothing);
       expect(world.messenger.activeConversationId, isNull);
@@ -126,7 +126,7 @@ void main() {
         expect(find.byType(ConversationListScreen), findsNothing, reason: location);
         expect(find.byType(ChatRoomScreen), findsNothing, reason: location);
         expect(find.byType(ConversationRow), findsNothing, reason: location);
-        expect(find.textContaining('Section 7'), findsNothing, reason: location);
+        expect(find.textContaining(latestChatLine), findsNothing, reason: location);
         expect(find.text('Sam Rivera'), findsNothing, reason: location);
       }
       expect(tester.takeException(), isNull);
@@ -137,19 +137,22 @@ void main() {
     }
   });
 
-  testWidgets('a group is listed under its members\' names, with the group avatar and its last message',
+  testWidgets('a group is listed under its name, with the group avatar and its last message',
       (tester) async {
     await withPhoneApp(tester, identities, withGroup: true, location: '/conversations', body: (world) async {
       final row = tester.widget<ConversationRow>(find.byType(ConversationRow).first);
-      expect(row.title, 'Sam Rivera, Priya Nair, Omar Haddad');
+      // The relay's list leaves the name out; the app asked for it once.
+      expect(row.title, groupName);
+      expect(world.api.groupFetches, {groupConversationId: 1});
       expect(row.group, isTrue);
       expect(
         find.descendant(of: find.byType(ConversationRow).first, matching: find.byIcon(Icons.group_outlined)),
         findsOneWidget,
         reason: 'the neutral group disc, never a letter',
       );
-      expect(row.semanticLabel, 'Group chat with Sam Rivera, Priya Nair, Omar Haddad');
-      expect(row.snippet, 'I can bring the van after six, if someone helps me carry the shelves down.');
+      expect(row.semanticLabel, '$groupName, group chat');
+      // Led by who wrote it, as Signal, WhatsApp and Telegram do in a group.
+      expect(row.snippet, 'Omar: $latestGroupLine');
 
       await tester.tap(find.byType(ConversationRow).first);
       await pumpFrames(tester);
@@ -176,16 +179,16 @@ void main() {
     );
   });
 
-  testWidgets('a sync error is one notice above the rows, in the app\'s words, with a retry', (tester) async {
+  testWidgets('a sync error is one line above the rows, with a retry and no box', (tester) async {
     await withPhoneApp(
       tester,
       identities,
       location: '/conversations',
       attention: const ChatAttention(relayError: true),
       body: (world) async {
-        expect(find.byType(VeilNotice), findsOneWidget);
-        expect(findCopy("Couldn't refresh"), findsOneWidget);
-        expect(findCopy("The server couldn't complete the request."), findsOneWidget);
+        expect(find.byType(VeilNotice), findsNothing);
+        expect(findCopy("Couldn't refresh chats"), findsOneWidget);
+        expect(find.textContaining('server'), findsNothing, reason: 'no second line on what the server did');
         expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
         expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
         expect(find.byType(ConversationRow), findsWidgets);
@@ -193,18 +196,11 @@ void main() {
     );
   });
 
-  testWidgets('starts a direct chat or a group from the bar', (tester) async {
+  testWidgets('the pencil opens New chat, whose first row starts a group', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
       await tester.tap(find.byTooltip('New chat'));
-      await pumpFrames(tester, frames: 3);
-      expect(find.text('New group'), findsOneWidget);
-      await tester.tap(find.text('New chat'));
       await pumpFrames(tester);
-      expect(find.byType(StartDirectChatScreen), findsOneWidget);
-    });
-    await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      await tester.tap(find.byTooltip('New chat'));
-      await pumpFrames(tester, frames: 3);
+      expect(find.byType(StartDirectChatScreen), findsOneWidget, reason: 'no menu in between');
       await tester.tap(find.text('New group'));
       await pumpFrames(tester);
       expect(find.byType(StartGroupScreen), findsOneWidget);
@@ -224,7 +220,7 @@ void main() {
     });
   });
 
-  testWidgets('a search shows its filters and lists what it found under plain headings', (tester) async {
+  testWidgets('a search has no filters, and lists what it found under plain headings', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
       final emptyField = tester.getRect(find.byType(TextField));
       expect(emptyField.height, 44);
@@ -235,21 +231,24 @@ void main() {
       // The clear button is as tall as the field: nothing moves under it.
       expect(tester.getRect(find.byType(TextField)), emptyField);
       expect(tester.getSize(find.widgetWithIcon(IconButton, Icons.close)), const Size.square(44));
-      expect(find.text('All senders'), findsOneWidget);
+      expect(find.byType(ChoiceChip), findsNothing, reason: 'no filter chips');
       expect(find.widgetWithText(ConversationListHeader, 'Chats'), findsOneWidget);
-      expect(find.widgetWithText(ConversationListHeader, 'Messages'), findsOneWidget);
+      // No message matches: that part is left out, heading and all.
+      expect(find.widgetWithText(ConversationListHeader, 'Messages'), findsNothing);
       expect(find.byType(ConversationRow), findsNWidgets(2));
       // The headings count nothing the rows under them do not show.
       expect(find.text('2 matches'), findsNothing);
       expect(find.text('0 results'), findsNothing);
-      // No message matches: one line says so, without a second empty state
-      // under the rows that did match.
-      expect(find.text('No message matches these filters.'), findsOneWidget);
       expect(find.byType(VeilEmptyState), findsNothing);
+
+      // Nothing at all: one line says so.
+      await tester.enterText(find.byType(TextField), 'zzzz');
+      await pumpFrames(tester, frames: 4);
+      expect(find.text('No results for "zzzz"'), findsOneWidget);
+      expect(find.byType(ConversationListHeader), findsNothing);
 
       await tester.tap(find.byTooltip('Clear search'));
       await pumpFrames(tester, frames: 4);
-      expect(find.text('All senders'), findsNothing);
       expect(find.text('Messages'), findsNothing);
     });
   });
@@ -339,7 +338,7 @@ void main() {
         expect(find.descendant(of: tile, matching: find.byIcon(Icons.group_outlined)), findsOneWidget);
         expect(find.descendant(of: tile, matching: find.text('S')), findsNothing, reason: 'no letter on a group');
         expect(
-          find.descendant(of: tile, matching: find.text('Sam Rivera, Priya Nair, Omar Haddad')),
+          find.descendant(of: tile, matching: find.text(groupName)),
           findsOneWidget,
           reason: 'named as the group\'s row is',
         );

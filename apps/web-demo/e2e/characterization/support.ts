@@ -145,6 +145,13 @@ export async function chooseAction(device: Device, text: string, item: string): 
   }).toPass({ timeout: 30_000 });
 }
 
+// Opens the open chat's ⋮ menu and clicks the item that starts with
+// `label` ("Report", "Block", "Clear chat history", "Mute notifications").
+export async function chooseChatMenuItem(device: Device, label: string): Promise<void> {
+  await device.page.locator('.panel-header .chat-menu-btn').first().click();
+  await device.page.locator('.chat-menu .menu-item', { hasText: label }).first().click();
+}
+
 export async function openMenuItem(device: Device, action: string): Promise<void> {
   await device.page.click('#menu-btn');
   await device.page.locator(`#menu [data-action="${action}"]`).click();

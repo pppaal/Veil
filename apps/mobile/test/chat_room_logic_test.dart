@@ -45,14 +45,6 @@ void main() {
     );
   });
 
-  test('formatRetryCountdown emits compact retry windows', () {
-    final soon = DateTime.now().add(const Duration(seconds: 9));
-    final medium = DateTime.now().add(const Duration(minutes: 2, seconds: 5));
-
-    expect(formatRetryCountdown(l10n, soon), matches(RegExp(r'^[0-9]+s$')));
-    expect(formatRetryCountdown(l10n, medium), matches(RegExp(r'^2m [0-9]+s$')));
-  });
-
   group('conversationTitle', () {
     ConversationPreview conversation({
       ConversationType type = ConversationType.direct,
@@ -95,8 +87,6 @@ void main() {
   });
 
   test('counts read as counts: no "(s)"', () {
-    expect(l10n.chatBannerFailedSends(1), startsWith("1 message wasn't sent."));
-    expect(l10n.chatBannerFailedSends(2), startsWith("2 messages weren't sent."));
     expect(l10n.chatGroupMemberCount(1), '1 member');
     expect(l10n.chatGroupMemberCount(4), '4 members');
     expect(l10n.conversationsQueued(1), '1 message waiting to be sent');
@@ -106,12 +96,6 @@ void main() {
     expect(l10n.chatDurationMinutes(1), '1 minute');
     expect(l10n.chatDurationMinutes(5), '5 minutes');
     for (final text in [
-      l10n.chatBannerFailedSends(2),
-      l10n.chatBannerQueuedMessages(2),
-      l10n.chatBannerUploadingAttachments(2),
-      l10n.chatNetworkRecoveryFailed(2, ''),
-      l10n.chatNetworkRecoveryUploading(2, ''),
-      l10n.chatNetworkRecoveryQueued(2, ''),
       l10n.chatDurationDays(2),
       l10n.chatDurationHours(2),
       l10n.chatDurationSeconds(2),
@@ -128,16 +112,6 @@ void main() {
         reason: 'Missing label for $state',
       );
     }
-  });
-
-  test('formatRetryCountdown handles imminent and distant retries', () {
-    final imminent = DateTime.now().add(const Duration(seconds: 1));
-    final distant = DateTime.now().add(const Duration(minutes: 10, seconds: 30));
-    final past = DateTime.now().subtract(const Duration(seconds: 5));
-
-    expect(formatRetryCountdown(l10n, imminent), matches(RegExp(r'^[0-9]+s$')));
-    expect(formatRetryCountdown(l10n, distant), matches(RegExp(r'^10m [0-9]+s$')));
-    expect(formatRetryCountdown(l10n, past), matches(RegExp(r'^0s$')));
   });
 
   test('messageBubbleSemanticsLabel omits delivery state for received messages', () {

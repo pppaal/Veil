@@ -268,6 +268,15 @@ class VeilApiClient {
     return _post('/conversations/group', body, accessToken: accessToken);
   }
 
+  /// A group as GroupsService.getGroup answers it: its name, description
+  /// and members, which the conversation list leaves out.
+  Future<Map<String, dynamic>> getGroup(
+    String accessToken,
+    String conversationId,
+  ) async {
+    return _get('/conversations/group/$conversationId', accessToken: accessToken);
+  }
+
   Future<Map<String, dynamic>> createChannel(
     String accessToken,
     Map<String, dynamic> body,

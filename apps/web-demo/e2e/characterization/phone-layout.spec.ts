@@ -91,6 +91,12 @@ test.describe('phone-width layout', () => {
     await expect(page.locator('.panel .panel-title .name')).toHaveText(`@ppeer${id}`);
     await expect(page.locator('.panel .panel-title .name')).toBeInViewport();
     await expect(page.locator('.panel-input textarea')).toBeInViewport();
+    // One bar over the chat, its own, led by the way back: the list's bar
+    // would be a second one with a second ⋮.
+    await expect(page.locator('.topbar')).toBeHidden();
+    const back = await page.locator('#back-to-list').boundingBox();
+    const avatar = await page.locator('.panel-header .avatar').boundingBox();
+    expect(back && avatar && back.x < avatar.x).toBe(true);
 
     await send(phone, 'visible on a phone');
     await expect(rowOf(phone, 'visible on a phone')).toBeInViewport();
@@ -98,6 +104,7 @@ test.describe('phone-width layout', () => {
 
     await page.click('#back-to-list');
     await expect(page.locator('.sidebar')).toBeInViewport();
+    await expect(page.locator('.topbar')).toBeVisible();
     await expect(page.locator('.conv-item', { hasText: `@ppeer${id}` })).toBeInViewport();
     expectNoErrors(phone);
   });
@@ -157,6 +164,28 @@ test.describe('phone-width layout', () => {
       await dialog.locator('#settings-close').click();
       await expect(dialog).toHaveCount(0);
     }
+    expectNoErrors(phone);
+  });
+
+  // As Signal Desktop, WhatsApp Web and Telegram Web: the list's bar heads
+  // the list's column, and the chat's own bar heads the other, on one line.
+  test('on a wide window the list bar heads only the list, beside the chat bar', async () => {
+    const { page } = phone;
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.locator('.conv-item', { hasText: `@ppeer${id}` }).click();
+    const bar = await page.locator('.topbar').boundingBox();
+    const list = await page.locator('.sidebar').boundingBox();
+    const header = await page.locator('.panel-header').first().boundingBox();
+    expect(bar && list && header).toBeTruthy();
+    expect(Math.abs(bar!.width - list!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(bar!.y - header!.y)).toBeLessThanOrEqual(1);
+    expect(header!.x).toBeGreaterThanOrEqual(list!.x + list!.width - 1);
+    await expect(page.locator('#back-to-list')).toBeHidden();
+    // The app menu opens under its own ⋮, in the list's column.
+    await page.click('#menu-btn');
+    const menu = await page.locator('#menu').boundingBox();
+    expect(menu!.x + menu!.width).toBeLessThanOrEqual(list!.x + list!.width + 1);
+    await page.click('#menu-btn');
     expectNoErrors(phone);
   });
 });

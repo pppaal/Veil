@@ -82,3 +82,19 @@ export function applyThemeClass(light) {
   document.documentElement.classList.toggle('theme-light', light);
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#FFFFFF' : '#000000');
 }
+
+// 'light', 'dark' or 'system'; the system's setting is followed as it
+// changes.
+let systemLight = null;
+const followSystem = () => applyThemeClass(Boolean(systemLight?.matches));
+
+export function applyTheme(choice) {
+  systemLight ??= window.matchMedia?.('(prefers-color-scheme: light)') ?? null;
+  systemLight?.removeEventListener?.('change', followSystem);
+  if (choice === 'system') {
+    systemLight?.addEventListener?.('change', followSystem);
+    followSystem();
+  } else {
+    applyThemeClass(choice === 'light');
+  }
+}

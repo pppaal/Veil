@@ -9,9 +9,9 @@ import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_room_labels.dart';
 
 /// The attachment a received message carries, from its authenticated
-/// payload: a flat grey tile with what kind of file it is and how large,
-/// and the line that this version cannot open it. Where a build can open
-/// attachments ([onResolve]), a text button asks for the download instead.
+/// payload: one tile with its [name], "PDF · 2.3 MB", and the line that
+/// this version cannot open it. Where a build can open attachments
+/// ([onResolve]), a text button asks for the download instead.
 ///
 /// In a grey bubble the bubble is the tile; on the brand fill of the
 /// user's own bubble ([framed]) the tile is drawn, so its text reads.
@@ -19,6 +19,7 @@ class MessageAttachmentCard extends StatelessWidget {
   const MessageAttachmentCard({
     super.key,
     required this.attachment,
+    this.name = '',
     required this.resolving,
     required this.downloadError,
     required this.onResolve,
@@ -26,6 +27,10 @@ class MessageAttachmentCard extends StatelessWidget {
   });
 
   final AttachmentReference attachment;
+
+  /// The file's name, as the message's text gives it; empty when it has
+  /// none.
+  final String name;
   final bool resolving;
   final String? downloadError;
 
@@ -55,11 +60,20 @@ class MessageAttachmentCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (name.isNotEmpty)
+                    Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(color: palette.text),
+                    ),
                   Text(
-                    attachmentLabel(l10n, attachment.contentType),
-                    style: theme.textTheme.titleSmall?.copyWith(color: palette.text),
+                    l10n.chatAttachmentTypeSize(
+                      attachmentTypeLabel(l10n, attachment.contentType),
+                      formatFileSize(attachment.sizeBytes),
+                    ),
+                    style: name.isEmpty ? theme.textTheme.titleSmall?.copyWith(color: palette.text) : muted,
                   ),
-                  Text(formatFileSize(attachment.sizeBytes), style: muted),
                 ],
               ),
             ),

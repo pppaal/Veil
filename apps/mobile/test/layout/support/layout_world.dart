@@ -98,12 +98,15 @@ class ChatAttention {
     this.identityChangedInGroup = false,
     this.loading = false,
     this.relayError = false,
+    this.relayErrorWhileOpen = false,
     this.peerBlocked = false,
     this.muted = false,
     this.reportRefused = false,
   });
 
   /// The peer's identity key changed and the user has not reviewed it.
+  /// With [failedSends] the change came during the morning: the chat says
+  /// so where it happened, and our messages after it are the failed ones.
   final bool identityChanged;
 
   /// Messages of ours that did not go out.
@@ -116,8 +119,9 @@ class ChatAttention {
   /// The peer is typing while the chat is open.
   final bool peerTyping;
 
-  /// The peer's first message came on a legacy frame whose handshake never
-  /// authenticated its sender, so its bubble carries the badge saying so.
+  /// The peer's first message of the morning came on a legacy frame whose
+  /// handshake never authenticated its sender, so its bubble carries the
+  /// line saying so.
   final bool legacyMessage;
 
   /// The peer's identity key changed in the group they share with the
@@ -132,6 +136,11 @@ class ChatAttention {
   /// The relay failed the last request, which the messenger reports as its
   /// error line: a chat and the list each say so.
   final bool relayError;
+
+  /// The relay fails a request once the chat is open (startLiveAttention):
+  /// the chat says so in a toast, which it shows only for a failure that
+  /// comes while it is open.
+  final bool relayErrorWhileOpen;
 
   /// The user blocked the chat's peer, and before them one more account
   /// (tom_walsh, who set no name): the chat shows the line that takes the
@@ -148,12 +157,10 @@ class ChatAttention {
 
   /// How many of the chat's warnings come with an action: reviewing the
   /// identity change (in this chat, or the one that waits in the group),
-  /// releasing the held account, retrying failed sends.
+  /// releasing the held account. Failed sends are retried from their own
+  /// bubbles, with no banner.
   int get warningActionCount =>
-      (identityChanged ? 1 : 0) +
-      (identityChangedInGroup ? 1 : 0) +
-      (accountHeld ? 1 : 0) +
-      (failedSends > 0 ? 1 : 0);
+      (identityChanged ? 1 : 0) + (identityChangedInGroup ? 1 : 0) + (accountHeld ? 1 : 0);
 }
 
 class LayoutWorld {
@@ -202,6 +209,7 @@ class LayoutWorld {
     required String locale,
     ChatAttention attention = const ChatAttention(),
     bool bootstrapping = false,
+    bool transferClaimed = false,
     bool transferStarted = false,
     bool withGroup = false,
     String? sessionError,
@@ -211,6 +219,7 @@ class LayoutWorld {
     await world._build(
       attention: attention,
       bootstrapping: bootstrapping,
+      transferClaimed: transferClaimed,
       transferStarted: transferStarted,
       withGroup: withGroup,
       beforeSession: beforeSession,
@@ -223,6 +232,7 @@ class LayoutWorld {
   Future<void> _build({
     required ChatAttention attention,
     required bool bootstrapping,
+    required bool transferClaimed,
     required bool transferStarted,
     required bool withGroup,
     void Function(FakeRelay relay)? beforeSession,
@@ -230,7 +240,12 @@ class LayoutWorld {
     _attention = attention;
     seedParties(relay, identities);
     if (account == LayoutAccount.signedIn || account == LayoutAccount.locked) {
-      await seedConversations(relay, cache, withGroup: withGroup);
+      await seedConversations(
+        relay,
+        cache,
+        withGroup: withGroup,
+        keyChange: attention.identityChanged && attention.failedSends > 0,
+      );
     }
     // A caller that shows less than the seed changes the relay here, before
     // this device's session loads anything from it.
@@ -292,7 +307,27 @@ class LayoutWorld {
       await trust.admit(groupConversationId, peer.userId, peer.deviceId, identities.self.identityPublicKey);
     }
 
-    final session = _LayoutSession(storage, api, identities.adapter, _session, bootstrapping: bootstrapping);
+    final session = _LayoutSession(
+      storage,
+      api,
+      identities.adapter,
+      _session,
+      bootstrapping: bootstrapping,
+      // A new phone that claimed a move and waits for the old one, with
+      // the relay's ids as production has them: a UUID for the claim.
+      claimed: !transferClaimed
+          ? null
+          : PendingTransferRecord(
+              sessionId: layoutTransferSessionId,
+              transferToken: 'token',
+              claimId: layoutClaimId,
+              claimantFingerprint: layoutClaimFingerprint,
+              expiresAt: DateTime.now().add(const Duration(minutes: 4, seconds: 30)),
+              identity: identities.self,
+              authKey: const DeviceAuthKeyMaterial(publicKey: 'auth-pub', privateKey: 'auth'),
+              completionOutcomeUnknown: false,
+            ),
+    );
     container = ProviderContainer(overrides: [
       secureStorageProvider.overrideWithValue(storage),
       apiClientProvider.overrideWithValue(api),
@@ -323,6 +358,7 @@ class LayoutWorld {
   /// once the screen is up; the indicator clears by itself after 5 s.
   void startLiveAttention() {
     if (_attention.peerTyping) messenger.presenceTyping.typingStarted(chatConversationId, peerHandle);
+    if (_attention.relayErrorWhileOpen) (messenger as _LayoutMessenger).failWhileOpen();
   }
 
   /// The app at [location]: the real route table (so tab screens get their
@@ -375,7 +411,9 @@ class _PinSetStorage extends SecureStorageService {
   Future<bool> hasPin() async => true;
 }
 
-class _Biometrics implements LocalUnlockAuthenticator {
+/// A Pixel's: a fingerprint sensor, so the lock screen's button says "Use
+/// fingerprint". It always refuses.
+class _Biometrics implements LocalUnlockAuthenticator, BiometricKindSource {
   const _Biometrics();
 
   @override
@@ -383,6 +421,9 @@ class _Biometrics implements LocalUnlockAuthenticator {
 
   @override
   Future<bool> canUseBiometrics() async => true;
+
+  @override
+  Future<BiometricKind> biometricKind() async => BiometricKind.fingerprint;
 }
 
 /// The session a case starts in. While [bootstrapping], startup never
@@ -393,6 +434,7 @@ class _LayoutSession extends AppSessionController {
     super.api,
     super.adapter,
     AppSessionState initial, {
+    this.claimed,
     required this.bootstrapping,
   }) {
     // A session still starting has no account yet, but may already have
@@ -401,6 +443,12 @@ class _LayoutSession extends AppSessionController {
   }
 
   final bool bootstrapping;
+
+  /// The claim this phone made, as start-up would have read it.
+  final PendingTransferRecord? claimed;
+
+  @override
+  PendingTransferRecord? get pendingTransfer => super.pendingTransfer ?? claimed;
 
   @override
   Future<void> bootstrap() => bootstrapping ? Completer<void>().future : super.bootstrap();
@@ -440,10 +488,19 @@ class _LayoutMessenger extends VeilMessengerController {
   @override
   bool get isBusy => attention.loading || super.isBusy;
 
+  bool _failedWhileOpen = false;
+
+  /// A request fails now, while a screen is open.
+  void failWhileOpen() {
+    _failedWhileOpen = true;
+    notifyListeners();
+  }
+
   // What a relay answering 503 leaves as the messenger's error line.
   @override
-  String? get errorMessage =>
-      attention.relayError ? formatUserFacingError('Request failed: HTTP 503') : super.errorMessage;
+  String? get errorMessage => attention.relayError || _failedWhileOpen
+      ? formatUserFacingError('Request failed: HTTP 503')
+      : super.errorMessage;
 
   @override
   PendingIdentityChange? pendingIdentityChangeFor(String conversationId) =>
@@ -476,9 +533,9 @@ class _LayoutMessenger extends VeilMessengerController {
   @override
   Future<DecryptedMessage> decryptMessage(ChatMessage message) async {
     final opened = await super.decryptMessage(message);
-    if (!attention.legacyMessage || !opened.isOk || message.isMine) return opened;
-    final first = super.messagesFor(chatConversationId).where((each) => !each.isMine).firstOrNull;
-    if (first?.id != message.id) return opened;
+    if (!attention.legacyMessage || !opened.isOk || message.isMine || opened.body != legacyMessageBody) {
+      return opened;
+    }
     return DecryptedMessage(
       body: opened.body,
       messageKind: opened.messageKind,

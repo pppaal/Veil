@@ -9,9 +9,10 @@ import '../../../shared/presentation/veil_ui.dart';
 import 'onboarding_action_scaffold.dart';
 
 /// What the user takes on before there is an account: that it lives on
-/// this phone, that losing the phone loses it, and that moving needs the
-/// old phone. "Continue" waits for the box that says so to be ticked; both
-/// stay at the foot of the screen, in reach on any height.
+/// this phone, that losing the phone loses it, and that moving needs this
+/// phone. Plain sentences, no list. "Continue" waits for the box that says
+/// so to be ticked; both stay at the foot of the screen, in reach on any
+/// height.
 class OnboardingWarningScreen extends ConsumerStatefulWidget {
   const OnboardingWarningScreen({super.key});
 
@@ -25,7 +26,7 @@ class _OnboardingWarningScreenState extends ConsumerState<OnboardingWarningScree
   Future<void> _continue() async {
     await ref.read(appSessionProvider.notifier).acceptOnboarding();
     if (!mounted) return;
-    context.go('/create-account');
+    context.go('/choose-handle');
   }
 
   @override
@@ -51,34 +52,13 @@ class _OnboardingWarningScreenState extends ConsumerState<OnboardingWarningScree
       ],
       children: [
         Semantics(header: true, child: Text(l10n.onboardingWarnTitle, style: theme.textTheme.headlineLarge)),
-        const SizedBox(height: VeilSpace.xl),
-        _Line(icon: Icons.phone_iphone_outlined, text: l10n.onboardingWarnLine1),
-        _Line(icon: Icons.cloud_off_outlined, text: l10n.onboardingWarnLine2),
-        _Line(icon: Icons.swap_horiz_outlined, text: l10n.onboardingWarnLine3),
+        const SizedBox(height: VeilSpace.lg),
+        for (final line in [l10n.onboardingWarnLine1, l10n.onboardingWarnLine2, l10n.onboardingWarnLine3])
+          Padding(
+            padding: const EdgeInsets.only(bottom: VeilSpace.md),
+            child: Text(line, style: theme.textTheme.bodyLarge),
+          ),
       ],
-    );
-  }
-}
-
-/// One of the three things to know, after a plain glyph.
-class _Line extends StatelessWidget {
-  const _Line({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: VeilSpace.lg),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: VeilIconSize.md, color: context.veilPalette.textMuted),
-          const SizedBox(width: VeilSpace.md),
-          Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
-        ],
-      ),
     );
   }
 }

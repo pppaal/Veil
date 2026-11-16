@@ -6,6 +6,7 @@ import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/disappearing_messages_service.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/message_content_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_api_mapper.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_operation_runner.dart';
@@ -56,6 +57,64 @@ ChatMessage _message(String id, {DateTime? expiresAt}) => ChatMessage(
 }
 
 void main() {
+  // Every change of a chat's timer is a line in it, as Signal and Telegram
+  // write one: "You set …" for this phone's own change, even when the
+  // server's event for it comes back first, and no second line for that
+  // echo; the event alone names no one.
+  test('a timer change is a line in the chat, once, and says who changed it when this phone did', () async {
+    final store = MessengerStateStore(onChanged: () {});
+    final written = <String>[];
+    final service = DisappearingMessagesService(
+      store: store,
+      contents: MessageContentService(
+        cache: null,
+        decrypt: (_, {beforeCommit}) => throw StateError('nothing is decrypted here'),
+        onContentStored: (_, __) {},
+      ),
+      persistence: MessengerPersistence(cache: null, store: store),
+      session: MessengerSessionContext(),
+      apiClient: VeilApiClient(baseUrl: 'http://relay.invalid/v1'),
+      mapper: MessengerApiMapper(createDefaultCryptoAdapter().envelopeCodec),
+      ops: MessengerOperationRunner(onChanged: () {}),
+      writeNotice: (conversationId, LocalNotice notice) async => written.add(notice.code),
+      now: () => _start,
+    );
+    await store.replaceConversations(
+      [
+        ConversationPreview(
+          id: 'conv-1',
+          peerHandle: 'selene',
+          peerDisplayName: null,
+          recipientBundle: const KeyBundle(
+            userId: 'user-selene',
+            deviceId: 'dev-selene',
+            handle: 'selene',
+            identityPublicKey: 'pub',
+            signedPrekeyBundle: 'spk',
+          ),
+          lastEnvelope: null,
+          updatedAt: _start,
+        ),
+      ],
+      bound: const {},
+      pin: (merged) async => (merged, <String>[]),
+    );
+
+    // From the server: no actor.
+    service.applyTimer('conv-1', 86400);
+    // The same timer again changes nothing.
+    service.applyTimer('conv-1', 86400);
+    // This phone, with no server session: its own change.
+    await service.setTimer('conv-1', null);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(written, [
+      '${LocalNoticeCodes.timerSet}:86400',
+      '${LocalNoticeCodes.timerSetByYou}:',
+    ]);
+    service.dispose();
+  });
+
   test('no periodic timers when nothing expires', () {
     fakeAsync((async) {
       final (store, service) = _service(async);

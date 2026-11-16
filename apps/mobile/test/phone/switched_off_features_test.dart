@@ -137,7 +137,7 @@ void main() {
 
   testWidgets('settings leads to the profile, where the nickname is edited', (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-      await tester.tap(find.text(l10n.settingsProfileTitle));
+      await tester.tap(find.byKey(const ValueKey('settings-profile')));
       await pumpFrames(tester);
       expect(find.byType(ProfileScreen), findsOneWidget);
 

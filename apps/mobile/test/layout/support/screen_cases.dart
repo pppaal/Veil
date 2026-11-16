@@ -3,7 +3,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
-import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_status_banners.dart';
@@ -24,9 +23,7 @@ import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_
 import 'package:veil_mobile/src/features/safety/presentation/blocked_accounts_screen.dart';
 import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
-import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
-import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
@@ -59,6 +56,7 @@ class ScreenCase {
     this.keyboardHeight = 0,
     this.bootstrapping = false,
     this.transferStarted = false,
+    this.transferClaimed = false,
     this.withGroup = false,
     this.textScale = 1,
     this.sizes = phoneSizes,
@@ -93,6 +91,10 @@ class ScreenCase {
 
   /// This device already opened a transfer session.
   final bool transferStarted;
+
+  /// This device, with no account, claimed a move and waits for the old
+  /// phone to approve it.
+  final bool transferClaimed;
 
   /// The account has a group conversation, the newest of its list.
   final bool withGroup;
@@ -168,12 +170,6 @@ const List<ScreenCase> screenCases = [
       location: '/onboarding',
       account: _signedOut,
       primaryAction: _primaryButton),
-  ScreenCase('create-account',
-      screen: CreateAccountScreen,
-      file: 'create_account_screen.dart',
-      location: '/create-account',
-      account: _signedOut,
-      primaryAction: _primaryButton),
   ScreenCase('choose-handle',
       screen: ChooseHandleScreen,
       file: 'choose_handle_screen.dart',
@@ -186,6 +182,14 @@ const List<ScreenCase> screenCases = [
       location: '/device-transfer',
       account: _signedOut,
       primaryAction: _firstInput),
+  // Its second screen: the claim code (a UUID) to type on the old phone.
+  ScreenCase('device-transfer-new-device-approve',
+      screen: DeviceTransferScreen,
+      file: 'device_transfer_screen.dart',
+      location: '/device-transfer',
+      account: _signedOut,
+      transferClaimed: true,
+      primaryAction: _primaryButton),
   ScreenCase('app-lock',
       screen: AppLockScreen,
       file: 'app_lock_screen.dart',
@@ -360,13 +364,6 @@ const List<ScreenCase> screenCases = [
     location: _chat,
     settle: _openReactionSheet,
   ),
-  ScreenCase(
-    'conversation-list-new-menu',
-    screen: ConversationListScreen,
-    file: 'conversation_list_screen.dart',
-    location: '/conversations',
-    settle: _openNewConversationMenu,
-  ),
 
   // The three screens a user spends the day in, with larger text.
   ScreenCase(
@@ -415,7 +412,7 @@ const List<ScreenCase> screenCases = [
       screen: StartDirectChatScreen,
       file: 'start_direct_chat_screen.dart',
       location: '/start-chat',
-      primaryAction: _primaryButton),
+      primaryAction: _firstInput),
   ScreenCase('start-group',
       screen: StartGroupScreen,
       file: 'start_group_screen.dart',
@@ -450,15 +447,7 @@ const List<ScreenCase> screenCases = [
   // Account, device and security.
   ScreenCase('settings',
       screen: SettingsScreen, file: 'settings_screen.dart', location: '/settings', primaryAction: _firstSetting),
-  // The devices of the account, opened from the settings tab's row.
-  ScreenCase('settings-devices',
-      screen: TrustedDevicesScreen,
-      file: 'trusted_devices_screen.dart',
-      location: '/settings',
-      settle: _openTrustedDevices),
   ScreenCase('profile', screen: ProfileScreen, file: 'profile_screen.dart', location: '/profile'),
-  ScreenCase('security-status',
-      screen: SecurityStatusScreen, file: 'security_status_screen.dart', location: '/security-status'),
   ScreenCase('device-transfer-old-device',
       screen: DeviceTransferScreen,
       file: 'device_transfer_screen.dart',
@@ -510,12 +499,13 @@ const List<ScreenCase> screenCases = [
       withGroup: true,
       attention: ChatAttention(identityChangedInGroup: true),
       settle: _awaitChangeElsewhere),
-  // A contact this device has not exchanged a message with: no identity is
-  // pinned, so there is no number yet and the page says how to get one.
+  // A contact this device has not exchanged a message with (Lena): no
+  // identity is pinned, so there is no number yet and the page says how to
+  // get one.
   ScreenCase('safety-numbers-unpinned',
       screen: SafetyNumbersScreen,
       file: 'safety_numbers_screen.dart',
-      location: '/safety-numbers/conv-priya',
+      location: '/safety-numbers/$emptyChatConversationId',
       settle: _awaitSafetyNumber),
   ScreenCase(
     'chat-room-legacy-badge',
@@ -555,6 +545,28 @@ const List<ScreenCase> screenCases = [
     minPrimaryShare: minPrimaryContentShare,
     settle: _searchChatForHits,
   ),
+  // What the everyday cases keep off their first screen: the top of the
+  // chat's history, a day back, with the long message and the long link a
+  // person sends now and then. And a chat with a notice from the other
+  // side in it: Priya took a screenshot.
+  ScreenCase(
+    'chat-room-history',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _scrollToHistoryTop,
+  ),
+  ScreenCase(
+    'chat-room-notices',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$noticeChatConversationId',
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectScreenshotNotice,
+  ),
   ScreenCase(
     'chat-room-warnings-keyboard-larger-text',
     screen: ChatRoomScreen,
@@ -589,7 +601,10 @@ const List<ScreenCase> screenCases = [
     screen: ChatRoomScreen,
     file: 'chat_room_screen.dart',
     location: _chat,
-    attention: ChatAttention(relayError: true),
+    // The chat shows a failure as a toast, and only one that comes while
+    // it is open: an error set before it opened would draw nothing.
+    attention: ChatAttention(relayErrorWhileOpen: true),
+    settle: _awaitToast,
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
   ),
@@ -802,10 +817,11 @@ Finder _firstInput() => find.byType(TextField);
 Finder _addContact() => find.byIcon(Icons.person_add_alt_1_outlined);
 
 // The first control of the settings screen that changes a setting: the
-// theme selector or a switch, whichever the screen puts first. A row that
-// only leads to another screen (the profile, the security status) is not it.
-Finder _firstSetting() =>
-    find.byWidgetPredicate((widget) => widget is Switch || widget is SegmentedButton<ThemeMode>);
+// theme row (it opens the three themes) or a switch, whichever the screen
+// puts first. A row that only leads to another screen (the profile) is not
+// it.
+Finder _firstSetting() => find.byWidgetPredicate(
+    (widget) => widget is Switch || (widget is VeilRow && widget.key == const ValueKey('settings-theme')));
 
 /// Why the first control [finder] finds is not on the first screenful, or
 /// null when it is. On the two larger phones all of it must be on screen where a
@@ -870,21 +886,48 @@ Future<void> _searchChat(WidgetTester tester) async {
   await pumpFrames(tester, frames: 4);
 }
 
-// The search as it stands once the keyboard is put away: the matches have
-// the whole height.
+// The search as it stands once the keyboard is put away: every message
+// stays, the newest hit is marked, and the bar under them counts the hits.
 Future<void> _searchChatForHits(WidgetTester tester) async {
   await _searchChat(tester);
   expect(find.byType(MessageBubble), findsWidgets, reason: 'the search found no message');
-  expect(find.byType(MessageBubble).evaluate().length, lessThan(chatLineCount - 1),
-      reason: 'the search did not narrow the messages');
+  expect(find.textContaining(' of '), findsOneWidget, reason: 'the search bar does not count the hits');
 }
+
+// The chat scrolled up to its oldest message. The list starts at its end
+// and learns how long it is as it builds what scrolls in, so it jumps to
+// its top until the top stays put.
+Future<void> _scrollToHistoryTop(WidgetTester tester) async {
+  final list = find.descendant(of: find.byType(ChatMessageList), matching: find.byType(Scrollable)).first;
+  final position = tester.state<ScrollableState>(list).position;
+  for (var jump = 0; jump < 10 && position.pixels < position.maxScrollExtent - 0.5; jump++) {
+    position.jumpTo(position.maxScrollExtent);
+    await pumpFrames(tester, frames: 2);
+  }
+  expect(position.pixels, greaterThanOrEqualTo(position.maxScrollExtent - 0.5), reason: 'the chat did not reach its top');
+  expect(find.textContaining('the landlord wants'), findsOneWidget, reason: 'the long message is not built');
+  expect(find.textContaining(longLinkHost), findsOneWidget, reason: 'the long link is not built');
+}
+
+Future<void> _expectScreenshotNotice(WidgetTester tester) async {
+  expect(find.text(screenshotNotice), findsOneWidget, reason: 'the chat does not show its notice');
+}
+
+// A message from the other side: the newest of theirs, which is on the
+// first screenful. The list is built from its end, so the first one found
+// is the newest.
+Finder _theirNewestMessage() => find.descendant(
+      of: find.byWidgetPredicate((widget) => widget is MessageBubble && !widget.message.isMine).first,
+      matching: find.byType(VeilBubble),
+    );
 
 Future<void> _expectGroupMessages(WidgetTester tester) async {
   expect(find.byType(MessageBubble), findsNWidgets(groupLineCount), reason: 'the group chat did not open its messages');
 }
 
 Future<void> _expectLegacyBadge(WidgetTester tester) async {
-  // The line sits under the peer's first message, at the top of the history.
+  // The line sits under Sam's first message of the morning, above the
+  // first screenful.
   await tester.dragUntilVisible(
     find.descendant(
       of: find.byType(MessageBubble),
@@ -986,20 +1029,19 @@ Future<void> _reportMessage(WidgetTester tester, Finder message) async {
   expect(find.byKey(const ValueKey('report-reason-spam')), findsOneWidget, reason: 'the report sheet did not open');
 }
 
-Future<void> _openMessageReportSheet(WidgetTester tester) =>
-    _reportMessage(tester, find.textContaining('registry.example.org'));
+Future<void> _openMessageReportSheet(WidgetTester tester) => _reportMessage(tester, _theirNewestMessage());
 
 // A group member's message: the report names its writer, and offers no
 // block, which would not keep them out of the group.
 Future<void> _openGroupMessageReportSheet(WidgetTester tester) async {
   await _expectGroupMessages(tester);
-  await _reportMessage(tester, find.text('The 14th works for me.'));
+  await _reportMessage(tester, _theirNewestMessage());
   expect(find.byKey(const ValueKey('report-also-block')), findsNothing, reason: 'a group report offered a block');
 }
 
 Future<void> _expectBlockedLine(WidgetTester tester) async {
   final en = lookupAppLocalizations(const Locale('en'));
-  expect(find.text(en.blockedComposerLine), findsOneWidget, reason: 'the blocked chat shows its composer');
+  expect(find.text(en.blockedComposerLine(peerHandle)), findsOneWidget, reason: 'the blocked chat shows its composer');
 }
 
 Future<void> _expectBlockedAccounts(WidgetTester tester) async {
@@ -1024,7 +1066,7 @@ Future<void> _openBlockedReportSheet(WidgetTester tester) async {
 }
 
 Future<void> _openBlockedMessageSheet(WidgetTester tester) async {
-  await tester.longPress(find.textContaining('registry.example.org'));
+  await tester.longPress(_theirNewestMessage());
   await pumpFrames(tester, frames: 4);
   expect(find.byKey(const ValueKey('message-report')), findsOneWidget, reason: 'the message sheet did not open');
   expect(find.byType(ReactionPickerWidget), findsNothing, reason: 'a blocked peer\'s message offered reactions');
@@ -1032,10 +1074,12 @@ Future<void> _openBlockedMessageSheet(WidgetTester tester) async {
 
 Future<void> _fileRefusedReport(WidgetTester tester) async {
   await _openReportSheet(tester);
+  // A reason closes the sheet and asks in a dialog, "Also block" ticked.
   await tester.tap(find.byKey(const ValueKey('report-reason-spam')));
+  await pumpFrames(tester, frames: 4);
   await tester.tap(find.byKey(const ValueKey('report-also-block')));
   await pumpFrames(tester, frames: 2);
-  await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.byType(FilledButton)));
+  await tester.tap(find.byKey(const ValueKey('report-confirm')));
   await pumpFrames(tester, frames: 6);
   expect(find.byType(SnackBarAction), findsOneWidget, reason: 'the refused report showed no Retry');
 }
@@ -1046,33 +1090,21 @@ Future<void> _openReactionSheet(WidgetTester tester) async {
   expect(find.byType(ReactionPickerWidget), findsOneWidget, reason: 'the reaction sheet did not open');
 }
 
-Future<void> _openNewConversationMenu(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.edit_outlined));
-  await pumpFrames(tester, frames: 3);
-  expect(find.byType(PopupMenuItem<String>), findsNWidgets(2), reason: 'the menu did not open');
-}
-
 Future<void> _openAddContactSheet(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.person_add_alt_1_outlined));
   await pumpFrames(tester, frames: 4);
   expect(find.byType(BottomSheet), findsOneWidget, reason: 'the add-contact sheet did not open');
 }
 
+Future<void> _awaitToast(WidgetTester tester) async {
+  await pumpFrames(tester, frames: 6);
+  expect(find.byType(SnackBar), findsOneWidget, reason: 'the failure toast did not show');
+}
+
 Future<void> _openContactActionsSheet(WidgetTester tester) async {
   await tester.tap(find.byType(ContactRow).first);
   await pumpFrames(tester, frames: 4);
   expect(find.byType(BottomSheet), findsOneWidget, reason: 'the contact sheet did not open');
-}
-
-Future<void> _openTrustedDevices(WidgetTester tester) async {
-  // A device's row is under the day-to-day settings, below the first
-  // screenful.
-  final row = find.byKey(const ValueKey('settings-device-dev-laptop'), skipOffstage: false);
-  await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
-  await pumpFrames(tester, frames: 2);
-  await tester.tap(row);
-  await pumpFrames(tester, frames: 6);
-  expect(find.byKey(const ValueKey('device-dev-laptop')), findsOneWidget, reason: 'the device list did not load');
 }
 
 // The safety number is derived on a background isolate, which only real

@@ -9,7 +9,7 @@ export function trapFocus(dialogId, event) {
   if (event.key !== 'Tab') return;
   const dialog = $(dialogId).querySelector('.dialog');
   if (!dialog) return;
-  const focusable = dialog.querySelectorAll('input, button:not([disabled])');
+  const focusable = [...dialog.querySelectorAll('input, button:not([disabled])')].filter((node) => !node.closest('.hidden'));
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
@@ -23,9 +23,12 @@ export function trapFocus(dialogId, event) {
 }
 
 // dialogs: src/ui/dialogs.js. Returns confirm(options) -> Promise<boolean>,
-// with Esc, a click outside and Cancel all answering false.
+// with Esc, a click outside and Cancel all answering false. The title is a
+// question and the OK button repeats its verb. `alternative`, when given,
+// adds a middle button { label, onChoose }: it answers false and then runs
+// onChoose, the safe way out of a destructive action.
 export function createConfirm(dialogs) {
-  return function confirm({ title = 'Confirm', body = '', okLabel = 'OK', cancelLabel = 'Cancel', destructive = false } = {}) {
+  return function confirm({ title, body = '', okLabel, cancelLabel, destructive = false, alternative = null } = {}) {
     return new Promise((resolve) => {
       const dialog = $('confirm-dialog');
       if (!dialog) {
@@ -36,8 +39,11 @@ export function createConfirm(dialogs) {
       $('confirm-body').textContent = body;
       const okBtn = $('confirm-ok');
       const cancelBtn = $('confirm-cancel');
+      const altBtn = $('confirm-alt');
       okBtn.textContent = okLabel;
-      cancelBtn.textContent = cancelLabel;
+      if (cancelLabel) cancelBtn.textContent = cancelLabel;
+      altBtn.textContent = alternative?.label ?? '';
+      altBtn.classList.toggle('hidden', !alternative);
       // A destructive action is a red text button, never a filled one.
       okBtn.classList.toggle('btn-primary', !destructive);
       okBtn.classList.toggle('btn-danger', destructive);
@@ -45,6 +51,7 @@ export function createConfirm(dialogs) {
       const cleanup = (result) => {
         okBtn.removeEventListener('click', onOk);
         cancelBtn.removeEventListener('click', onCancel);
+        altBtn.removeEventListener('click', onAlt);
         dialog.removeEventListener('click', onBackdrop);
         dialog.removeEventListener('keydown', onKey);
         dialogs.close('confirm-dialog');
@@ -52,6 +59,10 @@ export function createConfirm(dialogs) {
       };
       const onOk = () => cleanup(true);
       const onCancel = () => cleanup(false);
+      const onAlt = () => {
+        cleanup(false);
+        alternative?.onChoose?.();
+      };
       const onBackdrop = (event) => {
         if (event.target === dialog) cleanup(false);
       };
@@ -65,6 +76,7 @@ export function createConfirm(dialogs) {
       };
       okBtn.addEventListener('click', onOk);
       cancelBtn.addEventListener('click', onCancel);
+      altBtn.addEventListener('click', onAlt);
       dialog.addEventListener('click', onBackdrop);
       dialog.addEventListener('keydown', onKey);
       dialogs.open('confirm-dialog', 'confirm-cancel');

@@ -13,9 +13,9 @@ enum VeilBubblePosition { first, middle, last, single }
 /// left for others) is 4 at the end of a run and 6 inside one.
 ///
 /// [highlighted] (a search hit) is a `surfaceRaised` fill with a 1.5dp
-/// `primaryStrong` border. [failed] is drawn like an incoming bubble, with
-/// [failedText] ("Not sent. Tap to retry.") in the danger colour under the
-/// content.
+/// `primaryStrong` border. [failed] keeps its fill, with a red glyph beside
+/// it and [failedText] ("Not sent. Tap to retry.") in the danger colour
+/// under it.
 class VeilBubble extends StatelessWidget {
   const VeilBubble({
     super.key,
@@ -37,11 +37,22 @@ class VeilBubble extends StatelessWidget {
   /// The share of the available width a bubble may take.
   static const double widthShare = 0.78;
 
+  /// The room the glyph beside a failed send takes, its gap included.
+  static const double failedGlyphExtent = 26;
+
   /// The radius of the tail-side bottom corner for [position].
   static double tailRadius(VeilBubblePosition position) => switch (position) {
         VeilBubblePosition.last || VeilBubblePosition.single => 4,
         VeilBubblePosition.first || VeilBubblePosition.middle => 6,
       };
+
+  /// The colour a bubble is filled with, for what is drawn on it in that
+  /// colour (the checks cut out of the read glyph).
+  static Color fillOf(VeilPalette palette, {required bool isMine, bool highlighted = false}) => highlighted
+      ? palette.surfaceRaised
+      : isMine
+          ? palette.primary
+          : palette.surfaceAlt;
 
   @override
   Widget build(BuildContext context) {
@@ -49,20 +60,17 @@ class VeilBubble extends StatelessWidget {
     final palette = context.veilPalette;
     final tail = Radius.circular(tailRadius(position));
     const main = Radius.circular(VeilRadius.xl);
-    final own = isMine && !failed && !highlighted;
-    final fill = highlighted
-        ? palette.surfaceRaised
-        : own
-            ? palette.primary
-            : palette.surfaceAlt;
+    final own = isMine && !highlighted;
+    final fill = fillOf(palette, isMine: isMine, highlighted: highlighted);
     final textColor = own ? Colors.white : palette.text;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         // In a row the width is unbounded; the screen's then stands in.
         final available = constraints.maxWidth.isFinite ? constraints.maxWidth : MediaQuery.sizeOf(context).width;
-        final maxWidth = available * widthShare;
-        return ConstrainedBox(
+        // A failed send keeps room for the glyph beside it.
+        final maxWidth = available * widthShare - (failed ? failedGlyphExtent : 0);
+        final box = ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
           child: DecoratedBox(
             decoration: BoxDecoration(
@@ -81,21 +89,40 @@ class VeilBubble extends StatelessWidget {
                 style: TextStyle(color: textColor),
                 child: IconTheme.merge(
                   data: IconThemeData(color: own ? Colors.white : palette.textMuted),
-                  child: failed && failedText != null
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            child,
-                            const SizedBox(height: VeilSpace.xxs),
-                            Text(failedText!, style: theme.textTheme.bodySmall?.copyWith(color: palette.danger)),
-                          ],
-                        )
-                      : child,
+                  child: child,
                 ),
               ),
             ),
           ),
+        );
+        if (!failed) return box;
+        // As iMessage and Signal draw it: the bubble as it was, a red glyph
+        // beside it and one red line under it.
+        return Column(
+          crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (isMine) ...[
+                  Icon(Icons.error_outline, size: 20, color: palette.danger),
+                  const SizedBox(width: failedGlyphExtent - 20),
+                ],
+                Flexible(child: box),
+                if (!isMine) ...[
+                  const SizedBox(width: failedGlyphExtent - 20),
+                  Icon(Icons.error_outline, size: 20, color: palette.danger),
+                ],
+              ],
+            ),
+            if (failedText != null)
+              Padding(
+                padding: const EdgeInsets.only(top: VeilSpace.xxs),
+                child: Text(failedText!, style: theme.textTheme.bodySmall?.copyWith(color: palette.danger)),
+              ),
+          ],
         );
       },
     );

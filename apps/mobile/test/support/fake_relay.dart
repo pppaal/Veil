@@ -41,12 +41,15 @@ class RelayConversation {
     required this.memberHandles,
     required this.createdAt,
     this.useSenderKeys = false,
+    this.name,
   });
 
   final String id;
   final String type;
   final List<String> memberHandles;
   final DateTime createdAt;
+  // A group's name, which only GET /conversations/group/:id answers with.
+  final String? name;
   // Settable so a test can play a relay that lies about it.
   bool useSenderKeys;
   int epoch = 0;
@@ -193,13 +196,14 @@ class FakeRelay {
 
   /// A Sender Keys group, or with [useSenderKeys] false a legacy group whose
   /// frames go through the pairwise engine.
-  RelayConversation addGroup(String id, List<String> handles, {bool useSenderKeys = true}) {
+  RelayConversation addGroup(String id, List<String> handles, {bool useSenderKeys = true, String name = 'Group'}) {
     return conversations[id] = RelayConversation(
       id: id,
       type: 'group',
       memberHandles: List<String>.of(handles),
       createdAt: _clockBase,
       useSenderKeys: useSenderKeys,
+      name: name,
     );
   }
 
@@ -442,6 +446,41 @@ class FakeRelayClient extends VeilApiClient {
             relay.conversationJson(conversation, viewer: me.handle),
       ],
       'nextCursor': null,
+    };
+  }
+
+  /// How many times each group was asked for by id, and how many of the
+  /// next answers fail as an unreachable network makes them.
+  final Map<String, int> groupFetches = {};
+  int failGroupFetches = 0;
+
+  // GroupsService.getGroup: a group's name and members, for a member only.
+  @override
+  Future<Map<String, dynamic>> getGroup(String accessToken, String conversationId) async {
+    groupFetches[conversationId] = (groupFetches[conversationId] ?? 0) + 1;
+    if (failGroupFetches > 0) {
+      failGroupFetches -= 1;
+      throw VeilApiException('The server is unreachable.', code: 'network_unavailable');
+    }
+    final conversation = relay.conversations[conversationId];
+    if (conversation == null || conversation.type != 'group' || !conversation.memberHandles.contains(me.handle)) {
+      throw VeilApiException('Group not found', statusCode: 404, code: 'group_not_found');
+    }
+    final listed = relay.conversationJson(conversation, viewer: me.handle);
+    return {
+      'id': conversation.id,
+      'type': conversation.type,
+      'name': conversation.name,
+      'description': null,
+      'isPublic': false,
+      'useSenderKeys': conversation.useSenderKeys,
+      'epoch': conversation.epoch,
+      'createdAt': listed['createdAt'],
+      'members': [
+        for (final member in (listed['members'] as List).cast<Map<String, dynamic>>())
+          {'userId': member['userId'], 'handle': member['handle'], 'role': 'member'},
+      ],
+      'lastMessage': listed['lastMessage'],
     };
   }
 

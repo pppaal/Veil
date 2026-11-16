@@ -314,12 +314,13 @@ test.describe('another account under a handle this device knows', () => {
     const banner = page.locator('.account-conflict-banner');
     await expect(banner).toBeVisible();
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `This @${bob.handle} is a different account from the @${bob.handle} you talked with before. It may be someone posing as them: nothing is opened or sent here until you choose to talk to this account.`,
+      `This isn't the @${bob.handle} you talked to before. New messages stay locked and nothing is sent until you confirm.`,
     );
+    await expect(page.locator('.panel-input textarea')).toHaveAttribute('placeholder', 'Confirm the account above to send');
     await expect(page.locator('.panel-input textarea')).toBeDisabled();
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
+    await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked')).toHaveCount(1);
 
     // A reload changes nothing.
     await reload(alice);
@@ -384,22 +385,24 @@ test.describe('another account under a lookalike of a handle this device knows',
     await send(mallory, 'bob here, new phone, send the code');
 
     const shown = `@${bob.handle}[U+200B]`;
-    const lookalike = page.locator('.conv-item', { hasText: 'Name not issued by Veil' });
+    const lookalike = page.locator('.conv-item', { hasText: 'Handle no account can have' });
     await expect(lookalike).toHaveCount(1, { timeout: 15_000 });
     await expect(lookalike.locator('.conv-name')).toHaveText(shown);
     await lookalike.click();
     await expect(page.locator('.panel .panel-title .name')).toHaveText(shown);
     const banner = page.locator('.account-conflict-banner.unissued-handle');
     await expect(banner).toBeVisible();
-    await expect(banner.locator('.key-change-text')).toContainText(`${shown} is not a name Veil gives out`);
+    await expect(banner.locator('.key-change-text')).toHaveText(
+      `No account can have the handle ${shown}, so it may only look like someone you know. New messages stay locked and nothing is sent until you confirm.`,
+    );
     await expect(page.locator('.panel-input textarea')).toBeDisabled();
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
+    await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked')).toHaveCount(1);
 
     // A reload changes nothing.
     await reload(alice);
-    await page.locator('.conv-item', { hasText: 'Name not issued by Veil' }).click();
+    await page.locator('.conv-item', { hasText: 'Handle no account can have' }).click();
     await expect(page.locator('.account-conflict-banner.unissued-handle')).toBeVisible();
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
 
@@ -457,23 +460,23 @@ test.describe('another account under our own handle', () => {
     await expect(mallory.page.locator('.panel .panel-title .name')).toHaveText(`@${alice.handle}`);
     await send(mallory, 'it is me, from my other phone');
 
-    const held = page.locator('.conv-item', { hasText: 'Another account using your name' });
+    const held = page.locator('.conv-item', { hasText: 'Another account using your handle' });
     await expect(held).toHaveCount(1, { timeout: 15_000 });
     await expect(held.locator('.conv-name')).toHaveText(`@${alice.handle}`);
     await held.click();
     const banner = page.locator('.account-conflict-banner.own-handle');
     await expect(banner).toBeVisible();
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `This conversation is listed under your own name, @${alice.handle}, but with another account. No one else can have your name: the list this device received was altered, perhaps to pass someone off as you. Nothing is opened or sent here until you choose to talk to this account.`,
+      `Another account is listed under your handle, @${alice.handle}. New messages stay locked and nothing is sent until you confirm.`,
     );
     await expect(page.locator('.panel-input textarea')).toBeDisabled();
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     await expect(rowOf(alice, 'it is me, from my other phone')).toHaveCount(0);
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
+    await expect(page.locator('.panel-msgs .msg-row.them').last().locator('.msg-locked')).toHaveCount(1);
 
     // A reload changes nothing.
     await reload(alice);
-    await page.locator('.conv-item', { hasText: 'Another account using your name' }).click();
+    await page.locator('.conv-item', { hasText: 'Another account using your handle' }).click();
     await expect(page.locator('.account-conflict-banner.own-handle')).toBeVisible();
     await expect(rowOf(alice, 'it is me, from my other phone')).toHaveCount(0);
 

@@ -3,6 +3,7 @@
 // (src/domain/history.js), the expiry sweep, and the polling that runs it
 // all while the push channel is down or slow.
 
+import { t } from '../../../i18n/i18n.js';
 import { expiryNow, isPast } from '../../core/expiry.js';
 import { fetchHistory, mergeHistory } from '../../domain/history.js';
 import { adoptedConversation } from '../../domain/peer-bindings.js';
@@ -11,6 +12,12 @@ import { serializeMessageForCache } from '../../platform/persist.js';
 
 const POLL_MS = 4000;
 const HEARTBEAT_MS = 30_000;
+
+// A request that never reached the server: the browser is offline, or
+// fetch failed on the network (a TypeError, "Failed to fetch"). The list's
+// title already says "Offline" or "Connecting…" then.
+const isNetworkFailure = (error) =>
+  (typeof navigator !== 'undefined' && navigator.onLine === false) || error instanceof TypeError;
 
 // outbox: src/app/services/outbox.js; isRealtimeConnected() tells whether
 // the push channel delivers per-message updates; toast(message, kind).
@@ -58,7 +65,10 @@ export function createHistorySync({ store, stack, messages, outbox, isRealtimeCo
       outbox.drain();
     } catch (error) {
       if (error instanceof AuthError) return;
-      toast(error.message, 'error');
+      // Never the browser's or the server's words. Offline, the title
+      // says it; anything else is one line, as mobile says it.
+      if (isNetworkFailure(error)) return;
+      toast(t('conv.refreshFailed'), 'error');
     }
   }
 

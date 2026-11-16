@@ -9,6 +9,7 @@ import 'package:veil_mobile/src/features/conversations/presentation/conversation
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
+import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
@@ -17,7 +18,7 @@ import 'phone_app.dart';
 // The wide layout (from 1120 px): the list and the open chat side by side,
 // each the same content-first view a phone shows, under its own bar. What
 // the hero cards, stat tiles and header cards of the old panes were for is
-// in the two bars.
+// in the two bars. From 1024 px the tabs are a rail at the start edge.
 
 const _latest = "Section 7 is fine. Let's sign tomorrow.";
 
@@ -185,6 +186,55 @@ void main() {
         expect(tester.takeException(), isNull);
       },
     );
+  });
+
+  // From 1024 px three tabs across the bottom would sit far apart: they are
+  // a rail at the start edge, beside whichever tab is open.
+  testWidgets('from 1024 px the tabs are a rail at the start edge, not a bar across the bottom', (tester) async {
+    await withPhoneApp(tester, identities, size: tabletUpright, location: '/conversations', body: (world) async {
+      final rail = find.byType(NavigationRail);
+      expect(rail, findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+      for (final tab in ['Chats', 'Contacts', 'Settings']) {
+        expect(find.descendant(of: rail, matching: find.text(tab)), findsOneWidget, reason: tab);
+      }
+      // One pane on a tablet held upright, right of the rail.
+      expect(find.byType(ChatRoomScreen), findsNothing);
+      expect(tester.getRect(rail).left, 0);
+      expect(tester.getRect(find.byType(ConversationListPhone)).left, greaterThanOrEqualTo(tester.getRect(rail).right));
+      expect(tester.widget<NavigationRail>(rail).selectedIndex, 0);
+
+      await tester.tap(find.descendant(of: rail, matching: find.text('Settings')));
+      await pumpFrames(tester);
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      expect(tester.widget<NavigationRail>(rail).selectedIndex, 2);
+      expect(tester.getRect(find.byType(SettingsScreen)).left, greaterThanOrEqualTo(tester.getRect(rail).right));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  testWidgets('under 1024 px the tabs stay a bar across the bottom', (tester) async {
+    const narrow = PhoneSize(1023, 800, topInset: 0, bottomInset: 0);
+    await withPhoneApp(tester, identities, size: narrow, location: '/conversations', body: (world) async {
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(NavigationRail), findsNothing);
+    });
+  });
+
+  // The two panes start at a 1120 px window whatever the rail takes, which
+  // is also what a new chat decides on when it opens beside the list.
+  testWidgets('at 1120 px, beside the rail, the list and the open chat are side by side', (tester) async {
+    const edge = PhoneSize(1120, 800, topInset: 0, bottomInset: 0);
+    await withPhoneApp(tester, identities, size: edge, location: '/conversations', body: (world) async {
+      final rail = tester.getRect(find.byType(NavigationRail));
+      final list = tester.getRect(find.byType(ConversationListPhone));
+      final chat = tester.getRect(find.byType(ChatRoomScreen));
+      expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).embedded, isTrue);
+      expect(list.left, greaterThanOrEqualTo(rail.right));
+      expect(list.width, ConversationListScreen.listPaneWidth);
+      expect(chat.right, edge.width);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets('under 1120 px the list is the screen and a chat opens on top of it', (tester) async {

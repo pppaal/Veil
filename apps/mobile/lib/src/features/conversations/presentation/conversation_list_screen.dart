@@ -110,9 +110,12 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     final conversations = controller.conversations;
     final filteredConversations = _filterConversations(conversations);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWideLayout = shouldUseWideConversationLayout(constraints.maxWidth);
+    return Builder(
+      builder: (context) {
+        // The window's width, not this screen's: from 1024 the tabs are a
+        // rail beside it, and a new chat (StartDirectChatScreen) decides on
+        // the window too whether it opens beside the list.
+        final isWideLayout = shouldUseWideConversationLayout(MediaQuery.sizeOf(context).width);
         if (isWideLayout &&
             _selectedConversationId == null &&
             filteredConversations.isNotEmpty) {

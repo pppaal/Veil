@@ -675,6 +675,19 @@ const List<ScreenCase> wideCases = [
     account: LayoutAccount.signedInEmpty,
     sizes: _wideSizes,
   ),
+  // From 1024 px the three tabs are a rail at the start edge: beside the
+  // list on a tablet held upright (one pane, as on a phone), and beside a
+  // tab with no second pane.
+  ScreenCase(
+    'tablet-conversation-list',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    sizes: _tablet,
+    primaryExtent: conversationRowsExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase('wide-settings', screen: SettingsScreen, file: 'settings_screen.dart', location: '/settings', sizes: _wideSizes),
   ScreenCase(
     'tablet-chat',
     screen: ChatRoomScreen,

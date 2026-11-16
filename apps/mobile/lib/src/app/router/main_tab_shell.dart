@@ -9,10 +9,20 @@ import '../../shared/presentation/veil_ui.dart';
 /// Chats, Contacts and Settings. The bar is a plain [NavigationBar] on the
 /// page colour with a hairline above it: no indicator, no ripple, the
 /// active tab in the brand colour and the others muted.
+///
+/// From [railBreakpoint] wide (a tablet, a desktop window) three tabs stretched
+/// across the bottom would sit far apart: the same tabs are a
+/// [NavigationRail] at the start edge instead, with a hairline beside it.
 class MainTabShell extends StatelessWidget {
   const MainTabShell({super.key, required this.child});
 
   final Widget child;
+
+  /// The window width from which the tabs are a rail.
+  static const double railBreakpoint = 1024;
+
+  /// Whether a window [width] wide shows the tabs as a rail.
+  static bool usesRail(double width) => width >= railBreakpoint;
 
   static const _tabs = <_VeilNavTab>[
     _VeilNavTab(
@@ -44,6 +54,43 @@ class MainTabShell extends StatelessWidget {
     if (currentIndex < 0) {
       currentIndex = 0;
     }
+    void select(int index) {
+      if (index != currentIndex) VeilHaptics.selection();
+      context.go(_tabs[index].path);
+    }
+
+    if (usesRail(MediaQuery.sizeOf(context).width)) {
+      final rtl = Directionality.of(context) == TextDirection.rtl;
+      final edge = BorderSide(color: palette.stroke, width: 0.5);
+      return Scaffold(
+        body: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // The hairline is drawn over the rail's edge, as over the bar's.
+            DecoratedBox(
+              position: DecorationPosition.foreground,
+              decoration: BoxDecoration(border: rtl ? Border(left: edge) : Border(right: edge)),
+              child: Theme(
+                data: theme.copyWith(splashFactory: NoSplash.splashFactory),
+                child: NavigationRail(
+                  selectedIndex: currentIndex,
+                  onDestinationSelected: select,
+                  destinations: [
+                    for (final tab in _tabs)
+                      NavigationRailDestination(
+                        icon: Icon(tab.icon),
+                        selectedIcon: Icon(tab.activeIcon),
+                        label: Text(tab.label(l10n)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(child: child),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       body: child,
@@ -58,10 +105,7 @@ class MainTabShell extends StatelessWidget {
           data: theme.copyWith(splashFactory: NoSplash.splashFactory),
           child: NavigationBar(
             selectedIndex: currentIndex,
-            onDestinationSelected: (index) {
-              if (index != currentIndex) VeilHaptics.selection();
-              context.go(_tabs[index].path);
-            },
+            onDestinationSelected: select,
             destinations: [
               for (final tab in _tabs)
                 NavigationDestination(

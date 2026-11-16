@@ -580,6 +580,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatDayYesterday => 'Yesterday';
 
   @override
+  String dayAtTime(String day, String time) {
+    return '$day at $time';
+  }
+
+  @override
   String get chatNoticeIdentityChanged => 'Safety number changed';
 
   @override
@@ -1612,11 +1617,6 @@ class AppLocalizationsEn extends AppLocalizations {
       one: 'in 1 minute',
     );
     return '$_temp0';
-  }
-
-  @override
-  String deviceTransferExpiryAt(String time) {
-    return 'at $time';
   }
 
   @override

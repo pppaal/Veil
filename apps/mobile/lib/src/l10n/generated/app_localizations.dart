@@ -1066,6 +1066,12 @@ abstract class AppLocalizations {
   /// **'Yesterday'**
   String get chatDayYesterday;
 
+  /// No description provided for @dayAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'{day} at {time}'**
+  String dayAtTime(String day, String time);
+
   /// No description provided for @chatNoticeIdentityChanged.
   ///
   /// In en, this message translates to:
@@ -2727,12 +2733,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{minutes, plural, =1{in 1 minute} other{in {minutes} minutes}}'**
   String deviceTransferExpiryInMinutes(int minutes);
-
-  /// No description provided for @deviceTransferExpiryAt.
-  ///
-  /// In en, this message translates to:
-  /// **'at {time}'**
-  String deviceTransferExpiryAt(String time);
 
   /// No description provided for @themeModeTitle.
   ///

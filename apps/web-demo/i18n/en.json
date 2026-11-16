@@ -159,6 +159,7 @@
   "msg.placeholder.noKey": "Waiting for this message",
   "msg.placeholder.failed": "Couldn't decrypt this message",
   "msg.placeholder.locked": "Locked until you review the new safety number",
+  "msg.placeholder.held": "Locked until you confirm this account",
   "msg.placeholder.refused": "Locked. Its key was declined or belongs to another contact",
   "msg.placeholder.ownMissing": "Not saved in this browser",
   "media.downloading": "Downloading {name}…",

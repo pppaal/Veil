@@ -24,6 +24,9 @@ import { createMediaHandle } from './media.js';
 import { KIND_LABELS, UNSUPPORTED_TEXT } from './payload.js';
 
 export const DELETED_TEXT = 'Message deleted';
+// The failure an identity rejection becomes when the conversation is held
+// (src/app/services/messages.js).
+export const HELD_FAILURE = 'identityHeld';
 // What a message that could not be opened shows, by why: keys of
 // i18n/en.json, which the app resolves through options.label.
 export const LOCKED_LABELS = Object.freeze({
@@ -31,6 +34,10 @@ export const LOCKED_LABELS = Object.freeze({
   'no-key': 'msg.placeholder.noKey',
   failed: 'msg.placeholder.failed',
   identityRejected: 'msg.placeholder.locked',
+  // refused because its conversation is held for its listed handle
+  // (src/domain/peer-bindings.js hold): it waits for the user to confirm the
+  // account, not for a new safety number
+  [HELD_FAILURE]: 'msg.placeholder.held',
   // a key the user declined, or a device of another contact: nothing to review
   identityRefused: 'msg.placeholder.refused',
   sessionMissing: 'msg.placeholder.noKey',

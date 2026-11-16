@@ -97,13 +97,16 @@ export function createTabs({ store, stack, history }) {
       $('tab-strip').replaceChildren(...state.openTabs.map(tab));
     },
 
+    // A phone's back from a chat to the list (the chat header's back
+    // button; src/ui/views/chat-view.js).
+    backToList() {
+      state.activeConv = null;
+      $('app').classList.remove('viewing-chat');
+      store.notify('sidebar', 'panels');
+    },
+
     mount() {
       $('split-btn').addEventListener('click', toggleSplit);
-      $('back-to-list').addEventListener('click', () => {
-        state.activeConv = null;
-        $('app').classList.remove('viewing-chat');
-        store.notify('sidebar', 'panels');
-      });
     },
   };
 }

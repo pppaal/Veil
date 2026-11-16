@@ -32,7 +32,6 @@
      behind a dialog, and the marks of a search in a chat. */
   --hover: rgba(255, 255, 255, 0.06);
   --backdrop: rgba(0, 0, 0, 0.6);
-  --highlight: rgba(255, 214, 10, 0.35);
 
   --r-sm: 6px;
   --r: 10px;
@@ -75,7 +74,6 @@ html.theme-light {
 
   --hover: rgba(0, 0, 0, 0.04);
   --backdrop: rgba(0, 0, 0, 0.32);
-  --highlight: rgba(255, 204, 0, 0.45);
 
   --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
@@ -324,13 +322,16 @@ textarea::placeholder { color: var(--fg-muted); opacity: 1; }
 .auth-footer { margin: 24px 0 0; font-size: 13px; color: var(--fg-muted); }
 
 /* ---------- app shell ---------- */
+/* As Signal Desktop, WhatsApp Web and Telegram Web: the list's bar heads the
+   list's column only, and the open chat's own bar heads the other one, on
+   the same line. One bar and one ⋮ over each column, never two stacked. */
 .app {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  grid-template-rows: var(--topbar-h) auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   grid-template-areas:
-    "topbar topbar"
     "notice notice"
+    "topbar main"
     "sidebar main";
   height: 100%;
   overflow: hidden;
@@ -341,8 +342,10 @@ textarea::placeholder { color: var(--fg-muted); opacity: 1; }
   display: flex;
   align-items: center;
   gap: 4px;
+  height: var(--topbar-h);
   padding: 0 4px 0 16px;
   border-bottom: 0.5px solid var(--line);
+  border-right: 0.5px solid var(--line);
   background: var(--bg);
 }
 /* The title, and under it the connection only while there is no live one. */
@@ -360,7 +363,7 @@ textarea::placeholder { color: var(--fg-muted); opacity: 1; }
 .topbar-right { display: flex; align-items: center; }
 .icon-btn-only-mobile { display: none; }
 
-/* A notice across the whole window, under the bar. */
+/* A notice across the whole window, above both columns. */
 .app-notice { grid-area: notice; margin: 8px 16px; }
 
 /* ---------- sidebar ---------- */
@@ -580,6 +583,7 @@ html.theme-light .name-7 { color: #45602A; }
   border-bottom: 0.5px solid var(--line);
   background: var(--bg);
 }
+.panel-back { margin-right: -8px; }
 .panel-title { flex: 1; min-width: 0; }
 .panel-title-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .panel-title .name {
@@ -804,9 +808,10 @@ html.theme-light .name-7 { color: #45602A; }
 }
 .msg-group.me .msg-text pre.msg-codeblock[data-lang]::before { color: var(--bubble-mine-meta); }
 .msg-text em { font-style: italic; }
-.msg-text mark { padding: 0 2px; border-radius: 2px; background: var(--highlight); color: inherit; }
+/* A search hit: the term in bold and the bubble ringed, as on mobile. */
+.msg-text mark { padding: 0; background: none; color: inherit; font-weight: 700; }
 .msg-text .mention { font-weight: 600; }
-.msg-row.search-active .msg { outline: 2px solid var(--highlight); outline-offset: 2px; }
+.msg-row.search-active .msg { outline: 1.5px solid var(--primary-strong); outline-offset: 2px; }
 
 .msg-inline-image {
   display: block;
@@ -884,6 +889,20 @@ html.theme-light .name-7 { color: #45602A; }
 
 /* ---------- composer ---------- */
 .panel-input-wrap { border-top: 0.5px solid var(--line); background: var(--bg); }
+/* In the composer's place while the peer is blocked: one line and Unblock. */
+.panel-blocked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 8px;
+  min-height: 56px;
+  padding: 6px 16px;
+  border-top: 0.5px solid var(--line);
+  background: var(--bg);
+  text-align: center;
+}
+.panel-blocked-line { font-size: 15px; line-height: 1.4; color: var(--fg-muted); }
 .reply-banner {
   display: flex;
   align-items: center;
@@ -1342,12 +1361,16 @@ html.theme-light .name-7 { color: #45602A; }
       "notice"
       "content";
   }
+  .topbar { border-right: 0; }
   .sidebar,
   .main { grid-area: content; border-right: 0; }
   .app.viewing-chat .sidebar { display: none; }
   .app:not(.viewing-chat) .main { display: none; }
+  /* An open chat is the whole screen under its own bar, which leads with
+     the way back: the list's bar would be a second one over it. */
+  .app.viewing-chat .topbar { display: none; }
   .app.viewing-chat .icon-btn-only-mobile { display: inline-grid; }
-  .app.viewing-chat .topbar { padding-left: 4px; }
+  .app.viewing-chat .panel-header { padding-left: 4px; }
   #split-btn { display: none; }
   /* Back and the chat header move between chats on a phone; tabs would
      only add a third bar above the messages. */

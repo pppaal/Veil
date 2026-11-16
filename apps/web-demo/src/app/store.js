@@ -32,6 +32,7 @@ export function createStore({ mutedConversations = [], soundsEnabled = false } =
     searches: new Map(), // convId -> { open, query, idx }
     scrollTops: new Map(), // convId -> last scrollTop of its message list
     muted: muteMap(mutedConversations), // convId -> end of the mute (ms) or null
+    blocked: null, // userIds this account blocked, as the server last listed them; null until it has
     archives: [], // Kakao archive sidebar rows (src/platform/persist.js kakaoArchiveMeta)
     soundsEnabled,
   };
@@ -56,6 +57,8 @@ export function createStore({ mutedConversations = [], soundsEnabled = false } =
     isOnScreen: (convId) => convId === state.activeConv || convId === state.secondaryConv,
     // Whether the conversation's notifications are off right now.
     isMuted: (convId) => isMutedAt(state.muted, convId, Date.now()),
+    // Whether this account blocked the user, as far as this browser knows.
+    isBlocked: (userId) => Boolean(userId && state.blocked?.has(userId)),
 
     // A message of a conversation, from its loaded list or as its last message.
     findMessage(convId, messageId) {
@@ -99,6 +102,7 @@ export function createStore({ mutedConversations = [], soundsEnabled = false } =
       state.searches.clear();
       state.scrollTops.clear();
       state.typing.clear();
+      state.blocked = null;
     },
   };
 }

@@ -21,8 +21,9 @@ const NEAR_BOTTOM_PX = 120;
 // messageList, composer, keyChangeBanner, safetyDialog, panelSearch: the
 // views a panel is made of; reportDialog: what the menu's Report opens;
 // messages: src/app/services/messages.js; safety:
-// src/app/services/safety.js; confirm: src/ui/confirm.js.
-export function createChatView({ store, stack, messages, messageList, composer, keyChangeBanner, safetyDialog, panelSearch, reportDialog, safety, confirm }) {
+// src/app/services/safety.js; confirm: src/ui/confirm.js; backToList: a
+// phone's way from the chat to the list (src/ui/views/tabs.js).
+export function createChatView({ store, stack, messages, messageList, composer, keyChangeBanner, safetyDialog, panelSearch, reportDialog, safety, confirm, backToList }) {
   const { state } = store;
   const readMarked = new Set(); // message ids this session marked read
   const observers = new Map(); // convId -> IntersectionObserver
@@ -108,10 +109,18 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     return badge;
   }
 
+  // On a phone the chat takes the whole screen and the list's bar is
+  // hidden, so the chat's own bar leads with the way back (app.css shows
+  // the button only there), as Signal, WhatsApp and Telegram do. Only the
+  // main panel has it.
   function header(conv, peer, directPeer, legacyIdentity) {
     const sub = subtitle(conv, peer);
     const muted = store.isMuted(conv.id);
+    const back = conv.id === state.activeConv
+      ? iconButton('back', t('shell.back'), { class: 'icon-btn icon-btn-only-mobile panel-back', id: 'back-to-list', onclick: backToList })
+      : null;
     return el('div', { class: 'panel-header' }, [
+      back,
       avatarFor(peer?.handle ?? '?', 'sm'),
       el('div', { class: 'panel-title' }, [
         el('div', { class: 'panel-title-row' }, [
@@ -130,6 +139,17 @@ export function createChatView({ store, stack, messages, messageList, composer, 
           onclick: (event) => chatMenu.open(event.currentTarget, conv.id, directPeer),
         }),
       ]),
+    ]);
+  }
+
+  // Where the composer was, while this account blocks the peer: one line
+  // and the way back (WhatsApp's "You blocked this contact", mobile's
+  // blocked chat). Unblock asks nothing: it is undone as easily.
+  function blockedBar(peer) {
+    const handle = shownHandle(peer.handle);
+    return el('div', { class: 'panel-blocked' }, [
+      el('span', { class: 'panel-blocked-line' }, [t('chat.blockedLine', { handle })]),
+      el('button', { class: 'text-btn', type: 'button', onclick: () => safety.unblock(peer.userId, handle) }, [t('chat.unblock')]),
     ]);
   }
 
@@ -157,6 +177,10 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     // server issues) opens and sends nothing until the user chooses to talk
     // to that account.
     const directPeer = stack.peerOf(conv.id);
+    // Whom this account blocked is asked once a session, the first time a
+    // chat with someone is drawn; the answer redraws it.
+    if (directPeer) safety.loadBlocked();
+    const blocked = Boolean(directPeer && store.isBlocked(directPeer.userId));
     const keyChanged = Boolean(directPeer && stack.trust.pendingChange(directPeer.userId));
     const hold = directPeer ? stack.bindings.hold(conv.id, directPeer) : null;
     const legacyIdentity = isLegacyIdentity(state.me);
@@ -175,11 +199,13 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     }
     const list = messageList.render(convId, { shown, reactions, peerHandle: peer?.handle, group: !directPeer });
     list.addEventListener('scroll', () => state.scrollTops.set(convId, list.scrollTop));
-    const { node: composerNode, textarea } = composer.render(convId, {
-      frozen: legacyIdentity || !directPeer || Boolean(hold),
-      placeholder,
-      peerHandle: peer?.handle,
-    });
+    const { node: composerNode, textarea } = blocked
+      ? { node: blockedBar(directPeer), textarea: null }
+      : composer.render(convId, {
+        frozen: legacyIdentity || !directPeer || Boolean(hold),
+        placeholder,
+        peerHandle: peer?.handle,
+      });
     const panel = el('div', { class: 'panel', dataset: { conv: convId } }, [
       header(conv, peer, directPeer, legacyIdentity),
       hold ? keyChangeBanner.renderHold(convId, directPeer, hold) : null,
@@ -193,7 +219,7 @@ export function createChatView({ store, stack, messages, messageList, composer, 
       list.scrollTop = followBottom ? list.scrollHeight : scrollTop;
       if (state.focusClaims.has(convId) && state.activeConv === convId) {
         state.focusClaims.delete(convId);
-        textarea.focus();
+        textarea?.focus();
       }
     });
     if (store.isOnScreen(convId)) requestAnimationFrame(() => observeReads(convId, list));

@@ -83,6 +83,39 @@ test.describe('blocking', () => {
     expectNoErrors(alice, bob);
   });
 
+  // As mobile: the composer's place holds one line and Unblock, and the
+  // menu offers Unblock where Block was. It holds after a reload, from the
+  // server's list.
+  test('a blocked chat says so where the composer was, and its menu offers Unblock in place of Block', async () => {
+    const { page } = alice;
+    await chooseChatMenuItem(alice, 'Block');
+    await page.click('#confirm-ok');
+    await expect(toast(alice, `@${bob.handle} blocked`)).toBeVisible();
+    const bar = page.locator('.panel .panel-blocked');
+    await expect(bar).toContainText(`You blocked @${bob.handle}.`);
+    await expect(page.locator('.panel .panel-input')).toHaveCount(0);
+
+    await page.locator('.panel-header .chat-menu-btn').first().click();
+    await expect(page.locator('.chat-menu .menu-item')).toHaveText(['Mute notifications', 'Unblock', 'Report…', 'Clear chat history…']);
+    await expect(page.locator('.chat-menu .menu-danger')).toHaveText(['Clear chat history…']);
+    await page.locator('.panel-header .chat-menu-btn').first().click();
+    await expect(page.locator('.chat-menu')).toHaveCount(0);
+
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.locator('.conv-item', { hasText: `@${bob.handle}` }).click();
+    await expect(page.locator('.panel .panel-blocked')).toContainText(`You blocked @${bob.handle}.`);
+
+    // Unblock asks nothing: it is undone as easily.
+    await page.locator('.panel .panel-blocked button', { hasText: 'Unblock' }).click();
+    await expect(toast(alice, `@${bob.handle} unblocked`)).toBeVisible();
+    await expect(page.locator('.panel .panel-blocked')).toHaveCount(0);
+    await expect(page.locator('.panel .panel-input textarea')).toBeVisible();
+    await page.locator('.panel-header .chat-menu-btn').first().click();
+    await expect(page.locator('.chat-menu .menu-item')).toHaveText(['Mute notifications', 'Report…', 'Block…', 'Clear chat history…']);
+    await page.locator('.panel-header .chat-menu-btn').first().click();
+    expectNoErrors(alice);
+  });
+
   test('an unblock the server refuses keeps the row', async () => {
     await chooseChatMenuItem(alice, 'Block');
     await alice.page.click('#confirm-ok');

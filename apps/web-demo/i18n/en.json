@@ -105,6 +105,8 @@
   "chat.report": "Report…",
   "chat.block": "Block…",
   "chat.clear": "Clear chat history…",
+  "chat.unblock": "Unblock",
+  "chat.blockedLine": "You blocked @{handle}.",
   "chat.searchPlaceholder": "Search this chat",
   "chat.searchPosition": "{index} of {count}",
   "chat.searchNoResults": "No results",

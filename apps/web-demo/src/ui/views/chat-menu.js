@@ -1,6 +1,8 @@
 // The chat header's ⋮ menu: mute (for a set time or for good) or unmute,
 // then report, block and clearing this browser's copy of the chat, the last
 // two in red. Report and block need the one other member of a direct chat.
+// With that member blocked, Unblock (no confirm: it is undone as easily)
+// follows the mute, as on mobile, and Block is not offered.
 
 import { t } from '../../../i18n/i18n.js';
 import { shownHandle } from '../../domain/handles.js';
@@ -66,19 +68,17 @@ export function createChatMenu({ store, safety, reportDialog, confirm, clearHist
 
   function items(convId, peer) {
     const muted = store.isMuted(convId);
+    const blocked = Boolean(peer && store.isBlocked(peer.userId));
     return [
       muted
         ? item(t('mute.unmute'), () => safety.setMute(convId, null))
         : item(t('mute.title'), () => showMuteChoices(convId), { keepOpen: true }),
+      blocked ? item(t('chat.unblock'), () => safety.unblock(peer.userId, shownHandle(peer.handle))) : null,
       separator(),
-      ...(peer
-        ? [
-          item(t('chat.report'), () => reportDialog.open(convId, null, peer)),
-          item(t('chat.block'), () => block(peer), { danger: true }),
-        ]
-        : []),
+      peer ? item(t('chat.report'), () => reportDialog.open(convId, null, peer)) : null,
+      peer && !blocked ? item(t('chat.block'), () => block(peer), { danger: true }) : null,
       item(t('chat.clear'), () => clearHistory(convId), { danger: true }),
-    ];
+    ].filter(Boolean);
   }
 
   return {

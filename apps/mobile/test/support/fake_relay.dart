@@ -87,7 +87,8 @@ class FakeRelay {
 
   /// Handles the relay lists some accounts under, by the handle of the
   /// party it lies to: {viewer: {real handle: listed handle}}. The listing
-  /// keeps each member's real user id, as a relay that relabels does.
+  /// keeps each member's real user id, as a relay that relabels does. It
+  /// covers conversation members and the viewer's blocked accounts.
   final Map<String, Map<String, String>> listedHandles = {};
 
   /// Signed-prekey bundles devices published with PUT /keys/signed-prekey.
@@ -627,13 +628,20 @@ class FakeRelayClient extends VeilApiClient {
 
   // The safety routes, as SafetyService answers them.
 
+  // The handle the relay lists [handle]'s account under to this party.
+  String _listed(String handle) => relay.listedHandles[me.handle]?[handle] ?? handle;
+
   @override
   Future<Map<String, dynamic>> listBlockedUsers(String accessToken) async {
     final blocked = relay.blocks[me.userId] ?? const <String, DateTime>{};
     return {
       'items': [
         for (final MapEntry(key: userId, value: at) in blocked.entries.toList().reversed)
-          {'userId': userId, 'handle': relay.partyByUserId(userId)?.handle ?? '', 'blockedAt': at.toIso8601String()},
+          {
+            'userId': userId,
+            'handle': _listed(relay.partyByUserId(userId)?.handle ?? ''),
+            'blockedAt': at.toIso8601String(),
+          },
       ],
     };
   }
@@ -645,7 +653,7 @@ class FakeRelayClient extends VeilApiClient {
         (throw VeilApiException('User not found', statusCode: 404, code: 'not_found'));
     final at = relay.blocks.putIfAbsent(me.userId, () => {}).putIfAbsent(userId, relay.now);
     return {
-      'blocked': {'userId': userId, 'handle': target.handle, 'blockedAt': at.toIso8601String()},
+      'blocked': {'userId': userId, 'handle': _listed(target.handle), 'blockedAt': at.toIso8601String()},
     };
   }
 

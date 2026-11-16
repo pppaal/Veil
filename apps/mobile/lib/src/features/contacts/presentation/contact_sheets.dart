@@ -11,6 +11,7 @@ import '../../safety/data/abuse_reports.dart';
 import '../../safety/data/safety_providers.dart';
 import '../../safety/presentation/block_actions.dart';
 import '../../safety/presentation/report_sheet.dart';
+import '../data/contact_names.dart';
 import '../data/contacts_providers.dart';
 
 // The sheets of the contacts tab: adding a contact, what to do with one,
@@ -187,20 +188,32 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
     return userId;
   }
 
+  // What Report, Block and Unblock call the account [userId] they reach:
+  // the name every other screen gives it (PeerNames.accountName), else
+  // "@handle", as a lying server can put another account under the
+  // handle. While the nickname names no account yet, it names the contact,
+  // as the sheet's header does.
+  String nameOf(String userId) {
+    final nickname = ref.read(contactNameBookProvider).nicknames[contact.handle.toLowerCase()];
+    if (nickname != null && nickname.userId == null) return contact.title;
+    return ref.read(safetyAccountsProvider).knownNameFor(userId: userId, handle: contact.handle) ??
+        '@${contact.handle}';
+  }
+
   Future<void> report() async {
     final userId = await account();
     if (userId == null || !context.mounted) return;
     await showReportSheet(
       context,
       ReportTarget(userId: userId, handle: contact.handle, offerBlock: true),
-      name: contact.title,
+      name: nameOf(userId),
     );
   }
 
   Future<void> block() async {
     final userId = await account();
     if (userId == null || !context.mounted) return;
-    await confirmAndBlock(context, userId: userId, handle: contact.handle, name: contact.title, announce: true);
+    await confirmAndBlock(context, userId: userId, handle: contact.handle, name: nameOf(userId), announce: true);
   }
 
   Future<void> startChat() async {
@@ -273,7 +286,7 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
                 trailing: noChevron,
                 onTap: () {
                   close();
-                  unblockAccount(context, userId: blocked.userId, name: contact.title, announce: true);
+                  unblockAccount(context, userId: blocked.userId, name: nameOf(blocked.userId), announce: true);
                 },
               )
             else

@@ -637,7 +637,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsDeleteAccountBody.
   ///
   /// In en, this message translates to:
-  /// **'This deletes your account, messages and contacts from this phone and the server, and removes you from your groups. It can\'t be undone.'**
+  /// **'This deletes your account, messages and contacts from this phone and the server, and the groups you created, for everyone in them. It can\'t be undone.'**
   String get settingsDeleteAccountBody;
 
   /// No description provided for @settingsDeleteAccountAction.

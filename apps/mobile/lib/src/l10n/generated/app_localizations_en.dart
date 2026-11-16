@@ -335,7 +335,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDeleteAccountBody =>
-      'This deletes your account, messages and contacts from this phone and the server, and removes you from your groups. It can\'t be undone.';
+      'This deletes your account, messages and contacts from this phone and the server, and the groups you created, for everyone in them. It can\'t be undone.';
 
   @override
   String get settingsDeleteAccountAction => 'Delete account';

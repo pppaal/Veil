@@ -46,8 +46,10 @@ words:
 - The confirm dialog of Sign out: "This signs this phone out and erases Veil
   from it. You lose the account for good."
 - The confirm dialog of Delete account: "This deletes your account, messages
-  and contacts from this phone and the server, and removes you from your
-  groups. It can't be undone."
+  and contacts from this phone and the server, and the groups you created,
+  for everyone in them. It can't be undone." (The server deletes every group
+  the account owns, AccountService.deleteAccount, and neither app offers to
+  hand a group over first.)
 - App lock setup, for the PIN: "If you forget your PIN, there's no way to
   reset it."
 

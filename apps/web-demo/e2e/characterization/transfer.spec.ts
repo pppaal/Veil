@@ -56,7 +56,7 @@ test.describe('device transfer', () => {
     await expect(alice.page.locator('#transfer-old-approve')).toBeHidden();
     await expect(alice.page.locator('#transfer-old-dialog .steps li')).toHaveText([
       '1. On the new device, open Veil and choose Move from another device.',
-      '2. Paste this code there within 5 minutes.',
+      '2. Paste this code there.',
       '3. Check the fingerprint, then approve here.',
     ]);
     await expect(alice.page.locator('#transfer-old-copy')).toHaveText('Copy code');

@@ -49,8 +49,8 @@ class VeilConfig {
 
   static bool get hasApi => apiBaseUrl.isNotEmpty;
 
-  /// Why this build cannot run, or null. Bootstrap, the route guard and the
-  /// security status screen all stop on it.
+  /// Why this build cannot run, or null. Bootstrap and the route guard both
+  /// stop on it.
   static String? get runtimeConfigurationError => validateRuntimeConfiguration(
         apiBaseUrl: apiBaseUrl,
         realtimeUrl: realtimeUrl,

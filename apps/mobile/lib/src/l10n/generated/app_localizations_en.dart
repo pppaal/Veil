@@ -620,7 +620,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String chatAccountHoldOtherBody(String handle) {
-    return 'This isn\'t the @$handle you talked to before. Nothing is sent or opened until you confirm.';
+    return 'This isn\'t the @$handle you talked to before. New messages stay locked and nothing is sent until you confirm.';
   }
 
   @override
@@ -628,14 +628,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatAccountHoldUnissuedBody =>
-      'It may only look like someone you know. Nothing is sent or opened until you confirm.';
+      'It may only look like someone you know. New messages stay locked and nothing is sent until you confirm.';
 
   @override
   String get chatAccountHoldOwnTitle => 'Another account under your handle';
 
   @override
   String chatAccountHoldOwnBody(String handle) {
-    return 'No one else can have @$handle, so the list this phone got was changed. Nothing is sent or opened until you confirm.';
+    return 'No one else can have @$handle, so the list this phone got was changed. New messages stay locked and nothing is sent until you confirm.';
   }
 
   @override

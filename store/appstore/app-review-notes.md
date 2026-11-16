@@ -44,8 +44,8 @@ No demo credentials are needed because **there are no credentials.** The flow:
 
 1. **Install and launch the app.** Accept the privacy notice ("Agree and
    continue"), then read Before you start (no backup, no recovery) and tick its
-   checkbox. On **Choose a handle**, pick any free handle (lowercase letters,
-   digits and underscores, for example `reviewer_a`). The app then
+   checkbox. On **Choose a handle**, pick any free handle (3 to 32 lowercase
+   letters, digits, dots and underscores, for example `reviewer_a`). The app then
    creates the account's keys on the phone (X25519/Ed25519 key pairs) and
    registers only the public keys and the handle. No phone number, email, SMS
    code, or password is requested.

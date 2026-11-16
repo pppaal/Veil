@@ -341,7 +341,7 @@ void main() {
       body: (world) async {
         expect(onScreen(tester, find.text('A different account')).height, greaterThan(0));
         expect(onScreen(tester, find.text('Talk to this account')).height, greaterThan(0));
-        expect(find.textContaining('Nothing is sent or opened until you confirm'), findsOneWidget);
+        expect(find.textContaining('New messages stay locked and nothing is sent until you confirm'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

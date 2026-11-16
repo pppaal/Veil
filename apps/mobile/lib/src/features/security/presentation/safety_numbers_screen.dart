@@ -580,9 +580,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
 
   // The identity this conversation is held back on: its number, which the
   // user compares before accepting it, and the decision right under it. A
-  // verified contact is accepted only through a matching scanned code or an
+  // verified contact is accepted only through a matching pasted code or an
   // explicit affirmation that the new number was compared, never with a
-  // single tap. The pinned number follows for reference.
+  // single tap.
   List<Widget> _pendingChangeSection(
     BuildContext context,
     SafetyDetailData data,

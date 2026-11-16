@@ -314,7 +314,7 @@ test.describe('another account under a handle this device knows', () => {
     const banner = page.locator('.account-conflict-banner');
     await expect(banner).toBeVisible();
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `This isn't the @${bob.handle} you talked to before. Nothing is sent or opened until you confirm.`,
+      `This isn't the @${bob.handle} you talked to before. New messages stay locked and nothing is sent until you confirm.`,
     );
     await expect(page.locator('.panel-input textarea')).toHaveAttribute('placeholder', 'Confirm the account above to send');
     await expect(page.locator('.panel-input textarea')).toBeDisabled();
@@ -393,7 +393,7 @@ test.describe('another account under a lookalike of a handle this device knows',
     const banner = page.locator('.account-conflict-banner.unissued-handle');
     await expect(banner).toBeVisible();
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `No account can have the handle ${shown}, so it may only look like someone you know. Nothing is sent or opened until you confirm.`,
+      `No account can have the handle ${shown}, so it may only look like someone you know. New messages stay locked and nothing is sent until you confirm.`,
     );
     await expect(page.locator('.panel-input textarea')).toBeDisabled();
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
@@ -467,7 +467,7 @@ test.describe('another account under our own handle', () => {
     const banner = page.locator('.account-conflict-banner.own-handle');
     await expect(banner).toBeVisible();
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `Another account is listed under your handle, @${alice.handle}. Nothing is sent or opened until you confirm.`,
+      `Another account is listed under your handle, @${alice.handle}. New messages stay locked and nothing is sent until you confirm.`,
     );
     await expect(page.locator('.panel-input textarea')).toBeDisabled();
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();

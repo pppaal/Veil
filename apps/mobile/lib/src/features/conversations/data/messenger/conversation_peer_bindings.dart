@@ -95,7 +95,9 @@ class ConversationPeerBindings {
   // What [_bound] resolved to, with every binding recorded since, for the
   // views to read synchronously ([boundNow]).
   Map<String, ConversationPeer> _boundNow = const {};
-  // Whether [_boundNow] holds what the stored document says ([read]).
+  // Whether the stored document has been read into [_boundNow] ([read]).
+  // One that cannot be decoded reads as none, so [_boundNow] is then empty
+  // while the document may still hold bindings.
   bool _boundRead = false;
   // Set when the stored document cannot be read. Nothing is written over it
   // then: that would drop every binding it holds.
@@ -131,7 +133,9 @@ class ConversationPeerBindings {
 
   /// Whether [boundNow] is what was read for this identity: false until the
   /// first read ends, and while every read so far threw. Until then a
-  /// handle [boundNow] leaves out may still be bound.
+  /// handle [boundNow] leaves out may still be bound. A stored document
+  /// that cannot be decoded is read as holding none: [boundNow] is empty
+  /// and this is true, as the holds fail open for such a document too.
   bool get read => _boundRead;
 
   /// Records whom each conversation in [peers] is with, unless it is bound

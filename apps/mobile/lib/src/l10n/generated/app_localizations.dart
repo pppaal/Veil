@@ -1135,7 +1135,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatAccountHoldOtherBody.
   ///
   /// In en, this message translates to:
-  /// **'This isn\'t the @{handle} you talked to before. Nothing is sent or shown until you confirm.'**
+  /// **'This isn\'t the @{handle} you talked to before. Nothing is sent or opened until you confirm.'**
   String chatAccountHoldOtherBody(String handle);
 
   /// No description provided for @chatAccountHoldUnissuedTitle.
@@ -1147,7 +1147,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatAccountHoldUnissuedBody.
   ///
   /// In en, this message translates to:
-  /// **'It may only look like someone you know. Nothing is sent or shown until you confirm.'**
+  /// **'It may only look like someone you know. Nothing is sent or opened until you confirm.'**
   String get chatAccountHoldUnissuedBody;
 
   /// No description provided for @chatAccountHoldOwnTitle.
@@ -1159,7 +1159,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatAccountHoldOwnBody.
   ///
   /// In en, this message translates to:
-  /// **'No one else can have @{handle}, so the list this phone got was changed. Nothing is sent or shown until you confirm.'**
+  /// **'No one else can have @{handle}, so the list this phone got was changed. Nothing is sent or opened until you confirm.'**
   String chatAccountHoldOwnBody(String handle);
 
   /// No description provided for @chatAccountHoldOwnConfirmTitle.

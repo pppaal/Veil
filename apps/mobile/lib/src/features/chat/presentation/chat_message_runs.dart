@@ -68,9 +68,13 @@ class ChatLoadingState extends StatelessWidget {
 /// with no line: "Today", "Yesterday", a weekday within the week, then the
 /// date.
 class ChatDayDivider extends StatelessWidget {
-  const ChatDayDivider({super.key, required this.day, this.first = false});
+  const ChatDayDivider({super.key, required this.day, required this.now, this.first = false});
 
   final DateTime day;
+
+  /// The time on the phone's clock (wallClockProvider), which [day] is
+  /// said relative to.
+  final DateTime now;
 
   /// The first thing in the list, which needs less space above it.
   final bool first;
@@ -83,7 +87,7 @@ class ChatDayDivider extends StatelessWidget {
       child: Semantics(
         header: true,
         child: Text(
-          chatDayLabel(l10n, day, now: DateTime.now()),
+          chatDayLabel(l10n, day, now: now),
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: context.veilPalette.textMuted,

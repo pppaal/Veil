@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
@@ -28,6 +27,7 @@ import 'chat_status_banners.dart';
 import 'disappearing_timer_sheet.dart';
 import 'group_sender_names.dart';
 import 'message_expiration.dart';
+import 'message_time.dart';
 import 'navigation_target_jump.dart';
 import 'presence_selector.dart';
 import 'typing_indicator.dart';
@@ -64,7 +64,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         ChatSafetyMenu {
   final _composerFocusNode = FocusNode();
   final _scrollController = ScrollController();
-  final _sentAtFormat = DateFormat('HH:mm');
   StreamSubscription<PlatformSecurityEvent>? _securityEventSub;
   Duration? _messageTtl;
   int? _observedConversationTimer;
@@ -227,7 +226,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       scrollController: _scrollController,
       messageKeys: messageKeys,
       highlightedMessageId: currentSearchHit ?? highlightedMessageId,
-      sentAtFormat: _sentAtFormat,
+      sentAtFormat: MessageTimeFormat.of(context),
       loadFailed: _loadFailed,
       onRetryLoad: () => unawaited(_loadConversationState()),
       searchQuery: hasSearchQuery ? searchController.text : null,

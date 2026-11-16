@@ -10,7 +10,8 @@ import '../../support/fake_relay.dart';
 import 'layout_world.dart';
 
 // What the layout cases show: the chats of an ordinary Tuesday morning,
-// April 7, 2026, with the names and the short lines of people texting.
+// April 7, 2026, with the names and the short lines of people texting, seen
+// at [layoutNow], a little after the last of them.
 // Sam's chat is the one most cases open; its history from the evening
 // before holds the long message and the long link, above the first screen,
 // where a person scrolls up to them (the chat-room-history case). Priya's
@@ -73,6 +74,13 @@ void seedParties(FakeRelay relay, LayoutIdentities identities) {
     ));
   }
 }
+
+/// What the phone's clock reads in every case and every store shot
+/// (wallClockProvider): 10:20 that Tuesday, a few minutes after the last
+/// line of the morning. So the morning's chats show their times, Mia's
+/// "Yesterday" and tom_walsh's "Sat", and Sam's chat says "Yesterday" and
+/// "Today" over its days, on any day the gate runs.
+final DateTime layoutNow = DateTime.utc(2026, 4, 7, 10, 20);
 
 /// When a line was sent: April [day], 2026, at [hour]:[minute] in the
 /// gate's time zone (UTC), so the list and the bubbles read like a real
@@ -158,12 +166,14 @@ const _chat = [..._samsEvening, ..._samsMorning, ..._samsEnd];
 int get chatLineCount => _chat.length;
 
 // Every other chat, oldest first. Omar sent a photo and Alexandra a voice
-// message, neither with words; Lena's chat has no message yet.
+// message, neither with words; Lena's chat has no message yet. tom_walsh
+// last wrote on Saturday and Mia last night, so the list has older days
+// under the morning's times.
 const _others = <String, List<_Line>>{
   emptyChatPeerHandle: [],
-  'tom_walsh': [_Line(_At(8, 7), true, "what's the address again?")],
+  'tom_walsh': [_Line(_At(18, 40, day: 4), true, "what's the address again?")],
+  'mia': [_Line(_At(20, 15, day: 6), false, 'can you send the photos from saturday?')],
   'omar': [_Line(_At(8, 14), false, '', kind: MessageKind.image)],
-  'mia': [_Line(_At(8, 21), false, 'can you send the photos from saturday?')],
   'alexandra': [_Line(_At(8, 28), false, '', kind: MessageKind.voice)],
   timerChatPeerHandle: [
     _Line(_At(8, 30), true, 'You set disappearing messages to 1 day', kind: MessageKind.system),

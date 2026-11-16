@@ -112,7 +112,7 @@ class ConversationListPhone extends ConsumerWidget {
                           groupSender: _groupSender(ref, item, controller),
                         ),
                         // A chat with no message yet has no time to show.
-                        timestamp: item.lastEnvelope == null ? '' : view.timeFormat.format(item.updatedAt),
+                        timestamp: item.lastEnvelope == null ? '' : view.timeFormat.listDate(item.updatedAt, now: view.now),
                         semanticLabel: conversationRowSemantics(l10n, item, localUserId: localUserId),
                         unreadCount: item.unreadCount,
                         unreadLabel: item.unreadCount > 0 ? l10n.conversationsUnreadSemantics(item.unreadCount) : null,

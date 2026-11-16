@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../chat/presentation/message_time.dart';
 import '../data/conversation_models.dart';
 import '../data/veil_messenger_controller.dart';
 import 'conversation_list_labels.dart';
@@ -23,6 +23,7 @@ class ConversationListView {
     required this.archiveHasMore,
     required this.searchController,
     required this.timeFormat,
+    required this.now,
     required this.selectedConversationId,
     required this.onSelectConversation,
     required this.onSelectMessageResult,
@@ -38,7 +39,10 @@ class ConversationListView {
   final bool searchingArchive;
   final bool archiveHasMore;
   final TextEditingController searchController;
-  final DateFormat timeFormat;
+
+  /// How the rows say when their last message was sent, seen on [now].
+  final MessageTimeFormat timeFormat;
+  final DateTime now;
   final String? selectedConversationId;
   final ValueChanged<String> onSelectConversation;
   final ValueChanged<MessageSearchResult> onSelectMessageResult;
@@ -89,6 +93,7 @@ class MessageSearchResultTile extends StatelessWidget {
     required this.result,
     required this.query,
     required this.timeFormat,
+    required this.now,
     required this.onTap,
     this.conversation,
     this.localUserId,
@@ -99,7 +104,8 @@ class MessageSearchResultTile extends StatelessWidget {
 
   final MessageSearchResult result;
   final String query;
-  final DateFormat timeFormat;
+  final MessageTimeFormat timeFormat;
+  final DateTime now;
   final VoidCallback onTap;
 
   /// The chat the message is in, when this device still lists it.
@@ -147,7 +153,7 @@ class MessageSearchResultTile extends StatelessWidget {
                           ),
                           const SizedBox(width: VeilSpace.xs),
                           Text(
-                            messageDateLabel(result.sentAt, timeFormat, l10n.localeName),
+                            timeFormat.listDate(result.sentAt, now: now),
                             style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
                           ),
                         ],
@@ -207,6 +213,7 @@ List<Widget> messageSearchResultSection(BuildContext context, ConversationListVi
                 localUserId: view.session.userId,
                 query: view.searchController.text,
                 timeFormat: view.timeFormat,
+                now: view.now,
                 onTap: () => view.onSelectMessageResult(result),
               ),
             ),

@@ -179,6 +179,10 @@ class LayoutWorld {
       ? SecureStorageService(MemorySecureStore())
       : _PinSetStorage(MemorySecureStore());
   final LayoutMemoryCache cache = LayoutMemoryCache();
+
+  /// What the phone's clock reads (wallClockProvider): [layoutNow] unless a
+  /// test moves it.
+  DateTime now = layoutNow;
   late final LayoutRelayClient api;
   late final IdentityTrust trust;
   late final VeilMessengerController messenger;
@@ -337,6 +341,8 @@ class LayoutWorld {
       identityTrustProvider.overrideWithValue(trust),
       conversationCacheProvider.overrideWith((ref) async => null),
       appLockServiceProvider.overrideWithValue(AppLockService(const _Biometrics(), storage)),
+      // The seed's Tuesday morning, whatever day the case runs.
+      wallClockProvider.overrideWithValue(() => now),
       if (account == LayoutAccount.choosingPin) lockRequestedInSettingsProvider.overrideWith((ref) => true),
       localSecuritySnapshotProvider.overrideWith(
         (ref) async => const LocalSecuritySnapshot(

@@ -229,12 +229,10 @@ test.describe('a direct conversation', () => {
     await send(alice, 'regretted words');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toContain('regretted words');
     await chooseAction(alice, 'regretted words', 'Delete');
-    // The phone app does not act on a delete yet, so the dialog promises
-    // only what the server does.
+    // The phone app does not act on a delete yet, so the dialog says a
+    // copy already received may stay.
     await expect(alice.page.locator('#confirm-title')).toHaveText('Delete this message?');
-    await expect(alice.page.locator('#confirm-body')).toHaveText(
-      "It's removed from the server. Anyone who already received it may still see it.",
-    );
+    await expect(alice.page.locator('#confirm-body')).toHaveText('People who already got it may still see it.');
     await alice.page.click('#confirm-ok');
     const undo = toast(alice, 'Message deleted');
     await expect(undo).toBeVisible();

@@ -144,7 +144,7 @@
   "msg.copied": "Copied",
   "msg.cantEdit": "This message can't be edited",
   "msg.delete.title": "Delete this message?",
-  "msg.delete.body": "It's removed from the server. Anyone who already received it may still see it.",
+  "msg.delete.body": "People who already got it may still see it.",
   "msg.delete.confirm": "Delete",
   "msg.deleted": "Message deleted",
   "msg.undo": "Undo",

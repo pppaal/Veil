@@ -45,6 +45,10 @@ class BlockedAccounts extends ChangeNotifier {
   bool _loadFailed = false;
   bool _disposed = false;
 
+  // Moves on at every [clear]: an answer to a request made before it
+  // belongs to the account that was signed in then, and is dropped.
+  int _generation = 0;
+
   /// Newest block first, as the server lists them.
   List<BlockedAccount> get accounts => _accounts;
 
@@ -73,8 +77,10 @@ class BlockedAccounts extends ChangeNotifier {
     }
     _loading = true;
     _notify();
+    final generation = _generation;
     try {
       final response = await _api.listBlockedUsers(token);
+      if (generation != _generation) return;
       final items = response['items'];
       _accounts = [
         if (items is List)
@@ -84,10 +90,12 @@ class BlockedAccounts extends ChangeNotifier {
       _loaded = true;
       _loadFailed = false;
     } catch (_) {
-      _loadFailed = true;
+      if (generation == _generation) _loadFailed = true;
     } finally {
-      _loading = false;
-      _notify();
+      if (generation == _generation) {
+        _loading = false;
+        _notify();
+      }
     }
   }
 
@@ -97,8 +105,10 @@ class BlockedAccounts extends ChangeNotifier {
   Future<bool> block(String userId, {required String handle}) async {
     final token = _accessToken();
     if (token == null) return false;
+    final generation = _generation;
     try {
       final response = await _api.blockUser(token, userId);
+      if (generation != _generation) return false;
       final account = BlockedAccount.fromJson(response['blocked']) ??
           BlockedAccount(userId: userId, handle: handle, blockedAt: DateTime.now());
       _accounts = [account, ..._accounts.where((each) => each.userId != userId)];
@@ -115,8 +125,10 @@ class BlockedAccounts extends ChangeNotifier {
   Future<bool> unblock(String userId) async {
     final token = _accessToken();
     if (token == null) return false;
+    final generation = _generation;
     try {
       await _api.unblockUser(token, userId);
+      if (generation != _generation) return false;
       _accounts = [for (final account in _accounts) if (account.userId != userId) account];
       _notify();
       return true;
@@ -127,8 +139,10 @@ class BlockedAccounts extends ChangeNotifier {
 
   /// Forgets the list, as when the account signs out.
   void clear() {
+    _generation += 1;
     _accounts = const [];
     _loaded = false;
+    _loading = false;
     _loadFailed = false;
     _notify();
   }

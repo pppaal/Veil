@@ -41,6 +41,8 @@ class MuteStore {
     };
   }
 
+  Future<void> forget() => _store.delete(_documentKey);
+
   Future<void> write(Map<String, DateTime?> mutes) => _store.write(
         _documentKey,
         json.encode({
@@ -56,6 +58,8 @@ class MuteStore {
 /// with a push for that chat. The server has no route that lists mutes, so
 /// this device's list is the one the app shows. A mute takes effect once the
 /// server took it: the two never disagree about a chat this phone muted.
+/// The list belongs to the account signed in: [clear] forgets it when the
+/// account signs out or the device is wiped.
 class ConversationMutes extends ChangeNotifier {
   ConversationMutes({
     required IdentityKeyValueBackend store,
@@ -77,13 +81,20 @@ class ConversationMutes extends ChangeNotifier {
   Timer? _nextExpiry;
   bool _disposed = false;
 
-  /// Reads the mutes this device kept. Called once; later calls wait for
-  /// the first.
+  // Moves on at every [clear]: what a read or request started before it
+  // brings back belongs to the account that was signed in then, and is
+  // dropped.
+  int _generation = 0;
+
+  /// Reads the mutes this device kept. Called once (and again after a
+  /// [clear]); later calls wait for the first.
   Future<void> load() => _loading ??= _load();
 
   Future<void> _load() async {
+    final generation = _generation;
     try {
       final stored = await _store.read();
+      if (generation != _generation) return;
       _mutes = {...stored, ..._mutes};
       // What ended while the app was closed is forgotten for good.
       if (_dropExpired()) await _store.write(_mutes);
@@ -114,11 +125,13 @@ class ConversationMutes extends ChangeNotifier {
     final token = _accessToken();
     if (token == null) return false;
     final length = duration.length;
+    final generation = _generation;
     try {
       await _api.setConversationMute(token, conversationId, mutedForSeconds: length?.inSeconds, unmute: false);
     } catch (_) {
       return false;
     }
+    if (generation != _generation) return false;
     _mutes[conversationId] = length == null ? null : _clock().add(length);
     await _saved();
     return true;
@@ -130,14 +143,32 @@ class ConversationMutes extends ChangeNotifier {
     await load();
     final token = _accessToken();
     if (token == null) return false;
+    final generation = _generation;
     try {
       await _api.setConversationMute(token, conversationId, unmute: true);
     } catch (_) {
       return false;
     }
+    if (generation != _generation) return false;
     _mutes.remove(conversationId);
     await _saved();
     return true;
+  }
+
+  /// Forgets every mute, here and in the keystore, as when the account
+  /// signs out or the device is wiped: none of its chats stays muted, and
+  /// none is written back later. The next [load] reads the keystore again.
+  Future<void> clear() async {
+    _generation += 1;
+    _mutes = {};
+    _loading = null;
+    _scheduleExpiry();
+    _notify();
+    try {
+      await _store.forget();
+    } catch (_) {
+      // The wipe that signed the account out cleared the keystore already.
+    }
   }
 
   Future<void> _saved() async {

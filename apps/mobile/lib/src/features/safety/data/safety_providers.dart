@@ -29,14 +29,22 @@ final blockedAccountsProvider = ChangeNotifierProvider<BlockedAccounts>((ref) {
   return blocked;
 });
 
-/// The chats muted on this phone, kept in the keystore (wiped with the
-/// device's other local state).
+/// The chats muted on this phone, kept in the keystore, and forgotten (in
+/// memory too) when the account signs out or the device is wiped.
 final conversationMutesProvider = ChangeNotifierProvider<ConversationMutes>((ref) {
   final mutes = ConversationMutes(
     store: ref.read(secureStorageProvider).scoped(SecureScope.notifications),
     api: ref.read(apiClientProvider),
     accessToken: () => ref.read(appSessionProvider).accessToken,
   );
+  ref.listen<AppSessionState>(appSessionProvider, (previous, next) {
+    if (previous?.isAuthenticated == next.isAuthenticated) return;
+    if (next.isAuthenticated) {
+      unawaited(mutes.load());
+    } else {
+      unawaited(mutes.clear());
+    }
+  });
   unawaited(mutes.load());
   return mutes;
 });

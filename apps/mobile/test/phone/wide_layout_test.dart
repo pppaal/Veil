@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/app/router/main_tab_shell.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
@@ -235,6 +236,59 @@ void main() {
       expect(list.left, greaterThanOrEqualTo(rail.right));
       expect(list.width, ConversationListScreen.listPaneWidth);
       expect(chat.right, edge.width);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  // A window resized, or a tablet turned, across a breakpoint changes the
+  // frame around the open tab, not the tab: the list keeps its state, what
+  // was typed in its search and the chat that was open.
+  String searchText(WidgetTester tester) =>
+      tester.widget<TextField>(inList(find.byType(TextField))).controller!.text;
+
+  testWidgets('from rail to bar and back, the list keeps its state and its search', (tester) async {
+    const rail = PhoneSize(1100, 800, topInset: 0, bottomInset: 0);
+    const bar = PhoneSize(900, 800, topInset: 0, bottomInset: 0);
+    await withPhoneApp(tester, identities, size: rail, location: '/conversations', body: (world) async {
+      expect(find.byType(NavigationRail), findsOneWidget);
+      final list = tester.state(find.byType(ConversationListScreen));
+      await tester.enterText(inList(find.byType(TextField)), 'Sam');
+      await pumpFrames(tester);
+      for (final size in [bar, rail]) {
+        usePhoneView(tester, size);
+        await pumpFrames(tester);
+        final railShown = MainTabShell.usesRail(size.width);
+        expect(find.byType(NavigationRail), railShown ? findsOneWidget : findsNothing, reason: '${size.width}');
+        expect(find.byType(NavigationBar), railShown ? findsNothing : findsOneWidget, reason: '${size.width}');
+        expect(identical(tester.state(find.byType(ConversationListScreen)), list), isTrue,
+            reason: 'the list was built anew at ${size.width} px');
+        expect(searchText(tester), 'Sam', reason: '${size.width}');
+        expect(inList(find.text('Sam Rivera')), findsOneWidget);
+        expect(inList(find.text('Jonas Weber')), findsNothing, reason: 'still filtered at ${size.width} px');
+      }
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  testWidgets('from two panes to one and back, the chat that was open stays open', (tester) async {
+    const onePane = PhoneSize(1000, 800, topInset: 0, bottomInset: 0);
+    await withPhoneApp(tester, identities, size: wideSmall, location: '/conversations', body: (world) async {
+      final list = tester.state(find.byType(ConversationListScreen));
+      await tester.tap(inList(find.text('Jonas Weber')));
+      await pumpFrames(tester, frames: 4);
+      expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, timerChatConversationId);
+
+      usePhoneView(tester, onePane);
+      await pumpFrames(tester);
+      expect(find.byType(ChatRoomScreen), findsNothing, reason: 'one pane: the list is the screen');
+      expect(identical(tester.state(find.byType(ConversationListScreen)), list), isTrue);
+
+      usePhoneView(tester, wideSmall);
+      await pumpFrames(tester, frames: 4);
+      expect(identical(tester.state(find.byType(ConversationListScreen)), list), isTrue);
+      expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, timerChatConversationId);
+      expect(inChat(find.text('See you at nine.')), findsOneWidget);
+      expect(tester.widget<ConversationRow>(inList(find.widgetWithText(ConversationRow, 'Jonas Weber'))).selected, isTrue);
       expect(tester.takeException(), isNull);
     });
   });

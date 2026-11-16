@@ -95,7 +95,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
             : null,
         child: ListView(
           padding: const EdgeInsets.only(top: VeilSpace.xl, bottom: VeilSpace.xl),
-          children: _setUp(context),
+          children: _setUp(context, cancellable: cancellable),
         ),
       );
       if (!cancellable) return setUp;
@@ -246,15 +246,18 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
   }
 
   // No PIN yet: choose one, enter it again, turn the lock on. What the PIN
-  // is and what forgetting it means is the group's footer.
-  List<Widget> _setUp(BuildContext context) {
+  // is and what forgetting it means is the group's footer. Opened from
+  // Settings ([cancellable]), biometrics are not offered: they would only
+  // unlock, as Cancel does, and leave the lock off. The lock the app engages
+  // by itself offers them as it always has.
+  List<Widget> _setUp(BuildContext context, {required bool cancellable}) {
     final l10n = AppLocalizations.of(context);
     final appLock = ref.read(appLockServiceProvider);
     final pin = _pinController.text.trim();
     final confirmPin = _confirmPinController.text.trim();
     final formatError = pin.isEmpty || appLock.isValidPinFormat(pin) ? null : l10n.appLockFieldPinError;
     final mismatch = confirmPin.isEmpty || pin == confirmPin ? null : l10n.appLockConfirmMismatch;
-    final biometrics = _biometricsButton(l10n);
+    final biometrics = cancellable ? null : _biometricsButton(l10n);
     final pinError = formatError ?? _attemptError(l10n);
     // The two labels share one width, so the fields start in one column.
     // An error line under a field keeps the row's 11 below it, off the

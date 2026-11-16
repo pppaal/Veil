@@ -126,11 +126,15 @@ void main() {
     expect(await alice.bodies('grp'), containsAll(['group hello from bob', 'group hello from alice']));
 
     // The 1:1 stays cut: with no session yet, Bob cannot even fetch Alice's
-    // keys, and nothing he sends there reaches the relay.
+    // keys, and nothing he sends there reaches the relay. The send fails
+    // where he can see it, as the dialog says: here as an error, since
+    // nothing could be encrypted; with a session, as not sent (above).
     await bob.controller.sendText(conversationId: conv, body: 'direct');
     await settle();
     expect(relay.conversations[conv]!.messages, isEmpty);
     expect(await alice.bodies(conv), isEmpty);
+    expect(bob.controller.messagesFor(conv), isEmpty);
+    expect(bob.controller.errorMessage, isNotNull, reason: 'the failed send was not shown');
   });
 
   test('the blocked list is read from the server, newest first', () async {

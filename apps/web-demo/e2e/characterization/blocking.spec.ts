@@ -54,6 +54,8 @@ test.describe('blocking', () => {
   test('a block refuses their sends, and unblocking from Settings lets the retry through', async () => {
     await chooseAction(alice, 'hi alice', 'Block');
     await expect(alice.page.locator('#confirm-title')).toHaveText(`Block @${bob.handle}?`);
+    // Not a silent block: the dialog says what Bob sees below.
+    await expect(alice.page.locator('#confirm-body')).toContainText("They aren't told, but what they send you directly fails");
     await alice.page.click('#confirm-ok');
     await expect(toast(alice, `@${bob.handle} blocked`)).toBeVisible();
 

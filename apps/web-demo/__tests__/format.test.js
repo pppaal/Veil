@@ -50,7 +50,7 @@ describe('dayLabel', () => {
   it('names the weekday for the six days before yesterday', () => {
     expect(dayLabel(new Date(2026, 3, 13, 9), today)).toBe('Monday');
     expect(dayLabel(new Date(2026, 3, 9, 9), today)).toBe('Thursday');
-    expect(dayLabel(new Date(2026, 3, 8, 9), today)).toBe('Apr 8');
+    expect(dayLabel(new Date(2026, 3, 8, 9), today)).toBe('April 8');
   });
 
   it('calls a message stamped ahead of this clock today, as its Chats row shows its time', () => {
@@ -58,11 +58,11 @@ describe('dayLabel', () => {
   });
 
   it('falls back to the month and day in the same year', () => {
-    expect(dayLabel(new Date(2026, 0, 5), today)).toBe('Jan 5');
+    expect(dayLabel(new Date(2026, 0, 5), today)).toBe('January 5');
   });
 
   it('includes the year for cross-year dates', () => {
-    expect(dayLabel(new Date(2024, 11, 31), today)).toBe('Dec 31, 2024');
+    expect(dayLabel(new Date(2024, 11, 31), today)).toBe('December 31, 2024');
   });
 });
 

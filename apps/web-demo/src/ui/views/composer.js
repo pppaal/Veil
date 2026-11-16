@@ -115,7 +115,22 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
       if (message && text && text !== message.displayText) return send.edit(message, convId, text);
       return null;
     }
-    return send.sendText(convId, textarea.value.trim(), { onSealed: () => clearBox(textarea) });
+    const text = textarea.value.trim();
+    const replyId = state.replyDrafts.get(convId)?.id ?? null;
+    return send.sendText(convId, text, {
+      onSealed: () => {
+        // An edit begun while this was sealing set aside the text being sent
+        // (and the reply it quotes) to give back when the edit ends. It is
+        // sent now: nothing of it comes back, and the box keeps the edit.
+        const editing = state.editing.get(convId);
+        if (!editing) {
+          clearBox(textarea);
+          return;
+        }
+        if (editing.stashed.text.trim() === text) editing.stashed.text = '';
+        if (replyId && editing.stashed.reply?.id === replyId) editing.stashed.reply = null;
+      },
+    });
   }
 
   // The bar above the box while a reply or an edit is under way, with its

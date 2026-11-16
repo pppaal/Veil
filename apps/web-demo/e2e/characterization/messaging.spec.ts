@@ -407,4 +407,37 @@ test.describe('an edit and the unsent draft', () => {
     await expect(alice.page.locator('.panel-input .send-btn')).toBeEnabled();
     expectNoErrors(alice, bob);
   });
+
+  // An edit begun while a send is still being sealed (slow here, as a first
+  // message's key fetch can make it): what is being sent, and the reply it
+  // quotes, are not set aside to come back after the edit, where Enter would
+  // send them again. The box keeps the edit meanwhile.
+  test('a message still being sealed when an edit begins does not come back after it', async () => {
+    await type('');
+    await alice.page.evaluate(() => {
+      const subtle = crypto.subtle;
+      const encrypt = subtle.encrypt.bind(subtle);
+      const slow = window as unknown as { sealDelayMs: number };
+      slow.sealDelayMs = 2_000;
+      subtle.encrypt = (async (...args: Parameters<SubtleCrypto['encrypt']>) => {
+        await new Promise((resolve) => setTimeout(resolve, slow.sealDelayMs));
+        return encrypt(...args);
+      }) as SubtleCrypto['encrypt'];
+    });
+    await chooseAction(alice, 'see you at 9', 'Reply');
+    await type('on my way', { enter: true });
+    await chooseAction(alice, 'see you at 9', 'Edit');
+    await expect(box()).toHaveValue('see you at 9');
+    await alice.page.evaluate(() => {
+      (window as unknown as { sealDelayMs: number }).sealDelayMs = 0;
+    });
+    await expect(rowOf(alice, 'on my way')).toHaveCount(1, { timeout: 15_000 });
+    await expect(box()).toHaveValue('see you at 9');
+
+    await box().press('Escape');
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(0);
+    await expect(box()).toHaveValue('');
+    await expect(alice.page.locator('.reply-banner')).toHaveCount(0);
+    expectNoErrors(alice, bob);
+  });
 });

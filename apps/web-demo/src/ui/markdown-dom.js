@@ -13,7 +13,11 @@ const FENCE_LANG_RE = /[A-Za-z0-9_+-]*/y;
 const URL_RE = /https?:\/\/[^\s<>()`]+/y;
 // GFM autolink rule: trailing punctuation is not part of the link.
 const URL_TRAILING_PUNCTUATION_RE = /[?!.,:*_~]+$/;
-const HANDLE_RE = /[a-z0-9_]+/y;
+// A handle as the server issues it (src/domain/handles.js): a letter or
+// digit, then letters, digits and single dots or underscores, ending on a
+// letter or digit. So "@ann.x" is one mention, and the full stop after
+// "@ann." ends the sentence, not the handle.
+const HANDLE_RE = /[a-z0-9](?:[a-z0-9]|[._](?=[a-z0-9]))*/y;
 const MIN_HANDLE = 3;
 const MAX_HANDLE = 32;
 const WORD_CHAR_RE = /[A-Za-z0-9_]/;

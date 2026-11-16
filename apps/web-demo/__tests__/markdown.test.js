@@ -97,6 +97,22 @@ describe('renderMessageInline — mentions', () => {
     );
   });
 
+  it('takes a dotted handle whole, and leaves a full stop after one out', () => {
+    expect(renderMessageInline('ask @ann.x first')).toBe(
+      'ask <span class="mention">@ann.x</span> first',
+    );
+    expect(renderMessageInline('ask @sam.rivera.')).toBe(
+      'ask <span class="mention">@sam.rivera</span>.',
+    );
+    expect(renderMessageInline('@a.b_c.d')).toBe('<span class="mention">@a.b_c.d</span>');
+  });
+
+  it('does not chip what no handle can be', () => {
+    for (const text of ['@_bob', '@bob_', '@bo..b', '@b._ob']) {
+      expect(renderMessageInline(text), text).not.toContain('class="mention"');
+    }
+  });
+
   it('does not chip handles shorter than 3 chars', () => {
     expect(renderMessageInline('@ab is too short')).not.toContain('class="mention"');
   });

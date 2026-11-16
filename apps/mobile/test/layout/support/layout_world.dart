@@ -411,7 +411,9 @@ class _PinSetStorage extends SecureStorageService {
   Future<bool> hasPin() async => true;
 }
 
-class _Biometrics implements LocalUnlockAuthenticator {
+/// A Pixel's: a fingerprint sensor, so the lock screen's button says "Use
+/// fingerprint". It always refuses.
+class _Biometrics implements LocalUnlockAuthenticator, BiometricKindSource {
   const _Biometrics();
 
   @override
@@ -419,6 +421,9 @@ class _Biometrics implements LocalUnlockAuthenticator {
 
   @override
   Future<bool> canUseBiometrics() async => true;
+
+  @override
+  Future<BiometricKind> biometricKind() async => BiometricKind.fingerprint;
 }
 
 /// The session a case starts in. While [bootstrapping], startup never

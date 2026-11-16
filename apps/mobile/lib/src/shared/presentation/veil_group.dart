@@ -216,6 +216,10 @@ class VeilRow extends StatelessWidget {
       title: Text(
         title!,
         style: theme.textTheme.titleMedium?.copyWith(
+          // A person's name (a row led by an avatar) is bold; a setting,
+          // an option or an action is regular, as Signal, WhatsApp and
+          // Telegram set them.
+          fontWeight: leading is VeilAvatar ? null : FontWeight.w400,
           color: destructive ? palette.danger : (disabledSwitch ? palette.textSubtle : null),
         ),
       ),
@@ -275,7 +279,7 @@ class VeilRow extends StatelessWidget {
         child: Row(
           children: [
             if (title != null) ...[
-              Text(title!, style: theme.textTheme.titleMedium),
+              Text(title!, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w400)),
               const SizedBox(width: VeilSpace.sm),
             ],
             Expanded(child: Theme(data: theme.copyWith(inputDecorationTheme: borderless), child: field)),

@@ -55,7 +55,9 @@ void main() {
 
         expect(wholeOnScreen(tester, find.byType(TextField)), isTrue);
         expect(wholeOnScreen(tester, find.widgetWithText(FilledButton, l10n.appLockUnlock)), isTrue);
-        expect(wholeOnScreen(tester, find.widgetWithText(TextButton, l10n.appLockUseBiometrics)), isTrue);
+        // The layout world's phone has a fingerprint sensor, so the button
+        // names it.
+        expect(wholeOnScreen(tester, find.widgetWithText(TextButton, l10n.appLockUseFingerprint)), isTrue);
         // The field is a line under the digits, not a grey box like the
         // disabled button under it.
         final pin = tester.widget<TextField>(find.byType(TextField)).decoration!;
@@ -81,7 +83,7 @@ void main() {
       account: LayoutAccount.locked,
       body: (world) async {
         // The layout world's biometrics always refuse.
-        await tester.tap(find.widgetWithText(TextButton, l10n.appLockUseBiometrics));
+        await tester.tap(find.widgetWithText(TextButton, l10n.appLockUseFingerprint));
         await pumpFrames(tester, frames: 3);
 
         final field = tester.widget<TextField>(find.byType(TextField));

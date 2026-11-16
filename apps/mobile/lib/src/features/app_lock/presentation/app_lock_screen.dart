@@ -250,7 +250,10 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              SizedBox(width: labelWidth, child: Text(label, style: Theme.of(context).textTheme.titleMedium)),
+              SizedBox(
+                width: labelWidth,
+                child: Text(label, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w400)),
+              ),
               Expanded(child: field),
             ],
           ),

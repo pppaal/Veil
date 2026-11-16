@@ -419,18 +419,27 @@ Future<void> _expectChatsLeftOut(WidgetTester tester) async {
 }
 
 // The seed's chat holds more than one screen does. The listing keeps the
-// morning from Sam's message after the file on: his two short messages, the
-// user's two answers (the second disappearing) and Sam's last word. It
-// leaves out the evening before (the long message and the long link of the
-// gate's history case), his first message of the morning and the user's
-// answer to it, and the PDF the user sent, which the app cannot send. What
-// is left fits on the screen whole, which _expectNothingCut holds it to.
+// morning: Sam asking about the lease and the user's answer, his two short
+// messages, the user's two answers (the second disappearing) and Sam's last
+// word. It leaves out the evening before (the long message and the long
+// link of the gate's history case) and the PDF the user sent, which the app
+// cannot send. What is left fits on the screen whole, which
+// _expectNothingCut holds it to.
 void _leaveOutChatLines(FakeRelay relay) {
   final history = relay.conversations[chatConversationId]!.messages;
-  final file = history.indexWhere((message) => message['attachment'] != null);
-  expect(file, isNot(-1), reason: 'the seed chat no longer holds the attachment the listing starts after');
-  final kept = history.sublist(file + 1);
-  expect(kept.first['senderDeviceId'], 'dev-$peerHandle', reason: "the message after the attachment is no longer Sam's");
+  DateTime dayOf(Map<String, dynamic> message) {
+    final at = DateTime.parse(message['serverReceivedAt'] as String);
+    return DateTime.utc(at.year, at.month, at.day);
+  }
+
+  final morning = dayOf(history.last);
+  final kept = [
+    for (final message in history)
+      if (dayOf(message) == morning && message['attachment'] == null) message,
+  ];
+  expect(kept, hasLength(history.length - 4),
+      reason: 'the seed chat no longer holds three lines the evening before and one file');
+  expect(kept.first['senderDeviceId'], 'dev-$peerHandle', reason: "the morning no longer opens with Sam's question");
   expect(kept.where((message) => message['expiresAt'] != null), hasLength(1),
       reason: 'the kept lines no longer hold the disappearing message');
   expect(kept.where((message) => message['messageType'] == MessageKind.system.name), isEmpty,

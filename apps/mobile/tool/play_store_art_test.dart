@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -84,14 +85,16 @@ const _featureGraphicSize = (1024, 500);
 
 const _emojiFamily = 'NotoColorEmoji';
 
-/// One screenshot: where the router opens, the account it opens with, what
-/// to change in the seeded relay before the session loads it, what to do
-/// once the screen is open, and the screen that must then be on it.
+/// One screenshot: where the router opens (and the screen it is pushed
+/// from, if the app pushes it), the account it opens with, what to change in
+/// the seeded relay before the session loads it, what to do once the screen
+/// is open, and the screen that must then be on it.
 class _Shot {
   const _Shot(
     this.name, {
     required this.screen,
     required this.location,
+    this.from,
     this.account = LayoutAccount.signedIn,
     this.extra,
     this.attention = const ChatAttention(),
@@ -103,6 +106,11 @@ class _Shot {
   final String name;
   final Type screen;
   final String location;
+
+  /// Where the app pushes [location] from, so its bar shows the back arrow
+  /// it has on a phone. Null for a screen the app goes to (Choose a handle
+  /// replaces Create account) or a tab.
+  final String? from;
   final LayoutAccount account;
   final Object? extra;
   final ChatAttention attention;
@@ -136,7 +144,7 @@ const _shots = <_Shot>[
   // that the old phone is needed. Once asked, the screen shows the code
   // itself, a long string in `monospace` that starts with VEIL_TRANSFER::
   // (its wire format), which is no picture for a listing.
-  _Shot('04-move-to-a-new-phone', screen: DeviceTransferScreen, location: '/device-transfer'),
+  _Shot('04-move-to-a-new-phone', screen: DeviceTransferScreen, location: '/device-transfer', from: '/settings'),
   _Shot('05-app-lock',
       screen: AppLockScreen, location: '/lock', account: LayoutAccount.locked, settle: _typePin),
   _Shot('06-settings', screen: SettingsScreen, location: '/settings', settle: _showSecurityFooter),
@@ -186,9 +194,10 @@ void main() {
         withGroup: shot.withGroup,
         beforeSession: shot.prepare,
       );
+      final from = shot.from;
       final router = GoRouter(
-        initialLocation: shot.location,
-        initialExtra: shot.extra,
+        initialLocation: from ?? shot.location,
+        initialExtra: from == null ? shot.extra : null,
         routes: world.container.read(appRoutesProvider),
       );
       _usePhone(tester);
@@ -199,6 +208,10 @@ void main() {
         await collectingLayoutErrors(findings, () async {
           await tester.pumpWidget(_app(world.container, router));
           await pumpFrames(tester);
+          if (from != null) {
+            unawaited(router.push(shot.location, extra: shot.extra));
+            await pumpFrames(tester);
+          }
           world.startLiveAttention();
           await tester.pump();
           await shot.settle?.call(tester);

@@ -149,7 +149,9 @@ as the TLS pin).
    plaintext = AES-256-GCM-Decrypt(aeadKey, nonce, ciphertext, AD)
    parse senderCert + body, verify cert signature.
 4. Block check: recipient runs its local block list. If sender is
-   blocked, drop silently — same UX as today's server-side block.
+   blocked, drop silently. This differs from today's server-side block,
+   which refuses the send so the sender sees it fail: the server cannot
+   tell who sent a sealed message.
 ```
 
 ## Server changes

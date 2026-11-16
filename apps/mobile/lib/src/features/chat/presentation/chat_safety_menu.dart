@@ -11,8 +11,9 @@ import '../../safety/presentation/mute_sheet.dart';
 import '../../safety/presentation/report_sheet.dart';
 import 'chat_bar.dart';
 
-/// What a chat offers to keep someone out of it: its menu (the timer,
-/// muting, and in a 1:1 reporting and blocking the peer), the line that
+/// What a chat offers to keep someone out of it: its menu (the timer unless
+/// the peer is blocked, muting, and in a 1:1 reporting and blocking the
+/// peer), the line that
 /// takes the composer's place while the peer is blocked, and reporting a
 /// message from its long-press sheet.
 mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
@@ -26,7 +27,10 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final peer = _directPeer(conversation);
     final blocked = peer != null && ref.watch(blockedAccountsProvider).isBlocked(peer.userId);
     return [
-      ChatMenuEntry(key: 'timer', label: l10n.chatTtlSheetTitle, icon: Icons.timer_outlined, onSelected: onPickTimer),
+      // The timer is for what is sent here, and nothing can be sent to a
+      // blocked peer: the line in the composer's place says so.
+      if (!blocked)
+        ChatMenuEntry(key: 'timer', label: l10n.chatTtlSheetTitle, icon: Icons.timer_outlined, onSelected: onPickTimer),
       if (muted)
         ChatMenuEntry(
           key: 'unmute',

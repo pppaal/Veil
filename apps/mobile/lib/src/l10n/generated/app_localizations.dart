@@ -3955,7 +3955,7 @@ abstract class AppLocalizations {
   /// No description provided for @reportSentBlockFailed.
   ///
   /// In en, this message translates to:
-  /// **'Report sent. Couldn\'t block @{handle}.'**
+  /// **'Report sent, but @{handle} couldn\'t be blocked'**
   String reportSentBlockFailed(String handle);
 
   /// No description provided for @reportFailed.

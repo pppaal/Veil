@@ -67,8 +67,10 @@ Future<void> _mute(SafetyFeedback feedback, String conversationId, MuteDuration 
     );
     return;
   }
+  // Said as every safety outcome that worked is: with the success glyph.
   feedback.say(
     duration == MuteDuration.always ? l10n.muteDoneAlways : l10n.muteDoneFor(muteDurationLabel(l10n, duration)),
+    tone: VeilTone.good,
   );
 }
 
@@ -85,5 +87,5 @@ Future<void> _unmute(SafetyFeedback feedback, String conversationId) async {
     feedback.say(l10n.muteFailed, tone: VeilTone.warn, retry: () => _unmute(feedback, conversationId));
     return;
   }
-  feedback.say(l10n.muteUndone);
+  feedback.say(l10n.muteUndone, tone: VeilTone.good);
 }

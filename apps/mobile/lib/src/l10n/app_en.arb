@@ -742,7 +742,7 @@
   "reportSent": "Report sent",
   "reportSentAndBlocked": "Report sent and @{handle} blocked",
   "@reportSentAndBlocked": {"placeholders": {"handle": {"type": "String"}}},
-  "reportSentBlockFailed": "Report sent. Couldn't block @{handle}.",
+  "reportSentBlockFailed": "Report sent, but @{handle} couldn't be blocked",
   "@reportSentBlockFailed": {"placeholders": {"handle": {"type": "String"}}},
   "reportFailed": "Couldn't send the report",
   "blockAction": "Block",

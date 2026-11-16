@@ -18,6 +18,7 @@ import 'package:veil_mobile/src/features/safety/data/conversation_mutes.dart';
 import 'package:veil_mobile/src/features/safety/data/safety_providers.dart';
 import 'package:veil_mobile/src/features/safety/presentation/blocked_accounts_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
 import '../support/copy_finder.dart';
@@ -39,6 +40,12 @@ void main() {
   });
 
   Finder inSheet(Finder finder) => find.descendant(of: find.byType(BottomSheet), matching: finder);
+
+  // The glyph the toast on screen leads with, if it has one.
+  IconData? toastGlyph(WidgetTester tester) {
+    final icons = find.descendant(of: find.byType(SnackBar).last, matching: find.byType(Icon));
+    return icons.evaluate().isEmpty ? null : tester.widget<Icon>(icons.first).icon;
+  }
 
   Future<void> openMenu(WidgetTester tester, String entry) async {
     await tester.tap(find.byTooltip(en.chatMenuTooltip));
@@ -113,6 +120,8 @@ void main() {
       await pumpFrames(tester, frames: 3);
       expect(find.byKey(const ValueKey('chat-menu-unblock')), findsOneWidget);
       expect(find.byKey(const ValueKey('chat-menu-block')), findsNothing);
+      // Nothing can be sent here, so there is no timer for it.
+      expect(find.byKey(const ValueKey('chat-menu-timer')), findsNothing);
       await tester.tapAt(const Offset(20, 300));
       await pumpFrames(tester, frames: 3);
 
@@ -125,6 +134,11 @@ void main() {
 
       await send(tester, 'delivered');
       expect(relayed(world), hasLength(before + 1));
+      await tester.tap(find.byTooltip(en.chatMenuTooltip));
+      await pumpFrames(tester, frames: 3);
+      expect(find.byKey(const ValueKey('chat-menu-timer')), findsOneWidget, reason: 'the timer is back with the composer');
+      await tester.tapAt(const Offset(20, 300));
+      await pumpFrames(tester, frames: 3);
       expect(tester.takeException(), isNull);
     });
   });
@@ -377,6 +391,8 @@ void main() {
       await pumpFrames(tester, frames: 4);
       expect(world.relay.mutes['user-$selfHandle'], {chatConversationId: 8 * 3600});
       expect(findCopy(en.muteDoneFor(en.muteEightHours)), findsOneWidget);
+      // With the success glyph, as '@x blocked' and 'Report sent' are.
+      expect(toastGlyph(tester), VeilNotice.iconFor(VeilTone.good));
       final kept = await tester.runAsync(() => MuteStore(world.storage.scoped(SecureScope.notifications)).read());
       expect(kept!.keys, [chatConversationId], reason: 'the mute is kept on this phone');
 
@@ -384,6 +400,7 @@ void main() {
       await openMenu(tester, 'unmute');
       expect(world.relay.mutes['user-$selfHandle'], isEmpty);
       expect(findCopy(en.muteUndone), findsOneWidget);
+      expect(toastGlyph(tester), VeilNotice.iconFor(VeilTone.good));
       await openMenu(tester, 'mute');
       await tester.tap(find.text(en.muteAlways));
       await pumpFrames(tester, frames: 4);

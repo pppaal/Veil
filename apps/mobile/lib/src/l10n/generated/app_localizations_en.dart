@@ -2371,7 +2371,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String reportSentBlockFailed(String handle) {
-    return 'Report sent. Couldn\'t block @$handle.';
+    return 'Report sent, but @$handle couldn\'t be blocked';
   }
 
   @override

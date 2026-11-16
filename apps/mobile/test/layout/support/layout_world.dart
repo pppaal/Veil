@@ -181,6 +181,7 @@ class LayoutWorld {
     bool transferStarted = false,
     bool withGroup = false,
     String? sessionError,
+    void Function(FakeRelay relay)? beforeSession,
   }) async {
     final world = LayoutWorld._(identities, account, locale, sessionError);
     await world._build(
@@ -188,6 +189,7 @@ class LayoutWorld {
       bootstrapping: bootstrapping,
       transferStarted: transferStarted,
       withGroup: withGroup,
+      beforeSession: beforeSession,
     );
     return world;
   }
@@ -199,12 +201,16 @@ class LayoutWorld {
     required bool bootstrapping,
     required bool transferStarted,
     required bool withGroup,
+    void Function(FakeRelay relay)? beforeSession,
   }) async {
     _attention = attention;
     seedParties(relay, identities);
     if (account == LayoutAccount.signedIn || account == LayoutAccount.locked) {
       await seedConversations(relay, cache, withGroup: withGroup);
     }
+    // A caller that shows less than the seed changes the relay here, before
+    // this device's session loads anything from it.
+    beforeSession?.call(relay);
     api = LayoutRelayClient(relay, relay.partiesByHandle[selfHandle]!);
 
     if (_hasAccount) {

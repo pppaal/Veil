@@ -2,6 +2,7 @@
 // MediaRecorder gives opus/webm at the lowest bitrate the browser offers,
 // and the recording goes out as an encrypted attachment like a file.
 
+import { t } from '../../../i18n/i18n.js';
 import { el, icon } from '../dom.js';
 import { toast } from '../toast.js';
 
@@ -71,7 +72,7 @@ export function createVoiceRecorder({ attachments }) {
       kind: 'voice',
       blob,
       contentType: mime,
-      failureLabel: 'Voice message not sent',
+      failureLabel: t('voice.notSent'),
       local: { _voiceUrl: URL.createObjectURL(blob) },
     });
   }
@@ -79,7 +80,7 @@ export function createVoiceRecorder({ attachments }) {
   async function start(convId, button) {
     if (recording) return;
     if (!navigator.mediaDevices?.getUserMedia) {
-      toast('This browser cannot record audio', 'error');
+      toast(t('voice.unsupported'), 'error');
       return;
     }
     try {
@@ -92,15 +93,15 @@ export function createVoiceRecorder({ attachments }) {
       recorder.ondataavailable = (event) => {
         if (event.data?.size) chunks.push(event.data);
       };
-      const indicator = el('div', { class: 'voice-recording-indicator' }, ['Recording… release to send']);
+      const indicator = el('div', { class: 'voice-recording-indicator' }, [t('voice.recording')]);
       document.body.appendChild(indicator);
       button.classList.add('recording');
       recording = { convId, stream, recorder, chunks, indicator, button, startedAt: Date.now(), canceled: false, deadline: null };
       recorder.onstop = async () => finalize();
       recorder.start();
       recording.deadline = setTimeout(stop, MAX_RECORDING_MS);
-    } catch (error) {
-      toast('Microphone access is needed: ' + (error.message || 'unknown'), 'error');
+    } catch {
+      toast(t('voice.denied'), 'error');
     }
   }
 
@@ -110,8 +111,8 @@ export function createVoiceRecorder({ attachments }) {
       const button = el('button', {
         type: 'button',
         class: 'icon-btn voice-btn',
-        'aria-label': 'Voice message',
-        title: 'Hold to record',
+        'aria-label': t('voice.label'),
+        title: t('voice.hold'),
         onmousedown: (event) => {
           event.preventDefault();
           start(convId, button);

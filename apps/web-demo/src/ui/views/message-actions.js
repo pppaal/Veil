@@ -1,10 +1,10 @@
-// The menu a message opens on right-click (or a long press on touch):
-// reactions, reply, copy, edit and delete for our own messages, forward,
-// and block and report for a peer's message in a direct conversation. A
-// deleted text can be put back in the composer for a few seconds.
+// The menu a message opens on right-click (or a long press on touch): a row
+// of reactions, then Reply, Copy, Forward, and for our own messages Edit and
+// Delete (red, last); Report for a peer's message in a direct chat. Block
+// lives in the chat's menu, never here. A deleted text can be put back in
+// the composer for a few seconds.
 
 import { t } from '../../../i18n/i18n.js';
-import { shownHandle } from '../../domain/handles.js';
 import { isTextKind } from '../../domain/ingest.js';
 import { isPendingId } from '../../domain/local-messages.js';
 import { senderToReport } from '../../features/report.js';
@@ -20,10 +20,9 @@ const UNDO_MS = 5_000;
 const MENU_WIDTH_PX = 288;
 const MENU_HEIGHT_PX = 400;
 
-// send: src/app/services/send.js; safety: src/app/services/safety.js;
-// composer, forwardDialog, reportDialog: the views the items lead to;
-// confirm: src/ui/confirm.js.
-export function createMessageActions({ store, send, safety, composer, forwardDialog, reportDialog, confirm }) {
+// send: src/app/services/send.js; composer, forwardDialog, reportDialog:
+// the views the items lead to; confirm: src/ui/confirm.js.
+export function createMessageActions({ store, send, composer, forwardDialog, reportDialog, confirm }) {
   const { state } = store;
   let menu = null;
   // messageId -> { convId, text, expiresAt }, in memory only.
@@ -38,11 +37,11 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
     const entry = undoable.get(messageId);
     undoable.delete(messageId);
     if (!entry || Date.now() > entry.expiresAt) {
-      toast('Too late to undo', 'error');
+      toast(t('msg.tooLate'), 'error');
       return;
     }
     composer.restoreText(entry.convId, entry.text).then((inComposer) => {
-      if (inComposer) toast('Put back in the message box. Press Enter to send it again', 'good');
+      if (inComposer) toast(t('msg.restored'), 'good');
     });
   }
 
@@ -50,37 +49,34 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
   // undo puts the text back in the composer to be sent as a new message.
   async function remove(message) {
     const ok = await confirm({
-      title: 'Delete message',
-      body: 'This deletes the message for both of you. They will see that it was deleted.',
-      okLabel: 'Delete',
+      title: t('msg.delete.title'),
+      body: t('msg.delete.body'),
+      okLabel: t('msg.delete.confirm'),
       destructive: true,
     });
     if (!ok) return;
     const captured = await send.deleteMessage(message.id);
     if (!captured || captured.text === '') return;
     undoable.set(message.id, { ...captured, expiresAt: Date.now() + UNDO_MS });
-    actionToast('Message deleted', 'Undo', () => restore(message.id), UNDO_MS);
+    actionToast(t('msg.deleted'), t('msg.undo'), () => restore(message.id), UNDO_MS);
     setTimeout(() => undoable.delete(message.id), UNDO_MS + 500);
   }
 
+  // The edit happens in the composer, under an "Editing message" bar.
   function edit(message, convId) {
     if (!isTextKind(message.kind)) {
-      toast("This message can't be edited", 'error');
+      toast(t('msg.cantEdit'), 'error');
       return;
     }
-    const fresh = window.prompt('Edit message', message.displayText);
-    if (fresh == null) return;
-    const trimmed = fresh.trim();
-    if (!trimmed || trimmed === message.displayText) return;
-    send.edit(message, convId, trimmed);
+    composer.startEdit(convId, message);
   }
 
   async function copy(message) {
     try {
       await navigator.clipboard.writeText(message.displayText);
-      toast('Copied', 'good');
+      toast(t('msg.copied'), 'good');
     } catch {
-      toast('Could not access the clipboard', 'error');
+      toast(t('clipboard.failed'), 'error');
     }
   }
 
@@ -104,10 +100,11 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
     // No actions on a tombstone.
     if (message.deletedAt) return;
     const isMine = message.senderDeviceId === state.me?.deviceId;
+    const sent = isMine && !isPendingId(message.id);
     const peer = senderToReport(store.conversation(convId), message, state.me);
     const node = el('div', { class: 'msg-action-menu' }, [
       el('div', { class: 'msg-action-row' }, QUICK_REACTIONS.map((emoji) => el('button', {
-        title: 'React', 'aria-label': 'React with ' + emoji,
+        title: t('msg.react'), 'aria-label': t('msg.reactWith', { emoji }),
         onclick: (event) => {
           event.stopPropagation();
           send.react(message.id, emoji);
@@ -115,39 +112,20 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
         },
       }, [emoji]))),
       divider(),
-      item('Reply', () => composer.startReply(convId, message)),
-      isTextKind(message.kind) ? item('Copy', () => copy(message)) : null,
-      ...(isMine && !isPendingId(message.id)
-        ? [
-          item('Edit', () => edit(message, convId)),
-          item('Delete', () => remove(message), { className: 'msg-action-item danger', opensDialog: true }),
-        ]
-        : []),
-      item('Forward', () => forwardDialog.open(message), { opensDialog: true }),
-      // Only a message whose sender is known gets these: never our own, and
-      // none in a group, where a sender's device names no member here.
-      ...(peer
-        ? [
-          divider(),
-          item('Block', () => block(peer), { className: 'msg-action-item danger', opensDialog: true }),
-          item('Report', () => reportDialog.open(convId, message.id, peer), { opensDialog: true }),
-        ]
-        : []),
+      item(t('msg.action.reply'), () => composer.startReply(convId, message)),
+      isTextKind(message.kind) ? item(t('msg.action.copy'), () => copy(message)) : null,
+      item(t('msg.action.forward'), () => forwardDialog.open(message), { opensDialog: true }),
+      sent ? item(t('msg.action.edit'), () => edit(message, convId)) : null,
+      // Only a message whose sender is known can be reported: never our
+      // own, and none in a group, where a sender's device names no member
+      // here.
+      ...(peer ? [divider(), item(t('msg.action.report'), () => reportDialog.open(convId, message.id, peer), { opensDialog: true })] : []),
+      ...(sent ? [divider(), item(t('msg.action.delete'), () => remove(message), { className: 'msg-action-item danger', opensDialog: true })] : []),
     ]);
     node.style.left = Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH_PX)) + 'px';
     node.style.top = Math.max(8, Math.min(y, window.innerHeight - MENU_HEIGHT_PX)) + 'px';
     document.body.appendChild(node);
     menu = node;
-  }
-
-  async function block(peer) {
-    const ok = await confirm({
-      title: t('safety.blockTitle', { handle: shownHandle(peer.handle) }),
-      body: t('safety.blockBody'),
-      okLabel: 'Block',
-      destructive: true,
-    });
-    if (ok) await safety.block(peer.userId, shownHandle(peer.handle));
   }
 
   // The message a row in a conversation panel shows, with its conversation.

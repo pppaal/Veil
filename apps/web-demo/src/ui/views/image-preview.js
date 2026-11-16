@@ -2,6 +2,8 @@
 // shown before a picked or dropped image is encrypted and uploaded, so a
 // wrong drop or a slip of the finger does not send it.
 
+import { t } from '../../../i18n/i18n.js';
+import { formatBytes } from '../../../lib/format.js';
 import { el } from '../dom.js';
 import { toast } from '../toast.js';
 
@@ -20,11 +22,11 @@ export function openImageZoom(url) {
 // Whether `file` may be sent as an image; says why not when it may not.
 export function checkImage(file) {
   if (!isSendableImageType(file.type)) {
-    toast('Only JPG, PNG and WebP images can be sent', 'error');
+    toast(t('image.wrongType'), 'error');
     return false;
   }
   if (file.size > IMAGE_MAX_BYTES) {
-    toast('The image is larger than 10 MB', 'error');
+    toast(t('image.tooBig'), 'error');
     return false;
   }
   return true;
@@ -44,14 +46,14 @@ export function confirmImage(file, onSend) {
       document.removeEventListener('keydown', onKey);
     }
   };
-  const send = el('button', { class: 'btn btn-primary' }, ['Send']);
+  const send = el('button', { class: 'btn btn-primary' }, [t('image.send')]);
   const backdrop = el('div', { class: 'dialog-backdrop image-confirm', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'image-confirm-title' }, [
     el('div', { class: 'dialog dialog-wide' }, [
-      el('div', { class: 'dialog-title', id: 'image-confirm-title' }, ['Send this image?']),
-      el('div', { class: 'dialog-sub' }, [`${file.name || 'Image'}, ${(file.size / 1024).toFixed(0)} KB`]),
+      el('div', { class: 'dialog-title', id: 'image-confirm-title' }, [t('image.confirmTitle')]),
+      el('div', { class: 'dialog-sub' }, [`${file.name || t('composer.attachImage')} · ${formatBytes(file.size)}`]),
       el('img', { class: 'image-confirm-preview', src: url, alt: '' }),
       el('div', { class: 'dialog-actions' }, [
-        el('button', { class: 'btn btn-ghost', onclick: close }, ['Cancel']),
+        el('button', { class: 'btn btn-ghost', onclick: close }, [t('common.cancel')]),
         send,
       ]),
     ]),

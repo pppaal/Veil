@@ -27,6 +27,7 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
       const codeInput = el('input', {
         id: 'safety-their-code',
         type: 'text',
+        'aria-label': t('safety.theirCode'),
         placeholder: t('safety.pastePlaceholder'),
         autocomplete: 'off',
         spellcheck: 'false',
@@ -43,8 +44,8 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
       const markVerified = async () => {
         try {
           await identityTrust.markVerified(peer, safety.remoteKey);
-        } catch (error) {
-          result.textContent = t('safety.verifyFailed', { error: error.message });
+        } catch {
+          result.textContent = t('safety.verifyFailed');
           return;
         }
         toast(t('safety.verified', { handle: shownHandle(peer.handle) }), 'good');
@@ -99,7 +100,7 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
       };
       const compare = async () => {
         if (safety.matches(codeInput.value.trim())) await markVerified();
-        else result.textContent = t('safety.mismatch');
+        else result.textContent = t('safety.mismatch', { handle: shownHandle(peer.handle) });
       };
       backdrop = el('div', { class: 'dialog-backdrop hidden', id: DIALOG_ID, role: 'presentation' }, [
         el('div', {
@@ -127,7 +128,6 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
             onclick: copyCode,
           }, [icon('copy'), t('safety.copyCode')]),
           handCopy,
-          el('div', { class: 'field-label' }, [t('safety.theirCode')]),
           codeInput,
           result,
           el('div', { class: 'dialog-actions' }, [

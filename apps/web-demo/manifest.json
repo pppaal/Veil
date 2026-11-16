@@ -1,7 +1,7 @@
 {
   "name": "Veil",
   "short_name": "Veil",
-  "description": "End-to-end encrypted messenger. No phone number, no backup.",
+  "description": "Veil is a messenger you sign up for with a handle, not a phone number.",
   "start_url": "/demo/",
   "scope": "/demo/",
   "display": "standalone",

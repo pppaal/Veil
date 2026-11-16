@@ -295,12 +295,7 @@ textarea::placeholder { color: var(--fg-muted); opacity: 1; }
   overflow-y: auto;
 }
 .auth-column { width: 100%; max-width: 360px; margin: auto 0; }
-.auth-title { margin: 0 0 4px; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.2px; }
-.auth-lede { margin: 0 0 4px; color: var(--fg-muted); }
-#auth-explainer-toggle { margin-left: -4px; }
-.auth-explainer { margin: 0 0 8px; color: var(--fg-muted); }
-.auth-explainer p { margin: 0 0 8px; }
-.auth-explainer strong { font-weight: inherit; color: inherit; }
+.auth-title { margin: 0 0 8px; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.2px; }
 
 .restore { margin: 16px 0 0; }
 .restore-row {
@@ -322,10 +317,11 @@ textarea::placeholder { color: var(--fg-muted); opacity: 1; }
   text-overflow: ellipsis;
 }
 .restore .notice { margin-top: 12px; }
-#restore-delete-btn { margin: 4px 0 0 -4px; }
+.auth-wipe { margin: 4px 0 0 -4px; font-size: 13px; }
 
 .auth-form { display: flex; flex-direction: column; gap: 16px; margin-top: 24px; }
-.auth-links { display: flex; flex-direction: column; align-items: flex-start; margin: 12px 0 0 -4px; }
+.auth-secondary { margin-top: 12px; }
+.auth-footer { margin: 24px 0 0; font-size: 13px; color: var(--fg-muted); }
 
 /* ---------- app shell ---------- */
 .app {
@@ -349,11 +345,13 @@ textarea::placeholder { color: var(--fg-muted); opacity: 1; }
   border-bottom: 0.5px solid var(--line);
   background: var(--bg);
 }
-.topbar-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
-.topbar-name { font-size: 17px; font-weight: 600; line-height: 1.3; letter-spacing: -0.2px; }
+/* The title, and under it the connection only while there is no live one. */
+.topbar-title { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.topbar-name { font-size: 17px; font-weight: 600; line-height: 1.25; letter-spacing: -0.2px; }
 .conn-status {
   min-width: 0;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.25;
   color: var(--fg-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -376,22 +374,11 @@ textarea::placeholder { color: var(--fg-muted); opacity: 1; }
   background: var(--bg);
 }
 .sidebar > .notice { margin: 12px 16px 0; }
-.sidebar-me {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 12px 16px;
-  font-weight: 600;
-  min-width: 0;
-}
-.sidebar-me-handle { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sidebar-actions { padding: 0 16px 8px; }
-.sidebar-search { position: relative; padding: 0 16px 8px; }
+.sidebar-search { position: relative; padding: 12px 16px 8px; }
 .sidebar-search .search-icon {
   position: absolute;
   left: 28px;
-  top: 13px;
+  top: 25px;
   width: 18px;
   height: 18px;
   color: var(--fg-muted);
@@ -457,7 +444,8 @@ textarea::placeholder { color: var(--fg-muted); opacity: 1; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.conv-empty { padding: 32px 16px; color: var(--fg-muted); text-align: center; }
+.conv-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 16px; color: var(--fg-muted); text-align: center; }
+.conv-empty-title { color: var(--fg); font-size: 17px; font-weight: 600; }
 .conv-section { padding: 16px 16px 6px; font-size: 13px; color: var(--fg-muted); }
 
 /* ---------- avatars: a flat disc, a white initial ---------- */
@@ -526,7 +514,9 @@ html.theme-light .name-7 { color: #45602A; }
   scrollbar-width: none;
 }
 .tab-strip::-webkit-scrollbar { display: none; }
-.tab-strip:empty { display: none; }
+/* Tabs appear once a second chat is open. */
+.tab-strip:empty,
+.tab-strip:has(> .tab:only-child) { display: none; }
 .tab {
   display: inline-flex;
   align-items: center;
@@ -568,8 +558,8 @@ html.theme-light .name-7 { color: #45602A; }
   padding: 32px;
   text-align: center;
 }
-.empty-title { font-size: 17px; font-weight: 600; line-height: 1.3; }
-.empty-sub { max-width: 320px; color: var(--fg-muted); }
+/* An empty pane or chat: one muted line. */
+.empty-title { font-size: 15px; line-height: 1.4; color: var(--fg-muted); }
 
 /* ---------- a conversation ---------- */
 .panel {
@@ -606,6 +596,8 @@ html.theme-light .name-7 { color: #45602A; }
 .verified-badge { display: inline-flex; flex-shrink: 0; color: var(--good); }
 .verified-badge .i { width: 16px; height: 16px; stroke-width: 2; }
 .verified-badge[hidden] { display: none; }
+.muted-mark { display: inline-flex; flex-shrink: 0; color: var(--fg-muted); }
+.muted-mark .i { width: 15px; height: 15px; }
 .panel-actions { display: flex; align-items: center; }
 
 /* A read-only archive says so under its header. */
@@ -669,6 +661,7 @@ html.theme-light .name-7 { color: #45602A; }
 .msg.msg-deleted-bubble,
 .msg-group.me .msg.msg-deleted-bubble { background: var(--bg-alt); color: var(--fg-muted); font-style: italic; }
 .msg-text { display: inline; }
+.msg.msg-locked { color: var(--fg-muted); font-style: italic; }
 
 /* Time and delivery state, inside the last bubble of a run. */
 .msg-meta {
@@ -688,9 +681,12 @@ html.theme-light .name-7 { color: #45602A; }
 .msg-group.me .msg-meta { color: var(--bubble-mine-meta); }
 .msg-group.me .msg.failed .msg-meta,
 .msg-group.me .msg.msg-deleted-bubble .msg-meta { color: var(--fg-muted); }
-.msg-status { display: inline-flex; align-items: center; gap: 2px; }
+.msg-status { display: inline-flex; align-items: center; gap: 2px; --tick-cut: var(--bubble-mine); }
 .msg-status .i { width: 15px; height: 15px; stroke-width: 2; }
-.msg-status-word { font-weight: 600; }
+.msg-status.sent .i { width: 14px; height: 14px; stroke-width: 1.75; }
+.msg-status.delivered .i,
+.msg-status.read .i { width: 19px; height: 14px; stroke-width: 1.75; }
+.msg-status.read .i { stroke-width: 2.25; }
 .msg-status.failed { color: var(--danger); }
 .msg-edited { margin-left: 6px; font-size: 11px; color: var(--fg-muted); }
 .msg-group.me .msg-edited { color: var(--bubble-mine-meta); }
@@ -745,13 +741,18 @@ html.theme-light .name-7 { color: #45602A; }
 .msg-reply-btn:hover { background: var(--hover); color: var(--fg); }
 @media (hover: none) { .msg-reply-btn { opacity: 0.6; } }
 
-.msg-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+/* Reactions overlap the bubble's bottom edge on the side away from its
+   tail, ringed in the page colour, as on mobile. */
+.msg-reactions { position: relative; display: flex; flex-wrap: wrap; gap: 4px; margin-top: -6px; padding: 0 8px; }
+.msg-row.me .msg-reactions { align-self: flex-start; }
+.msg-row.them .msg-reactions { align-self: flex-end; }
 .msg-reaction-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 8px;
+  border: 2px solid var(--bg);
   border-radius: 14px;
   background: var(--bg-alt);
   color: var(--fg);
@@ -831,6 +832,7 @@ html.theme-light .name-7 { color: #45602A; }
 
 .msg-file-chip {
   display: inline-flex;
+  min-width: 200px;
   align-items: center;
   gap: 10px;
   max-width: 280px;
@@ -853,11 +855,12 @@ html.theme-light .name-7 { color: #45602A; }
   background: var(--hover);
 }
 .msg-group.me .msg-file-chip-icon { background: rgba(255, 255, 255, 0.16); }
-.msg-file-chip-meta { display: flex; flex-direction: column; min-width: 0; }
+.msg-file-chip-meta { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .msg-file-chip-name { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .msg-file-chip-size { font-size: 13px; color: var(--fg-muted); }
 .msg-group.me .msg-file-chip-size { color: var(--bubble-mine-meta); }
-.msg-file-chip-ext { margin-right: 6px; font-weight: 600; }
+.msg-file-chip-download { width: 18px; height: 18px; margin-left: 4px; color: var(--fg-muted); }
+.msg-group.me .msg-file-chip-download { color: var(--bubble-mine-meta); }
 
 /* ---------- search in a conversation ---------- */
 .panel-search {
@@ -877,7 +880,7 @@ html.theme-light .name-7 { color: #45602A; }
   background: var(--bg-alt);
   font-size: 16px;
 }
-.panel-search .count { min-width: 40px; font-size: 13px; color: var(--fg-muted); text-align: center; }
+.panel-search .count { min-width: 40px; padding: 0 4px; font-size: 13px; color: var(--fg-muted); text-align: center; white-space: nowrap; }
 
 /* ---------- composer ---------- */
 .panel-input-wrap { border-top: 0.5px solid var(--line); background: var(--bg); }
@@ -1037,8 +1040,27 @@ html.theme-light .name-7 { color: #45602A; }
    end edge, the last (the one the dialog is for) on top, rather than leave
    one alone on a second row. */
 @media (max-width: 480px) {
-  .dialog-actions:has(> .btn:nth-of-type(3)) { flex-direction: column-reverse; align-items: flex-end; }
+  .dialog-actions:has(> .btn:not(.hidden) ~ .btn:not(.hidden) ~ .btn:not(.hidden)) { flex-direction: column-reverse; align-items: flex-end; }
 }
+
+/* A field with a fixed "@" in front of what is typed. */
+.prefix-field {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  border: 0.5px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--bg-alt);
+}
+.prefix-field:focus-within { border-color: var(--fg-subtle); }
+.prefix-field .prefix { padding: 0 2px 0 12px; font-size: 16px; color: var(--fg-muted); }
+.dialog .prefix-field input[type="text"] { flex: 1; min-width: 0; height: 42px; padding-left: 0; border: 0; background: transparent; }
+
+.steps { margin: 0 0 16px; padding: 0; list-style: none; color: var(--fg-muted); }
+.steps li + li { margin-top: 6px; }
+
+.check-row { display: flex; align-items: center; gap: 12px; min-height: 44px; margin: 0 0 4px; cursor: pointer; }
+.check-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); }
 
 .code-field {
   display: block;
@@ -1055,6 +1077,8 @@ html.theme-light .name-7 { color: #45602A; }
   resize: none;
 }
 .code-field::placeholder { font-family: var(--font); }
+.dialog .code-field.code-line { height: 44px; margin-bottom: 12px; padding: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 13px; }
+#transfer-old-copy { margin-bottom: 4px; }
 .fingerprint-box { margin: 12px 0 4px; }
 .fingerprint-label { font-size: 13px; color: var(--fg-muted); }
 .fingerprint { margin: 4px 0; font-family: var(--mono); font-size: 15px; overflow-wrap: anywhere; }
@@ -1108,7 +1132,9 @@ html.theme-light .name-7 { color: #45602A; }
   padding: 4px 0;
   border-top: 0.5px solid var(--line-strong);
 }
-.dialog-title + .settings-row { border-top: 0; }
+.settings-section-title + .settings-row { border-top: 0; }
+.settings-value { font-size: 15px; color: var(--fg-muted); }
+.settings-footer { padding: 4px 0 4px; font-size: 13px; color: var(--fg-muted); }
 /* The label wraps and the control keeps the width its longest option
    needs, so at phone width an option is never cut off. */
 .settings-row .settings-label { flex: 1 1 0; min-width: 0; }
@@ -1152,17 +1178,21 @@ html.theme-light .name-7 { color: #45602A; }
 }
 .settings-toggle:checked { background: var(--primary); }
 .settings-toggle:checked::before { transform: translateX(18px); }
-.settings-section { margin-top: 8px; padding-top: 8px; border-top: 0.5px solid var(--line-strong); }
-.settings-section .settings-label { padding: 6px 0; }
+/* Grouped sections, each under a small muted header. */
+.settings-section { margin-top: 12px; }
+.dialog-title + .settings-section { margin-top: 4px; }
+.settings-section-title { padding: 0 0 2px; font-size: 13px; color: var(--fg-muted); }
 
 .blocked-list { max-height: 220px; overflow-y: auto; }
-.blocked-empty { padding: 4px 0 8px; font-size: 13px; color: var(--fg-muted); }
+.blocked-empty { padding: 10px 0; font-size: 15px; color: var(--fg-muted); }
 .blocked-row { display: flex; align-items: center; gap: 12px; min-height: 52px; border-top: 0.5px solid var(--line-strong); }
 .blocked-row:first-child { border-top: 0; }
 .blocked-row .grow { flex: 1; min-width: 0; }
 
-.help-grid { display: grid; grid-template-columns: max-content 1fr; gap: 10px 16px; align-items: center; }
-.help-grid .seq { white-space: nowrap; color: var(--fg-muted); font-size: 13px; }
+.help-group + .help-group { margin-top: 16px; }
+.help-group .settings-section-title { margin-bottom: 6px; }
+.help-grid { display: grid; grid-template-columns: 1fr max-content; gap: 8px 16px; align-items: center; }
+.help-grid .seq { display: flex; gap: 4px; justify-content: flex-end; white-space: nowrap; }
 .help-grid kbd {
   display: inline-block;
   min-width: 22px;
@@ -1176,7 +1206,6 @@ html.theme-light .name-7 { color: #45602A; }
   line-height: 1.6;
   text-align: center;
 }
-.help-note { margin: 16px 0 0; font-size: 13px; color: var(--fg-muted); }
 
 .choice-list { margin: 0 0 8px; }
 .choice {
@@ -1190,7 +1219,9 @@ html.theme-light .name-7 { color: #45602A; }
 .choice:first-child { border-top: 0; }
 .choice input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); }
 
+.dialog .forward-search { margin: 4px 0 8px; }
 .forward-list { max-height: 300px; margin: 0 -20px 8px; overflow-y: auto; }
+.forward-list-item[hidden] { display: none; }
 .forward-list-item {
   display: flex;
   align-items: center;
@@ -1243,6 +1274,13 @@ html.theme-light .name-7 { color: #45602A; }
   background: var(--bg-raised);
   box-shadow: var(--shadow-modal);
 }
+/* The account the menu belongs to, above its items. */
+.menu-me { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 4px 4px 4px 16px; }
+.menu-me-handle { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-me-copy .i { width: 18px; height: 18px; }
+/* The chat's ⋮ menu sits under its button. */
+.menu.chat-menu { position: fixed; top: auto; right: auto; left: auto; min-width: 220px; z-index: 60; }
+
 .menu-item,
 .msg-action-item {
   display: flex;

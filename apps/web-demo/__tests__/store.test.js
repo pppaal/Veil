@@ -42,6 +42,11 @@ describe('the app store', () => {
     expect(store.messagesOf('c1').map((message) => message.id)).toEqual(['m1', 'p2']);
   });
 
+  it('tells which conversations are muted now: a timed mute ends on time', () => {
+    const store = createStore({ mutedConversations: new Map([['c1', null], ['c2', Date.now() + 60_000], ['c3', Date.now() - 1]]) });
+    expect(['c1', 'c2', 'c3', 'c4'].map(store.isMuted)).toEqual([true, true, false, false]);
+  });
+
   it('tells what the panels show', () => {
     const store = createStore();
     Object.assign(store.state, { activeConv: 'c1', secondaryConv: 'c2' });
@@ -54,12 +59,12 @@ describe('the app store', () => {
     store.state.messagesByConv.set('c1', []);
     store.state.drafts.set('c1', 'unsent');
     store.state.replyDrafts.set('c1', { id: 'm1' });
+    store.state.editing.set('c1', { id: 'm2' });
     store.state.typing.set('c1', new Map());
-    store.state.online.add('u1');
     store.state.archives = [{ id: 'kakao-1' }];
     store.resetSession();
     expect(store.state).toMatchObject({ me: null, conversations: [], conversationsLoaded: false, activeConv: null, openTabs: [], splitView: false });
-    for (const field of ['messagesByConv', 'drafts', 'replyDrafts', 'typing', 'online']) expect(store.state[field].size).toBe(0);
+    for (const field of ['messagesByConv', 'drafts', 'replyDrafts', 'editing', 'typing']) expect(store.state[field].size).toBe(0);
     expect(store.state.muted.has('c1')).toBe(true);
     expect(store.state.soundsEnabled).toBe(true);
     expect(store.state.archives).toEqual([{ id: 'kakao-1' }]);

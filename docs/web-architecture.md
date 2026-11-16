@@ -53,9 +53,10 @@ Rules:
 
 `src/app/store.js` is the one state container: the signed-in session
 record, the conversation list, the message views per conversation, and the
-screen's state (open tabs, the active and split panels, presence, typing,
-drafts, reply drafts, searches, scroll positions, focus claims, muted
-conversations, Kakao archives, sounds). Services change it and then call
+screen's state (open tabs, the active and split panels, typing, drafts,
+reply drafts, the message being edited, searches, scroll positions, focus
+claims, muted conversations with when each mute ends, Kakao archives,
+sounds). Services change it and then call
 `store.notify(topic)`; views subscribe in `app.js`:
 
 | topic           | subscriber                                   |
@@ -100,20 +101,23 @@ allowlisting serializers in `src/platform/persist.js`.
 
 ### Views (`src/ui/views/`)
 
-`app-shell.js` (identity, connection status, banners), `auth-view.js`,
+`app-shell.js` (bar title, connection state, the menu's account header,
+banners), `auth-view.js` (sign-in, remove and sign-out confirmations),
 `sidebar.js`, `tabs.js` (tabs, split view, list/chat switch),
 `chat-view.js` (panels, header, read receipts, local history deletion),
+`chat-menu.js` (the header's ⋮: mute, report, block, clear),
 `message-list.js` (days, groups, bubbles, media, reactions, delivery
-state), `composer.js` (text, drafts, reply banner, pickers, drop),
+state), `composer.js` (text, drafts, reply and edit bars, pickers, drop),
 `voice-recorder.js`, `mentions.js`, `panel-search.js`,
 `message-actions.js` (context menu, delete undo), `forward-dialog.js`,
 `report-dialog.js`, `key-change-banner.js`, `safety-dialog.js`,
 `transfer-dialogs.js`, `new-chat-dialog.js`, `settings-dialog.js`,
 `help-dialog.js`, `kakao-import.js`, `image-preview.js`, `menu.js`,
 `shortcuts.js`, `notification-prompt.js`. Shared UI pieces: `src/ui/dom.js`
-(`el`, avatars, illustrations), `toast.js`, `confirm.js` (themed confirm,
-focus trap), `dialogs.js` (stacked dialogs), `markdown-dom.js`, `time.js`,
-`sounds.js`.
+(`el`, avatars, illustrations, theme), `keys.js` (shortcut keys per
+platform), `toast.js`, `confirm.js` (themed confirm with an optional safe
+alternative, focus trap), `dialogs.js` (stacked dialogs), `markdown-dom.js`,
+`time.js`, `sounds.js`.
 
 ### Pure logic added for the views (`src/domain/`)
 

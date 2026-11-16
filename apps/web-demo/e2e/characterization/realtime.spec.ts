@@ -4,14 +4,12 @@ import {
   bubbleTexts,
   closeAll,
   expectNoErrors,
-  openMenuItem,
   register,
   relay,
   rowOf,
   send,
   stamp,
   startChat,
-  toast,
   type Device,
 } from './support';
 
@@ -38,11 +36,10 @@ test.describe('realtime', () => {
     await closeAll(alice, bob);
   });
 
-  test('the bar says nothing once the push channel is up, and the menu reports it', async () => {
+  test('the bar says nothing once the push channel is up', async () => {
     for (const device of [alice, bob]) await expect(device.page.locator('#conn-status')).toHaveClass(/connected/, { timeout: 15_000 });
     await expect(alice.page.locator('#conn-status')).toBeHidden();
-    await openMenuItem(alice, 'ws-info');
-    await expect(toast(alice, 'Connection: live (WebSocket)')).toBeVisible();
+    await expect(alice.page.locator('.topbar-name')).toHaveText('Chats');
     expectNoErrors(alice, bob);
   });
 
@@ -52,7 +49,10 @@ test.describe('realtime', () => {
     await expect.poll(() => bubbleTexts(bob), { timeout: 5_000 }).toEqual(['are you there']);
     const status = alice.page.locator('.msg-group.me .msg-status');
     await expect(status).toHaveAttribute('title', 'Read', { timeout: 10_000 });
+    // Two filled check circles; the word is for assistive technology only.
     await expect(status).toHaveText('Read');
+    await expect(status.locator('.sr-only')).toHaveText('Read');
+    await expect(status.locator('use')).toHaveAttribute('href', '#i-tick-read');
     await expect(status).toHaveClass(/read/);
     expectNoErrors(alice, bob);
   });
@@ -65,7 +65,7 @@ test.describe('realtime', () => {
       textarea.value = 'typ';
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await expect(sub).toHaveText('Typing…', { timeout: 5_000 });
+    await expect(sub).toHaveText('typing…', { timeout: 5_000 });
     await expect(sub).toHaveClass('sub typing');
     // The stop goes out once the composer has been idle for four seconds.
     await expect(sub).toHaveText('', { timeout: 10_000 });
@@ -79,12 +79,17 @@ test.describe('realtime', () => {
   });
 
   test('edits and deletes are pushed to the peer', async () => {
-    await alice.page.evaluate(() => {
-      window.prompt = () => 'are you there, really';
-    });
     const messageId = await rowOf(alice, 'are you there').getAttribute('data-msg-id');
     await rowOf(alice, 'are you there').click({ button: 'right' });
     await alice.page.locator('.msg-action-menu .msg-action-item', { hasText: 'Edit' }).click();
+    // The edit happens in the composer: Enter saves it.
+    await expect(alice.page.locator('.edit-banner')).toBeVisible();
+    await alice.page.evaluate(() => {
+      const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
+      textarea.value = 'are you there, really';
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
     await expect(rowOf(bob, 'are you there, really').locator('.msg-edited')).toHaveText('(edited)', { timeout: 5_000 });
     // The edit's push reaches the sender too, and it must not put the old
     // text back on the sender's own bubble.

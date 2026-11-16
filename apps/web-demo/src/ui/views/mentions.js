@@ -3,6 +3,7 @@
 // the active conversation whose handle starts with it. The listeners sit on
 // the document, so every redrawn composer has them.
 
+import { t } from '../../../i18n/i18n.js';
 import { completeMention, mentionAt, mentionCandidates } from '../../domain/composer-text.js';
 import { avatarFor, el, handleLine } from '../dom.js';
 
@@ -34,7 +35,7 @@ export function createMentions({ store }) {
     const candidates = mentionCandidates(members, state.me?.userId, mention.prefix);
     const node = el('div', { class: 'mention-pop', role: 'listbox' });
     if (candidates.length === 0) {
-      node.appendChild(el('div', { class: 'mention-pop-empty' }, ['No matching handles']));
+      node.appendChild(el('div', { class: 'mention-pop-empty' }, [t('mentions.empty')]));
     }
     candidates.forEach((member, index) => {
       const item = el('div', {

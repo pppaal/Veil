@@ -2,7 +2,7 @@
 //   GET    /safety/blocks                    blocked users
 //   POST   /safety/blocks {userId}           block
 //   DELETE /safety/blocks/:userId            unblock
-//   POST   /safety/mutes/:cid {mutedForSeconds}  mute (null: unmute)
+//   POST   /safety/mutes/:cid {mutedForSeconds}  mute (null: unmute; absent: no end)
 //   POST   /safety/reports                   an abuse report (src/features/report.js)
 
 import { t } from '../../../i18n/i18n.js';
@@ -13,15 +13,20 @@ import { abuseReport } from '../../features/report.js';
 export function createSafety({ store, stack, preferences, toast }) {
   const { authedApi } = stack;
 
+  async function block(userId, handle, { quiet = false } = {}) {
+    try {
+      await authedApi('/safety/blocks', { method: 'POST', body: { userId } });
+      if (!quiet) toast(t('safety.blocked', { handle }), 'good');
+      return true;
+    } catch {
+      if (!quiet) toast(t('safety.blockFailed', { handle }), 'error');
+      return false;
+    }
+  }
+
   return {
-    async block(userId, handle) {
-      try {
-        await authedApi('/safety/blocks', { method: 'POST', body: { userId } });
-        toast(t('safety.blocked', { handle }), 'good');
-      } catch (error) {
-        toast(t('safety.blockFailed', { error: error.message || 'unknown' }), 'error');
-      }
-    },
+    // Whether the server took the block.
+    block: (userId, handle) => block(userId, handle),
 
     // Whether the server took the unblock.
     async unblock(userId, handle) {
@@ -29,8 +34,8 @@ export function createSafety({ store, stack, preferences, toast }) {
         await authedApi(`/safety/blocks/${userId}`, { method: 'DELETE' });
         toast(t('safety.unblocked', { handle }), 'good');
         return true;
-      } catch (error) {
-        toast(t('safety.unblockFailed', { error: error.message || 'unknown' }), 'error');
+      } catch {
+        toast(t('safety.unblockFailed', { handle }), 'error');
         return false;
       }
     },
@@ -46,37 +51,52 @@ export function createSafety({ store, stack, preferences, toast }) {
       }
     },
 
-    // seconds: how long notifications stay off; null or 0 turns them on.
-    // The mute is remembered here too, so it holds before the server answers.
-    async setMute(conversationId, seconds) {
+    // duration: seconds for a timed mute, 'always' for one with no end, or
+    // null to unmute. The mute and its end are remembered here too, so it
+    // holds before the server answers and ends on time.
+    async setMute(conversationId, duration) {
+      const body = duration === 'always' ? {} : { mutedForSeconds: duration };
       try {
-        await authedApi(`/safety/mutes/${conversationId}`, { method: 'POST', body: { mutedForSeconds: seconds } });
-        if (seconds == null || seconds <= 0) {
-          store.state.muted.delete(conversationId);
-          toast(t('notifications.on'), 'good');
-        } else {
-          store.state.muted.add(conversationId);
-          toast(t('mute.off', { duration: muteDurationLabel(seconds) }), 'good');
-        }
-        preferences.setMutedConversations(store.state.muted);
-        store.notify('panels', 'sidebar');
-      } catch (error) {
-        toast(t('mute.failed', { error: error.message || 'unknown' }), 'error');
+        await authedApi(`/safety/mutes/${conversationId}`, { method: 'POST', body });
+      } catch {
+        toast(t('mute.failed'), 'error');
+        return;
       }
+      const { muted } = store.state;
+      if (duration == null) {
+        muted.delete(conversationId);
+        toast(t('mute.undone'), 'good');
+      } else if (duration === 'always') {
+        muted.set(conversationId, null);
+        toast(t('mute.doneAlways'), 'good');
+      } else {
+        muted.set(conversationId, Date.now() + duration * 1000);
+        toast(t('mute.off', { duration: muteDurationLabel(duration) }), 'good');
+      }
+      preferences.setMutedConversations(muted);
+      store.notify('panels', 'sidebar');
     },
 
     // Only the reason the user picked and the ids are sent: nothing typed,
-    // and nothing of the message's content.
-    async report({ conversationId, messageId, sender, reason }) {
+    // and nothing of the message's content. messageId is left out for a
+    // report about the whole chat. With alsoBlock the sender is blocked
+    // once the report is in; handle is how the toasts name them.
+    async report({ conversationId, messageId, sender, handle, reason, alsoBlock = false }) {
       try {
         await authedApi('/safety/reports', {
           method: 'POST',
           body: abuseReport({ reportedUserId: sender.userId, conversationId, messageId, reason }),
         });
-        toast(t('report.sent'), 'good');
-      } catch (error) {
-        toast(t('report.failed', { error: error.message || 'unknown' }), 'error');
+      } catch {
+        toast(t('report.failed'), 'error');
+        return;
       }
+      if (!alsoBlock) {
+        toast(t('report.sent'), 'good');
+        return;
+      }
+      if (await block(sender.userId, handle, { quiet: true })) toast(t('report.sentAndBlocked', { handle }), 'good');
+      else toast(t('report.sentBlockFailed', { handle }), 'error');
     },
   };
 }

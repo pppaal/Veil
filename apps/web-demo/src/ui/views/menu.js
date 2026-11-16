@@ -1,6 +1,8 @@
-// The top-right menu (#menu in index.html): each item names its action in
+// The top-right menu (#menu in index.html): the signed-in account with a
+// button that copies the handle, then the actions; each names its action in
 // data-action. A click anywhere else closes it.
 
+import { t } from '../../../i18n/i18n.js';
 import { $ } from '../dom.js';
 import { toast } from '../toast.js';
 
@@ -26,16 +28,11 @@ export function createMenu({ actions }) {
   };
 }
 
-// The handle and connection-status items.
 export async function copyHandle(handle) {
   try {
     await navigator.clipboard.writeText('@' + handle);
-    toast('Handle copied', 'good');
+    toast(t('menu.handleCopied'), 'good');
   } catch {
-    toast('Could not access the clipboard', 'error');
+    toast(t('clipboard.failed'), 'error');
   }
-}
-
-export function showConnectionStatus(connected, pollMs) {
-  toast('Connection: ' + (connected ? 'live (WebSocket)' : 'polling every ' + pollMs / 1000 + ' seconds'), 'good');
 }

@@ -11,6 +11,21 @@ import {
 } from './src/crypto/secret-link.js';
 
 const API = '/v1';
+
+// The page's words. They live here and in s.html because a production
+// server serves only this page and its modules (apps/api/src/web-assets.ts
+// SECRET_VIEWER_FILES), not i18n/en.json.
+const TEXT = Object.freeze({
+  cantOpen: "This link can't be opened",
+  gone: 'This link was already opened, or it expired.',
+  wrongPassphrase: "Couldn't open it. Check the passphrase and try again. If you close this page, it can't be opened again.",
+  invalid: "This link isn't valid.",
+  revealed: 'Message',
+  createFailed: "Couldn't create the link. Try again.",
+  createLink: 'Create link',
+  copied: 'Copied',
+  copyFailed: "Couldn't copy. Select the link and copy it.",
+});
 const $ = (id) => document.getElementById(id);
 const setVisible = (id, visible) => { $(id).hidden = !visible; };
 
@@ -22,7 +37,7 @@ function mountViewer(rawFragment) {
   setVisible('view', true);
   const link = parseSecretFragment(rawFragment);
   if (!link) {
-    showGone('This link cannot be opened');
+    showGone(TEXT.cantOpen);
     return;
   }
   setVisible('passPrompt', link.needsPassphrase);
@@ -39,7 +54,7 @@ function mountViewer(rawFragment) {
     try {
       blob ??= await burnAndFetch(link.id);
     } catch {
-      showGone('This link was already opened or has expired');
+      showGone(TEXT.gone);
       return;
     }
     try {
@@ -48,9 +63,7 @@ function mountViewer(rawFragment) {
     } catch {
       // The server copy is gone, but the blob stays in memory so a mistyped
       // passphrase can be retried on this page.
-      $('vErr').textContent = link.needsPassphrase
-        ? 'Could not decrypt. Check the passphrase and try again. If you close this page, the message cannot be opened again.'
-        : 'Could not decrypt. The link is not valid.';
+      $('vErr').textContent = link.needsPassphrase ? TEXT.wrongPassphrase : TEXT.invalid;
       setVisible('vErr', true);
       $('revealBtn').disabled = !link.needsPassphrase;
     }
@@ -65,7 +78,7 @@ async function burnAndFetch(id) {
 
 function showSecret(text) {
   setVisible('revealPanel', false);
-  $('viewTitle').textContent = 'Message';
+  $('viewTitle').textContent = TEXT.revealed;
   $('revealText').textContent = text;
   setVisible('revealWrap', true);
   // The key has done its job; keep it out of the address bar and history.
@@ -112,22 +125,23 @@ function mountComposer() {
       lastLink = `${location.origin}${location.pathname}#${formatSecretFragment(id, fragmentSecret)}`;
       $('linkText').textContent = lastLink;
       setVisible('out', true);
+      setVisible('passApart', usePassphrase);
       $('copied').textContent = '';
     } catch {
-      $('cErr').textContent = 'Could not create the link. Try again in a moment.';
+      $('cErr').textContent = TEXT.createFailed;
       setVisible('cErr', true);
     } finally {
       button.disabled = false;
-      button.textContent = 'Create link';
+      button.textContent = TEXT.createLink;
     }
   });
 
   $('copyBtn').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(lastLink);
-      $('copied').textContent = 'Copied';
+      $('copied').textContent = TEXT.copied;
     } catch {
-      $('copied').textContent = 'Could not copy. Select the link and copy it.';
+      $('copied').textContent = TEXT.copyFailed;
     }
   });
 }

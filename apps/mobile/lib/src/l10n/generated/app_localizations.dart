@@ -1963,8 +1963,8 @@ abstract class AppLocalizations {
   /// No description provided for @contactsAdded.
   ///
   /// In en, this message translates to:
-  /// **'@{handle} added'**
-  String contactsAdded(String handle);
+  /// **'{name} added'**
+  String contactsAdded(String name);
 
   /// No description provided for @contactsStartChat.
   ///
@@ -2905,14 +2905,14 @@ abstract class AppLocalizations {
   /// No description provided for @reportTitle.
   ///
   /// In en, this message translates to:
-  /// **'Report @{handle}'**
-  String reportTitle(String handle);
+  /// **'Report {name}'**
+  String reportTitle(String name);
 
   /// No description provided for @reportConfirmTitle.
   ///
   /// In en, this message translates to:
-  /// **'Report @{handle}?'**
-  String reportConfirmTitle(String handle);
+  /// **'Report {name}?'**
+  String reportConfirmTitle(String name);
 
   /// No description provided for @reportReasonSpam.
   ///
@@ -2959,8 +2959,8 @@ abstract class AppLocalizations {
   /// No description provided for @reportAlsoBlock.
   ///
   /// In en, this message translates to:
-  /// **'Also block @{handle}'**
-  String reportAlsoBlock(String handle);
+  /// **'Also block {name}'**
+  String reportAlsoBlock(String name);
 
   /// No description provided for @reportFooterMessage.
   ///
@@ -2989,14 +2989,14 @@ abstract class AppLocalizations {
   /// No description provided for @reportSentAndBlocked.
   ///
   /// In en, this message translates to:
-  /// **'Report sent and @{handle} blocked'**
-  String reportSentAndBlocked(String handle);
+  /// **'Report sent and {name} blocked'**
+  String reportSentAndBlocked(String name);
 
   /// No description provided for @reportSentBlockFailed.
   ///
   /// In en, this message translates to:
-  /// **'Report sent, but @{handle} couldn\'t be blocked'**
-  String reportSentBlockFailed(String handle);
+  /// **'Report sent, but {name} couldn\'t be blocked'**
+  String reportSentBlockFailed(String name);
 
   /// No description provided for @reportFailed.
   ///
@@ -3019,8 +3019,8 @@ abstract class AppLocalizations {
   /// No description provided for @blockConfirmTitle.
   ///
   /// In en, this message translates to:
-  /// **'Block @{handle}?'**
-  String blockConfirmTitle(String handle);
+  /// **'Block {name}?'**
+  String blockConfirmTitle(String name);
 
   /// No description provided for @blockConfirmBody.
   ///
@@ -3031,32 +3031,32 @@ abstract class AppLocalizations {
   /// No description provided for @blockDone.
   ///
   /// In en, this message translates to:
-  /// **'@{handle} blocked'**
-  String blockDone(String handle);
+  /// **'{name} blocked'**
+  String blockDone(String name);
 
   /// No description provided for @blockFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t block @{handle}'**
-  String blockFailed(String handle);
+  /// **'Couldn\'t block {name}'**
+  String blockFailed(String name);
 
   /// No description provided for @unblockDone.
   ///
   /// In en, this message translates to:
-  /// **'@{handle} unblocked'**
-  String unblockDone(String handle);
+  /// **'{name} unblocked'**
+  String unblockDone(String name);
 
   /// No description provided for @unblockFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t unblock @{handle}'**
-  String unblockFailed(String handle);
+  /// **'Couldn\'t unblock {name}'**
+  String unblockFailed(String name);
 
   /// No description provided for @blockedComposerLine.
   ///
   /// In en, this message translates to:
-  /// **'You blocked @{handle}.'**
-  String blockedComposerLine(String handle);
+  /// **'You blocked {name}.'**
+  String blockedComposerLine(String name);
 
   /// No description provided for @blockedAccountsTitle.
   ///

@@ -207,7 +207,8 @@ void main() {
       await pumpFrames(tester, frames: 6);
       expect(find.byType(BottomSheet), findsNothing);
       expect(world.api.addedContacts, ['icarus']);
-      expect(findCopy(en.contactsAdded('icarus')), findsOneWidget);
+      // Said with the name the row now shows.
+      expect(findCopy(en.contactsAdded('Ica')), findsOneWidget);
       expect(find.text('Ica'), findsOneWidget, reason: 'listed under the name it was given');
     });
   });

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../conversations/data/conversation_models.dart';
+import '../../conversations/presentation/peer_names.dart';
 import '../../safety/data/abuse_reports.dart';
 import '../../safety/data/safety_providers.dart';
 import '../../safety/presentation/block_actions.dart';
@@ -15,7 +16,8 @@ import 'chat_bar.dart';
 /// the peer is blocked, muting, and in a 1:1 reporting and blocking the
 /// peer), the line that
 /// takes the composer's place while the peer is blocked, and reporting a
-/// message from its long-press sheet.
+/// message from its long-press sheet. Each calls the person what the chat
+/// does: a 1:1's peer as its bar does, a group's member as their bubbles do.
 mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   String get conversationId;
 
@@ -35,6 +37,7 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
             onSelected: () => showReportSheet(
               context,
               ReportTarget(userId: peer.userId, handle: peer.handle, conversationId: conversationId, offerBlock: true),
+              name: _peerTitle(conversation!, ref.read(peerNamesProvider)),
             ),
           );
     // What changes the chat first, then after a line what is about the
@@ -58,7 +61,11 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         ChatMenuEntry(
           key: 'unblock',
           label: l10n.unblockAction,
-          onSelected: () => unblockAccount(context, userId: peer.userId, handle: peer.handle),
+          onSelected: () => unblockAccount(
+            context,
+            userId: peer.userId,
+            name: _peerTitle(conversation!, ref.read(peerNamesProvider)),
+          ),
         )
       else
         ChatMenuEntry(key: 'timer', label: l10n.chatTtlSheetTitle, onSelected: onPickTimer),
@@ -68,7 +75,12 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
           key: 'block',
           label: l10n.blockAction,
           destructive: true,
-          onSelected: () => confirmAndBlock(context, userId: peer.userId, handle: peer.handle),
+          onSelected: () => confirmAndBlock(
+            context,
+            userId: peer.userId,
+            handle: peer.handle,
+            name: _peerTitle(conversation!, ref.read(peerNamesProvider)),
+          ),
         ),
     ];
   }
@@ -85,24 +97,28 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   Widget? blockedComposer(ConversationPreview? conversation) {
     final peer = _directPeer(conversation);
     if (peer == null || !ref.watch(blockedAccountsProvider).isBlocked(peer.userId)) return null;
+    final name = _peerTitle(conversation!, ref.watch(peerNamesProvider));
     return BlockedComposerLine(
-      handle: peer.handle,
-      onUnblock: () => unblockAccount(context, userId: peer.userId, handle: peer.handle),
+      name: name,
+      onUnblock: () => unblockAccount(context, userId: peer.userId, name: name),
     );
   }
 
   /// Reports [message] from its long-press sheet: the peer of a 1:1, or the
   /// member of a group who wrote it ([groupSenderUserId], as this device
-  /// pinned their device). Null when it can't be reported: a message of
-  /// ours, a notice this device wrote, or one whose writer is not known.
+  /// pinned their device, called [groupSenderTitle]). Null when it can't be
+  /// reported: a message of ours, a notice this device wrote, or one whose
+  /// writer is not known.
   VoidCallback? messageReport(
     ChatMessage message,
     ConversationPreview? conversation, {
     required String? Function(ChatMessage message) groupSenderUserId,
     required String? Function(ChatMessage message) groupSenderHandle,
+    required String? Function(ChatMessage message) groupSenderTitle,
   }) {
     if (message.isMine || message.isLocalNotice || conversation == null) return null;
     final ReportTarget target;
+    final String name;
     final peer = _directPeer(conversation);
     if (peer != null) {
       target = ReportTarget(
@@ -112,15 +128,17 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         messageId: message.id,
         offerBlock: true,
       );
+      name = _peerTitle(conversation, ref.read(peerNamesProvider));
     } else if (conversation.type == ConversationType.group) {
       final userId = groupSenderUserId(message);
       final handle = groupSenderHandle(message);
       if (userId == null || handle == null) return null;
       target = ReportTarget(userId: userId, handle: handle, conversationId: conversationId, messageId: message.id);
+      name = groupSenderTitle(message) ?? '@$handle';
     } else {
       return null;
     }
-    return () => showReportSheet(context, target);
+    return () => showReportSheet(context, target, name: name);
   }
 
   ({String userId, String handle})? _directPeer(ConversationPreview? conversation) {
@@ -129,4 +147,9 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     if (userId.isEmpty || conversation.peerHandle.isEmpty) return null;
     return (userId: userId, handle: conversation.peerHandle);
   }
+
+  // What the bar calls a 1:1's peer (conversationTitle): their nickname, or
+  // the handle with its "@", as a held chat is called too.
+  String _peerTitle(ConversationPreview conversation, PeerNames names) =>
+      names.peerName(conversation) ?? '@${conversation.peerHandle}';
 }

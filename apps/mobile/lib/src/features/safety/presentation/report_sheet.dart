@@ -36,8 +36,10 @@ const reportReasonOrder = [
 /// a small dialog what the report holds, with "Also block" ticked where a
 /// block does something (Telegram's reasons, then WhatsApp's and Threema's
 /// confirm). The report goes once the dialog is closed with Report; a toast
-/// says how that went, with a retry if it did not.
-Future<void> showReportSheet(BuildContext context, ReportTarget target) async {
+/// says how that went, with a retry if it did not. Each calls the person
+/// [name], as the screen it was opened from does: their nickname, or the
+/// handle with its "@".
+Future<void> showReportSheet(BuildContext context, ReportTarget target, {required String name}) async {
   VeilHaptics.selection();
   final feedback = SafetyFeedback.of(context);
   final offerBlock = target.offerBlock && !feedback.read(blockedAccountsProvider).isBlocked(target.userId);
@@ -47,23 +49,23 @@ Future<void> showReportSheet(BuildContext context, ReportTarget target) async {
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    builder: (_) => _ReportSheet(target: target),
+    builder: (_) => _ReportSheet(name: name),
   );
   if (reason == null || !context.mounted) return;
   final alsoBlock = await showDialog<bool>(
     context: context,
     useRootNavigator: true,
-    builder: (_) => _ReportDialog(target: target, offerBlock: offerBlock),
+    builder: (_) => _ReportDialog(target: target, name: name, offerBlock: offerBlock),
   );
   if (alsoBlock == null) return;
-  await _fileReport(feedback, target, (reason: reason, alsoBlock: offerBlock && alsoBlock));
+  await _fileReport(feedback, target, name, (reason: reason, alsoBlock: offerBlock && alsoBlock));
 }
 
-Future<void> _fileReport(SafetyFeedback feedback, ReportTarget target, _ReportChoice choice) async {
+Future<void> _fileReport(SafetyFeedback feedback, ReportTarget target, String name, _ReportChoice choice) async {
   final l10n = feedback.l10n;
   final sent = await feedback.read(abuseReportsProvider).file(target, choice.reason);
   if (!sent) {
-    feedback.say(l10n.reportFailed, retry: () => _fileReport(feedback, target, choice));
+    feedback.say(l10n.reportFailed, retry: () => _fileReport(feedback, target, name, choice));
     return;
   }
   if (!choice.alsoBlock) {
@@ -72,20 +74,21 @@ Future<void> _fileReport(SafetyFeedback feedback, ReportTarget target, _ReportCh
   }
   final blocked = await feedback.read(blockedAccountsProvider).block(target.userId, handle: target.handle);
   if (blocked) {
-    feedback.say(l10n.reportSentAndBlocked(target.handle));
+    feedback.say(l10n.reportSentAndBlocked(name));
   } else {
     feedback.say(
-      l10n.reportSentBlockFailed(target.handle),
-      retry: () => blockAccount(feedback, userId: target.userId, handle: target.handle, announce: true),
+      l10n.reportSentBlockFailed(name),
+      retry: () => blockAccount(feedback, userId: target.userId, handle: target.handle, name: name, announce: true),
     );
   }
 }
 
 /// The reasons, one row each; a tap chooses and closes the sheet.
 class _ReportSheet extends StatelessWidget {
-  const _ReportSheet({required this.target});
+  const _ReportSheet({required this.name});
 
-  final ReportTarget target;
+  /// Who is reported, as the screen behind calls them.
+  final String name;
 
   @override
   Widget build(BuildContext context) {
@@ -101,8 +104,8 @@ class _ReportSheet extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(VeilSpace.md, 0, VeilSpace.md, VeilSpace.xs),
-              // A handle is its owner's word: drawn as typed.
-              child: Text(l10n.reportTitle(target.handle), style: theme.textTheme.titleLarge),
+              // A name and a handle are their owner's words: drawn as typed.
+              child: Text(l10n.reportTitle(name), style: theme.textTheme.titleLarge),
             ),
             VeilGroup(
               children: [
@@ -122,13 +125,14 @@ class _ReportSheet extends StatelessWidget {
   }
 }
 
-/// "Report @sam?": what the report holds and that they are not told, and
-/// "Also block @sam", ticked, where a block does something. Pops with
-/// whether to block too; null on Cancel.
+/// "Report Sam Rivera?": what the report holds and that they are not told,
+/// and "Also block Sam Rivera", ticked, where a block does something. Pops
+/// with whether to block too; null on Cancel.
 class _ReportDialog extends StatefulWidget {
-  const _ReportDialog({required this.target, required this.offerBlock});
+  const _ReportDialog({required this.target, required this.name, required this.offerBlock});
 
   final ReportTarget target;
+  final String name;
   final bool offerBlock;
 
   @override
@@ -151,7 +155,7 @@ class _ReportDialogState extends State<_ReportDialog> {
             ? l10n.reportFooterChat
             : l10n.reportFooterAccount;
     return AlertDialog(
-      title: Text(l10n.reportConfirmTitle(target.handle)),
+      title: Text(l10n.reportConfirmTitle(widget.name)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,7 +169,7 @@ class _ReportDialogState extends State<_ReportDialog> {
               onChanged: (value) => setState(() => _alsoBlock = value ?? false),
               controlAffinity: ListTileControlAffinity.leading,
               contentPadding: EdgeInsets.zero,
-              title: Text(l10n.reportAlsoBlock(target.handle), style: theme.textTheme.bodyMedium),
+              title: Text(l10n.reportAlsoBlock(widget.name), style: theme.textTheme.bodyMedium),
             ),
           ],
         ],

@@ -105,6 +105,14 @@ void main() {
         expect(find.text(_en.chatAccountHoldOtherTitle), findsOneWidget);
         expect(_inBar('@$peerHandle'), findsOneWidget);
         expect(find.text('Sam Rivera'), findsNothing);
+
+        // So does a block of it.
+        await tester.tap(find.byTooltip(_en.chatMenuTooltip));
+        await pumpFrames(tester, frames: 3);
+        await tester.tap(find.byKey(const ValueKey('chat-menu-block')));
+        await pumpFrames(tester, frames: 4);
+        expect(find.text(_en.blockConfirmTitle('@$peerHandle')), findsOneWidget);
+        expect(find.text('Sam Rivera'), findsNothing);
       },
     );
   });

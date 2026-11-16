@@ -74,12 +74,7 @@ class _BlockedAccountsScreenState extends ConsumerState<BlockedAccountsScreen> {
             inset: BlockedAccountRow.textInset,
             children: [
               for (final account in blocked.accounts)
-                BlockedAccountRow(
-                  key: ValueKey('blocked-${account.handle}'),
-                  account: account,
-                  name: accounts.knownNameFor(userId: account.userId, handle: account.handle),
-                  onUnblock: () => unblockAccount(context, userId: account.userId, handle: account.handle),
-                ),
+                _row(account, accounts.knownNameFor(userId: account.userId, handle: account.handle)),
             ],
           ),
         ],
@@ -88,6 +83,14 @@ class _BlockedAccountsScreenState extends ConsumerState<BlockedAccountsScreen> {
 
     return VeilShell(title: l10n.blockedAccountsTitle, grouped: true, child: body);
   }
+
+  // A failed unblock names the account as its row does.
+  Widget _row(BlockedAccount account, String? name) => BlockedAccountRow(
+        key: ValueKey('blocked-${account.handle}'),
+        account: account,
+        name: name,
+        onUnblock: () => unblockAccount(context, userId: account.userId, name: name ?? '@${account.handle}'),
+      );
 }
 
 /// One blocked account: the avatar, the name this phone knows for it with

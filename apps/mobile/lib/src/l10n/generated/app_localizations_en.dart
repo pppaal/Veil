@@ -1158,8 +1158,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t add the contact. Check your connection.';
 
   @override
-  String contactsAdded(String handle) {
-    return '@$handle added';
+  String contactsAdded(String name) {
+    return '$name added';
   }
 
   @override
@@ -1708,13 +1708,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reportAction => 'Report';
 
   @override
-  String reportTitle(String handle) {
-    return 'Report @$handle';
+  String reportTitle(String name) {
+    return 'Report $name';
   }
 
   @override
-  String reportConfirmTitle(String handle) {
-    return 'Report @$handle?';
+  String reportConfirmTitle(String name) {
+    return 'Report $name?';
   }
 
   @override
@@ -1739,8 +1739,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reportReasonOther => 'Something else';
 
   @override
-  String reportAlsoBlock(String handle) {
-    return 'Also block @$handle';
+  String reportAlsoBlock(String name) {
+    return 'Also block $name';
   }
 
   @override
@@ -1759,13 +1759,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reportSent => 'Report sent';
 
   @override
-  String reportSentAndBlocked(String handle) {
-    return 'Report sent and @$handle blocked';
+  String reportSentAndBlocked(String name) {
+    return 'Report sent and $name blocked';
   }
 
   @override
-  String reportSentBlockFailed(String handle) {
-    return 'Report sent, but @$handle couldn\'t be blocked';
+  String reportSentBlockFailed(String name) {
+    return 'Report sent, but $name couldn\'t be blocked';
   }
 
   @override
@@ -1778,8 +1778,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get unblockAction => 'Unblock';
 
   @override
-  String blockConfirmTitle(String handle) {
-    return 'Block @$handle?';
+  String blockConfirmTitle(String name) {
+    return 'Block $name?';
   }
 
   @override
@@ -1787,28 +1787,28 @@ class AppLocalizationsEn extends AppLocalizations {
       'Their messages to you will show as not sent, and they can\'t add you to groups. They won\'t be told, and in groups you share, you\'ll still see each other\'s messages.';
 
   @override
-  String blockDone(String handle) {
-    return '@$handle blocked';
+  String blockDone(String name) {
+    return '$name blocked';
   }
 
   @override
-  String blockFailed(String handle) {
-    return 'Couldn\'t block @$handle';
+  String blockFailed(String name) {
+    return 'Couldn\'t block $name';
   }
 
   @override
-  String unblockDone(String handle) {
-    return '@$handle unblocked';
+  String unblockDone(String name) {
+    return '$name unblocked';
   }
 
   @override
-  String unblockFailed(String handle) {
-    return 'Couldn\'t unblock @$handle';
+  String unblockFailed(String name) {
+    return 'Couldn\'t unblock $name';
   }
 
   @override
-  String blockedComposerLine(String handle) {
-    return 'You blocked @$handle.';
+  String blockedComposerLine(String name) {
+    return 'You blocked $name.';
   }
 
   @override

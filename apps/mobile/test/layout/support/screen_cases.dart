@@ -1052,7 +1052,12 @@ Future<void> _openGroupMessageReportSheet(WidgetTester tester) async {
 
 Future<void> _expectBlockedLine(WidgetTester tester) async {
   final en = lookupAppLocalizations(const Locale('en'));
-  expect(find.text(en.blockedComposerLine(peerHandle)), findsOneWidget, reason: 'the blocked chat shows its composer');
+  // Named as the bar names Sam.
+  expect(
+    find.text(en.blockedComposerLine(peerNames[peerHandle]!)),
+    findsOneWidget,
+    reason: 'the blocked chat shows its composer',
+  );
 }
 
 Future<void> _expectBlockedAccounts(WidgetTester tester) async {

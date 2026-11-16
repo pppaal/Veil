@@ -377,7 +377,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     // only one that opened takes a reaction, and not from someone blocked.
     final canReact = decrypted.isOk && !peerBlocked(conversation);
     final report = messageReport(message, conversation,
-        groupSenderUserId: groupSenderUserId, groupSenderHandle: groupSenderHandle);
+        groupSenderUserId: groupSenderUserId,
+        groupSenderHandle: groupSenderHandle,
+        groupSenderTitle: (message) => groupSenderName(message, ref.read(peerNamesProvider)));
     if (!canReact && report == null) return;
     VeilHaptics.selection();
     // The message list on screen, so a menu that shows alone keeps clear of

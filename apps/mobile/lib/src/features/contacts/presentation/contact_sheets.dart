@@ -69,9 +69,9 @@ Future<void> showAddContactSheet(BuildContext context, WidgetRef ref) {
     context,
     (_) => _AddContactSheet(
       // Said on the screen behind the sheet, once the sheet is gone.
-      onAdded: (handle) {
+      onAdded: (name) {
         if (!context.mounted) return;
-        showVeilToast(context, l10n.contactsAdded(handle));
+        showVeilToast(context, l10n.contactsAdded(name));
       },
     ),
   );
@@ -80,6 +80,8 @@ Future<void> showAddContactSheet(BuildContext context, WidgetRef ref) {
 class _AddContactSheet extends ConsumerStatefulWidget {
   const _AddContactSheet({required this.onAdded});
 
+  /// Called once the contact is added, with what its row calls it: the
+  /// nickname typed, or the handle with its "@".
   final ValueChanged<String> onAdded;
 
   @override
@@ -122,7 +124,8 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
       return;
     }
     navigator.pop();
-    widget.onAdded(handle);
+    final nickname = _nickname.text.trim();
+    widget.onAdded(nickname.isEmpty ? '@$handle' : nickname);
   }
 
   @override
@@ -187,13 +190,17 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
   Future<void> report() async {
     final userId = await account();
     if (userId == null || !context.mounted) return;
-    await showReportSheet(context, ReportTarget(userId: userId, handle: contact.handle, offerBlock: true));
+    await showReportSheet(
+      context,
+      ReportTarget(userId: userId, handle: contact.handle, offerBlock: true),
+      name: contact.title,
+    );
   }
 
   Future<void> block() async {
     final userId = await account();
     if (userId == null || !context.mounted) return;
-    await confirmAndBlock(context, userId: userId, handle: contact.handle, announce: true);
+    await confirmAndBlock(context, userId: userId, handle: contact.handle, name: contact.title, announce: true);
   }
 
   Future<void> startChat() async {
@@ -266,7 +273,7 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
                 trailing: noChevron,
                 onTap: () {
                   close();
-                  unblockAccount(context, userId: blocked.userId, handle: contact.handle, announce: true);
+                  unblockAccount(context, userId: blocked.userId, name: contact.title, announce: true);
                 },
               )
             else

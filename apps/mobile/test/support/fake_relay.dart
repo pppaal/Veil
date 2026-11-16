@@ -437,9 +437,14 @@ class FakeRelayClient extends VeilApiClient {
     return refreshTo?.call(staleToken);
   }
 
+  /// While set, every list of conversations fails as an unreachable network
+  /// makes it, so what the device shows is what its cache holds.
+  bool failConversationFetches = false;
+
   @override
   Future<Map<String, dynamic>> getConversations(String accessToken) async {
     conversationFetches += 1;
+    if (failConversationFetches) throw VeilApiException('The server is unreachable.', code: 'network_unavailable');
     return {
       'items': [
         for (final conversation in relay.conversations.values)

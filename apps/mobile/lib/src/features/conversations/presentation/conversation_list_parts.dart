@@ -132,7 +132,7 @@ class MessageSearchResultTile extends StatelessWidget {
     final chat = conversation;
     final group = chat?.type == ConversationType.group;
     final title = chat == null
-        ? names.nicknameOf(result.peerHandle) ?? '@${result.peerHandle}'
+        ? names.directName(result.conversationId, result.peerHandle) ?? '@${result.peerHandle}'
         : conversationRowTitle(l10n, chat, names, localUserId: localUserId);
     return Semantics(
       button: true,

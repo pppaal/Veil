@@ -247,6 +247,11 @@ class VeilMessengerController extends ChangeNotifier {
   /// no honest relay issues (see ConversationPeerBindings.holdFor).
   PeerAccountHold? peerAccountHoldFor(String conversationId) => _services.identity.accountHoldFor(conversationId);
 
+  /// Whom each 1:1 on this device is bound to, by conversation id: the
+  /// account its session is with, under the handle it had then. The screens
+  /// put a nickname only on the account its handle is bound to (PeerNames).
+  Map<String, ConversationPeer> get boundPeers => _services.identity.boundPeers;
+
   /// The user chose to talk to the account the held [conversationId] is
   /// listed with; what it sent and what waited to be sent go through. A
   /// failure (the keystore refusing the binding, say) is shown like any

@@ -11,10 +11,13 @@ import 'package:veil_mobile/src/core/crypto/ratchet/legacy_session.dart';
 import 'package:veil_mobile/src/core/crypto/ratchet/session_record.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/curve25519.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/identity_keys.dart';
+import 'package:veil_mobile/src/core/domain/conversation_preview.dart';
+import 'package:veil_mobile/src/core/network/veil_api_exception.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/peer_names.dart';
 
 import '../support/async_wait.dart';
 import '../support/fake_relay.dart';
@@ -416,6 +419,78 @@ void main() {
       await writes(alice, conv, 'hello bob');
 
       await expectMalloryHeld(listings);
+    });
+  });
+
+  // A nickname is the user's own word for the account they talk to under a
+  // handle, which a lying relay could not otherwise produce. So the relay
+  // cannot put it on another account by listing that account under the
+  // handle: not by relabelling a 1:1 bound to it, nor by leaving the real
+  // 1:1 out of the list and naming the account in a group.
+  group('a nickname the relay lists another account under', () {
+    late MessengerParty mallory;
+    const nicknames = {'bob': 'Bob Smith'};
+
+    // Alice has bound 1:1s with bob and with mallory, and calls bob "Bob
+    // Smith" on her phone.
+    setUp(() async {
+      mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mal');
+      relay.addDirect('conv-am', 'mallory', 'alice');
+      await mallory.signIn();
+      await alice.controller.refreshConversations();
+      await deliver(alice, bob, 'hello bob');
+      await deliver(bob, alice, 'hi alice');
+      await deliver(alice, mallory, 'hello mallory', conversationId: 'conv-am');
+      await deliver(mallory, alice, 'hi alice', conversationId: 'conv-am');
+      await alice.controller.refreshConversations();
+    });
+
+    tearDown(() => mallory.dispose());
+
+    // As the screens read them (peerNamesProvider).
+    PeerNames names() => peerNamesFor(alice.controller, nicknames);
+    const malloryAsBob = GroupMember(userId: 'user-mallory', handle: 'bob');
+
+    test('stays on bob when the relay relabels mallory\'s bound 1:1 as @bob', () async {
+      relay.listedHandles['alice'] = {'mallory': 'bob'};
+      await alice.controller.refreshConversations();
+      final relabelled = alice.controller.conversationById('conv-am')!;
+      expect(relabelled.peerHandle, 'bob');
+      expect(relabelled.recipientBundle.userId, mallory.device.userId);
+      expect(alice.controller.peerAccountHoldFor('conv-am'), isNull, reason: 'a bound 1:1 is never held');
+
+      expect(names().peerName(relabelled), isNull);
+      expect(names().memberTitle(malloryAsBob), '@bob');
+      expect(names().peerName(alice.controller.conversationById(conv)!), 'Bob Smith');
+      expect(names().memberTitle(GroupMember(userId: bob.device.userId, handle: 'bob')), 'Bob Smith');
+    });
+
+    test('stays on bob when the relay leaves bob\'s 1:1 out and names mallory @bob in a group', () async {
+      relay.conversations.remove(conv);
+      relay.listedHandles['alice'] = {'mallory': 'bob'};
+      relay.addGroup('grp', ['alice', 'mallory']);
+      await alice.controller.refreshConversations();
+      expect(alice.controller.conversationById(conv), isNull);
+      final group = alice.controller.conversationById('grp')!;
+      final member = group.members.firstWhere((member) => member.userId == mallory.device.userId);
+      expect(member.handle, 'bob');
+
+      expect(names().memberTitle(member), '@bob');
+      expect(names().accountName(mallory.device.userId, 'bob'), isNull);
+    });
+
+    test('stays on bob after a restart, while the cached list is all there is', () async {
+      relay.listedHandles['alice'] = {'mallory': 'bob'};
+      await alice.controller.refreshConversations();
+      await alice.controller.flushPendingWrites();
+
+      alice.api.failConversationFetches = true;
+      await expectLater(alice.restart(), throwsA(isA<VeilApiException>()));
+      final relabelled = alice.controller.conversationById('conv-am')!;
+      expect(relabelled.peerHandle, 'bob');
+      expect(names().peerName(relabelled), isNull);
+      expect(names().memberTitle(malloryAsBob), '@bob');
+      expect(names().peerName(alice.controller.conversationById(conv)!), 'Bob Smith');
     });
   });
 

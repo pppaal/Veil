@@ -66,6 +66,10 @@ class IdentityChangeService {
   /// acknowledges the account it is listed with, if it is held.
   PeerAccountHold? accountHoldFor(String conversationId) => _bindings.heldNow(conversationId);
 
+  /// Whom each 1:1 on this device is bound to, by conversation id, as far as
+  /// the bindings were read (see ConversationPeerBindings.boundNow).
+  Map<String, ConversationPeer> get boundPeers => _bindings.boundNow;
+
   /// The user chose to talk to the account the held 1:1 [conversationId]
   /// is listed with: it is bound to that account, and what it sent and what
   /// waited to be sent go through as a first contact.

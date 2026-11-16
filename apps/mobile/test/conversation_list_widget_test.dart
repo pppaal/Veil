@@ -23,10 +23,7 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 // The names this phone gave the peers in Contacts, which is where every
 // name the screens show comes from: the relay lists none.
 final _nicknames = peerNamesProvider.overrideWith(
-  (ref) => PeerNames(
-    const {'selene': 'Selene', 'rowan': 'Rowan'},
-    chats: ref.watch(messengerControllerProvider).conversations,
-  ),
+  (ref) => peerNamesFor(ref.watch(messengerControllerProvider), const {'selene': 'Selene', 'rowan': 'Rowan'}),
 );
 
 void main() {
@@ -511,11 +508,13 @@ void main() {
           _conversationMap(
             id: 'conv-1',
             peerHandle: 'selene',
+            peerUserId: 'user-peer-1',
             envelope: firstEnvelope,
           ),
           _conversationMap(
             id: 'conv-2',
             peerHandle: 'rowan',
+            peerUserId: 'user-peer-2',
             envelope: secondEnvelope,
           ),
         ],
@@ -627,11 +626,13 @@ void main() {
           _conversationMap(
             id: 'conv-1',
             peerHandle: 'selene',
+            peerUserId: 'user-peer-1',
             envelope: firstEnvelope,
           ),
           _conversationMap(
             id: 'conv-2',
             peerHandle: 'rowan',
+            peerUserId: 'user-peer-2',
             envelope: secondEnvelope,
           ),
         ],
@@ -974,9 +975,13 @@ class _FakeConversationApiClient extends VeilApiClient {
   }
 }
 
+// [peerUserId] is the peer's account: two chats listed with one account
+// under two handles name neither by a nickname (see PeerNames), and no
+// honest relay lists them so.
 Map<String, dynamic> _conversationMap({
   required String id,
   required String peerHandle,
+  String peerUserId = 'user-peer',
   CryptoEnvelope? envelope,
   DateTime? expiresAt,
 }) {
@@ -990,7 +995,7 @@ Map<String, dynamic> _conversationMap({
         'handle': 'atlas',
       },
       {
-        'userId': 'user-peer',
+        'userId': peerUserId,
         'handle': peerHandle,
       },
     ],

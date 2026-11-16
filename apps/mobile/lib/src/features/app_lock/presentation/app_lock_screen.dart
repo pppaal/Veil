@@ -199,6 +199,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
                 hint: l10n.appLockPinLabel,
                 textAlign: TextAlign.center,
                 dense: true,
+                underline: (rest: palette.strokeStrong, focused: palette.textMuted, error: palette.danger),
                 errorText: formatError ?? _attemptError(l10n),
                 onChanged: _pinChanged,
               ),

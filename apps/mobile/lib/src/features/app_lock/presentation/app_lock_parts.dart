@@ -63,7 +63,9 @@ String biometricUnlockLabel(AppLocalizations l10n, BiometricKind kind) => switch
     };
 
 /// A PIN field of the lock screen and of its setup: digits, obscured, no
-/// suggestions, no selection.
+/// suggestions, no selection. With [underline] (the lock screen) it is a
+/// line under the digits, with no box, as Signal's PIN entry: a filled box
+/// read as a second button over the disabled Unlock.
 TextField appLockPinField({
   required TextEditingController controller,
   required String hint,
@@ -72,7 +74,10 @@ TextField appLockPinField({
   ValueChanged<String>? onChanged,
   TextAlign textAlign = TextAlign.start,
   bool dense = false,
+  ({Color rest, Color focused, Color error})? underline,
 }) {
+  UnderlineInputBorder rule(Color color, double width) =>
+      UnderlineInputBorder(borderSide: BorderSide(color: color, width: width));
   return TextField(
     controller: controller,
     obscureText: true,
@@ -89,6 +94,12 @@ TextField appLockPinField({
       errorMaxLines: 3,
       // The lock screen's field is the design system's 44.
       isDense: dense ? true : null,
+      filled: underline == null ? null : false,
+      border: underline == null ? null : rule(underline.rest, 1),
+      enabledBorder: underline == null ? null : rule(underline.rest, 1),
+      focusedBorder: underline == null ? null : rule(underline.focused, 2),
+      errorBorder: underline == null ? null : rule(underline.error, 1),
+      focusedErrorBorder: underline == null ? null : rule(underline.error, 2),
     ),
   );
 }

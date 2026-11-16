@@ -56,6 +56,11 @@ void main() {
         expect(wholeOnScreen(tester, find.byType(TextField)), isTrue);
         expect(wholeOnScreen(tester, find.widgetWithText(FilledButton, l10n.appLockUnlock)), isTrue);
         expect(wholeOnScreen(tester, find.widgetWithText(TextButton, l10n.appLockUseBiometrics)), isTrue);
+        // The field is a line under the digits, not a grey box like the
+        // disabled button under it.
+        final pin = tester.widget<TextField>(find.byType(TextField)).decoration!;
+        expect(pin.filled, isFalse);
+        expect(pin.enabledBorder, isA<UnderlineInputBorder>());
 
         // A white page with no bar title: no notice, no state words, and
         // the PIN rule is not said here (it is the set-up page's footer).

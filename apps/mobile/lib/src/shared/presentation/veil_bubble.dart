@@ -13,9 +13,9 @@ enum VeilBubblePosition { first, middle, last, single }
 /// left for others) is 4 at the end of a run and 6 inside one.
 ///
 /// [highlighted] (a search hit) is a `surfaceRaised` fill with a 1.5dp
-/// `primaryStrong` border. [failed] is drawn like an incoming bubble, with
-/// [failedText] ("Not sent. Tap to retry.") in the danger colour under the
-/// content.
+/// `primaryStrong` border. [failed] keeps its fill, with a red glyph beside
+/// it and [failedText] ("Not sent. Tap to retry.") in the danger colour
+/// under it.
 class VeilBubble extends StatelessWidget {
   const VeilBubble({
     super.key,
@@ -46,6 +46,14 @@ class VeilBubble extends StatelessWidget {
         VeilBubblePosition.first || VeilBubblePosition.middle => 6,
       };
 
+  /// The colour a bubble is filled with, for what is drawn on it in that
+  /// colour (the checks cut out of the read glyph).
+  static Color fillOf(VeilPalette palette, {required bool isMine, bool highlighted = false}) => highlighted
+      ? palette.surfaceRaised
+      : isMine
+          ? palette.primary
+          : palette.surfaceAlt;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -53,11 +61,7 @@ class VeilBubble extends StatelessWidget {
     final tail = Radius.circular(tailRadius(position));
     const main = Radius.circular(VeilRadius.xl);
     final own = isMine && !highlighted;
-    final fill = highlighted
-        ? palette.surfaceRaised
-        : own
-            ? palette.primary
-            : palette.surfaceAlt;
+    final fill = fillOf(palette, isMine: isMine, highlighted: highlighted);
     final textColor = own ? Colors.white : palette.text;
 
     return LayoutBuilder(

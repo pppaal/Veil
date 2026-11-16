@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
@@ -6,6 +7,7 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_read_glyph.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
@@ -255,8 +257,8 @@ void main() {
       testWidgets('a read "$body": its glyph sits on the line of the time, with no word', (tester) async {
         await pumpBubble(tester, body, message(state: MessageDeliveryState.read));
         final time = tester.getRect(find.text('09:17'));
-        final read = tester.getRect(find.byIcon(Icons.check_circle).first);
-        expect(find.byIcon(Icons.check_circle), findsNWidgets(2));
+        final read = tester.getRect(find.byType(MessageReadGlyph));
+        expect(find.byType(MessageReadGlyph), findsOneWidget);
         expect(find.text(l10n.chatDeliveryRead), findsNothing);
         expect(read.center.dy, closeTo(time.center.dy, 1), reason: 'the glyph wrapped under the time');
         expect(read.left, greaterThan(time.right));
@@ -270,6 +272,20 @@ void main() {
       expect(find.byIcon(Icons.check_circle_outline), findsNWidgets(2));
       await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.pending));
       expect(find.byIcon(Icons.schedule), findsOneWidget);
+    });
+
+    // Read is two filled circles with the checks cut out in the bubble's
+    // fill, in the box "delivered" takes, so the time stays put.
+    testWidgets('read cuts its checks in the bubble fill, in the box delivered takes', (tester) async {
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.delivered));
+      final delivered = tester.getSize(
+        find.ancestor(of: find.byIcon(Icons.check_circle_outline).first, matching: find.byType(SizedBox)).first,
+      );
+      await pumpBubble(tester, 'ok', message(state: MessageDeliveryState.read));
+      final glyph = tester.widget<MessageReadGlyph>(find.byType(MessageReadGlyph));
+      expect(glyph.cutColor, VeilBubble.fillOf(VeilPalette.dark, isMine: true));
+      expect(find.byIcon(Icons.check_circle), findsNothing);
+      expect(tester.getSize(find.byType(MessageReadGlyph)), delivered);
     });
 
     // The bubble itself is the retry: there is no button in it. It keeps
@@ -306,6 +322,76 @@ void main() {
         expect(timer.left, greaterThan(time.right));
       });
     }
+  });
+
+  group('MessageReadGlyph', () {
+    // Two filled circles stacked plainly fuse into one pill, and the second
+    // hides the first check's long arm. Each check must lie whole inside
+    // what is drawn of its own circle: the front disc, or the crescent left
+    // of the back one outside the ring.
+    test('each check lies whole inside what is drawn of its circle', () {
+      final g = MessageReadGlyph.geometry(MessageReadGlyph.size);
+      final half = g.stroke / 2;
+      Iterable<Offset> along(List<Offset> points) sync* {
+        for (var i = 0; i < points.length - 1; i++) {
+          for (var t = 0.0; t <= 1.0; t += 0.05) {
+            yield Offset.lerp(points[i], points[i + 1], t)!;
+          }
+        }
+      }
+
+      for (final p in along(g.frontCheck)) {
+        expect((p - g.front).distance + half, lessThan(g.radius), reason: 'front check leaves its disc at $p');
+      }
+      for (final p in along(g.backCheck)) {
+        expect((p - g.back).distance + half, lessThan(g.radius), reason: 'back check leaves its circle at $p');
+        expect((p - g.front).distance - half, greaterThan(g.ring), reason: 'back check runs into the ring at $p');
+      }
+      expect(g.ring, greaterThan(g.radius), reason: 'no gap between the circles');
+      expect(g.back.dx - g.front.dx, greaterThan(g.ring - g.radius + g.radius), reason: 'the circles barely overlap');
+      final right = g.back.dx + g.radius;
+      expect(g.front.dx - g.radius, greaterThanOrEqualTo(0));
+      expect(right, lessThanOrEqualTo(MessageReadGlyph.size.width));
+    });
+
+    testWidgets('drawn, both checks show in the bubble fill and both discs in the glyph colour', (tester) async {
+      const fill = Color(0xFF1F5FD6);
+      const ink = Color(0xFFDCE7FB);
+      const scale = 8.0;
+      tester.view.physicalSize = MessageReadGlyph.size * scale;
+      tester.view.devicePixelRatio = scale;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(const ColoredBox(
+        color: fill,
+        child: Align(alignment: Alignment.topLeft, child: MessageReadGlyph(color: ink, cutColor: fill)),
+      ));
+      final g = MessageReadGlyph.geometry(MessageReadGlyph.size);
+      final renderView = tester.binding.renderViews.first;
+      final bytes = await tester.runAsync(() async {
+        final image = await (renderView.debugLayer! as OffsetLayer).toImage(renderView.paintBounds, pixelRatio: 1);
+        final data = await image.toByteData();
+        image.dispose();
+        return data!;
+      });
+      final width = (MessageReadGlyph.size.width * scale).round();
+      Color at(Offset p) {
+        final i = ((p.dy * scale).floor() * width + (p.dx * scale).floor()) * 4;
+        return Color.fromARGB(255, bytes!.getUint8(i), bytes.getUint8(i + 1), bytes.getUint8(i + 2));
+      }
+
+      // Each arm of each check is cut out along its length.
+      for (final check in [g.frontCheck, g.backCheck]) {
+        for (var i = 0; i < 2; i++) {
+          for (final t in [0.25, 0.5, 0.75, 1.0]) {
+            final p = Offset.lerp(check[i], check[i + 1], t)!;
+            expect(at(p), fill, reason: 'a check arm is not cut out at $p');
+          }
+        }
+      }
+      // Above each check, the disc and the crescent are drawn.
+      expect(at(g.front.translate(0, -g.radius * 0.75)), ink);
+      expect(at(g.back.translate(g.radius * 0.45, -g.radius * 0.75)), ink);
+    });
   });
 
   group('ReactionChipsRow', () {

@@ -13,6 +13,7 @@ import 'chat_room_labels.dart';
 import 'decrypt_status_view.dart';
 import 'message_attachment_views.dart';
 import 'message_expiration.dart';
+import 'message_read_glyph.dart';
 
 /// One message as a bubble on its sender's side: who of a group wrote it
 /// (the first bubble of a run, in the sender's tint), the decrypted text or
@@ -167,7 +168,13 @@ class MessageBubble extends StatelessWidget {
                 const SizedBox(height: VeilSpace.xxs),
                 Align(
                   alignment: AlignmentDirectional.centerEnd,
-                  child: _Meta(message: message, sentAtFormat: sentAtFormat, expiryNow: expiryNow, style: metaStyle),
+                  child: _Meta(
+                    message: message,
+                    sentAtFormat: sentAtFormat,
+                    expiryNow: expiryNow,
+                    style: metaStyle,
+                    bubbleFill: VeilBubble.fillOf(palette, isMine: message.isMine, highlighted: highlighted),
+                  ),
                 ),
               ],
             ),
@@ -243,12 +250,21 @@ class MessageBubble extends StatelessWidget {
 /// read), then a timer glyph on a disappearing one. No words: a screen
 /// reader hears them from the bubble's label.
 class _Meta extends StatelessWidget {
-  const _Meta({required this.message, required this.sentAtFormat, required this.expiryNow, required this.style});
+  const _Meta({
+    required this.message,
+    required this.sentAtFormat,
+    required this.expiryNow,
+    required this.style,
+    required this.bubbleFill,
+  });
 
   final ChatMessage message;
   final DateFormat sentAtFormat;
   final DateTime Function() expiryNow;
   final TextStyle? style;
+
+  /// The bubble's fill, which the read glyph's checks are cut out in.
+  final Color bubbleFill;
 
   @override
   Widget build(BuildContext context) {
@@ -262,8 +278,8 @@ class _Meta extends StatelessWidget {
               Icon(Icons.schedule, size: VeilIconSize.xs, color: color),
             MessageDeliveryState.failed => null,
             MessageDeliveryState.sent => Icon(Icons.check_circle_outline, size: VeilIconSize.xs, color: color),
-            MessageDeliveryState.delivered => _TwoCircles(filled: false, color: color),
-            MessageDeliveryState.read => _TwoCircles(filled: true, color: color),
+            MessageDeliveryState.delivered => _TwoOutlinedCircles(color: color),
+            MessageDeliveryState.read => MessageReadGlyph(color: color ?? Colors.white, cutColor: bubbleFill),
           };
     final items = <Widget>[
       Text(sentAtFormat.format(message.sentAt), style: style),
@@ -287,24 +303,21 @@ class _Meta extends StatelessWidget {
   }
 }
 
-/// Two check circles, the second overlapping the first: delivered
-/// (outlined) or read ([filled]).
-class _TwoCircles extends StatelessWidget {
-  const _TwoCircles({required this.filled, required this.color});
+/// Two outlined check circles, the second overlapping the first: delivered.
+class _TwoOutlinedCircles extends StatelessWidget {
+  const _TwoOutlinedCircles({required this.color});
 
-  final bool filled;
   final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final icon = filled ? Icons.check_circle : Icons.check_circle_outline;
     return SizedBox(
       width: VeilIconSize.xs + 6,
       height: VeilIconSize.xs,
       child: Stack(
         children: [
-          Icon(icon, size: VeilIconSize.xs, color: color),
-          Positioned(left: 6, child: Icon(icon, size: VeilIconSize.xs, color: color)),
+          Icon(Icons.check_circle_outline, size: VeilIconSize.xs, color: color),
+          Positioned(left: 6, child: Icon(Icons.check_circle_outline, size: VeilIconSize.xs, color: color)),
         ],
       ),
     );

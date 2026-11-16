@@ -5,15 +5,58 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { isValidHandle } from '../src/domain/composer-text.js';
 import {
   HANDLE_MAX_LENGTH,
   HANDLE_MIN_LENGTH,
+  HandleRule,
+  handleRuleBroken,
   isIssuableHandle,
   ISSUED_HANDLE_PATTERN,
   shownHandle,
 } from '../src/domain/handles.js';
 import { BOB_LOOKALIKES } from './support/lookalikes.js';
+
+// What the registration form checks before it asks the server: the same
+// grammar, rule by rule, so it can say which rule a handle breaks.
+describe('handleRuleBroken', () => {
+  it('names the first rule a handle breaks', () => {
+    const cases = {
+      '': HandleRule.CHARACTERS,
+      ab: HandleRule.CHARACTERS,
+      ['x'.repeat(33)]: HandleRule.CHARACTERS,
+      'bad-handle': HandleRule.CHARACTERS,
+      'with space': HandleRule.CHARACTERS,
+      Bob: HandleRule.CHARACTERS,
+      'bób': HandleRule.CHARACTERS,
+      '..': HandleRule.CHARACTERS,
+      '_bob': HandleRule.EDGES,
+      'bob.': HandleRule.EDGES,
+      '.b.': HandleRule.EDGES,
+      'b..ob': HandleRule.RUN,
+      'b._ob': HandleRule.RUN,
+      'b__ob': HandleRule.RUN,
+      'veil.operator': null,
+      'a_b': null,
+      '123': null,
+      ['x'.repeat(32)]: null,
+    };
+    for (const [handle, rule] of Object.entries(cases)) expect(handleRuleBroken(handle), JSON.stringify(handle)).toBe(rule);
+  });
+
+  it('passes exactly the handles the server registers', () => {
+    // Every string of up to 5 characters over an alphabet that reaches
+    // each rule, and a few at the length limits.
+    const alphabet = ['a', '1', '.', '_', '-', 'A'];
+    let strings = [''];
+    const all = [''];
+    for (let length = 1; length <= 5; length += 1) {
+      strings = strings.flatMap((prefix) => alphabet.map((character) => prefix + character));
+      all.push(...strings);
+    }
+    all.push('a'.repeat(31) + '.', 'a'.repeat(31) + 'b', 'a.' + 'b'.repeat(30), 'a.' + 'b'.repeat(31));
+    for (const handle of all) expect(handleRuleBroken(handle) === null, handle).toBe(isIssuableHandle(handle));
+  });
+});
 
 describe('isIssuableHandle', () => {
   it('is the grammar the server registers handles in', () => {
@@ -27,9 +70,6 @@ describe('isIssuableHandle', () => {
     for (const handle of ['bob', 'abc', '123', 'veil.operator', 'a_b', 'a1.b2_c3', 'x'.repeat(32)]) {
       expect(isIssuableHandle(handle), handle).toBe(true);
     }
-    // The registration form's own rule is narrower and would refuse a
-    // handle the server issued.
-    expect(isValidHandle('veil.operator')).toBe(false);
   });
 
   it('refuses what it does not', () => {

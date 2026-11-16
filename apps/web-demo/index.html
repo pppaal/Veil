@@ -102,8 +102,9 @@
     <form id="register-form" class="auth-form" autocomplete="off" novalidate>
       <label class="field">
         <span class="field-label" data-i18n="auth.form.handle">Choose a handle</span>
-        <input id="reg-handle" type="text" placeholder="alex" pattern="[a-z0-9_]+" maxlength="32" autocapitalize="off" autocorrect="off" spellcheck="false" />
-        <span class="field-hint" data-i18n="auth.form.handle.hint">You can't change it later.</span>
+        <input id="reg-handle" type="text" placeholder="alex" maxlength="32" aria-describedby="reg-handle-hint" autocapitalize="off" autocorrect="off" spellcheck="false" />
+        <!-- The hint, or what is wrong with the handle until it is changed. -->
+        <span class="field-hint" id="reg-handle-hint" aria-live="polite" data-i18n="auth.form.handle.hint">You can't change it later.</span>
       </label>
       <button id="reg-btn" type="submit" class="btn btn-primary btn-block btn-large" data-i18n="auth.form.start">Create account</button>
     </form>

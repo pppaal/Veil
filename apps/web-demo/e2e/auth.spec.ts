@@ -30,11 +30,11 @@ test.describe('VEIL web demo — auth', () => {
 
   test('rejects invalid handle shapes client-side', async ({ page }) => {
     await page.goto('./');
-    // Uppercase + dash — invalid by the input pattern attribute.
+    // A dash breaks the server's handle rules.
     await page.fill('#reg-handle', 'BadHandle-1');
     await page.click('#reg-btn');
-    // We should still be on the auth screen — the form's pattern
-    // refused to submit.
+    // We should still be on the auth screen: the form's own check, the
+    // server's rules (src/domain/handles.js), refused to submit.
     await expect(page.locator('#auth-screen')).toBeVisible();
   });
 });

@@ -2,19 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import {
   completeMention,
-  isValidHandle,
   mentionAt,
   mentionCandidates,
   MESSAGE_MAX_CHARS,
   normalizeHandle,
 } from '../src/domain/composer-text.js';
+import { handleRuleBroken } from '../src/domain/handles.js';
 
 describe('handles', () => {
+  // The rules themselves, the server's, are pinned in handles.test.js.
   it('are trimmed and lowered, then checked against the server rule', () => {
     expect(normalizeHandle('  Alice_1 ')).toBe('alice_1');
-    expect(isValidHandle('alice_1')).toBe(true);
-    for (const bad of ['', 'bad-handle', 'with space', 'a'.repeat(33), 'Upper']) expect(isValidHandle(bad)).toBe(false);
-    expect(isValidHandle('a'.repeat(32))).toBe(true);
+    expect(handleRuleBroken(normalizeHandle('  Alice.Smith '))).toBeNull();
+    for (const bad of ['', 'bad-handle', 'with space', 'a'.repeat(33), 'ab']) expect(handleRuleBroken(normalizeHandle(bad))).not.toBeNull();
+    expect(handleRuleBroken('a'.repeat(32))).toBeNull();
   });
 
   it('cap a message at 8000 characters', () => {

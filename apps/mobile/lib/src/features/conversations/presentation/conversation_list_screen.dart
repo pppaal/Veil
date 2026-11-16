@@ -90,6 +90,10 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     _nextDay = nextDay;
     _dayTurn?.cancel();
     _dayTurn = Timer(nextDay.difference(now), () {
+      // Drawn again, which waits for the next midnight: the one after this,
+      // or this same one if the phone's clock was set back meanwhile and
+      // still reads the day before.
+      _nextDay = null;
       if (mounted) setState(() {});
     });
   }

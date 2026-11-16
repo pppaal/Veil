@@ -12,8 +12,8 @@ import '../support/fake_relay.dart';
 import '../support/memory_secure_store.dart';
 
 // The contact list belongs to the account signed in: a sign-out takes it
-// away, and an answer to a read or an add made before it does not bring
-// it, or a nickname, back.
+// away, and an answer to a read or an add made before it, or a rename
+// saved once it has begun, does not bring it, or a nickname, back.
 
 /// The relay's contact list, able to hold an answer back as a slow network
 /// would.
@@ -142,4 +142,16 @@ void main() {
     expect(await ContactNicknames(storage.scoped(SecureScope.contacts)).readAll(), isEmpty);
   });
 
+  // A rename saved from a sheet opened before a wipe began, as a wipe set
+  // off elsewhere while the sheet is open, writes nothing either.
+  test('a nickname renamed once a wipe has begun is not written into the wiped keystore', () async {
+    final contacts = container.read(contactsControllerProvider);
+    await pumpEventQueue();
+    final wipesSeen = storage.wipesBegun;
+    final gate = storage.releaseOnWipe = Completer<void>();
+    final renaming = gate.future.then((_) => contacts.renameContact('bob', 'Bob Smith', wipesSeen: wipesSeen));
+    await (container.read(appSessionProvider.notifier) as _Session).wipeLocalDeviceState();
+    await renaming;
+    expect(await ContactNicknames(storage.scoped(SecureScope.contacts)).readAll(), isEmpty);
+  });
 }

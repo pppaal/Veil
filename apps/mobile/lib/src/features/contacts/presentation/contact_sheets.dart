@@ -309,6 +309,15 @@ class _NicknameSheet extends ConsumerStatefulWidget {
 
 class _NicknameSheetState extends ConsumerState<_NicknameSheet> {
   late final _nickname = TextEditingController(text: widget.contact.nickname ?? '');
+  // The keystore's wipes when the sheet opened: a sign-out or wipe that
+  // begins while it is open drops what it saves.
+  late final int _wipesSeen;
+
+  @override
+  void initState() {
+    super.initState();
+    _wipesSeen = ref.read(secureStorageProvider).wipesBegun;
+  }
 
   @override
   void dispose() {
@@ -318,7 +327,9 @@ class _NicknameSheetState extends ConsumerState<_NicknameSheet> {
 
   Future<void> _save() async {
     final navigator = Navigator.of(context);
-    await ref.read(contactsControllerProvider).renameContact(widget.contact.handle, _nickname.text);
+    await ref
+        .read(contactsControllerProvider)
+        .renameContact(widget.contact.handle, _nickname.text, wipesSeen: _wipesSeen);
     if (mounted) navigator.pop();
   }
 

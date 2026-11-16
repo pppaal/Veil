@@ -174,7 +174,12 @@ class ContactsController extends ChangeNotifier {
 
   /// Changes the name this device calls a contact by; an empty one clears
   /// it. It names the same account as before. The relay never learns it.
-  Future<void> renameContact(String handle, String nickname) async {
+  /// Nothing is written once a sign-out or wipe has begun since the count
+  /// of wipes was [wipesSeen] (read when the rename was asked for): the
+  /// keystore is being wiped, and the next account made on this phone
+  /// would find the nickname there.
+  Future<void> renameContact(String handle, String nickname, {required int wipesSeen}) async {
+    if (ref.read(secureStorageProvider).wipesBegun != wipesSeen) return;
     final label = nickname.trim();
     await nicknames.write(handle, label);
     _contacts = [

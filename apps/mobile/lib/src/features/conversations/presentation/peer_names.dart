@@ -35,8 +35,10 @@ class PeerNames {
     Iterable<ConversationPreview> listed = const [],
     Iterable<BlockedAccount> blocked = const [],
     String? selfUserId,
+    bool bindingsRead = true,
   })  : _nicknames = {for (final MapEntry(:key, :value) in nicknames.entries) key.toLowerCase(): value},
         _bound = bound,
+        _bindingsRead = bindingsRead,
         _isHeld = isHeld,
         _listed = listed,
         _blocked = blocked,
@@ -51,6 +53,9 @@ class PeerNames {
 
   final Map<String, ContactNickname> _nicknames;
   final Map<String, ConversationPeer> _bound;
+  // Whether [_bound] is what this phone recorded, not the nothing it holds
+  // before the stored bindings are read.
+  final bool _bindingsRead;
   final bool Function(String conversationId)? _isHeld;
   final Iterable<ConversationPreview> _listed;
   final Iterable<BlockedAccount> _blocked;
@@ -101,8 +106,10 @@ class PeerNames {
   /// group member) and the Blocked accounts list show under it. Not an
   /// account bound or listed under another handle too (an account has one
   /// handle), nor one bound or listed only in a form no server issues; and
-  /// a handle bound or listed with two accounts gets none yet.
+  /// a handle bound or listed with two accounts gets none yet. None at all
+  /// before the bindings are read: until then any handle may be bound.
   Map<String, String> claims() {
+    if (!_bindingsRead) return const {};
     final unclaimed = {
       for (final MapEntry(:key, :value) in _nicknames.entries)
         if (value.userId == null) key,
@@ -161,6 +168,7 @@ PeerNames peerNamesFor(
       listed: messenger.conversations,
       blocked: blocked,
       selfUserId: messenger.localUserId,
+      bindingsRead: messenger.bindingsRead,
     );
 
 /// Records in [book] the account each nickname saved with none is to name
@@ -172,10 +180,10 @@ Future<void> claimNicknameAccounts(ContactNameBook book, PeerNames names) async 
 
 /// The names for the chats the messenger lists now and the accounts the
 /// user blocked, from the nicknames on this phone. Each time any of them
-/// changes, a nickname saved with no account (with a contact added, or
-/// before nicknames named accounts) is given the one these lists show
-/// under its handle; until that is written, a moment later, it names no
-/// one.
+/// changes once the messenger has read its bindings, a nickname saved with
+/// no account (with a contact added, or before nicknames named accounts)
+/// is given the one [PeerNames.claims] finds for its handle; until that is
+/// written, a moment later, it names no one.
 final peerNamesProvider = Provider<PeerNames>((ref) {
   final messenger = ref.watch(messengerControllerProvider);
   final book = ref.watch(contactNameBookProvider);

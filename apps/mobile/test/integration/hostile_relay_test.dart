@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_session_state.dart';
@@ -20,6 +21,7 @@ import 'package:veil_mobile/src/features/conversations/data/messenger/conversati
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/peer_names.dart';
+import 'package:veil_mobile/src/features/safety/data/blocked_accounts.dart';
 
 import '../support/async_wait.dart';
 import '../support/fake_relay.dart';
@@ -500,6 +502,45 @@ void main() {
       expect(names().memberTitle(malloryAsBob), '@bob');
       expect(names().peerName(alice.controller.conversationById(conv)!), 'Bob Smith');
     });
+  });
+
+  // The Blocked accounts list is read from the relay at sign-in, apart
+  // from the messenger reading whom each 1:1 is bound to. Until that read
+  // ends the phone knows no binding, so a nickname that names no account
+  // yet (one kept before nicknames named accounts, say) would be given to
+  // another account the relay shows there under its handle, for good,
+  // although bob's 1:1 binds the handle to bob.
+  test('a Blocked list that comes before the bindings are read gives a bound handle\'s nickname to no one else', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    await alice.controller.refreshConversations();
+    expect(alice.controller.boundPeers[conv]?.userId, bob.device.userId);
+    await alice.keystore.scoped(SecureScope.contacts).write('nicknames.v1', json.encode({'bob': 'Bob Smith'}));
+    final book = ContactNameBook(ContactNicknames(alice.keystore.scoped(SecureScope.contacts)));
+    await book.load();
+    expect(book.nicknames['bob']?.userId, isNull);
+    final malloryAsBob = [BlockedAccount(userId: 'user-mallory', handle: 'bob', blockedAt: DateTime.utc(2026, 4, 7))];
+
+    // What peerNamesProvider does when the Blocked list arrives while the
+    // app starts again: the new controller is up, its bindings not read.
+    final old = alice.controller;
+    final restarting = alice.restart();
+    for (var turn = 0; turn < 10000 && identical(alice.controller, old); turn++) {
+      await Future<void>.value();
+    }
+    expect(alice.controller, isNot(same(old)));
+    expect(alice.controller.bindingsRead, isFalse);
+    expect(alice.controller.boundPeers, isEmpty);
+    await claimNicknameAccounts(book, peerNamesFor(alice.controller, book.nicknames, blocked: malloryAsBob));
+    expect(book.nicknames['bob']?.userId, isNull);
+    await restarting;
+
+    expect(alice.controller.bindingsRead, isTrue);
+    await claimNicknameAccounts(book, peerNamesFor(alice.controller, book.nicknames, blocked: malloryAsBob));
+    expect(book.nicknames['bob']?.userId, bob.device.userId);
+    final shown = peerNamesFor(alice.controller, book.nicknames, blocked: malloryAsBob);
+    expect(shown.peerName(alice.controller.conversationById(conv)!), 'Bob Smith');
+    expect(shown.accountName('user-mallory', 'bob'), isNull);
   });
 
   // A nickname names the account it was given, even for a handle this

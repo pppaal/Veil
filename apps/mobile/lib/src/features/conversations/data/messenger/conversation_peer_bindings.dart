@@ -95,6 +95,8 @@ class ConversationPeerBindings {
   // What [_bound] resolved to, with every binding recorded since, for the
   // views to read synchronously ([boundNow]).
   Map<String, ConversationPeer> _boundNow = const {};
+  // Whether [_boundNow] holds what the stored document says ([read]).
+  bool _boundRead = false;
   // Set when the stored document cannot be read. Nothing is written over it
   // then: that would drop every binding it holds.
   bool _unreadable = false;
@@ -126,6 +128,11 @@ class ConversationPeerBindings {
   /// [all] as far as it was read: empty until the first read for this
   /// identity ends (the messenger reads it before it shows the cached list).
   Map<String, ConversationPeer> get boundNow => Map.unmodifiable(_boundNow);
+
+  /// Whether [boundNow] is what was read for this identity: false until the
+  /// first read ends, and while every read so far threw. Until then a
+  /// handle [boundNow] leaves out may still be bound.
+  bool get read => _boundRead;
 
   /// Records whom each conversation in [peers] is with, unless it is bound
   /// already: a binding is never replaced.
@@ -217,6 +224,7 @@ class ConversationPeerBindings {
   void reset() {
     _bound = null;
     _boundNow = const {};
+    _boundRead = false;
     _unreadable = false;
     _groups = null;
     _holds.clear();
@@ -258,7 +266,10 @@ class ConversationPeerBindings {
     try {
       final bound = await loading;
       // Not a read a reset() dropped meanwhile.
-      if (identical(_bound, loading)) _boundNow = bound;
+      if (identical(_bound, loading)) {
+        _boundNow = bound;
+        _boundRead = true;
+      }
       return bound;
     } catch (_) {
       // A keystore error is retried by the next call.

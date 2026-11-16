@@ -66,6 +66,26 @@ void main() {
     expect(refusing.values.keys.where((key) => key.endsWith('direct_peers.v1')), hasLength(1));
   });
 
+  test('read says whether boundNow is what was recorded: not before a read ends, nor while reads throw', () async {
+    await open().bindAll({'conv-1': const ConversationPeer(userId: 'user-selene', handle: 'selene')});
+    final refusing = _RefusingReads()..values.addAll(platform.values);
+    final bindings = ConversationPeerBindings(store: SecureStorageService(refusing).scoped(SecureScope.conversationPolicy));
+    expect(bindings.read, isFalse);
+
+    refusing.refuse = true;
+    await expectLater(bindings.all(), throwsA(isA<StateError>()));
+    expect(bindings.read, isFalse);
+    expect(bindings.boundNow, isEmpty);
+
+    refusing.refuse = false;
+    await bindings.all();
+    expect(bindings.read, isTrue);
+    expect(bindings.boundNow.keys, ['conv-1']);
+
+    bindings.reset();
+    expect(bindings.read, isFalse);
+  });
+
   // closing F4, as the web's HoldReason.OWN_HANDLE: this device's own handle
   // names one account, the user's.
   group('a new 1:1 listed under this device\'s own handle', () {
@@ -166,5 +186,15 @@ class _RefusingWrites extends MemorySecureStore {
   Future<void> write({required String key, required String? value}) {
     if (refuse) throw StateError('keystore unavailable');
     return super.write(key: key, value: value);
+  }
+}
+
+class _RefusingReads extends MemorySecureStore {
+  bool refuse = false;
+
+  @override
+  Future<String?> read({required String key}) {
+    if (refuse) throw StateError('keystore unavailable');
+    return super.read(key: key);
   }
 }

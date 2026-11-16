@@ -184,6 +184,16 @@ void main() {
       expect(twoHandles.claims(), isEmpty);
     });
 
+    test('none before the bindings are read: any handle may be bound then', () {
+      final dana = BlockedAccount(userId: 'user-dana', handle: 'dana', blockedAt: DateTime.utc(2026, 4, 7));
+      const nickname = {'dana': ContactNickname('Dana Park')};
+      expect(PeerNames(nickname, blocked: [dana], bindingsRead: false).claims(), isEmpty);
+      expect(
+        PeerNames(nickname, listed: [_direct('conv-d', 'dana', userId: 'user-dana')], bindingsRead: false).claims(),
+        isEmpty,
+      );
+    });
+
     test('none while the list shows no account, or two, under the handle', () {
       expect(PeerNames(const {'bob': bob}).claims(), isEmpty);
       final two = PeerNames(

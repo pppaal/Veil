@@ -70,6 +70,10 @@ class IdentityChangeService {
   /// the bindings were read (see ConversationPeerBindings.boundNow).
   Map<String, ConversationPeer> get boundPeers => _bindings.boundNow;
 
+  /// Whether [boundPeers] holds what was read for this identity (see
+  /// ConversationPeerBindings.read).
+  bool get bindingsRead => _bindings.read;
+
   /// The user chose to talk to the account the held 1:1 [conversationId]
   /// is listed with: it is bound to that account, and what it sent and what
   /// waited to be sent go through as a first contact.

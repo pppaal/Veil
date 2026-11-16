@@ -41,41 +41,29 @@ claims:
       - file: store/appstore/app-review-notes.md
         quote: "Because messages are end-to-end encrypted and pass through the server, the realistic way to exercise it is with two devices or two simulators (Device A and Device B), each with its own account created as in step 1:"
       - file: store/appstore/metadata-en.txt
-        quote: "Every message is end-to-end encrypted on-device."
+        quote: "Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them."
       - file: store/appstore/metadata-en.txt
-        quote: "Servers never see your messages in plaintext."
-      - file: store/appstore/screenshot-spec.md
-        quote: "3 | A chat | Message thread with reactions, a disappearing-message timer, typing indicator, optional read receipts. | \"Messages are end-to-end encrypted. The server never sees them in plaintext.\""
+        quote: "Messages are end-to-end encrypted, so only you and the people you talk to can read them."
       - file: store/appstore/submission-checklist.md
         quote: "Veil ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is YES/true."
       - file: store/play/full-en.txt
-        quote: "An end-to-end encrypted messenger with no phone number, no email and no real name."
-      - file: store/play/full-en.txt
-        quote: "Every message is end-to-end encrypted on-device."
-      - file: store/play/full-en.txt
-        quote: "Servers never see your messages in plaintext."
-      - file: store/play/short-en.txt
-        quote: "End-to-end encrypted messenger with no phone number, no email and no real name."
+        quote: "Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them."
       - file: docs/app-store-listing-metadata.md
-        quote: "Promotional text (iOS, ≤170 chars, updatable without review): End-to-end encrypted messages with no phone number, no email and no real name."
+        quote: "Messages are end-to-end encrypted, so only you and the people you talk to can read them."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them."
       - file: docs/app-store-listing-metadata.md
         quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app blocks and reports accounts, so say so)."
       - file: docs/launch/app-store-listing.md
-        quote: "End-to-end encrypted messages with no phone number, no email and no ads."
+        quote: "Messages are end-to-end encrypted, so only you and the people you talk to can read them."
       - file: docs/launch/app-store-listing.md
-        quote: "Veil is an end-to-end encrypted messenger."
+        quote: "Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them."
       - file: docs/launch/app-store-listing.md
         quote: "17+ (unrestricted web access not enabled, but user-generated content is end-to-end encrypted so we cannot moderate private content)."
       - file: docs/launch/play-store-listing.md
-        quote: "End-to-end encrypted messenger with no phone number, no email and no real name."
-      - file: docs/launch/play-store-listing.md
-        quote: "Veil is an end-to-end encrypted messenger."
-      - file: docs/launch/play-store-listing.md
-        quote: "End-to-end encrypted messages."
+        quote: "Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them."
       - file: docs/app-store-listing-metadata.md
         quote: "Collected and not linked: Other User Content for the encrypted message payloads, photos and other attachments, which the server holds only as ciphertext it cannot decrypt."
-      - file: docs/launch/app-store-listing.md
-        quote: "What you send never leaves your phone in a form the server can read."
       - file: docs/사용설명서.md
         quote: "서버는 메시지 내용을 암호문으로만 저장합니다."
       - file: store/appstore/app-review-notes.md
@@ -94,10 +82,6 @@ claims:
         quote: "Files and docs | Yes | No | Yes | App functionality | File attachments, held only as ciphertext the server cannot decrypt, until they expire."
       - file: store/play/data-safety-answers.md
         quote: "The rows for messages, photos, videos, voice recordings and files declare content the server holds only as ciphertext."
-      - file: store/appstore/metadata-en.txt
-        quote: "An end-to-end encrypted messenger with no phone number, no email and no real name."
-      - file: docs/launch/app-store-listing.md
-        quote: "It passes on encrypted messages and never sees what they say or what you attach."
     evidence:
       - gate: scripts/crypto-test-vectors.mjs
       - gate: scripts/schema-privacy-check.mjs
@@ -116,8 +100,6 @@ claims:
         quote: "The server stores no plaintext message content: messages, reactions and stories are ciphertext, and display names, profile text and contact names are not stored."
       - file: README.md
         quote: "Group and channel names and descriptions and device labels are still stored in readable form until their encryption ships."
-      - file: docs/app-store-listing-metadata.md
-        quote: "Message content is never stored in plaintext."
       - file: README.md
         quote: "They are the only entries on the allowlist of scripts/schema-privacy-check.mjs, which fails CI when any other field named like user-written text (body, caption, bio, name, note and the like) is not ciphertext"
       - file: docs/privacy-policy-en.md
@@ -184,7 +166,9 @@ claims:
       - file: site/index.html
         quote: "Message payloads are stored encrypted until they expire, at most 30 days after the server received them, and sooner when a disappearing-message timer or view-once applies."
       - file: store/play/full-en.txt
-        quote: "Messages are encrypted on your device and stored on the server only as ciphertext until they expire, at most 30 days."
+        quote: "The server keeps only encrypted copies it can't read, for 30 days at most."
+      - file: store/appstore/metadata-en.txt
+        quote: "The server keeps only encrypted copies it can't read, for 30 days at most."
     evidence:
       - test: apps/api/test/unit/retention.service.spec.ts
         name: "31-day-old message deleted regardless of expiresAt"
@@ -240,21 +224,19 @@ claims:
       - file: store/appstore/app-review-notes.md
         quote: "Verify the \"no recovery\" behavior (optional)."
       - file: store/appstore/metadata-en.txt
-        quote: "There is no account recovery."
+        quote: "There is no backup and no account recovery."
       - file: store/appstore/submission-checklist.md
         quote: "Critical because Veil asks for no phone number, no email and no real name, and has no recovery, so reviewers cannot \"log in.\" The notes must explain:"
       - file: store/appstore/submission-checklist.md
         quote: "That no account recovery exists by design (losing the device loses the chats)."
       - file: store/play/full-en.txt
-        quote: "There is no account recovery."
+        quote: "There is no backup and no account recovery."
       - file: docs/app-store-listing-metadata.md
-        quote: "Suggested shots: onboarding \"no recovery\" warning, a conversation, the safety number screen, settings/theme."
+        quote: "There is no backup and no account recovery."
       - file: docs/launch/app-store-listing.md
-        quote: "Veil has no ads and no analytics, and there is no account recovery: if you lose your phone, you lose the account."
+        quote: "There is no backup and no account recovery."
       - file: docs/launch/play-store-listing.md
-        quote: "No backups, local or cloud."
-      - file: docs/launch/play-store-listing.md
-        quote: "No account recovery."
+        quote: "There is no backup and no account recovery."
       - file: store/appstore/app-review-notes.md
         quote: "There is no password reset, no \"forgot account\" flow, no server-side backup of messages, and no administrator who can read or restore content."
       - file: store/appstore/screenshot-spec.md
@@ -288,11 +270,15 @@ claims:
     sources:
       - file: store/play/full-en.txt
         quote: "Veil runs on one phone at a time."
-      - file: store/appstore/screenshot-spec.md
-        quote: "4 | Move to a new phone | The old phone must be there and approve; the handle moves to keys made on the new phone, the old phone is signed out, and message history does not move. | \"Move your handle to a new phone. The old one signs out.\""
       - file: store/play/full-en.txt
         quote: "Moving to a new phone moves your handle to it and signs the old phone out."
       - file: store/play/full-en.txt
+        quote: "Your message history does not move."
+      - file: store/appstore/metadata-en.txt
+        quote: "Veil runs on one phone at a time."
+      - file: store/appstore/metadata-en.txt
+        quote: "Moving to a new phone moves your handle to it and signs the old phone out."
+      - file: store/appstore/metadata-en.txt
         quote: "Your message history does not move."
     evidence:
       - test: apps/api/src/modules/device-transfer/device-transfer.service.spec.ts
@@ -418,11 +404,11 @@ claims:
       - file: store/appstore/metadata-en.txt
         quote: "Block or report someone, and mute a chat"
       - file: docs/launch/play-store-listing.md
-        quote: "Block or report someone from a chat or your contacts, and mute a chat."
+        quote: "Block or report someone, and mute a chat"
       - file: docs/launch/play-store-listing.md
         quote: "A chat's menu, a message's long-press sheet and a contact's sheet file a report (POST /safety/reports): the account, the reason and which chat or message, never its text."
       - file: docs/launch/app-store-listing.md
-        quote: "Block or report someone from a chat or your contacts, and mute a chat."
+        quote: "Block or report someone, and mute a chat"
       - file: docs/launch/app-store-listing.md
         quote: "The mobile app reports and blocks accounts from a chat, a message and a contact, as App Review expects in an app with user-generated content (guideline 1.2)."
       - file: docs/app-store-listing-metadata.md

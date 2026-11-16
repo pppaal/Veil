@@ -17,10 +17,9 @@ Key behaviors a reviewer should expect:
 
 - **No phone number, no email, no real name.** There is no password, email or
   SMS sign-up, and no OTP verification. On first launch the app shows a privacy
-  notice and a short **Before you start** page, then the user creates an account
-  on the phone (**Create account**) and picks a handle (**Choose a handle**). The
-  app creates the account's keys on the phone and registers only the public keys
-  and the handle.
+  notice and a short **Before you start** page, then the user picks a handle
+  (**Choose a handle**). The app creates the account's keys on the phone and
+  registers only the public keys and the handle.
 - **End-to-end encryption.** Every message is encrypted on-device using a Double
   Ratchet over X25519 (key exchange), AES-256-GCM (symmetric encryption),
   Ed25519 (device signatures), and HKDF-SHA256 (key derivation). The server only
@@ -45,9 +44,8 @@ No demo credentials are needed because **there are no credentials.** The flow:
 
 1. **Install and launch the app.** Accept the privacy notice ("Agree and
    continue"), then read Before you start (no backup, no recovery) and tick its
-   checkbox. On **Create account** an optional name can be entered; it stays on
-   the phone. Continue to **Choose a handle** and pick any free handle (lowercase
-   letters, digits and underscores, for example `reviewer_a`). The app then
+   checkbox. On **Choose a handle**, pick any free handle (lowercase letters,
+   digits and underscores, for example `reviewer_a`). The app then
    creates the account's keys on the phone (X25519/Ed25519 key pairs) and
    registers only the public keys and the handle. No phone number, email, SMS
    code, or password is requested.

@@ -7,39 +7,44 @@ Application ID: `app.veil.messenger` (placeholder; align with
 > **Legal review required** for every user-facing string below before
 > publishing. This is a starting draft, not reviewed copy.
 
+The three texts below are the files in `store/play` (`title-en.txt`,
+`short-en.txt`, `full-en.txt`); change them there and here together.
+
 ## App title (30 chars)
 
-`Veil Messenger`
+`Veil: Encrypted Messenger`
 
 ## Short description (80 chars)
 
-`End-to-end encrypted messenger with no phone number, no email and no real name.`
+`Encrypted chat with a handle, not a phone number. No email, no real name.`
 
 ## Full description
 
-Veil is an end-to-end encrypted messenger. The server passes on encrypted
-messages and never sees what they say.
+Veil is a messenger you sign up for with a handle. No phone number, no email, no real name.
 
-**What you get**
-- End-to-end encrypted messages.
-- No phone number, no email and no address book upload. You pick a handle.
-- Your account lives on your phone. There is no cloud account.
-- Disappearing messages, with a timer on each chat.
-- Block or report someone from a chat or your contacts, and mute a chat.
+Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
-**What you don't get**
-- No ads and no analytics.
-- No backups, local or cloud.
-- No account recovery. If you lose your phone, you lose the account.
-- No contact upload and no directory of who else uses Veil.
+- One-to-one and group chats
+- Disappearing messages
+- Read receipts and typing indicators you can turn off
+- Safety numbers to check who you're talking to
+- One-time links for a password or a note
+- App lock with a PIN or biometrics
+- Block or report someone, and mute a chat
+- Move your account to a new phone
 
-**Who it's for**
-People who want to message without giving out a phone number, and who
-accept that a lost phone means a lost account.
+There is no backup and no account recovery. If you lose your phone, you lose the account and its messages.
 
-Not in the mobile build, so not in this listing: view-once messages. The
-server has the endpoint; the app has no screen for it yet. Put a bullet back
-when its screen ships.
+Veil runs on one phone at a time. Moving to a new phone moves your handle to it and signs the old phone out. Your message history does not move.
+
+No ads, no tracking and no third-party analytics. The code is open source.
+
+Privacy policy: https://pppaal.github.io/Veil/
+Contact: privacy@veil.app
+
+Not in the mobile build, so not in this listing: view-once messages, calls,
+attachments and voice messages, and an online status (no one else ever
+sees whether you are online). Add a bullet only when its screen ships.
 
 ## Category
 
@@ -140,15 +145,16 @@ iOS Simulator, since iOS draws a font the test cannot render.
 Paste into "App access" review form:
 
 ```
-Veil is an end-to-end encrypted messenger. Reviewers do not need a real
-phone number or email. Use the following test handle:
+No login is needed. Veil has no password, phone number or email: open the
+app, accept the privacy notice, tick the box on "Before you start", and
+pick any free handle (for example reviewer_a). The app creates the account
+on the phone.
 
-  Handle: @playstore-review-<random>
-  Transfer code: <generated per review>
+To send messages, use two phones or emulators, each with its own handle,
+and start a chat from one to the other's handle.
 
-Veil uses end-to-end encryption; the server cannot read user content, so
-the review team cannot inspect message bodies. The Privacy Policy explains
-this.
+Messages are end-to-end encrypted, so we cannot show their content to the
+review team.
 ```
 
 ## Release track plan

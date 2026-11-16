@@ -15,36 +15,44 @@ localization.
 
 ## App name and subtitle
 
-- **App name:** Veil Messenger
-- **Subtitle (iOS, ≤30 chars):** Encrypted messenger
+The listing text lives in `store/play/title-en.txt`, `short-en.txt`,
+`full-en.txt` and `store/appstore/metadata-en.txt`; this page repeats it.
+
+- **App name (both stores, ≤30 chars):** Veil: Encrypted Messenger
+- **Subtitle (iOS, ≤30 chars):** Chat without a phone number
+- **Short description (Google Play, ≤80 chars):** Encrypted chat with a handle, not a phone number. No email, no real name.
 - **Promotional text (iOS, ≤170 chars, updatable without review):**
-  End-to-end encrypted messages with no phone number, no email and no real name.
-  Message content is never stored in plaintext. Your account lives on your phone.
+  Sign up with a handle, not a phone number. Messages are end-to-end encrypted, so only you and the people you talk to can read them.
 
 ## Description
 
-```
-Veil is an open-source, end-to-end encrypted messenger. The server can't
-read your messages, and neither can we.
+The same text on both stores:
 
-• No phone number, no email and no real name. Your account lives on your phone.
-• End-to-end encryption (X25519 and AES-256-GCM, with a Double Ratchet for
-  forward secrecy).
-• No cloud backup, no password reset and no admin override.
-• The server only passes on ciphertext. It cannot decrypt your messages.
-• Open source (AGPL-3.0): anyone can read the code and check these claims.
+Veil is a messenger you sign up for with a handle. No phone number, no email, no real name.
 
-Before you install:
-Veil has no account recovery. If you lose your phone or delete the app, your
-messages are gone for good. There is no backup and no reset.
+Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
-Messaging: text messages in one-to-one and group chats, reactions,
-disappearing messages, and message search that stays on your phone.
-```
+- One-to-one and group chats
+- Disappearing messages
+- Read receipts and typing indicators you can turn off
+- Safety numbers to check who you're talking to
+- One-time links for a password or a note
+- App lock with a PIN or biometrics
+- Block or report someone, and mute a chat
+- Move your account to a new phone
+
+There is no backup and no account recovery. If you lose your phone, you lose the account and its messages.
+
+Veil runs on one phone at a time. Moving to a new phone moves your handle to it and signs the old phone out. Your message history does not move.
+
+No ads, no tracking and no third-party analytics. The code is open source.
+
+Privacy policy: https://pppaal.github.io/Veil/
+Contact: privacy@veil.app
 
 ## Keywords (iOS, ≤100 chars, comma-separated)
 
-`encrypted,messenger,privacy,e2e,secure chat,no phone number,open source,anonymous,private`
+`private,secure,e2ee,handle,username,disappearing,one-time link,app lock,safety number,pin`
 
 ## Category & age rating
 
@@ -90,8 +98,8 @@ are how the app is meant to work. Please read before testing:
 
 1. No phone number and no email. There is no password, email or SMS sign-up.
    After the privacy notice and a short "Before you start" page, the app
-   creates an account on the phone (Create account) and asks for a handle
-   (Choose a handle). This is not a broken onboarding flow.
+   asks for a handle (Choose a handle) and creates the account on the phone.
+   This is not a broken onboarding flow.
 
 2. No recovery. There is no password reset, no cloud backup, and no way to
    restore a chat on a new phone without the old phone. Losing the phone
@@ -105,8 +113,8 @@ self-classification report will be filed before distribution.
 Source is public under AGPL-3.0 for independent verification.
 
 Test walkthrough: launch → agree to the privacy notice → Before you start →
-Create account → Choose a handle (any free handle) → New chat with a second
-device's handle → send a text message → long-press it to react. No
+Choose a handle (any free handle) → New chat with a second device's
+handle → send a text message → long-press it to react. No
 credentials are required to reach full functionality. Calls, attachments and
 voice messages are not part of this build.
 ```
@@ -123,10 +131,9 @@ voice messages are not part of this build.
 - iOS: the 6.9" and 6.5" iPhone sets of `store/appstore/screenshot-spec.md`,
   plus a 13" iPad set if the archived build still runs on iPad (the Xcode
   project targets iPhone and iPad today).
-- Suggested shots: onboarding "no recovery" warning, a conversation, the
-  safety number screen, settings/theme. Use fictional content and no real
-  user data. Show nothing the build does not have: no call, voice message or
-  attachment screen.
+- The six shots are the ones the spec lists, the same six screens as the
+  Google Play set, with the demo account of the layout gate. Show nothing
+  the build does not have: no call, voice message or attachment screen.
 - Google Play: the phone screenshots and the 1024×500 feature graphic are in
   `store/play` (`store/play/screenshots/README.md` says how they are made).
   Play does not require tablet screenshots, and none are made.

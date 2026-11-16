@@ -7,7 +7,7 @@ import 'package:veil_mobile/src/app/router/app_router.dart';
 import 'package:veil_mobile/src/app/theme_mode_provider.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
-import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
+import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/device_rows.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_danger_zone.dart';
@@ -350,7 +350,7 @@ void main() {
         await tester.tap(find.widgetWithText(TextButton, en.settingsLogout));
         await pumpFrames(tester, frames: 6);
         expect(world.container.read(appSessionProvider).isAuthenticated, isFalse);
-        expect(find.byType(CreateAccountScreen), findsOneWidget);
+        expect(find.byType(ChooseHandleScreen), findsOneWidget);
       });
     });
 

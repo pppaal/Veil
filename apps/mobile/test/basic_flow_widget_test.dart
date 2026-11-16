@@ -10,7 +10,7 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
-import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
+import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
@@ -29,30 +29,25 @@ void main() {
     expect(find.text('Before you start'), findsOneWidget);
     expect(
       find.textContaining(
-          'If you lose this phone, you lose this account and its messages.'),
+          'If you lose the phone, your account and messages are gone for good.'),
       findsOneWidget,
     );
-    expect(find.text('I understand there is no way to recover a lost account'), findsOneWidget);
+    expect(find.text("I understand a lost account can't be recovered"), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
   });
 
   testWidgets(
-      'create account screen keeps transfer and no-restore copy visible',
+      'the handle screen creates the account and offers the move from another phone',
       (tester) async {
     await tester.pumpWidget(
       const ProviderScope(
         child: _TestApp(
-          child: CreateAccountScreen(),
+          child: ChooseHandleScreen(),
         ),
       ),
     );
 
-    await tester.scrollUntilVisible(
-      find.text('Continue'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
     expect(find.text('Move from another phone'), findsOneWidget);
   });
 

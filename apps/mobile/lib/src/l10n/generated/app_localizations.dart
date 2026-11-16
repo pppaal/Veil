@@ -157,19 +157,19 @@ abstract class AppLocalizations {
   /// No description provided for @appLockCompromisedBody.
   ///
   /// In en, this message translates to:
-  /// **'This device appears to be rooted or jailbroken, so the app won\'t unlock here.'**
+  /// **'This phone looks rooted or jailbroken, so the app won\'t unlock here.'**
   String get appLockCompromisedBody;
 
   /// No description provided for @appLockCompromisedReasons.
   ///
   /// In en, this message translates to:
-  /// **'This device appears to be rooted or jailbroken. {reasons}'**
+  /// **'This phone looks rooted or jailbroken. {reasons}'**
   String appLockCompromisedReasons(String reasons);
 
   /// No description provided for @appLockLockoutBody.
   ///
   /// In en, this message translates to:
-  /// **'PIN entry is paused. {retry}'**
+  /// **'Too many tries. {retry}'**
   String appLockLockoutBody(String retry);
 
   /// No description provided for @appLockRetryNow.
@@ -259,19 +259,19 @@ abstract class AppLocalizations {
   /// No description provided for @appLockStatusPinMismatchAttempts.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{Wrong PIN. 1 attempt left.} other{Wrong PIN. {count} attempts left.}}'**
+  /// **'{count, plural, =1{Wrong PIN. 1 try left.} other{Wrong PIN. {count} tries left.}}'**
   String appLockStatusPinMismatchAttempts(int count);
 
   /// No description provided for @appLockStatusLocked.
   ///
   /// In en, this message translates to:
-  /// **'Too many attempts. Try again later.'**
+  /// **'Too many tries. Try again later.'**
   String get appLockStatusLocked;
 
   /// No description provided for @appLockStatusCompromised.
   ///
   /// In en, this message translates to:
-  /// **'This device can\'t be unlocked.'**
+  /// **'This phone can\'t be unlocked.'**
   String get appLockStatusCompromised;
 
   /// No description provided for @appLockUseBiometrics.
@@ -279,6 +279,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Use biometrics'**
   String get appLockUseBiometrics;
+
+  /// No description provided for @appLockUseFaceId.
+  ///
+  /// In en, this message translates to:
+  /// **'Use Face ID'**
+  String get appLockUseFaceId;
+
+  /// No description provided for @appLockUseTouchId.
+  ///
+  /// In en, this message translates to:
+  /// **'Use Touch ID'**
+  String get appLockUseTouchId;
+
+  /// No description provided for @appLockUseFingerprint.
+  ///
+  /// In en, this message translates to:
+  /// **'Use fingerprint'**
+  String get appLockUseFingerprint;
 
   /// No description provided for @appLockUnlock.
   ///
@@ -295,7 +313,7 @@ abstract class AppLocalizations {
   /// No description provided for @appLockSetupFooter.
   ///
   /// In en, this message translates to:
-  /// **'Your PIN is checked on this phone only. If you forget it, wipe this device and start over.'**
+  /// **'If you forget your PIN, there\'s no way to reset it.'**
   String get appLockSetupFooter;
 
   /// No description provided for @appLockTurnOn.
@@ -310,12 +328,6 @@ abstract class AppLocalizations {
   /// **'Couldn\'t start'**
   String get splashErrorTitle;
 
-  /// No description provided for @splashPreparingTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Starting…'**
-  String get splashPreparingTitle;
-
   /// No description provided for @onboardingWarnTitle.
   ///
   /// In en, this message translates to:
@@ -325,7 +337,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingWarnAgreeCheckbox.
   ///
   /// In en, this message translates to:
-  /// **'I understand there is no way to recover a lost account'**
+  /// **'I understand a lost account can\'t be recovered'**
   String get onboardingWarnAgreeCheckbox;
 
   /// No description provided for @onboardingWarnLine1.
@@ -337,13 +349,13 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingWarnLine2.
   ///
   /// In en, this message translates to:
-  /// **'If you lose this phone, you lose this account and its messages. There is no backup and no way to recover it.'**
+  /// **'If you lose the phone, your account and messages are gone for good.'**
   String get onboardingWarnLine2;
 
   /// No description provided for @onboardingWarnLine3.
   ///
   /// In en, this message translates to:
-  /// **'To move to a new phone you need the old one.'**
+  /// **'To move to a new phone later, you\'ll need this one.'**
   String get onboardingWarnLine3;
 
   /// No description provided for @privacyConsentTitle.
@@ -355,7 +367,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentAgree.
   ///
   /// In en, this message translates to:
-  /// **'I agree to the collection and use of personal information as described above. (Required)'**
+  /// **'I agree to the collection and use of my personal information as described above (required)'**
   String get privacyConsentAgree;
 
   /// No description provided for @privacyConsentAccept.
@@ -520,30 +532,6 @@ abstract class AppLocalizations {
   /// **'Veil does not share your information with third parties, except where the law requires it.'**
   String get privacyConsentThirdPartyBody;
 
-  /// No description provided for @authCreateTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Create account'**
-  String get authCreateTitle;
-
-  /// No description provided for @authCreateFieldCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Shown only on this phone. Others see your handle.'**
-  String get authCreateFieldCaption;
-
-  /// No description provided for @authCreateDisplayName.
-  ///
-  /// In en, this message translates to:
-  /// **'Name'**
-  String get authCreateDisplayName;
-
-  /// No description provided for @authCreateDisplayHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Optional'**
-  String get authCreateDisplayHint;
-
   /// No description provided for @authCreateTransferLabel.
   ///
   /// In en, this message translates to:
@@ -559,7 +547,7 @@ abstract class AppLocalizations {
   /// No description provided for @authHandleFindCaption.
   ///
   /// In en, this message translates to:
-  /// **'People find you by this handle. Veil has no phone number, email or contact upload.'**
+  /// **'You can\'t change it later.'**
   String get authHandleFindCaption;
 
   /// No description provided for @authHandleInputLabel.
@@ -580,35 +568,17 @@ abstract class AppLocalizations {
   /// **'Create account'**
   String get authHandleBindCta;
 
-  /// No description provided for @authStageGeneratingKeys.
+  /// No description provided for @authHandleInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Creating keys…'**
-  String get authStageGeneratingKeys;
+  /// **'Use 3 to 32 lowercase letters, numbers, dots or underscores.'**
+  String get authHandleInvalid;
 
-  /// No description provided for @authStageRegistering.
+  /// No description provided for @authCreating.
   ///
   /// In en, this message translates to:
-  /// **'Registering handle…'**
-  String get authStageRegistering;
-
-  /// No description provided for @authStageRequestingChallenge.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking this phone…'**
-  String get authStageRequestingChallenge;
-
-  /// No description provided for @authStageVerifying.
-  ///
-  /// In en, this message translates to:
-  /// **'Signing in…'**
-  String get authStageVerifying;
-
-  /// No description provided for @authStageComplete.
-  ///
-  /// In en, this message translates to:
-  /// **'Done'**
-  String get authStageComplete;
+  /// **'Creating account…'**
+  String get authCreating;
 
   /// No description provided for @authDefaultDeviceName.
   ///

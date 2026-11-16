@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/security/app_lock_service.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
@@ -30,6 +31,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
 
   bool _hasPin = false;
   bool _biometricsAvailable = false;
+  BiometricKind _biometricKind = BiometricKind.unknown;
   bool _loading = true;
   bool _submitting = false;
   bool _integrityCompromised = false;
@@ -52,6 +54,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       appLock.canUseBiometrics(),
     ]);
     final lockout = await appLock.remainingPinLockout();
+    final kind = values[1] ? await appLock.biometricKind() : BiometricKind.unknown;
     final platformSecurityService = ref.read(platformSecurityServiceProvider);
     await platformSecurityService.applyPrivacyProtections();
     final platformSecurity = await platformSecurityService.getStatus();
@@ -61,12 +64,18 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     setState(() {
       _hasPin = values[0];
       _biometricsAvailable = values[1];
+      _biometricKind = kind;
       _lockout = lockout;
       _lockedOut = lockout != null;
       _integrityCompromised = platformSecurity.integrityCompromised;
       _integrityReasons = platformSecurity.integrityReasons;
       _loading = false;
     });
+    // The phone's own biometric prompt opens by itself, as soon as the
+    // lock shows; the PIN is the fallback.
+    if (_hasPin && _biometricsAvailable && !_integrityCompromised && !_lockedOut) {
+      await _unlockWithBiometrics(reportFailure: false);
+    }
   }
 
   @override
@@ -151,7 +160,12 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       : VeilButton(
           onPressed: _submitting || _integrityCompromised ? null : _unlockWithBiometrics,
           tone: VeilButtonTone.ghost,
-          label: l10n.appLockUseBiometrics,
+          label: switch (_biometricKind) {
+            BiometricKind.faceId => l10n.appLockUseFaceId,
+            BiometricKind.touchId => l10n.appLockUseTouchId,
+            BiometricKind.fingerprint => l10n.appLockUseFingerprint,
+            BiometricKind.unknown => l10n.appLockUseBiometrics,
+          },
         );
 
   TextField _pinField({
@@ -327,7 +341,9 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
   // guard puts back the screen the lock replaced.
   void _cancelSetUp() => ref.read(appSessionProvider.notifier).unlock();
 
-  Future<void> _unlockWithBiometrics() async {
+  // [reportFailure] is false for the prompt that opens by itself: closing it
+  // is not a failure worth a line under the PIN.
+  Future<void> _unlockWithBiometrics({bool reportFailure = true}) async {
     if (_integrityCompromised) {
       setState(() => _status = const AppLockStatus(AppLockOutcome.blockedCompromised));
       return;
@@ -356,7 +372,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
         return;
       }
 
-      setState(() => _status = const AppLockStatus(AppLockOutcome.biometricFailed));
+      if (reportFailure) setState(() => _status = const AppLockStatus(AppLockOutcome.biometricFailed));
     } finally {
       if (mounted) {
         setState(() {

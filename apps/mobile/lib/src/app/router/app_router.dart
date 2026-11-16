@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/veil_theme.dart';
 import '../../features/app_lock/presentation/app_lock_screen.dart';
 import '../../features/auth/presentation/choose_handle_screen.dart';
-import '../../features/auth/presentation/create_account_screen.dart';
 import '../../features/chat/presentation/chat_room_screen.dart';
 import '../../features/secret_link/presentation/one_time_link_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
@@ -112,11 +111,6 @@ List<RouteBase> _buildRoutes() {
       path: '/onboarding',
       pageBuilder: (context, state) =>
           _veilFadePage(state, const OnboardingWarningScreen()),
-    ),
-    GoRoute(
-      path: '/create-account',
-      pageBuilder: (context, state) =>
-          _veilFadePage(state, const CreateAccountScreen()),
     ),
     GoRoute(
       path: '/choose-handle',

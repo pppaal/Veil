@@ -52,7 +52,7 @@ class SettingsDangerZone extends ConsumerWidget {
             confirm: l10n.settingsLogout,
             phrase: l10n.settingsLogoutConfirmPhrase,
             action: session.logout,
-            thenGo: '/create-account',
+            thenGo: '/choose-handle',
           ),
         ),
         VeilRow(
@@ -79,7 +79,7 @@ class SettingsDangerZone extends ConsumerWidget {
             phrase: l10n.settingsRevokeConfirmPhrase,
             // The server did not revoke it: this device keeps its state.
             action: session.revokeCurrentDevice,
-            thenGo: '/create-account',
+            thenGo: '/choose-handle',
           ),
         ),
         VeilRow(

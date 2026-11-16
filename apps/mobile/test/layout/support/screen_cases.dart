@@ -3,7 +3,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
-import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_status_banners.dart';
@@ -166,12 +165,6 @@ const List<ScreenCase> screenCases = [
       screen: OnboardingWarningScreen,
       file: 'onboarding_warning_screen.dart',
       location: '/onboarding',
-      account: _signedOut,
-      primaryAction: _primaryButton),
-  ScreenCase('create-account',
-      screen: CreateAccountScreen,
-      file: 'create_account_screen.dart',
-      location: '/create-account',
       account: _signedOut,
       primaryAction: _primaryButton),
   ScreenCase('choose-handle',

@@ -55,7 +55,6 @@ List<RouteBase> _stubRoutes() {
       '/splash',
       '/privacy-consent',
       '/onboarding',
-      '/create-account',
       '/choose-handle',
       '/conversations',
       '/settings',
@@ -202,7 +201,7 @@ void main() {
       app.session.state = app.session.state.copyWith(accessToken: null);
       await tester.pumpAndSettle();
 
-      expect(app.location.path, '/create-account');
+      expect(app.location.path, '/choose-handle');
     });
 
     testWidgets('a wipe while locked never resurfaces the old stack', (tester) async {
@@ -215,7 +214,7 @@ void main() {
       app.session.state = app.session.state.copyWith(accessToken: null, locked: false);
       await tester.pumpAndSettle();
 
-      expect(app.location.toString(), '/create-account');
+      expect(app.location.toString(), '/choose-handle');
       expect(find.text('chat conv-1'), findsNothing);
     });
   });
@@ -314,7 +313,7 @@ void main() {
       expect(redirect(initializing, '/chat/c1'), '/splash');
       expect(redirect(initializing, '/splash'), isNull);
       expect(redirect(noConsent, '/conversations'), '/privacy-consent');
-      expect(redirect(signedOut, '/chat/c1'), '/create-account');
+      expect(redirect(signedOut, '/chat/c1'), '/choose-handle');
       expect(redirect(signedOut, '/device-transfer'), isNull);
       expect(redirect(signedIn, '/choose-handle'), '/conversations');
       expect(redirect(signedIn, '/chat/c1'), isNull);

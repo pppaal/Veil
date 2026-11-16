@@ -40,16 +40,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLockCompromisedBody =>
-      'This device appears to be rooted or jailbroken, so the app won\'t unlock here.';
+      'This phone looks rooted or jailbroken, so the app won\'t unlock here.';
 
   @override
   String appLockCompromisedReasons(String reasons) {
-    return 'This device appears to be rooted or jailbroken. $reasons';
+    return 'This phone looks rooted or jailbroken. $reasons';
   }
 
   @override
   String appLockLockoutBody(String retry) {
-    return 'PIN entry is paused. $retry';
+    return 'Too many tries. $retry';
   }
 
   @override
@@ -116,20 +116,29 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Wrong PIN. $count attempts left.',
-      one: 'Wrong PIN. 1 attempt left.',
+      other: 'Wrong PIN. $count tries left.',
+      one: 'Wrong PIN. 1 try left.',
     );
     return '$_temp0';
   }
 
   @override
-  String get appLockStatusLocked => 'Too many attempts. Try again later.';
+  String get appLockStatusLocked => 'Too many tries. Try again later.';
 
   @override
-  String get appLockStatusCompromised => 'This device can\'t be unlocked.';
+  String get appLockStatusCompromised => 'This phone can\'t be unlocked.';
 
   @override
   String get appLockUseBiometrics => 'Use biometrics';
+
+  @override
+  String get appLockUseFaceId => 'Use Face ID';
+
+  @override
+  String get appLockUseTouchId => 'Use Touch ID';
+
+  @override
+  String get appLockUseFingerprint => 'Use fingerprint';
 
   @override
   String get appLockUnlock => 'Unlock';
@@ -139,7 +148,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLockSetupFooter =>
-      'Your PIN is checked on this phone only. If you forget it, wipe this device and start over.';
+      'If you forget your PIN, there\'s no way to reset it.';
 
   @override
   String get appLockTurnOn => 'Turn on';
@@ -148,32 +157,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get splashErrorTitle => 'Couldn\'t start';
 
   @override
-  String get splashPreparingTitle => 'Starting…';
-
-  @override
   String get onboardingWarnTitle => 'Before you start';
 
   @override
   String get onboardingWarnAgreeCheckbox =>
-      'I understand there is no way to recover a lost account';
+      'I understand a lost account can\'t be recovered';
 
   @override
   String get onboardingWarnLine1 => 'Your account lives on this phone.';
 
   @override
   String get onboardingWarnLine2 =>
-      'If you lose this phone, you lose this account and its messages. There is no backup and no way to recover it.';
+      'If you lose the phone, your account and messages are gone for good.';
 
   @override
   String get onboardingWarnLine3 =>
-      'To move to a new phone you need the old one.';
+      'To move to a new phone later, you\'ll need this one.';
 
   @override
   String get privacyConsentTitle => 'Privacy notice';
 
   @override
   String get privacyConsentAgree =>
-      'I agree to the collection and use of personal information as described above. (Required)';
+      'I agree to the collection and use of my personal information as described above (required)';
 
   @override
   String get privacyConsentAccept => 'Agree and continue';
@@ -276,27 +282,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Veil does not share your information with third parties, except where the law requires it.';
 
   @override
-  String get authCreateTitle => 'Create account';
-
-  @override
-  String get authCreateFieldCaption =>
-      'Shown only on this phone. Others see your handle.';
-
-  @override
-  String get authCreateDisplayName => 'Name';
-
-  @override
-  String get authCreateDisplayHint => 'Optional';
-
-  @override
   String get authCreateTransferLabel => 'Move from another phone';
 
   @override
   String get authHandleTitle => 'Choose a handle';
 
   @override
-  String get authHandleFindCaption =>
-      'People find you by this handle. Veil has no phone number, email or contact upload.';
+  String get authHandleFindCaption => 'You can\'t change it later.';
 
   @override
   String get authHandleInputLabel => 'Handle';
@@ -308,19 +300,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authHandleBindCta => 'Create account';
 
   @override
-  String get authStageGeneratingKeys => 'Creating keys…';
+  String get authHandleInvalid =>
+      'Use 3 to 32 lowercase letters, numbers, dots or underscores.';
 
   @override
-  String get authStageRegistering => 'Registering handle…';
-
-  @override
-  String get authStageRequestingChallenge => 'Checking this phone…';
-
-  @override
-  String get authStageVerifying => 'Signing in…';
-
-  @override
-  String get authStageComplete => 'Done';
+  String get authCreating => 'Creating account…';
 
   @override
   String get authDefaultDeviceName => 'My phone';

@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/errors/user_facing_error.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
-import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
+import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/brand_mark.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
@@ -56,17 +56,19 @@ void main() {
   }
 
   group('splash', () {
-    testWidgets('shows the mark and that the app is starting, and no words', (tester) async {
+    testWidgets('shows the mark alone, a spinner only after a second, and no words', (tester) async {
       usePhoneView(tester, phoneSmall);
       final world = await LayoutWorld.create(identities: identities, account: signedOut, locale: 'en', bootstrapping: true);
       try {
         await tester.pumpWidget(world.app(location: '/splash'));
-        await pumpFrames(tester);
+        await pumpFrames(tester, frames: 4);
         expect(find.byType(BrandMark), findsOneWidget);
-        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing, reason: 'a quick start shows the mark alone');
         expect(find.byType(Text), findsNothing, reason: 'the splash has no text');
-        // A screen reader still hears what is going on.
-        expect(find.bySemanticsLabel(l10n.splashPreparingTitle), findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(find.byType(CircularProgressIndicator), findsOneWidget, reason: 'a slow start shows a spinner');
+        expect(find.byType(Text), findsNothing, reason: 'the splash has no text');
         // The mark sits where the native splash put it: in the middle.
         final mark = tester.getCenter(find.byType(BrandMark));
         expect(mark.dx, closeTo(phoneSmall.width / 2, 0.5));
@@ -131,8 +133,11 @@ void main() {
         for (final line in [l10n.onboardingWarnLine1, l10n.onboardingWarnLine2, l10n.onboardingWarnLine3]) {
           expectInReach(tester, findCopy(line));
         }
-        expect(find.textContaining('no way to recover', skipOffstage: false), findsNWidgets(2),
-            reason: 'the loss sentence and the box that says it was understood');
+        expect(find.textContaining('gone for good', skipOffstage: false), findsOneWidget, reason: 'the loss sentence');
+        expect(find.textContaining("can't be recovered", skipOffstage: false), findsOneWidget,
+            reason: 'the box that says it was understood');
+        // Plain sentences: no glyph before each line.
+        expect(find.byType(Icon, skipOffstage: false), findsNothing);
         expect(find.byType(VeilNotice, skipOffstage: false), findsNothing);
 
         final box = find.widgetWithText(CheckboxListTile, l10n.onboardingWarnAgreeCheckbox);
@@ -142,53 +147,53 @@ void main() {
         expect(tester.widget<FilledButton>(proceed).onPressed, isNull, reason: 'not before the box is ticked');
         await tester.tap(proceed);
         await pumpFrames(tester, frames: 3);
-        expect(find.byType(CreateAccountScreen), findsNothing);
+        expect(find.byType(ChooseHandleScreen), findsNothing);
 
         await tester.tap(box);
         await tester.pump();
         expect(tester.widget<FilledButton>(proceed).onPressed, isNotNull);
         await tester.tap(proceed);
         await pumpFrames(tester, frames: 4);
-        expect(find.byType(CreateAccountScreen), findsOneWidget);
-        expect(tester.takeException(), isNull);
-      });
-    });
-  });
-
-  group('create account', () {
-    testWidgets('is the name field, "Continue" and one text button, and nothing else', (tester) async {
-      await withPhoneApp(tester, identities, size: phoneMedium, location: '/create-account', account: signedOut,
-          body: (world) async {
-        final field = find.byType(TextField);
-        final proceed = find.widgetWithText(FilledButton, l10n.commonContinue);
-        final transfer = find.widgetWithText(TextButton, l10n.authCreateTransferLabel);
-        expectInReach(tester, field);
-        expectInReach(tester, proceed);
-        expectInReach(tester, transfer);
-        expect(field, findsOneWidget);
-        expect(find.byType(FilledButton), findsOneWidget);
-        expect(find.byType(OutlinedButton), findsNothing);
-        expect(top(tester, field), lessThan(top(tester, proceed)));
-        expect(top(tester, proceed), lessThan(top(tester, transfer)));
-        // Before you start already said what losing the phone means.
-        expect(find.byType(VeilNotice), findsNothing);
-        expect(find.textContaining('recover'), findsNothing);
+        expect(find.byType(ChooseHandleScreen), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     });
   });
 
   group('choose a handle', () {
-    testWidgets('opens on the handle field and the button, with the one helper line', (tester) async {
+    testWidgets('is the handle field, "Create account" and one text button, and nothing else', (tester) async {
       await withPhoneApp(tester, identities, size: phoneMedium, location: '/choose-handle', account: signedOut,
           body: (world) async {
+        final field = find.byType(TextField);
         final create = find.widgetWithText(FilledButton, l10n.authHandleBindCta);
-        expectInReach(tester, find.byType(TextField));
+        final transfer = find.widgetWithText(TextButton, l10n.authCreateTransferLabel);
+        expectInReach(tester, field);
         expectInReach(tester, create);
+        expectInReach(tester, transfer);
+        expect(field, findsOneWidget);
         expect(findCopy(l10n.authHandleFindCaption), findsOneWidget);
-        expect(top(tester, find.byType(TextField)), lessThan(top(tester, create)));
+        expect(top(tester, field), lessThan(top(tester, create)));
+        expect(top(tester, create), lessThan(top(tester, transfer)));
         expect(find.byType(VeilNotice), findsNothing);
-        expect(find.byType(StepRow), findsNothing, reason: 'the stages are one line under the button, while it works');
+        expect(find.byType(StepRow), findsNothing);
+        // Before you start already said what losing the phone means.
+        expect(find.textContaining('recover'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    });
+
+    testWidgets('a handle with characters no account can have is the field error, and cannot be sent',
+        (tester) async {
+      await withPhoneApp(tester, identities, size: phoneMedium, location: '/choose-handle', account: signedOut,
+          body: (world) async {
+        TextField field() => tester.widget<TextField>(find.byType(TextField));
+        await tester.enterText(find.byType(TextField), 'Sam Rivera');
+        await pumpFrames(tester, frames: 2);
+        expect(field().decoration?.errorText, l10n.authHandleInvalid);
+        expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, l10n.authHandleBindCta)).onPressed, isNull);
+        await tester.enterText(find.byType(TextField), 'sam_rivera');
+        await pumpFrames(tester, frames: 2);
+        expect(field().decoration?.errorText, isNull);
       });
     });
 
@@ -519,8 +524,8 @@ void main() {
     });
 
     test('counts in words that agree with the number', () {
-      expect(l10n.appLockStatusPinMismatchAttempts(1), 'Wrong PIN. 1 attempt left.');
-      expect(l10n.appLockStatusPinMismatchAttempts(2), 'Wrong PIN. 2 attempts left.');
+      expect(l10n.appLockStatusPinMismatchAttempts(1), 'Wrong PIN. 1 try left.');
+      expect(l10n.appLockStatusPinMismatchAttempts(2), 'Wrong PIN. 2 tries left.');
     });
   });
 }

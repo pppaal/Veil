@@ -289,7 +289,11 @@ class LayoutWorld {
         if (name != null) await nicknames.write(handle, name);
       }
     }
-    trust = IdentityTrust(TrustedIdentityResolver(store: TrustedIdentityStore(InMemoryIdentityKeyValueBackend())));
+    // Pins and verifications are stamped by the phone's clock, so Safety
+    // number's "Verified" date is this morning's, as the chats are.
+    trust = IdentityTrust(
+      TrustedIdentityResolver(store: TrustedIdentityStore(InMemoryIdentityKeyValueBackend()), clock: () => now),
+    );
     // The chat's peer was compared out of band, so the chat shows its mark.
     final peer = relay.partiesByHandle[peerHandle]!;
     await trust.resolver.evaluate(peer.userId, peer.deviceId, peer.identity.identityPublicKey);

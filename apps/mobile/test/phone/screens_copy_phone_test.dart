@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_adapter_registry.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
@@ -10,6 +11,7 @@ import 'package:veil_mobile/src/features/security/presentation/safety_numbers_sc
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../support/copy_finder.dart';
+import '../layout/support/layout_seed.dart' show layoutNow;
 import 'phone_app.dart';
 
 // What the screens around the chat say on a phone, and in which order: the
@@ -162,6 +164,16 @@ void main() {
       of: find.byType(SafetyNumberCard, skipOffstage: false),
       matching: find.text('Safety number', skipOffstage: false),
     );
+
+    // The seed's verification is stamped by the phone's clock: the morning
+    // the chats are from, not the day the test runs.
+    testWidgets('dates the verification by the phone\'s clock', (tester) async {
+      await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
+        await awaitSafetyNumber(tester);
+        final day = DateFormat.yMMMd('en').format(layoutNow.toLocal());
+        expect(find.text(l10n.safetyNumbersKeyChangedMessage(day), skipOffstage: false), findsOneWidget);
+      });
+    });
 
     testWidgets('a phone opens on the warning, before anything else', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {

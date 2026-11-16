@@ -38,7 +38,7 @@
 - Re-open the lock screen and confirm PIN unlock works.
 - If biometrics are available, verify biometric unlock works and failure states are readable.
 - Background the app and confirm the preview is obscured and the session returns behind the app lock.
-- Use `Wipe local device state` and confirm session, PIN, and onboarding state are removed locally.
+- Use Settings > `Sign out`, type the handle, and confirm the session, keys and PIN are removed (the onboarding acknowledgement stays). With the network off, confirm nothing is erased and the app says it couldn't sign out: there is no offline wipe.
 
 ## Transfer And Settings
 - Open Device Transfer on the old device and confirm the flow makes the old-device requirement explicit.
@@ -46,15 +46,12 @@
 - On a fresh device, open `Transfer from old device`, paste the code, register the device, and complete the trusted-device join.
 - Let a transfer or claim expire and confirm the UI no longer offers completion and clearly requires a fresh session: step 1 is marked `Expired` on both devices, the old device issues a new code there and the new device pastes it there. The expired code is refused if it is pasted again.
 - Confirm the new device becomes authenticated and the old device is logged out after completion.
-- Open Settings, then `Trusted devices`, and confirm the list shows current, preferred, trusted, stale, and revoked device states clearly where applicable. A stale device is also flagged on the Settings row itself, and the list's summary counts it among the trusted devices, not beside them.
-- With `Trusted devices` open, lock the app and unlock it: confirm the list is back, with Settings under it.
-- If another trusted device is still listed, confirm it can be explicitly revoked without implying any recovery path.
-- Open Settings and confirm revoke and logout copy do not imply recovery, and that log out, wipe, revoke and delete each ask for a typed phrase first. Logging out erases this device's keys: confirm the copy says so.
-- Revoke the current device and confirm the session is cleared locally.
+- Confirm Settings lists no devices: an account is active on one device at a time, and `Move to a new phone` sits in the Account group.
+- With `Move to a new phone` open, lock the app and unlock it: confirm the screen is back, with Settings under it.
+- Open Settings and confirm the Sign out and Delete account dialogs do not imply recovery, and that each asks for the user's own handle typed first. Signing out erases this device's keys: confirm the copy says so.
 
-## Security Status
-- Open Security Status and confirm it accurately reflects device binding, local secret refs, app lock, runtime connectivity, and cache state.
-- Confirm the `Crypto adapter` row reads `Production (unaudited)` and says an external audit is still pending. If the row names an adapter id, confirm it is `lib-x3dh-x25519-aes256gcm-v4`, the id `LibCryptoAdapter.adapterId` returns. A `VEIL_ENV=production` server refuses to boot until that audit is attested.
+## Settings > Security
+- Confirm the Security group shows App lock, Lock now, Screenshots, App switcher preview and Notifications with their values, and one footer line: "The encryption hasn't been independently audited yet." (in a development-crypto build: "This build uses test encryption. Don't use it for real chats."). A `VEIL_ENV=production` server refuses to boot until that audit is attested.
 
 ## Private Beta Release Gate
 - Run `pnpm ci:api` and confirm build, lint, policy checks, unit tests, and API e2e all pass.

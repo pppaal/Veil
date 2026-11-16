@@ -86,52 +86,58 @@ Biometric platform notes:
 
 ## Device lifecycle actions
 
-### Log out
+Settings has two account actions, both in its last group (Account), and both
+ask the user to type their own handle ("Type @alex to confirm.") before
+anything happens (`settings_danger_zone.dart`). There is no device list: an
+account is active on one device at a time (devices are created only at
+sign-up and when a transfer completes, which revokes the old device in the
+same transaction), so there is no other device to remove.
 
-Logging out clears:
+### Sign out
 
-- session token
-- device secret refs
-- cache key
-- encrypted cache contents
+Sign out runs `AppSessionController.revokeCurrentDevice`:
 
-It preserves:
+- it signs a step-up proof with this device's auth key and asks the server to
+  revoke this device (`POST /devices/revoke`; the server requires the proof
+  for the calling device and for the last active one);
+- only once the server has revoked it does the phone erase its state
+  (`_clearLocalState(preservePin: false)`): session tokens, device secret
+  refs, pending transfer, cache key and encrypted cache, PIN and PIN
+  throttle, ratchet sessions, group sender keys, prekeys, safety-number
+  verifications and every scoped store. The onboarding acknowledgement
+  stays;
+- if the server cannot be reached or refuses, nothing is erased and the
+  screen says "Couldn't sign out. Check your connection and try again." The
+  one exception is a server that answers `device_not_active`: the device was
+  already revoked, so the phone erases itself as it does everywhere else.
 
-- onboarding acknowledgement
-- local app-lock PIN
+So a phone that cannot reach the server cannot be signed out or erased from
+the app. This is deliberate: erasing a device the server still counts as
+active would leave the account with an active device that nobody holds. The
+app has no offline wipe.
 
-This is a local session clear only. It does not create recovery.
+With no recovery and one device per account, signing out loses the account
+for good, and the dialog says so.
 
-### Revoke this device
+### Delete account
 
-Revoking the current device:
+Delete account runs `AppSessionController.deleteAccount`: a step-up proof,
+then the server deletes the account (`DELETE /account`), and only then does
+the phone erase its state as above, the onboarding acknowledgement
+included. A refused or unanswered request erases nothing.
 
-- destroys the active device binding on the server
-- clears local session state
-- clears local secret material
-- clears encrypted cache
-- clears the local PIN
+### Moving to a new phone
 
-It does not create a restore path.
+Approving a transfer on the old phone (behind a confirm dialog that shows the
+new phone's key fingerprint) lets the new phone complete it; the server
+revokes the old device in the same transaction. The old phone erases itself
+the next time the server answers it with `device_not_active`.
 
-### Wipe local device state
+### Not reachable from the UI
 
-Explicit local wipe removes:
-
-- session state
-- local secret material
-- encrypted cache
-- local PIN
-- onboarding acknowledgement
-
-This is intended for destructive local cleanup. It does not move secrets to the server and it does not make recovery possible.
-
-Destructive local actions now require explicit typed confirmation in the UI:
-
-- `WIPE` for local wipe
-- `REVOKE` for device revocation
-
-This keeps the no-recovery consequence explicit at the moment of destruction.
+`AppSessionController.logout` (a best-effort server logout that keeps the
+PIN) and `wipeLocalDeviceState` (a local-only erase) remain in the code, but
+no screen calls either of them.
 
 ## Backup posture
 

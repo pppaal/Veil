@@ -221,6 +221,7 @@ void main() {
       expect(inSheet(find.text('@alexandra')), findsOneWidget);
       await tester.tap(find.text(en.contactsEditNickname));
       await pumpFrames(tester, frames: 6);
+      final before = await ContactNicknames(world.storage.scoped(SecureScope.contacts)).readAll();
 
       final save = inSheet(find.widgetWithText(FilledButton, en.contactsSaveNickname));
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300), reason: 'the button is above the keyboard');
@@ -232,12 +233,15 @@ void main() {
       expect(find.text('Alexa'), findsOneWidget);
       expect(find.text(name), findsNothing);
       final stored = await ContactNicknames(world.storage.scoped(SecureScope.contacts)).readAll();
-      // That one name changed, and nothing else the phone holds.
-      expect(stored, {
+      // That one name changed, and nothing else the phone holds; it still
+      // names the account it named.
+      expect({for (final MapEntry(:key, :value) in stored.entries) key: value.name}, {
         for (final MapEntry(key: handle, value: name) in peerNames.entries)
           if (name != null) handle: name,
         'alexandra': 'Alexa',
       });
+      expect({for (final MapEntry(:key, :value) in stored.entries) key: value.userId},
+          {for (final MapEntry(:key, :value) in before.entries) key: value.userId});
       expect(world.api.addedContacts, isEmpty, reason: 'the relay is not told');
     });
   });

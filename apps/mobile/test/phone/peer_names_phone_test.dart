@@ -47,7 +47,8 @@ void main() {
         expect(contact.keys.toSet(), {'handle', 'addedAt'}, reason: 'a contact as the relay lists one');
       }
       final saved = await ContactNicknames(world.storage.scoped(SecureScope.contacts)).readAll();
-      expect(saved[peerHandle], 'Sam Rivera');
+      // Saved for the handle, and given the account Chats lists under it.
+      expect(saved[peerHandle], const ContactNickname('Sam Rivera', userId: 'user-$peerHandle'));
 
       expect(_row('Sam Rivera'), findsOneWidget);
       expect(_row(peerHandle), findsNothing);

@@ -749,6 +749,27 @@ class ScopedSecureStore implements IdentityKeyValueBackend {
         if (keys.remove(key)) await _writeIndex(keys);
       });
 
+  /// Replaces [key] with what [change] makes of its value, read and written
+  /// in one step that no other write to this scope, nor [clear], comes
+  /// between: so what a wipe forgot is never written back from a read made
+  /// before it. While [key] is absent, [change] is given the value of
+  /// [previousKey] instead (where an earlier version of the document was
+  /// kept), and that key is deleted once [key] is written. A null result
+  /// leaves both as they were.
+  Future<void> update(String key, String? Function(String? current) change, {String? previousKey}) => _serial(() async {
+        var current = await read(key);
+        final migrating = current == null && previousKey != null;
+        if (migrating) current = await read(previousKey);
+        final next = change(current);
+        if (next == null) return;
+        final keys = await _readIndex();
+        if (keys.add(key)) await _writeIndex(keys);
+        await _storage.write(key: _qualified(key), value: next);
+        if (!migrating) return;
+        await _storage.delete(key: _qualified(previousKey));
+        if (keys.remove(previousKey)) await _writeIndex(keys);
+      });
+
   Future<void> clear() => _serial(() async {
         for (final key in await _readIndex()) {
           await _storage.delete(key: _qualified(key));

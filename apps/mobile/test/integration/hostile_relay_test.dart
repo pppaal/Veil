@@ -14,6 +14,8 @@ import 'package:veil_mobile/src/core/crypto/x3dh/identity_keys.dart';
 import 'package:veil_mobile/src/core/domain/conversation_preview.dart';
 import 'package:veil_mobile/src/core/network/veil_api_exception.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_names.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
@@ -429,10 +431,11 @@ void main() {
   // 1:1 out of the list and naming the account in a group.
   group('a nickname the relay lists another account under', () {
     late MessengerParty mallory;
-    const nicknames = {'bob': 'Bob Smith'};
+    late ContactNameBook book;
 
     // Alice has bound 1:1s with bob and with mallory, and calls bob "Bob
-    // Smith" on her phone.
+    // Smith" on her phone: saved in Contacts, and given bob's account by
+    // the list, as peerNamesProvider records it.
     setUp(() async {
       mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mal');
       relay.addDirect('conv-am', 'mallory', 'alice');
@@ -443,12 +446,17 @@ void main() {
       await deliver(alice, mallory, 'hello mallory', conversationId: 'conv-am');
       await deliver(mallory, alice, 'hi alice', conversationId: 'conv-am');
       await alice.controller.refreshConversations();
+      book = ContactNameBook(ContactNicknames(alice.keystore.scoped(SecureScope.contacts)));
+      await book.write('bob', 'Bob Smith', anew: true);
+      await claimNicknameAccounts(book, peerNamesFor(alice.controller, book.nicknames));
+      expect(book.nicknames['bob']?.userId, bob.device.userId);
     });
 
     tearDown(() => mallory.dispose());
 
-    // As the screens read them (peerNamesProvider).
-    PeerNames names() => peerNamesFor(alice.controller, nicknames);
+    // As the screens read them (peerNamesProvider), which records an
+    // account for a nickname saved with none each time the list changes.
+    PeerNames names() => peerNamesFor(alice.controller, book.nicknames);
     const malloryAsBob = GroupMember(userId: 'user-mallory', handle: 'bob');
 
     test('stays on bob when the relay relabels mallory\'s bound 1:1 as @bob', () async {
@@ -491,6 +499,83 @@ void main() {
       expect(names().peerName(relabelled), isNull);
       expect(names().memberTitle(malloryAsBob), '@bob');
       expect(names().peerName(alice.controller.conversationById(conv)!), 'Bob Smith');
+    });
+  });
+
+  // A nickname names the account it was given, even for a handle this
+  // phone never had a 1:1 with and so never bound: another account listed
+  // under that handle later is called by the handle, whether the relay
+  // lies or the handle passed to a new account after the first one was
+  // deleted (the server quarantines a deleted handle for 90 days only).
+  group('a nickname for a handle this phone has no 1:1 with', () {
+    late MessengerParty mallory;
+    late ContactNameBook book;
+    const malloryAsBob = GroupMember(userId: 'user-mallory', handle: 'bob');
+
+    // Alice and bob share a group and never had a 1:1; alice added bob in
+    // Contacts as "Bob Smith".
+    setUp(() async {
+      mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mal');
+      await mallory.signIn();
+      relay.conversations.remove(conv);
+      relay.addGroup('grp', ['alice', 'bob']);
+      await alice.controller.refreshConversations();
+      book = ContactNameBook(ContactNicknames(alice.keystore.scoped(SecureScope.contacts)));
+      await book.write('bob', 'Bob Smith', anew: true);
+    });
+
+    tearDown(() => mallory.dispose());
+
+    // What the screens show after peerNamesProvider recorded what this
+    // list gives a nickname saved with no account.
+    Future<PeerNames> names() async {
+      await claimNicknameAccounts(book, peerNamesFor(alice.controller, book.nicknames));
+      return peerNamesFor(alice.controller, book.nicknames);
+    }
+
+    GroupMember realBob() =>
+        alice.controller.conversationById('grp')!.members.firstWhere((member) => member.userId == bob.device.userId);
+
+    test('another account listed as @bob in a new 1:1 is called @bob, and bob keeps his name', () async {
+      expect((await names()).memberTitle(realBob()), 'Bob Smith');
+
+      relay.listedHandles['alice'] = {'mallory': 'bob'};
+      relay.addDirect('conv-am', 'mallory', 'alice');
+      await alice.controller.refreshConversations();
+      final chat = alice.controller.conversationById('conv-am')!;
+      expect(chat.peerHandle, 'bob');
+      expect(chat.recipientBundle.userId, mallory.device.userId);
+
+      final shown = await names();
+      expect(shown.peerName(chat), isNull);
+      expect(shown.memberTitle(malloryAsBob), '@bob');
+      expect(shown.memberTitle(realBob()), 'Bob Smith');
+      expect(book.nicknames['bob']?.userId, bob.device.userId, reason: 'the account a nickname names is never replaced');
+    });
+
+    test('a new account under bob\'s handle after bob is gone is called @bob, also after a restart', () async {
+      expect((await names()).memberTitle(realBob()), 'Bob Smith');
+
+      // Bob deletes his account: the group lists him no more. Later a new
+      // account is listed under @bob and writes to alice.
+      relay.conversations['grp']!.memberHandles.remove('bob');
+      await alice.controller.refreshConversations();
+      relay.listedHandles['alice'] = {'mallory': 'bob'};
+      relay.addDirect('conv-am', 'mallory', 'alice');
+      await mallory.controller.refreshConversations();
+      await alice.controller.refreshConversations();
+      await deliver(mallory, alice, 'hey it\'s bob', conversationId: 'conv-am');
+      await alice.controller.refreshConversations();
+      final chat = alice.controller.conversationById('conv-am')!;
+      expect(chat.peerHandle, 'bob');
+      expect((await names()).peerName(chat), isNull);
+
+      await alice.controller.flushPendingWrites();
+      await alice.restart();
+      book = ContactNameBook(ContactNicknames(alice.keystore.scoped(SecureScope.contacts)));
+      await book.load();
+      expect((await names()).peerName(alice.controller.conversationById('conv-am')!), isNull);
+      expect(book.nicknames['bob']?.userId, bob.device.userId);
     });
   });
 

@@ -4,6 +4,7 @@ import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_runs.dart' show chatDayLabel;
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart' show conversationTitle;
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/peer_names.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -76,8 +77,11 @@ void main() {
       GroupMember(userId: 'user-jiwoo', handle: 'jiwoo'),
     ];
     // The names are the nicknames this phone gave the handles: the server
-    // keeps none.
-    final names = PeerNames(const {'atlas': 'Atlas Moreau', 'selene': 'Selene Park'});
+    // keeps none. Each names the account listed under its handle.
+    final names = PeerNames(const {
+      'atlas': ContactNickname('Atlas Moreau', userId: 'user-atlas'),
+      'selene': ContactNickname('Selene Park', userId: 'user-selene'),
+    });
 
     test('a 1:1 is called by the nickname of the peer\'s handle, or by the handle when it has none', () {
       expect(conversationTitle(l10n, conversation(), names, localUserId: 'user-atlas'), 'Selene Park');

@@ -36,8 +36,9 @@ class SafetyAccounts {
   }
 
   /// The name this phone shows for the account [userId], listed under
-  /// [handle]: the nickname the user gave that handle (see PeerNames). Null
-  /// when there is none, and the handle is all there is to show.
+  /// [handle]: the nickname the user gave that handle, when it names this
+  /// account (see PeerNames). Null when there is none, and the handle is
+  /// all there is to show.
   String? knownNameFor({required String userId, required String handle}) =>
       _ref.read(peerNamesProvider).accountName(userId, handle);
 

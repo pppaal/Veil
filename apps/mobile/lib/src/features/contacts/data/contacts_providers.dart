@@ -94,7 +94,7 @@ class ContactsController extends ChangeNotifier {
       final labels = await nicknames.load();
       _contacts = [
         for (final json in raw.whereType<Map<String, dynamic>>())
-          ContactEntry.fromJson(json, nickname: labels[(json['handle'] as String?)?.toLowerCase()]),
+          ContactEntry.fromJson(json, nickname: labels[(json['handle'] as String?)?.toLowerCase()]?.name),
       ];
       _loadFailed = false;
     } catch (error) {
@@ -117,7 +117,10 @@ class ContactsController extends ChangeNotifier {
     notifyListeners();
     try {
       await apiClient.addContact(token, {'handle': handle.trim()});
-      await nicknames.write(handle.trim(), nickname ?? '');
+      // Saved for the handle: it names the account this phone knows under
+      // it, or else the first one a list of chats shows (PeerNames), not an
+      // account an earlier nickname of the handle named.
+      await nicknames.write(handle.trim(), nickname ?? '', anew: true);
       await refresh();
       return true;
     } catch (error) {
@@ -151,7 +154,7 @@ class ContactsController extends ChangeNotifier {
   }
 
   /// Changes the name this device calls a contact by; an empty one clears
-  /// it. The relay never learns it.
+  /// it. It names the same account as before. The relay never learns it.
   Future<void> renameContact(String handle, String nickname) async {
     final label = nickname.trim();
     await nicknames.write(handle, label);

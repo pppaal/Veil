@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_time.dart';
 import 'package:veil_mobile/src/features/secret_link/data/one_time_link.dart';
 import 'package:veil_mobile/src/features/secret_link/data/one_time_link_service.dart';
 import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_screen.dart';
@@ -47,13 +48,14 @@ void main() {
     int status = 201,
     double keyboardHeight = 0,
     OneTimeLinkService? service,
+    DateTime Function() clock = DateTime.now,
   }) async {
     usePhoneView(tester, phoneSmall, keyboardHeight: keyboardHeight);
     await tester.pumpWidget(MaterialApp(
       theme: VeilTheme.dark(),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: OneTimeLinkScreen(service: service ?? relay(status: status)),
+      home: OneTimeLinkScreen(service: service ?? relay(status: status), clock: clock),
     ));
     await pumpFrames(tester, frames: 2);
   }
@@ -148,6 +150,20 @@ void main() {
     expect(link, 'https://relay.example.org/demo/s.html#link-7.p', reason: 'no key in the link');
     expect(await tester.runAsync(() => OneTimeLink.open(blob, 'p', passphrase: 'open-sesame')), secret);
     expect(findCopyContaining(en.oneTimeLinkSendPassphraseApart), findsOneWidget);
+  });
+
+  // A link lasts a day: the day it is deleted unopened is almost always
+  // tomorrow, and a person says so rather than naming its date.
+  testWidgets('says "tomorrow" for an expiry on the next day', (tester) async {
+    final expiresAt = DateTime.utc(2026, 4, 8, 9, 30).toLocal();
+    await open(tester, clock: () => expiresAt.subtract(const Duration(days: 1)));
+    await tester.enterText(find.byType(TextField), secret);
+    await tester.pump();
+    await tapCreate(tester);
+
+    final time = MessageTimeFormat(en, use24HourFormat: false).timeOfDay(expiresAt);
+    expect(findCopyContaining('deleted tomorrow at $time.'), findsOneWidget);
+    expect(findCopyContaining('Apr 8'), findsNothing);
   });
 
   testWidgets('shows the link and its expiry, and copies it', (tester) async {

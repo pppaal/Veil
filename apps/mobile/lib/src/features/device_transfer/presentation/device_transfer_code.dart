@@ -83,5 +83,5 @@ String formatTransferExpiry(
     return l10n.deviceTransferExpiryInMinutes(remaining.inMinutes);
   }
 
-  return timeFormat.dayAndTime(expiresAt);
+  return timeFormat.dayAndTime(expiresAt, now: now);
 }

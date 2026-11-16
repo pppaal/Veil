@@ -1066,11 +1066,23 @@ abstract class AppLocalizations {
   /// **'Yesterday'**
   String get chatDayYesterday;
 
+  /// No description provided for @chatDayTomorrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Tomorrow'**
+  String get chatDayTomorrow;
+
   /// No description provided for @dayAtTime.
   ///
   /// In en, this message translates to:
   /// **'{day} at {time}'**
   String dayAtTime(String day, String time);
+
+  /// No description provided for @dateAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'on {date} at {time}'**
+  String dateAtTime(String date, String time);
 
   /// No description provided for @chatNoticeIdentityChanged.
   ///
@@ -1867,7 +1879,7 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkExpires.
   ///
   /// In en, this message translates to:
-  /// **'If it isn\'t opened, it\'s deleted on {when}.'**
+  /// **'If it isn\'t opened, it\'s deleted {when}.'**
   String oneTimeLinkExpires(String when);
 
   /// No description provided for @oneTimeLinkSendPassphraseApart.

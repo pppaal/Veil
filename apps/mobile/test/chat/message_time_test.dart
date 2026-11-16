@@ -49,15 +49,24 @@ void main() {
     });
 
     // A one-time link's and a move's expiry say the hour as the chats do,
-    // and the day and the hour as a person writes them: "Apr 8 at 2:05 PM".
+    // and the day and the hour as a person writes them: "tomorrow at 2:05
+    // PM" for the next day (a link lasts a day unless told otherwise), "on
+    // Apr 9 at 2:05 PM" for a later one. Changed on purpose: the day after
+    // was written as its date, "on Apr 8 at 2:05 PM".
     test('with a day, as an expiry says it, follows the 24-hour setting too', () {
-      expect(_twelveHour.dayAndTime(DateTime(2026, 4, 8, 14, 5)), 'Apr 8 at 2:05\u00a0PM');
-      expect(_twentyFourHour.dayAndTime(DateTime(2026, 4, 8, 14, 5)), 'Apr 8 at 14:05');
-      final expiry =
-          formatTransferExpiry(DateTime(2026, 4, 8, 14, 5), DateTime(2026, 4, 7, 10, 20), _en, timeFormat: _twelveHour);
-      expect(_en.deviceTransferExpires(expiry), 'Expires Apr 8 at 2:05\u00a0PM');
-      expect(_en.oneTimeLinkExpires(_twelveHour.dayAndTime(DateTime(2026, 4, 8, 14, 5))),
-          "If it isn't opened, it's deleted on Apr 8 at 2:05\u00a0PM.");
+      final now = DateTime(2026, 4, 7, 10, 20);
+      expect(_twelveHour.dayAndTime(DateTime(2026, 4, 7, 23, 5), now: now), 'today at 11:05\u00a0PM');
+      expect(_twelveHour.dayAndTime(DateTime(2026, 4, 8, 0, 5), now: now), 'tomorrow at 12:05\u00a0AM');
+      expect(_twelveHour.dayAndTime(DateTime(2026, 4, 8, 14, 5), now: now), 'tomorrow at 2:05\u00a0PM');
+      expect(_twelveHour.dayAndTime(DateTime(2026, 4, 9, 14, 5), now: now), 'on Apr 9 at 2:05\u00a0PM');
+      expect(_twentyFourHour.dayAndTime(DateTime(2026, 4, 8, 14, 5), now: now), 'tomorrow at 14:05');
+      expect(_twentyFourHour.dayAndTime(DateTime(2026, 4, 9, 14, 5), now: now), 'on Apr 9 at 14:05');
+      final expiry = formatTransferExpiry(DateTime(2026, 4, 9, 14, 5), now, _en, timeFormat: _twelveHour);
+      expect(_en.deviceTransferExpires(expiry), 'Expires on Apr 9 at 2:05\u00a0PM');
+      expect(_en.oneTimeLinkExpires(_twelveHour.dayAndTime(DateTime(2026, 4, 8, 14, 5), now: now)),
+          "If it isn't opened, it's deleted tomorrow at 2:05\u00a0PM.");
+      expect(_en.oneTimeLinkExpires(_twelveHour.dayAndTime(DateTime(2026, 4, 9, 14, 5), now: now)),
+          "If it isn't opened, it's deleted on Apr 9 at 2:05\u00a0PM.");
     });
   });
 

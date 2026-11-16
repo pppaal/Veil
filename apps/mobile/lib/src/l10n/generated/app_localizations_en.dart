@@ -580,8 +580,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatDayYesterday => 'Yesterday';
 
   @override
+  String get chatDayTomorrow => 'Tomorrow';
+
+  @override
   String dayAtTime(String day, String time) {
     return '$day at $time';
+  }
+
+  @override
+  String dateAtTime(String date, String time) {
+    return 'on $date at $time';
   }
 
   @override
@@ -1105,7 +1113,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String oneTimeLinkExpires(String when) {
-    return 'If it isn\'t opened, it\'s deleted on $when.';
+    return 'If it isn\'t opened, it\'s deleted $when.';
   }
 
   @override

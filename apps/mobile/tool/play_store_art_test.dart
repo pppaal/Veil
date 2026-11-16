@@ -137,7 +137,7 @@ const _shots = <_Shot>[
       settle: _reactWhileTyping),
   // The old phone before it asks for a code: how a move goes, and the
   // button that starts it. Once asked, the screen shows the code itself, a
-  // long string in `monospace` (the session and its token), which is no
+  // long string of two ids (the session and its token), which is no
   // picture for a listing.
   _Shot('04-move-to-a-new-phone', screen: DeviceTransferScreen, location: '/device-transfer', from: '/settings'),
   _Shot('05-app-lock',

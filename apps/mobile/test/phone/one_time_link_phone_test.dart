@@ -168,8 +168,9 @@ void main() {
     final link = tester.widget<SelectableText>(find.byType(SelectableText, skipOffstage: false)).data!;
     expect(link, startsWith('https://relay.example.org/demo/s.html#link-7.k.'));
     expect(find.byType(SelectableText, skipOffstage: false), findsOneWidget);
-    // When the relay deletes it unopened, as the relay answered.
-    expect(findCopyContaining('Apr 8'), findsOneWidget);
+    // When the relay deletes it unopened, as the relay answered, and as a
+    // person writes it: "on Apr 8 at 9:30 AM", never "on Apr 8 9:30 AM".
+    expect(findCopyContaining('deleted on Apr 8 at '), findsOneWidget);
     expect(findCopyContaining(en.oneTimeLinkSendPassphraseApart), findsNothing, reason: 'no passphrase was set');
     // The link is brought on screen: it appears under the button, which the
     // keyboard leaves at the bottom edge of a 360x640 phone.

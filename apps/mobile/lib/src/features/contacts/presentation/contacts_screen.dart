@@ -179,8 +179,8 @@ class ContactRow extends StatelessWidget {
       child: VeilRow(
         leading: VeilAvatar(name: contact.label, seed: contact.handle),
         // A name and a handle are their owner's words: drawn as typed.
-        title: contact.label,
-        subtitle: '@${contact.handle}',
+        title: contact.title,
+        subtitle: contact.handleLine,
         trailing: const SizedBox.shrink(),
         onTap: onTap,
       ),

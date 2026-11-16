@@ -77,6 +77,25 @@ void main() {
       });
     });
 
+    // "rivera" is Sam Rivera's name, and also a handle a stranger could
+    // hold: Go must not open a chat with the wrong person.
+    testWidgets('Go opens the contact the text matches before a stranger with that handle', (tester) async {
+      await withPhoneApp(tester, identities, location: '/start-chat', body: (world) async {
+        await tester.enterText(find.byType(TextField), 'rivera');
+        await tester.pump();
+        final contact = find.byKey(const ValueKey('start-contact-$peerHandle'));
+        final stranger = find.byKey(const ValueKey('start-chat-with-handle'));
+        expect(contact, findsOneWidget);
+        expect(stranger, findsOneWidget, reason: 'the stranger is still there, for a tap');
+        expect(tester.getRect(contact).top, lessThan(tester.getRect(stranger).top), reason: 'Go opens the first row');
+
+        await tester.testTextInput.receiveAction(TextInputAction.go);
+        await pumpFrames(tester, frames: 10);
+        expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, chatConversationId);
+        expect(world.relay.conversations.keys, isNot(contains('conv-rivera')));
+      });
+    });
+
     testWidgets('says when the handle opens nothing, and only then', (tester) async {
       await withPhoneApp(tester, identities, location: '/start-chat', prepare: (world) async {
         // The messenger failed at something else before the screen opened.

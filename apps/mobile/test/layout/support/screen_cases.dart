@@ -588,7 +588,10 @@ const List<ScreenCase> screenCases = [
     screen: ChatRoomScreen,
     file: 'chat_room_screen.dart',
     location: _chat,
-    attention: ChatAttention(relayError: true),
+    // The chat shows a failure as a toast, and only one that comes while
+    // it is open: an error set before it opened would draw nothing.
+    attention: ChatAttention(relayErrorWhileOpen: true),
+    settle: _awaitToast,
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
   ),
@@ -1078,6 +1081,11 @@ Future<void> _openAddContactSheet(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.person_add_alt_1_outlined));
   await pumpFrames(tester, frames: 4);
   expect(find.byType(BottomSheet), findsOneWidget, reason: 'the add-contact sheet did not open');
+}
+
+Future<void> _awaitToast(WidgetTester tester) async {
+  await pumpFrames(tester, frames: 6);
+  expect(find.byType(SnackBar), findsOneWidget, reason: 'the failure toast did not show');
 }
 
 Future<void> _openContactActionsSheet(WidgetTester tester) async {

@@ -96,6 +96,9 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
         children: [
           TextField(
             controller: _handleController,
+            // Open with the field focused and the keyboard up, as Signal's
+            // username screen: the "@" and the hint show from the start.
+            autofocus: true,
             enabled: !_submitting,
             onChanged: (_) => setState(() {
               _rejectedLocally = false;

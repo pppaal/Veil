@@ -361,8 +361,9 @@ class _ContactHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // A name and a handle are their owner's words: drawn as typed.
-              Text(contact.label, style: theme.textTheme.titleLarge),
-              Text('@${contact.handle}', style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
+              Text(contact.title, style: theme.textTheme.titleLarge),
+              if (contact.handleLine case final handle?)
+                Text(handle, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
             ],
           ),
         ),

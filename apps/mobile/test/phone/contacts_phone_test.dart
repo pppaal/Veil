@@ -125,6 +125,23 @@ void main() {
     });
   });
 
+  // M26: an account with no name is its handle, once, with its "@".
+  testWidgets('a contact with no name is one line, its @handle', (tester) async {
+    await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
+      final row = find.byWidgetPredicate((widget) => widget is ContactRow && widget.contact.handle == 'tom_walsh',
+          skipOffstage: false);
+      await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+      await pumpFrames(tester, frames: 2);
+      expect(find.descendant(of: row, matching: find.text('@tom_walsh')), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.text('tom_walsh')), findsNothing);
+      // A contact with a name keeps it over the handle.
+      final sam = tester.widget<ContactRow>(
+          find.byWidgetPredicate((widget) => widget is ContactRow && widget.contact.handle == peerHandle, skipOffstage: false));
+      expect(sam.contact.title, 'Sam Rivera');
+      expect(sam.contact.handleLine, '@$peerHandle');
+    });
+  });
+
   testWidgets('a search narrows the list by name or handle, and says when nothing matches', (tester) async {
     await withPhoneApp(tester, identities, location: '/contacts', body: (world) async {
       await tester.enterText(find.byType(TextField), 'ri');

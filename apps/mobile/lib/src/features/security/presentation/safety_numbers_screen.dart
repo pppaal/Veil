@@ -567,7 +567,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           ],
           codes(pin.identityKey),
         ],
-        if (data.isDirect) ...[
+        // Only once there is a number: before any key was pinned there is no
+        // session to renew, and the button could only say so.
+        if (data.isDirect && pin != null) ...[
           section,
           VeilButton(
             label: _renewing ? l10n.safetyNumbersRotating : l10n.safetyNumbersRotateButton,

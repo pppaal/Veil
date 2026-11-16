@@ -74,7 +74,21 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
     ];
     final handle = _typedHandle;
     final offerHandle = isIssuableHandle(handle) && !contacts.any((contact) => contact.handle == handle);
-    final first = offerHandle ? handle : matches.firstOrNull?.handle;
+    // A contact the text matches comes before a stranger with that handle:
+    // "sam" for Sam Rivera (@samr) must not open a chat with someone else
+    // who happens to be @sam. The handle's row then follows the contacts,
+    // so the keyboard's Go opens the first row, whichever it is.
+    final handleFirst = offerHandle && matches.isEmpty;
+    final first = matches.where((contact) => contact.handle == handle).firstOrNull?.handle ??
+        matches.firstOrNull?.handle ??
+        (offerHandle ? handle : null);
+    final chatWithHandle = VeilRow(
+      key: const ValueKey('start-chat-with-handle'),
+      leading: Icon(Icons.chat_bubble_outline, color: palette.textMuted),
+      title: _opening ? l10n.startDirectOpening : l10n.startDirectChatWith(handle),
+      trailing: const SizedBox.shrink(),
+      onTap: _opening ? null : () => _open(handle),
+    );
 
     return VeilShell(
       title: l10n.startDirectTitle,
@@ -106,14 +120,7 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
           VeilGroup(
             inset: 56,
             children: [
-              if (offerHandle)
-                VeilRow(
-                  key: const ValueKey('start-chat-with-handle'),
-                  leading: Icon(Icons.chat_bubble_outline, color: palette.textMuted),
-                  title: _opening ? l10n.startDirectOpening : l10n.startDirectChatWith(handle),
-                  trailing: const SizedBox.shrink(),
-                  onTap: _opening ? null : () => _open(handle),
-                ),
+              if (handleFirst) chatWithHandle,
               if (_query.isEmpty) ...[
                 VeilRow(
                   key: const ValueKey('start-new-group'),
@@ -151,13 +158,17 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
                     key: ValueKey('start-contact-${contact.handle}'),
                     leading: VeilAvatar(name: contact.label, seed: contact.handle),
                     // A name and a handle are their owner's words: drawn as typed.
-                    title: contact.label,
-                    subtitle: '@${contact.handle}',
+                    title: contact.title,
+                    subtitle: contact.handleLine,
                     trailing: const SizedBox.shrink(),
                     onTap: _opening ? null : () => _open(contact.handle),
                   ),
               ],
             ),
+            if (offerHandle) ...[
+              const SizedBox(height: VeilSpace.md),
+              VeilGroup(inset: 56, children: [chatWithHandle]),
+            ],
           ],
         ],
       ),

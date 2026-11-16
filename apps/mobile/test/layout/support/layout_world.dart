@@ -98,6 +98,7 @@ class ChatAttention {
     this.identityChangedInGroup = false,
     this.loading = false,
     this.relayError = false,
+    this.relayErrorWhileOpen = false,
     this.peerBlocked = false,
     this.muted = false,
     this.reportRefused = false,
@@ -135,6 +136,11 @@ class ChatAttention {
   /// The relay failed the last request, which the messenger reports as its
   /// error line: a chat and the list each say so.
   final bool relayError;
+
+  /// The relay fails a request once the chat is open (startLiveAttention):
+  /// the chat says so in a toast, which it shows only for a failure that
+  /// comes while it is open.
+  final bool relayErrorWhileOpen;
 
   /// The user blocked the chat's peer, and before them one more account
   /// (tom_walsh, who set no name): the chat shows the line that takes the
@@ -329,6 +335,7 @@ class LayoutWorld {
   /// once the screen is up; the indicator clears by itself after 5 s.
   void startLiveAttention() {
     if (_attention.peerTyping) messenger.presenceTyping.typingStarted(chatConversationId, peerHandle);
+    if (_attention.relayErrorWhileOpen) (messenger as _LayoutMessenger).failWhileOpen();
   }
 
   /// The app at [location]: the real route table (so tab screens get their
@@ -446,10 +453,19 @@ class _LayoutMessenger extends VeilMessengerController {
   @override
   bool get isBusy => attention.loading || super.isBusy;
 
+  bool _failedWhileOpen = false;
+
+  /// A request fails now, while a screen is open.
+  void failWhileOpen() {
+    _failedWhileOpen = true;
+    notifyListeners();
+  }
+
   // What a relay answering 503 leaves as the messenger's error line.
   @override
-  String? get errorMessage =>
-      attention.relayError ? formatUserFacingError('Request failed: HTTP 503') : super.errorMessage;
+  String? get errorMessage => attention.relayError || _failedWhileOpen
+      ? formatUserFacingError('Request failed: HTTP 503')
+      : super.errorMessage;
 
   @override
   PendingIdentityChange? pendingIdentityChangeFor(String conversationId) =>

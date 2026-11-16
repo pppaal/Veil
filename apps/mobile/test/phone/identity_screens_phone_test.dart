@@ -173,6 +173,10 @@ void main() {
         expect(find.byType(VeilNotice), findsNothing);
         // Before you start already said what losing the phone means.
         expect(find.textContaining('recover'), findsNothing);
+        // Focused from the start, as Signal's username screen: the "@" and
+        // the hint show before a tap.
+        expect(tester.widget<TextField>(field).autofocus, isTrue);
+        expect(tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus, isTrue);
         expect(tester.takeException(), isNull);
       });
     });
@@ -315,6 +319,17 @@ void main() {
               (widget.data ?? '').endsWith(howToParts.last),
           skipOffstage: skipOffstage,
         );
+
+    testWidgets('with no number yet: says so, and offers no keys to renew', (tester) async {
+      await withPhoneApp(tester, identities, size: phoneMedium, location: '/safety-numbers/$emptyChatConversationId',
+          body: (world) async {
+        await awaitSafetyNumber(tester);
+        expect(find.text(l10n.safetyNumbersNoPinTitle), findsOneWidget);
+        expect(find.byType(SafetyNumberCard), findsNothing);
+        expect(find.text(l10n.safetyNumbersRotateButton, skipOffstage: false), findsNothing,
+            reason: 'there is no session to renew');
+      });
+    });
 
     testWidgets('of a contact not yet verified: who, the number, one sentence, "Mark as verified", then the codes',
         (tester) async {

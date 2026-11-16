@@ -57,6 +57,10 @@ class ChatStatusBanners extends StatelessWidget {
                   message: notice.message,
                   tone: notice.tone,
                   dense: notice.oneLine,
+                  // There is room here: a title too long for the row wraps
+                  // rather than end in "…" ("Safety number changed in a
+                  // group you share" does not fit a 360dp phone).
+                  denseLines: 2,
                   actionLabel: notice.actionLabel,
                   onAction: notice.onAction,
                 ),

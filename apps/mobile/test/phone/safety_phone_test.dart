@@ -13,6 +13,7 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
+import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_widget.dart';
 import 'package:veil_mobile/src/features/safety/data/conversation_mutes.dart';
 import 'package:veil_mobile/src/features/safety/presentation/blocked_accounts_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -208,6 +209,22 @@ void main() {
       expect(world.relay.blocks['user-$selfHandle'], isNull);
       expect(findCopy(en.reportSent), findsOneWidget);
     });
+  });
+
+  // The server refuses a reaction to someone blocked, so none is offered.
+  testWidgets('in a 1:1 with someone blocked, a message\'s sheet offers Report and no reactions', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      location: _chat,
+      attention: const ChatAttention(peerBlocked: true),
+      body: (world) async {
+        await tester.longPress(find.textContaining('registry.example.org'));
+        await pumpFrames(tester, frames: 4);
+        expect(find.byKey(const ValueKey('message-report')), findsOneWidget);
+        expect(find.byType(ReactionPickerWidget), findsNothing);
+      },
+    );
   });
 
   testWidgets('a group message is reported as its writer\'s, with no offer to block', (tester) async {

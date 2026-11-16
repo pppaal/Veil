@@ -736,7 +736,7 @@
   "reportReasonOther": "Something else",
   "reportAlsoBlock": "Also block @{handle}",
   "@reportAlsoBlock": {"placeholders": {"handle": {"type": "String"}}},
-  "reportFooterMessage": "The report includes their account, the reason and which message, but not what it says.",
+  "reportFooterMessage": "The report includes their account, the reason and which chat and message, but not what it says.",
   "reportFooterChat": "The report includes their account, the reason and which chat, but no messages.",
   "reportFooterAccount": "The report includes their account and the reason, but no messages.",
   "reportSent": "Report sent",

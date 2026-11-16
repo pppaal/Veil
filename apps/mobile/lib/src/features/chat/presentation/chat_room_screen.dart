@@ -352,15 +352,21 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   Future<void> _showReactionPicker(ChatMessage message) async {
     final controller = ref.read(messengerControllerProvider);
     final decrypted = await controller.decryptMessage(message);
-    if (!mounted || !decrypted.isOk || decrypted.messageKind == MessageKind.system) {
+    if (!mounted || (decrypted.isOk && decrypted.messageKind == MessageKind.system)) {
       return;
     }
+    final conversation = controller.conversationById(widget.conversationId);
+    // A message that did not open can still be reported, by who sent it;
+    // only one that opened takes a reaction, and not from someone blocked.
+    final canReact = decrypted.isOk && !peerBlocked(conversation);
+    final report = messageReport(message, conversation,
+        groupSenderUserId: groupSenderUserId, groupSenderHandle: groupSenderHandle);
+    if (!canReact && report == null) return;
     VeilHaptics.selection();
     await showReactionPickerSheet(
       context,
-      onSelected: (emoji) => controller.toggleReaction(message, emoji),
-      onReport: messageReport(message, controller.conversationById(widget.conversationId),
-          groupSenderUserId: groupSenderUserId, groupSenderHandle: groupSenderHandle),
+      onSelected: canReact ? (emoji) => controller.toggleReaction(message, emoji) : null,
+      onReport: report,
     );
   }
 }

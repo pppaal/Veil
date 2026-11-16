@@ -3925,7 +3925,7 @@ abstract class AppLocalizations {
   /// No description provided for @reportFooterMessage.
   ///
   /// In en, this message translates to:
-  /// **'The report includes their account, the reason and which message, but not what it says.'**
+  /// **'The report includes their account, the reason and which chat and message, but not what it says.'**
   String get reportFooterMessage;
 
   /// No description provided for @reportFooterChat.

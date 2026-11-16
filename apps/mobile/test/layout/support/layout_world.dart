@@ -95,6 +95,7 @@ class ChatAttention {
     this.relayError = false,
     this.peerBlocked = false,
     this.muted = false,
+    this.reportRefused = false,
   });
 
   /// The peer's identity key changed and the user has not reviewed it.
@@ -135,6 +136,10 @@ class ChatAttention {
   /// The user muted the chat on this phone, with no end, and the chat with
   /// the disappearing timer for a week: their rows in the list show it.
   final bool muted;
+
+  /// The relay refuses the next report, as its throttle does: the chat says
+  /// so in a toast with Retry.
+  final bool reportRefused;
 
   /// How many of the chat's warnings come with an action: reviewing the
   /// identity change (in this chat, or the one that waits in the group),
@@ -224,6 +229,7 @@ class LayoutWorld {
         'user-$peerHandle': DateTime.utc(2026, 4, 7, 9),
       };
     }
+    if (attention.reportRefused) relay.refuseReports = 1;
     if (attention.muted) {
       await MuteStore(storage.scoped(SecureScope.notifications)).write({
         chatConversationId: null,

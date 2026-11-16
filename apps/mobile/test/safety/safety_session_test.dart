@@ -123,6 +123,21 @@ void main() {
     expect(await kept.read(), isEmpty);
   });
 
+  test('the blocked list is read again at each unlock', () async {
+    final blocked = container.read(blockedAccountsProvider);
+    await pumpEventQueue();
+    expect(blocked.accounts, isEmpty);
+
+    // Blocked from another device of the account while this one was away.
+    relay.blocks['user-alice'] = {'user-carol': DateTime.utc(2026, 4, 7)};
+    session().lock();
+    await pumpEventQueue();
+    expect(blocked.isBlocked('user-carol'), isFalse);
+    session().unlock();
+    await pumpEventQueue();
+    expect(blocked.isBlocked('user-carol'), isTrue);
+  });
+
   test('a blocked list the server sends after a sign-out is not kept', () async {
     relay.blocks['user-alice'] = {'user-bob': DateTime.utc(2026, 4, 7)};
     final blocked = container.read(blockedAccountsProvider);

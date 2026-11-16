@@ -662,6 +662,27 @@ const List<ScreenCase> screenCases = [
   ),
   ScreenCase('contacts-report-sheet',
       screen: ContactsScreen, file: 'contacts_screen.dart', location: '/contacts', settle: _openContactReportSheet),
+  // A blocked peer: the report offers no block, and a message's sheet holds
+  // Report alone (the server refuses a reaction). A refused report says so
+  // in a toast with Retry.
+  ScreenCase('chat-room-blocked-report-sheet',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: _chat,
+      attention: ChatAttention(peerBlocked: true),
+      settle: _openBlockedReportSheet),
+  ScreenCase('chat-room-blocked-message-sheet',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: _chat,
+      attention: ChatAttention(peerBlocked: true),
+      settle: _openBlockedMessageSheet),
+  ScreenCase('chat-room-report-failed',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: _chat,
+      attention: ChatAttention(reportRefused: true),
+      settle: _fileRefusedReport),
 ];
 
 const _wideSizes = [wideSmall, wideLarge];
@@ -954,6 +975,28 @@ Future<void> _openContactReportSheet(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('contact-report')));
   await pumpFrames(tester, frames: 6);
   expect(find.byKey(const ValueKey('report-reason-spam')), findsOneWidget, reason: 'the report sheet did not open');
+}
+
+Future<void> _openBlockedReportSheet(WidgetTester tester) async {
+  await _openReportSheet(tester);
+  expect(find.byKey(const ValueKey('report-also-block')), findsNothing, reason: 'the report offered to block them again');
+}
+
+Future<void> _openBlockedMessageSheet(WidgetTester tester) async {
+  await tester.longPress(find.textContaining('registry.example.org'));
+  await pumpFrames(tester, frames: 4);
+  expect(find.byKey(const ValueKey('message-report')), findsOneWidget, reason: 'the message sheet did not open');
+  expect(find.byType(ReactionPickerWidget), findsNothing, reason: 'a blocked peer\'s message offered reactions');
+}
+
+Future<void> _fileRefusedReport(WidgetTester tester) async {
+  await _openReportSheet(tester);
+  await tester.tap(find.byKey(const ValueKey('report-reason-spam')));
+  await tester.tap(find.byKey(const ValueKey('report-also-block')));
+  await pumpFrames(tester, frames: 2);
+  await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.byType(FilledButton)));
+  await pumpFrames(tester, frames: 6);
+  expect(find.byType(SnackBarAction), findsOneWidget, reason: 'the refused report showed no Retry');
 }
 
 Future<void> _openReactionSheet(WidgetTester tester) async {

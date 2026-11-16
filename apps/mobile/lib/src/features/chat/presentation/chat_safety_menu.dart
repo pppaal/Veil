@@ -70,6 +70,13 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     ];
   }
 
+  /// Whether [conversation] is a 1:1 with someone the user blocked: the
+  /// server refuses what is sent there, reactions included.
+  bool peerBlocked(ConversationPreview? conversation) {
+    final peer = _directPeer(conversation);
+    return peer != null && ref.read(blockedAccountsProvider).isBlocked(peer.userId);
+  }
+
   /// What takes the composer's place in a 1:1 whose peer the user blocked;
   /// null in any other chat.
   Widget? blockedComposer(ConversationPreview? conversation) {

@@ -52,10 +52,12 @@ Future<void> showAttachmentTicketDialog(BuildContext context, String url) async 
 
 /// The reaction picker in a sheet, which closes on a pick and hands the
 /// picked emoji to [onSelected]. With [onReport] (a message someone else
-/// wrote) a Report row sits under the reactions.
+/// wrote) a Report row sits under the reactions. Without [onSelected] (a
+/// message that did not open, or a 1:1 with someone blocked, where the
+/// server refuses a reaction) the sheet holds the Report row alone.
 Future<void> showReactionPickerSheet(
   BuildContext context, {
-  required ValueChanged<String> onSelected,
+  ValueChanged<String>? onSelected,
   VoidCallback? onReport,
 }) async {
   final l10n = AppLocalizations.of(context);
@@ -70,17 +72,18 @@ Future<void> showReactionPickerSheet(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Center(
-                heightFactor: 1,
-                child: ReactionPickerWidget(
-                  onReactionSelected: (emoji) {
-                    Navigator.of(sheetContext).pop();
-                    onSelected(emoji);
-                  },
+              if (onSelected != null)
+                Center(
+                  heightFactor: 1,
+                  child: ReactionPickerWidget(
+                    onReactionSelected: (emoji) {
+                      Navigator.of(sheetContext).pop();
+                      onSelected(emoji);
+                    },
+                  ),
                 ),
-              ),
               if (onReport != null) ...[
-                const SizedBox(height: VeilSpace.xs),
+                if (onSelected != null) const SizedBox(height: VeilSpace.xs),
                 VeilGroup(
                   children: [
                     VeilRow(

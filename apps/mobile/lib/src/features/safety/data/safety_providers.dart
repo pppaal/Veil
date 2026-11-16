@@ -11,19 +11,22 @@ import 'blocked_accounts.dart';
 import 'conversation_mutes.dart';
 
 /// The accounts the user blocked, read from the server when the account
-/// signs in and forgotten when it signs out.
+/// signs in and again at each unlock (a read that failed offline, or a
+/// change made elsewhere, is caught up then), and forgotten when it signs
+/// out.
 final blockedAccountsProvider = ChangeNotifierProvider<BlockedAccounts>((ref) {
   final blocked = BlockedAccounts(
     api: ref.read(apiClientProvider),
     accessToken: () => ref.read(appSessionProvider).accessToken,
   );
   ref.listen<AppSessionState>(appSessionProvider, (previous, next) {
-    if (previous?.isAuthenticated == next.isAuthenticated) return;
-    if (next.isAuthenticated) {
-      unawaited(blocked.refresh());
-    } else {
-      blocked.clear();
+    final wasSignedIn = previous?.isAuthenticated ?? false;
+    if (!next.isAuthenticated) {
+      if (wasSignedIn) blocked.clear();
+      return;
     }
+    final unlocked = (previous?.locked ?? true) && !next.locked;
+    if (!wasSignedIn || unlocked) unawaited(blocked.refresh());
   });
   if (ref.read(appSessionProvider).isAuthenticated) unawaited(blocked.refresh());
   return blocked;

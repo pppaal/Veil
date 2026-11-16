@@ -138,7 +138,6 @@
   "securityFooterUnaudited": "The encryption hasn't been independently audited yet.",
   "securityFooterTestBuild": "This build uses test encryption. Don't use it for real chats.",
   "securityScreenshotsNotice": "In a chat, the others are told when you take one.",
-  "securityFooterNoRecovery": "There is no backup, no password reset and no way for anyone, including us, to recover an account.",
 
   "chatEmptyTitle": "No messages yet",
   "chatLoadFailedTitle": "Couldn't load messages",

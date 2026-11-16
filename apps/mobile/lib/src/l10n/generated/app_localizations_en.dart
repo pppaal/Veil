@@ -439,10 +439,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'In a chat, the others are told when you take one.';
 
   @override
-  String get securityFooterNoRecovery =>
-      'There is no backup, no password reset and no way for anyone, including us, to recover an account.';
-
-  @override
   String get chatEmptyTitle => 'No messages yet';
 
   @override

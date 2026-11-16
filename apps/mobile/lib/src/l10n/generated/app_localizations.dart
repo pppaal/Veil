@@ -802,12 +802,6 @@ abstract class AppLocalizations {
   /// **'In a chat, the others are told when you take one.'**
   String get securityScreenshotsNotice;
 
-  /// No description provided for @securityFooterNoRecovery.
-  ///
-  /// In en, this message translates to:
-  /// **'There is no backup, no password reset and no way for anyone, including us, to recover an account.'**
-  String get securityFooterNoRecovery;
-
   /// No description provided for @chatEmptyTitle.
   ///
   /// In en, this message translates to:

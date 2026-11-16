@@ -71,7 +71,7 @@ class _BlockedAccountsScreenState extends ConsumerState<BlockedAccountsScreen> {
                   key: ValueKey('blocked-${account.handle}'),
                   account: account,
                   name: accounts.knownNameFor(account.handle),
-                  onUnblock: () => unblockAccount(context, ref, userId: account.userId, handle: account.handle),
+                  onUnblock: () => unblockAccount(context, userId: account.userId, handle: account.handle),
                 ),
             ],
           ),

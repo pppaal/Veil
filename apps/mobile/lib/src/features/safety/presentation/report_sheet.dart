@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
@@ -7,6 +6,7 @@ import '../../../shared/presentation/veil_ui.dart';
 import '../data/abuse_reports.dart';
 import '../data/safety_providers.dart';
 import 'block_actions.dart';
+import 'safety_feedback.dart';
 
 /// What the user chose in the report sheet.
 typedef _ReportChoice = ({ReportReason reason, bool alsoBlock});
@@ -23,11 +23,12 @@ String reportReasonLabel(AppLocalizations l10n, ReportReason reason) => switch (
 
 /// Reports [target]: a sheet with the reasons, the option to block them
 /// too where a block does something, and one line saying what the report
-/// holds. The report goes once the sheet is closed with Report; the screen
-/// behind it says how that went, with a retry if it did not.
-Future<void> showReportSheet(BuildContext context, WidgetRef ref, ReportTarget target) async {
+/// holds. The report goes once the sheet is closed with Report; a toast
+/// says how that went, with a retry if it did not.
+Future<void> showReportSheet(BuildContext context, ReportTarget target) async {
   VeilHaptics.selection();
-  final offerBlock = target.offerBlock && !ref.read(blockedAccountsProvider).isBlocked(target.userId);
+  final feedback = SafetyFeedback.of(context);
+  final offerBlock = target.offerBlock && !feedback.read(blockedAccountsProvider).isBlocked(target.userId);
   final choice = await showModalBottomSheet<_ReportChoice>(
     context: context,
     useRootNavigator: true,
@@ -36,43 +37,29 @@ Future<void> showReportSheet(BuildContext context, WidgetRef ref, ReportTarget t
     showDragHandle: true,
     builder: (_) => _ReportSheet(target: target, offerBlock: offerBlock),
   );
-  if (choice == null || !context.mounted) return;
-  await _fileReport(context, ref, target, choice);
+  if (choice == null) return;
+  await _fileReport(feedback, target, choice);
 }
 
-Future<void> _fileReport(BuildContext context, WidgetRef ref, ReportTarget target, _ReportChoice choice) async {
-  final l10n = AppLocalizations.of(context);
-  final sent = await ref.read(abuseReportsProvider).file(target, choice.reason);
-  if (!context.mounted) return;
+Future<void> _fileReport(SafetyFeedback feedback, ReportTarget target, _ReportChoice choice) async {
+  final l10n = feedback.l10n;
+  final sent = await feedback.read(abuseReportsProvider).file(target, choice.reason);
   if (!sent) {
-    showVeilToast(
-      context,
-      l10n.reportFailed,
-      tone: VeilTone.warn,
-      actionLabel: l10n.commonRetry,
-      onAction: () {
-        if (context.mounted) _fileReport(context, ref, target, choice);
-      },
-    );
+    feedback.say(l10n.reportFailed, tone: VeilTone.warn, retry: () => _fileReport(feedback, target, choice));
     return;
   }
   if (!choice.alsoBlock) {
-    showVeilToast(context, l10n.reportSent, tone: VeilTone.good);
+    feedback.say(l10n.reportSent, tone: VeilTone.good);
     return;
   }
-  final blocked = await ref.read(blockedAccountsProvider).block(target.userId, handle: target.handle);
-  if (!context.mounted) return;
+  final blocked = await feedback.read(blockedAccountsProvider).block(target.userId, handle: target.handle);
   if (blocked) {
-    showVeilToast(context, l10n.reportSentAndBlocked(target.handle), tone: VeilTone.good);
+    feedback.say(l10n.reportSentAndBlocked(target.handle), tone: VeilTone.good);
   } else {
-    showVeilToast(
-      context,
+    feedback.say(
       l10n.reportSentBlockFailed(target.handle),
       tone: VeilTone.warn,
-      actionLabel: l10n.commonRetry,
-      onAction: () {
-        if (context.mounted) blockAccount(context, ref, userId: target.userId, handle: target.handle, announce: true);
-      },
+      retry: () => blockAccount(feedback, userId: target.userId, handle: target.handle, announce: true),
     );
   }
 }

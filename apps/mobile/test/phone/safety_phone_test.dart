@@ -1,7 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:veil_mobile/src/app/app_state.dart';
+import 'package:veil_mobile/src/app/router/app_router.dart';
+import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/safety/data/conversation_mutes.dart';
 import 'package:veil_mobile/src/features/safety/presentation/blocked_accounts_screen.dart';
@@ -40,6 +50,45 @@ void main() {
     await tester.enterText(find.descendant(of: find.byType(ChatComposerBar), matching: find.byType(TextField)), body);
     await pumpFrames(tester, frames: 2);
     await tester.tap(find.bySemanticsLabel(en.chatSendAction));
+    await pumpFrames(tester, frames: 6);
+  }
+
+  // The app's own router: its lock guard, and the stack it keeps over a
+  // lock. The chat is opened from Chats, so Back leads there.
+  Future<void> withAppRouter(WidgetTester tester, Future<void> Function(LayoutWorld world, GoRouter router) body) async {
+    usePhoneView(tester, phoneSmall);
+    final world = await LayoutWorld.create(identities: identities, account: LayoutAccount.signedIn, locale: 'en');
+    try {
+      final router = world.container.read(appRouterProvider);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: world.container,
+        child: MaterialApp.router(
+          theme: VeilTheme.dark(fontFamily: layoutFontFamily),
+          locale: const Locale('en'),
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
+      ));
+      await pumpFrames(tester);
+      unawaited(router.push(_chat));
+      await pumpFrames(tester);
+      expect(find.byType(ChatRoomScreen), findsOneWidget);
+      await body(world, router);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      world.dispose();
+    }
+  }
+
+  // Reports the peer for spam from the chat's menu, without blocking them.
+  Future<void> reportSpam(WidgetTester tester) async {
+    await openMenu(tester, 'report');
+    await tester.tap(find.text(en.reportReasonSpam));
+    await tester.tap(find.byKey(const ValueKey('report-also-block')));
+    await pumpFrames(tester, frames: 2);
+    await tester.tap(inSheet(find.byType(FilledButton)));
     await pumpFrames(tester, frames: 6);
   }
 
@@ -204,6 +253,75 @@ void main() {
       await pumpFrames(tester, frames: 6);
       expect(world.relay.reports.single.fields['reason'], 'spam');
       expect(findCopy(en.reportSent), findsOneWidget);
+    });
+  });
+
+  // A toast lives above every screen. One with Retry used to stay until it
+  // was tapped, follow the user to other screens, and do nothing there.
+  testWidgets('a failed report\'s line closes by itself, and its Retry still sends the report from Chats',
+      (tester) async {
+    await withAppRouter(tester, (world, router) async {
+      world.relay.refuseReports = 1;
+      await reportSpam(tester);
+      expect(findCopy(en.reportFailed), findsOneWidget);
+      await tester.pump(const Duration(seconds: 9));
+      await pumpFrames(tester);
+      expect(find.byType(SnackBar), findsNothing, reason: 'the line stayed up');
+      expect(world.relay.reports, isEmpty);
+
+      world.relay.refuseReports = 1;
+      await reportSpam(tester);
+      expect(findCopy(en.reportFailed), findsOneWidget);
+      await tester.tap(find.byTooltip('Back'));
+      await pumpFrames(tester);
+      expect(find.byType(ConversationListScreen), findsOneWidget);
+      expect(find.byType(ChatRoomScreen), findsNothing);
+
+      await tester.tap(find.widgetWithText(SnackBarAction, en.commonRetry));
+      await pumpFrames(tester, frames: 6);
+      expect(world.relay.reports.single.fields, {
+        'reportedUserId': 'user-$peerHandle',
+        'reason': 'spam',
+        'conversationId': chatConversationId,
+      });
+      expect(findCopy(en.reportSent), findsOneWidget);
+    });
+  });
+
+  testWidgets('locking takes a toast down: nothing of it shows on the lock screen or after the unlock',
+      (tester) async {
+    await withAppRouter(tester, (world, router) async {
+      world.relay.refuseReports = 1;
+      await reportSpam(tester);
+      expect(findCopy(en.reportFailed), findsOneWidget);
+
+      final session = world.container.read(appSessionProvider.notifier);
+      session.lock();
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(AppLockScreen), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing, reason: 'the toast showed on the lock screen');
+
+      session.unlock();
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(ChatRoomScreen), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(world.relay.reports, isEmpty);
+    });
+  });
+
+  testWidgets('a report the server answers while the app is locked says nothing on the lock screen', (tester) async {
+    await withAppRouter(tester, (world, router) async {
+      final gate = world.relay.reportGate = Completer<void>();
+      await reportSpam(tester);
+      final session = world.container.read(appSessionProvider.notifier);
+      session.lock();
+      await pumpFrames(tester, frames: 6);
+
+      gate.complete();
+      await pumpFrames(tester, frames: 6);
+      expect(world.relay.reports, hasLength(1));
+      expect(find.byType(AppLockScreen), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing, reason: 'the outcome showed on the lock screen');
     });
   });
 

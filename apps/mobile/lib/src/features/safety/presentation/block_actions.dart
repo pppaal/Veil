@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/safety_providers.dart';
+import 'safety_feedback.dart';
 
 // Blocking and unblocking an account. Blocking asks first, in a dialog that
 // says what a block does; unblocking does not: it gives back what a block
@@ -15,8 +15,7 @@ import '../data/safety_providers.dart';
 /// Asks before blocking [handle]'s account, then blocks it. True once it
 /// is blocked.
 Future<bool> confirmAndBlock(
-  BuildContext context,
-  WidgetRef ref, {
+  BuildContext context, {
   required String userId,
   required String handle,
   bool announce = false,
@@ -46,60 +45,57 @@ Future<bool> confirmAndBlock(
     ),
   );
   if (confirmed != true || !context.mounted) return false;
-  return blockAccount(context, ref, userId: userId, handle: handle, announce: announce);
+  return blockAccount(SafetyFeedback.of(context), userId: userId, handle: handle, announce: announce);
 }
 
 /// Blocks [handle]'s account without asking: the user already said so.
 Future<bool> blockAccount(
-  BuildContext context,
-  WidgetRef ref, {
+  SafetyFeedback feedback, {
   required String userId,
   required String handle,
   bool announce = false,
 }) async {
-  final l10n = AppLocalizations.of(context);
-  final blocked = await ref.read(blockedAccountsProvider).block(userId, handle: handle);
-  if (!context.mounted) return blocked;
+  final l10n = feedback.l10n;
+  final blocked = await feedback.read(blockedAccountsProvider).block(userId, handle: handle);
   if (!blocked) {
-    showVeilToast(
-      context,
+    feedback.say(
       l10n.blockFailed(handle),
       tone: VeilTone.warn,
-      actionLabel: l10n.commonRetry,
-      onAction: () {
-        if (context.mounted) blockAccount(context, ref, userId: userId, handle: handle, announce: announce);
-      },
+      retry: () => blockAccount(feedback, userId: userId, handle: handle, announce: announce),
     );
   } else if (announce) {
-    showVeilToast(context, l10n.blockDone(handle), tone: VeilTone.good);
+    feedback.say(l10n.blockDone(handle), tone: VeilTone.good);
   }
   return blocked;
 }
 
 /// Unblocks [handle]'s account.
 Future<bool> unblockAccount(
-  BuildContext context,
-  WidgetRef ref, {
+  BuildContext context, {
   required String userId,
   required String handle,
   bool announce = false,
-}) async {
-  final l10n = AppLocalizations.of(context);
+}) {
   VeilHaptics.light();
-  final unblocked = await ref.read(blockedAccountsProvider).unblock(userId);
-  if (!context.mounted) return unblocked;
+  return _unblock(SafetyFeedback.of(context), userId: userId, handle: handle, announce: announce);
+}
+
+Future<bool> _unblock(
+  SafetyFeedback feedback, {
+  required String userId,
+  required String handle,
+  required bool announce,
+}) async {
+  final l10n = feedback.l10n;
+  final unblocked = await feedback.read(blockedAccountsProvider).unblock(userId);
   if (!unblocked) {
-    showVeilToast(
-      context,
+    feedback.say(
       l10n.unblockFailed(handle),
       tone: VeilTone.warn,
-      actionLabel: l10n.commonRetry,
-      onAction: () {
-        if (context.mounted) unblockAccount(context, ref, userId: userId, handle: handle, announce: announce);
-      },
+      retry: () => _unblock(feedback, userId: userId, handle: handle, announce: announce),
     );
   } else if (announce) {
-    showVeilToast(context, l10n.unblockDone(handle), tone: VeilTone.good);
+    feedback.say(l10n.unblockDone(handle), tone: VeilTone.good);
   }
   return unblocked;
 }

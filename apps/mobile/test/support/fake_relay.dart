@@ -141,6 +141,10 @@ class FakeRelay {
   /// taken again.
   int refuseReports = 0;
 
+  /// While set, a report waits for it before the relay answers, as a slow
+  /// network would.
+  Completer<void>? reportGate;
+
   /// Whether either of two users blocked the other, as
   /// SafetyService.isBlockedEitherWay answers it.
   bool blockedEitherWay(String userIdA, String userIdB) =>
@@ -633,6 +637,7 @@ class FakeRelayClient extends VeilApiClient {
     String? conversationId,
     String? messageId,
   }) async {
+    await relay.reportGate?.future;
     if (relay.refuseReports > 0) {
       relay.refuseReports -= 1;
       throw VeilApiException('Too many requests', statusCode: 429, code: 'rate_limited');

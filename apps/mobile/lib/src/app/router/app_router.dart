@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show ScaffoldMessengerState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -80,6 +81,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Restoring re-runs the redirect, so the guard still has the last word.
       router.restore(interruptedStack);
     }
+  });
+  // A toast is drawn above the navigator, so it would stay on the lock
+  // screen, with whatever it names (a handle, a Retry). Locking or signing
+  // out takes it down with the screens it was about.
+  ref.listen<AppSessionState>(appSessionProvider, (previous, next) {
+    final wasOpen = previous != null && previous.isAuthenticated && !previous.locked;
+    if (!wasOpen || (next.isAuthenticated && !next.locked)) return;
+    final navigator = router.routerDelegate.navigatorKey.currentContext;
+    navigator?.findAncestorStateOfType<ScaffoldMessengerState>()
+      ?..clearSnackBars()
+      ..removeCurrentSnackBar();
   });
   ref.onDispose(() {
     router.dispose();

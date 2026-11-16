@@ -174,6 +174,12 @@ class VeilEmptyState extends StatelessWidget {
 /// happened. The tone shows only as a leading icon; information has none.
 /// [actionLabel] and [onAction] add one text button, such as Retry after
 /// something failed.
+///
+/// Every toast closes by itself, one with a button too (Flutter would keep
+/// that until it is tapped): it is drawn above every screen, so one left
+/// standing follows the user from screen to screen. One with a button
+/// stays longer, and with a screen reader on it waits to be dismissed, as
+/// the platform does.
 void showVeilToast(
   BuildContext context,
   String message, {
@@ -183,10 +189,13 @@ void showVeilToast(
 }) {
   final palette = context.veilPalette;
   final messenger = ScaffoldMessenger.of(context);
+  final action = actionLabel == null || onAction == null ? null : SnackBarAction(label: actionLabel, onPressed: onAction);
   messenger.clearSnackBars();
   messenger.showSnackBar(
     SnackBar(
-      action: actionLabel == null || onAction == null ? null : SnackBarAction(label: actionLabel, onPressed: onAction),
+      action: action,
+      duration: action == null ? const Duration(seconds: 4) : const Duration(seconds: 8),
+      persist: action != null && MediaQuery.accessibleNavigationOf(context),
       content: Row(
         children: [
           if (tone != VeilTone.info) ...[

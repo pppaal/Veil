@@ -191,13 +191,13 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
   Future<void> report() async {
     final userId = await account();
     if (userId == null || !context.mounted) return;
-    await showReportSheet(context, ref, ReportTarget(userId: userId, handle: contact.handle, offerBlock: true));
+    await showReportSheet(context, ReportTarget(userId: userId, handle: contact.handle, offerBlock: true));
   }
 
   Future<void> block() async {
     final userId = await account();
     if (userId == null || !context.mounted) return;
-    await confirmAndBlock(context, ref, userId: userId, handle: contact.handle, announce: true);
+    await confirmAndBlock(context, userId: userId, handle: contact.handle, announce: true);
   }
 
   Future<void> startChat() async {
@@ -262,7 +262,7 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
                 trailing: noChevron,
                 onTap: () {
                   close();
-                  unblockAccount(context, ref, userId: blocked.userId, handle: contact.handle, announce: true);
+                  unblockAccount(context, userId: blocked.userId, handle: contact.handle, announce: true);
                 },
               )
             else

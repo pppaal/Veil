@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/conversation_mutes.dart';
 import '../data/safety_providers.dart';
+import 'safety_feedback.dart';
 
 String muteDurationLabel(AppLocalizations l10n, MuteDuration duration) => switch (duration) {
       MuteDuration.oneHour => l10n.muteOneHour,
@@ -17,7 +17,7 @@ String muteDurationLabel(AppLocalizations l10n, MuteDuration duration) => switch
 /// Turns [conversationId]'s notifications off for a while: a sheet with
 /// how long, which mutes at a tap. The screen behind it says for how long,
 /// or that it failed, with a retry.
-Future<void> showMuteSheet(BuildContext context, WidgetRef ref, String conversationId) async {
+Future<void> showMuteSheet(BuildContext context, String conversationId) async {
   VeilHaptics.selection();
   final l10n = AppLocalizations.of(context);
   final duration = await showModalBottomSheet<MuteDuration>(
@@ -53,48 +53,37 @@ Future<void> showMuteSheet(BuildContext context, WidgetRef ref, String conversat
     ),
   );
   if (duration == null || !context.mounted) return;
-  await _mute(context, ref, conversationId, duration);
+  await _mute(SafetyFeedback.of(context), conversationId, duration);
 }
 
-Future<void> _mute(BuildContext context, WidgetRef ref, String conversationId, MuteDuration duration) async {
-  final l10n = AppLocalizations.of(context);
-  final muted = await ref.read(conversationMutesProvider).mute(conversationId, duration);
-  if (!context.mounted) return;
+Future<void> _mute(SafetyFeedback feedback, String conversationId, MuteDuration duration) async {
+  final l10n = feedback.l10n;
+  final muted = await feedback.read(conversationMutesProvider).mute(conversationId, duration);
   if (!muted) {
-    showVeilToast(
-      context,
+    feedback.say(
       l10n.muteFailed,
       tone: VeilTone.warn,
-      actionLabel: l10n.commonRetry,
-      onAction: () {
-        if (context.mounted) _mute(context, ref, conversationId, duration);
-      },
+      retry: () => _mute(feedback, conversationId, duration),
     );
     return;
   }
-  showVeilToast(
-    context,
+  feedback.say(
     duration == MuteDuration.always ? l10n.muteDoneAlways : l10n.muteDoneFor(muteDurationLabel(l10n, duration)),
   );
 }
 
 /// Turns [conversationId]'s notifications back on.
-Future<void> unmuteConversation(BuildContext context, WidgetRef ref, String conversationId) async {
-  final l10n = AppLocalizations.of(context);
+Future<void> unmuteConversation(BuildContext context, String conversationId) {
   VeilHaptics.selection();
-  final unmuted = await ref.read(conversationMutesProvider).unmute(conversationId);
-  if (!context.mounted) return;
+  return _unmute(SafetyFeedback.of(context), conversationId);
+}
+
+Future<void> _unmute(SafetyFeedback feedback, String conversationId) async {
+  final l10n = feedback.l10n;
+  final unmuted = await feedback.read(conversationMutesProvider).unmute(conversationId);
   if (!unmuted) {
-    showVeilToast(
-      context,
-      l10n.muteFailed,
-      tone: VeilTone.warn,
-      actionLabel: l10n.commonRetry,
-      onAction: () {
-        if (context.mounted) unmuteConversation(context, ref, conversationId);
-      },
-    );
+    feedback.say(l10n.muteFailed, tone: VeilTone.warn, retry: () => _unmute(feedback, conversationId));
     return;
   }
-  showVeilToast(context, l10n.muteUndone);
+  feedback.say(l10n.muteUndone);
 }

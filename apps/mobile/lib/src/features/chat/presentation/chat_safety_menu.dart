@@ -32,14 +32,14 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
           key: 'unmute',
           label: l10n.muteUnmute,
           icon: Icons.notifications_outlined,
-          onSelected: () => unmuteConversation(context, ref, conversationId),
+          onSelected: () => unmuteConversation(context, conversationId),
         )
       else
         ChatMenuEntry(
           key: 'mute',
           label: l10n.muteTitle,
           icon: Icons.notifications_off_outlined,
-          onSelected: () => showMuteSheet(context, ref, conversationId),
+          onSelected: () => showMuteSheet(context, conversationId),
         ),
       if (peer != null) ...[
         ChatMenuEntry(
@@ -48,7 +48,6 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
           icon: Icons.flag_outlined,
           onSelected: () => showReportSheet(
             context,
-            ref,
             ReportTarget(userId: peer.userId, handle: peer.handle, conversationId: conversationId, offerBlock: true),
           ),
         ),
@@ -57,7 +56,7 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
             key: 'unblock',
             label: l10n.unblockAction,
             icon: Icons.block_outlined,
-            onSelected: () => unblockAccount(context, ref, userId: peer.userId, handle: peer.handle),
+            onSelected: () => unblockAccount(context, userId: peer.userId, handle: peer.handle),
           )
         else
           ChatMenuEntry(
@@ -65,7 +64,7 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
             label: l10n.blockAction,
             icon: Icons.block_outlined,
             destructive: true,
-            onSelected: () => confirmAndBlock(context, ref, userId: peer.userId, handle: peer.handle),
+            onSelected: () => confirmAndBlock(context, userId: peer.userId, handle: peer.handle),
           ),
       ],
     ];
@@ -77,7 +76,7 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final peer = _directPeer(conversation);
     if (peer == null || !ref.watch(blockedAccountsProvider).isBlocked(peer.userId)) return null;
     return BlockedComposerLine(
-      onUnblock: () => unblockAccount(context, ref, userId: peer.userId, handle: peer.handle),
+      onUnblock: () => unblockAccount(context, userId: peer.userId, handle: peer.handle),
     );
   }
 
@@ -110,7 +109,7 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     } else {
       return null;
     }
-    return () => showReportSheet(context, ref, target);
+    return () => showReportSheet(context, target);
   }
 
   ({String userId, String handle})? _directPeer(ConversationPreview? conversation) {

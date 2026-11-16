@@ -83,8 +83,9 @@ class _BlockedAccountsScreenState extends ConsumerState<BlockedAccountsScreen> {
   }
 }
 
-/// One blocked account: the avatar, the name this phone knows for it (or
-/// the handle alone) and Unblock.
+/// One blocked account: the avatar, the name this phone knows for it with
+/// the @handle under it (or the handle alone, without its @, as a Chats or
+/// Contacts row names someone with no name) and Unblock.
 class BlockedAccountRow extends StatelessWidget {
   const BlockedAccountRow({super.key, required this.account, required this.name, required this.onUnblock});
 
@@ -103,7 +104,7 @@ class BlockedAccountRow extends StatelessWidget {
     return VeilRow(
       leading: VeilAvatar(name: name ?? account.handle, seed: account.handle),
       // A name and a handle are their owner's words: drawn as typed.
-      title: name ?? handle,
+      title: name ?? account.handle,
       subtitle: name == null ? null : handle,
       trailing: TextButton(onPressed: onUnblock, child: Text(l10n.unblockAction)),
     );

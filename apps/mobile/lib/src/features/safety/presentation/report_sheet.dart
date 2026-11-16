@@ -84,7 +84,8 @@ class _ReportSheetState extends State<_ReportSheet> {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
     final target = widget.target;
-    // What fileAbuseReport sends from here, and nothing more.
+    // What fileAbuseReport sends from here, and nothing more, plus the
+    // reporter: the server records whose session filed it.
     final footer = target.messageId != null
         ? l10n.reportFooterMessage
         : target.conversationId != null

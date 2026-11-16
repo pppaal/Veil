@@ -2351,15 +2351,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reportFooterMessage =>
-      'The report includes their account, the reason and which chat and message, but not what it says.';
+      'The report includes your account, theirs, the reason and which chat and message, but not what it says.';
 
   @override
   String get reportFooterChat =>
-      'The report includes their account, the reason and which chat, but no messages.';
+      'The report includes your account, theirs, the reason and which chat, but no messages.';
 
   @override
   String get reportFooterAccount =>
-      'The report includes their account and the reason, but no messages.';
+      'The report includes your account, theirs and the reason, but no messages.';
 
   @override
   String get reportSent => 'Report sent';

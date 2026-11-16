@@ -3925,19 +3925,19 @@ abstract class AppLocalizations {
   /// No description provided for @reportFooterMessage.
   ///
   /// In en, this message translates to:
-  /// **'The report includes their account, the reason and which chat and message, but not what it says.'**
+  /// **'The report includes your account, theirs, the reason and which chat and message, but not what it says.'**
   String get reportFooterMessage;
 
   /// No description provided for @reportFooterChat.
   ///
   /// In en, this message translates to:
-  /// **'The report includes their account, the reason and which chat, but no messages.'**
+  /// **'The report includes your account, theirs, the reason and which chat, but no messages.'**
   String get reportFooterChat;
 
   /// No description provided for @reportFooterAccount.
   ///
   /// In en, this message translates to:
-  /// **'The report includes their account and the reason, but no messages.'**
+  /// **'The report includes your account, theirs and the reason, but no messages.'**
   String get reportFooterAccount;
 
   /// No description provided for @reportSent.

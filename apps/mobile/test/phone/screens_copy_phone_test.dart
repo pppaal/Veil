@@ -91,13 +91,15 @@ void main() {
     // The account itself stays on the server, its handle taken; what is lost
     // is the way back in, which no backup or reset gives (the web's sign
     // out says the same). Changed on purpose: the body no longer opens with
-    // "This signs this phone out", which said the title again.
+    // "This signs this phone out", which said the title again; and it says
+    // the chats are deleted by this, as "are deleted" read as if they were
+    // gone already.
     test('Sign out says what it deletes and what is lost, not that the app goes', () {
       final body = l10n.settingsLogoutConfirmBody('alex');
       expect(body, isNot(contains('Veil')), reason: 'the app is not what goes');
       expect(body, isNot(contains('uninstall')));
       expect(body, isNot(contains('signs this phone out')), reason: 'the title says it');
-      expect(body, contains('chats on this phone are deleted'));
+      expect(body, contains('This deletes your chats from this phone'));
       expect(body, contains("you can't sign in as @alex again."));
       expect(body, isNot(contains('account is gone')), reason: 'the account stays on the server');
       expect(body.split(RegExp(r'(?<=[.!?])\s+')), hasLength(1), reason: 'one short sentence');

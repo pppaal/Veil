@@ -685,7 +685,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLogoutConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'Your chats on this phone are deleted, and you can\'t sign in as @{handle} again.'**
+  /// **'This deletes your chats from this phone, and you can\'t sign in as @{handle} again.'**
   String settingsLogoutConfirmBody(String handle);
 
   /// No description provided for @settingsLogoutFailed.

@@ -43,8 +43,8 @@ words:
   this phone." / "If you lose the phone, your account and messages are gone
   for good." / "To move to a new phone later, you'll need this one.", with
   the checkbox "I understand a lost account can't be recovered".
-- The confirm dialog of Sign out, under "Sign out of this phone?": "Your chats
-  on this phone are deleted, and you can't sign in as @alex again." (An
+- The confirm dialog of Sign out, under "Sign out of this phone?": "This
+  deletes your chats from this phone, and you can't sign in as @alex again." (An
   account runs on one phone at a time, so signing it out leaves no device
   that can open it; the account itself stays on the server, its handle
   taken.)

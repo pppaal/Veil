@@ -6,6 +6,11 @@ import '../../../core/errors/user_facing_error.dart';
 import '../../../core/network/veil_api_client.dart';
 import '../../../core/security/device_step_up.dart';
 
+/// What a transfer code starts with: `VEIL_TRANSFER::<session>::<token>`.
+/// The API takes the session and the token apart, so the prefix only marks
+/// a pasted text as a code; the old phone's box leaves it out.
+const transferCodePrefix = 'VEIL_TRANSFER::';
+
 /// What the old device's last transfer step came to. A value, so that the
 /// screen says it in the app's language.
 sealed class TransferStatus {
@@ -93,7 +98,7 @@ class DeviceTransferController extends ChangeNotifier {
   DateTime? get transferExpiresAt => _transferExpiresAt;
   String? get transferPayload => _transferSessionId == null || _transferToken == null
       ? null
-      : 'VEIL_TRANSFER::${_transferSessionId!}::${_transferToken!}';
+      : '$transferCodePrefix${_transferSessionId!}::${_transferToken!}';
 
   Future<void> initTransfer() async {
     await _run(() async {

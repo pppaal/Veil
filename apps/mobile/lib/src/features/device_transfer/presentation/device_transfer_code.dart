@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
+import '../data/device_transfer_controller.dart' show transferCodePrefix;
 
 /// The two parts of a transfer code: the session the old device opened and
 /// the token that claims it.
@@ -10,10 +11,6 @@ class ParsedTransferCode {
   final String sessionId;
   final String transferToken;
 }
-
-/// What a copied transfer code starts with. The API takes the session and
-/// the token apart, so the prefix only marks a pasted text as a code.
-const transferCodePrefix = 'VEIL_TRANSFER::';
 
 /// The code as the old phone's box shows it: `<session>::<token>`, without
 /// [transferCodePrefix], which means nothing to the person reading it.

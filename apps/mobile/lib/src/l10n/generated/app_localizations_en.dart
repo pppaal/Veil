@@ -313,15 +313,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSectionAppearance => 'Appearance';
 
   @override
-  String get settingsLoadingDeviceGraph => 'Loading devices…';
-
-  @override
-  String get settingsDeviceGraphUnavailable => 'Couldn\'t load devices';
-
-  @override
-  String get settingsNoTrustedDevices => 'No devices';
-
-  @override
   String get settingsAppLockTitle => 'App lock';
 
   @override
@@ -356,20 +347,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSectionSecurity => 'Security';
 
   @override
-  String get settingsSectionDevices => 'Devices';
-
-  @override
   String get settingsSectionAccount => 'Account';
-
-  @override
-  String get settingsDevicesTitle => 'Devices';
 
   @override
   String get settingsLogoutConfirmTitle => 'Sign out of this phone?';
 
   @override
   String get settingsLogoutConfirmBody =>
-      'This signs this phone out and erases Veil from it. If it\'s your only device, your account is gone for good.';
+      'This signs this phone out and erases Veil from it. You lose the account for good.';
 
   @override
   String get settingsLogoutFailed =>
@@ -379,48 +364,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String settingsTypePhraseToContinue(String phrase) {
     return 'Type $phrase to confirm.';
   }
-
-  @override
-  String settingsRevokeListedTitle(String deviceName) {
-    return 'Remove $deviceName?';
-  }
-
-  @override
-  String get settingsRevokeListedBody =>
-      'It will be signed out and can\'t use your account again.';
-
-  @override
-  String settingsRevokeListedDone(String deviceName) {
-    return '$deviceName removed';
-  }
-
-  @override
-  String get settingsRevokeListedFailed =>
-      'Couldn\'t remove the device. Try again.';
-
-  @override
-  String get settingsDeviceStateCurrent => 'This device';
-
-  @override
-  String get settingsDeviceRevokeAction => 'Remove';
-
-  @override
-  String settingsDeviceCreated(String when) {
-    return 'Added $when';
-  }
-
-  @override
-  String settingsDeviceSeen(String when) {
-    return 'Last active $when';
-  }
-
-  @override
-  String settingsDeviceInactiveSince(String when) {
-    return 'Inactive since $when';
-  }
-
-  @override
-  String get settingsDevicesOtherHeader => 'Other devices';
 
   @override
   String get settingsReadReceiptsCaption =>

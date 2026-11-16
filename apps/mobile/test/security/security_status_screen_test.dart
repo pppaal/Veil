@@ -9,7 +9,6 @@ import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart' show MockCr
 import 'package:veil_mobile/src/core/notifications/remote_push_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
-import 'package:veil_mobile/src/features/settings/data/trusted_devices.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -87,7 +86,6 @@ void main() {
         cryptoAdapterProvider.overrideWithValue(adapter),
         appSessionProvider.overrideWith((ref) => _SignedIn(storage, relay, adapter)),
         conversationCacheProvider.overrideWith((ref) async => null),
-        trustedDevicesProvider.overrideWith((ref) async => const TrustedDeviceList.empty()),
         localSecuritySnapshotProvider.overrideWith((ref) async => local),
         if (push != null) remotePushServiceProvider.overrideWithValue(push),
       ],

@@ -69,9 +69,9 @@ void main() {
             cryptoAdapterKindOf(world.container.read(cryptoAdapterProvider).adapterId) == CryptoAdapterKind.development;
         for (final text in [
           l10n.settingsSectionSecurity,
-          l10n.settingsSectionDevices,
           l10n.settingsSectionAccount,
           testBuild ? l10n.securityFooterTestBuild : l10n.securityFooterUnaudited,
+          l10n.settingsDeviceTransferTitle,
           l10n.settingsLogout,
           l10n.settingsDeleteAccountAction,
         ]) {
@@ -107,21 +107,6 @@ void main() {
           await pumpFrames(tester, frames: 3);
         }
         expect(world.container.read(appSessionProvider).isAuthenticated, isTrue);
-      });
-    });
-
-    testWidgets('the devices list says one grey line of each device, and lists no removed one', (tester) async {
-      await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-        await scrollToRow(tester, 'settings-devices');
-        await tester.tap(find.byKey(const ValueKey('settings-devices')));
-        await pumpFrames(tester, frames: 6);
-        final devices = await read(tester);
-        expect(devices, containsAll(['Pixel 9 Pro Fold', 'MacBook Air']), reason: 'the devices were on screen');
-        expect(devices, contains(l10n.settingsDeviceInactiveSince('Apr 2')));
-        expect(devices.where((text) => text.startsWith('Android · ')), hasLength(1), reason: 'this phone: what and since when');
-        for (final gone in ['Old iPhone', 'Approved by Pixel 9 Pro Fold', 'Last seen Apr 2']) {
-          expect(devices, isNot(contains(gone)));
-        }
       });
     });
   });

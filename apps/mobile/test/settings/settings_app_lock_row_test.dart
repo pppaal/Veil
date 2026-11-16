@@ -12,7 +12,6 @@ import 'package:veil_mobile/src/core/security/app_lock_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
-import 'package:veil_mobile/src/features/settings/data/trusted_devices.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
@@ -117,7 +116,6 @@ ProviderContainer _container(_Lock lock, SecureStorageService storage) {
     appSessionProvider.overrideWith((ref) => session),
     appRoutesProvider.overrideWithValue(_routes()),
     appLockServiceProvider.overrideWithValue(lock),
-    trustedDevicesProvider.overrideWith((ref) async => const TrustedDeviceList.empty()),
   ]);
 }
 

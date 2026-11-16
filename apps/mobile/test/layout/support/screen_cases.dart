@@ -24,7 +24,6 @@ import 'package:veil_mobile/src/features/safety/presentation/blocked_accounts_sc
 import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
-import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
@@ -435,12 +434,6 @@ const List<ScreenCase> screenCases = [
   // Account, device and security.
   ScreenCase('settings',
       screen: SettingsScreen, file: 'settings_screen.dart', location: '/settings', primaryAction: _firstSetting),
-  // The devices of the account, opened from the settings tab's row.
-  ScreenCase('settings-devices',
-      screen: TrustedDevicesScreen,
-      file: 'trusted_devices_screen.dart',
-      location: '/settings',
-      settle: _openTrustedDevices),
   ScreenCase('profile', screen: ProfileScreen, file: 'profile_screen.dart', location: '/profile'),
   ScreenCase('device-transfer-old-device',
       screen: DeviceTransferScreen,
@@ -1091,17 +1084,6 @@ Future<void> _openContactActionsSheet(WidgetTester tester) async {
   await tester.tap(find.byType(ContactRow).first);
   await pumpFrames(tester, frames: 4);
   expect(find.byType(BottomSheet), findsOneWidget, reason: 'the contact sheet did not open');
-}
-
-Future<void> _openTrustedDevices(WidgetTester tester) async {
-  // The Devices row is under the day-to-day settings, below the first
-  // screenful.
-  final row = find.byKey(const ValueKey('settings-devices'), skipOffstage: false);
-  await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
-  await pumpFrames(tester, frames: 2);
-  await tester.tap(row);
-  await pumpFrames(tester, frames: 6);
-  expect(find.byKey(const ValueKey('device-dev-laptop')), findsOneWidget, reason: 'the device list did not load');
 }
 
 // The safety number is derived on a background isolate, which only real

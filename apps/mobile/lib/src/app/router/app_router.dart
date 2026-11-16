@@ -21,7 +21,6 @@ import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/safety/presentation/blocked_accounts_screen.dart';
 import '../../features/security/presentation/safety_numbers_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
-import '../../features/settings/presentation/trusted_devices_screen.dart';
 import '../app_state.dart';
 import 'main_tab_shell.dart';
 import 'route_guard.dart';
@@ -157,10 +156,6 @@ List<RouteBase> _buildRoutes() {
     GoRoute(
       path: '/profile',
       pageBuilder: (context, state) => _veilPushPage(state, const ProfileScreen()),
-    ),
-    GoRoute(
-      path: '/trusted-devices',
-      pageBuilder: (context, state) => _veilPushPage(state, const TrustedDevicesScreen()),
     ),
     GoRoute(
       path: '/blocked-accounts',

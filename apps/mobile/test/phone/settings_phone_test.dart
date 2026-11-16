@@ -10,10 +10,9 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
-import 'package:veil_mobile/src/features/settings/presentation/device_rows.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_danger_zone.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
-import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -23,8 +22,10 @@ import 'phone_app.dart';
 
 // The settings tab on a phone, as Signal and WhatsApp lay theirs out: a
 // grouped page of rows with their values, one line under a row only where
-// it needs one, a footer of one line under Security, one Devices row, and
-// the two account actions last, each behind the user's handle typed.
+// it needs one, a footer of one line under Security, and the account last:
+// moving to a new phone, then the two account actions, each behind the
+// user's handle typed. The account runs on one phone at a time, so there
+// is no list of devices.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -60,13 +61,12 @@ void main() {
     await pumpFrames(tester, frames: 2);
   }
 
-  // The one Devices row, which opens the list of devices.
-  const devicesRow = ValueKey('settings-devices');
-  const laptopRow = ValueKey('device-dev-laptop');
+  // The row that opens Move to a new phone.
+  const moveRow = ValueKey('settings-device-transfer');
 
   VeilRow row(WidgetTester tester, String key) => tester.widget<VeilRow>(find.byKey(ValueKey(key), skipOffstage: false));
 
-  testWidgets('leads with the account, appearance, privacy and security; devices follow; the account actions are last',
+  testWidgets('leads with the account, appearance, privacy and security; the account group is last',
       (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
       // The profile row is the person, with no word beside it.
@@ -79,22 +79,23 @@ void main() {
         en.settingsSectionAppearance,
         en.settingsSectionPrivacy,
         en.settingsSectionSecurity,
-        en.settingsSectionDevices,
         en.settingsSectionAccount,
       ]);
+      // Nothing lists devices: the account runs on this phone alone.
+      expect(find.byKey(const ValueKey('settings-devices'), skipOffstage: false), findsNothing);
+      expect(find.text('Devices', skipOffstage: false), findsNothing);
     });
   });
 
   testWidgets('group headers are in sentence case, and no row repeats its group\'s header', (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
       final headers = [for (final header in await groupHeaders(tester)) if (header != null) header];
-      expect(headers, hasLength(5));
+      expect(headers, hasLength(4));
       for (final header in headers) {
         expect(header, isNot(header.toUpperCase()), reason: '"$header" is in capitals');
         expect(header[0], header[0].toUpperCase(), reason: '"$header" does not start with a capital');
         expect(header.substring(1), header.substring(1).toLowerCase(), reason: '"$header" is in title case');
       }
-      expect(en.settingsDeviceTransferTitle, isNot(contains(en.settingsSectionDevices)));
     });
   });
 
@@ -177,45 +178,30 @@ void main() {
     });
   });
 
-  testWidgets('one Devices row with how many are listed opens the devices over the tab bar, in two sections',
-      (tester) async {
+  testWidgets('Move to a new phone opens over the tab bar, and back returns to Settings', (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-      final devices = find.byKey(devicesRow);
-      await scrollTo(tester, devices);
-      // This phone and the quiet laptop; the revoked iPhone is not counted.
-      expect(row(tester, 'settings-devices').value, '2');
-      expect(find.text('MacBook Air', skipOffstage: false), findsNothing, reason: 'no device listed inline');
-      expect(find.byType(VeilNotice, skipOffstage: false), findsNothing, reason: 'no stale-device notice');
+      final move = find.byKey(moveRow);
+      await scrollTo(tester, move);
+      expect(row(tester, 'settings-device-transfer').destructive, isFalse);
+      expect(row(tester, 'settings-device-transfer').value, isNull);
 
-      await tester.tap(devices);
+      await tester.tap(move);
       await pumpFrames(tester, frames: 6);
-      expect(find.byType(TrustedDevicesScreen), findsOneWidget);
+      expect(find.byType(DeviceTransferScreen), findsOneWidget);
       expect(find.byType(SettingsScreen), findsNothing);
-      expect(find.text(en.navChats), findsNothing, reason: 'the list covers the tab bar');
-      expect(find.byIcon(Icons.refresh), findsNothing, reason: 'no refresh button: it refreshes on open and on a pull');
-
-      final headers = [for (final group in tester.widgetList<VeilGroup>(find.byType(VeilGroup))) group.header];
-      expect(headers, [en.settingsDeviceStateCurrent, en.settingsDevicesOtherHeader]);
-      expect(find.byType(DeviceRow), findsNWidgets(2));
-      final laptop = find.byKey(laptopRow);
-      expect(find.descendant(of: laptop, matching: find.text('MacBook Air')), findsOneWidget);
-      expect(find.descendant(of: laptop, matching: find.text(en.settingsDeviceInactiveSince('Apr 2'))), findsOneWidget);
-      expect(find.text('Old iPhone'), findsNothing, reason: 'a removed device is not listed');
-      for (final word in ['Stale', 'Revoked', 'Preferred']) {
-        expect(find.text(word), findsNothing, reason: 'no state words');
-      }
+      expect(find.text(en.navChats), findsNothing, reason: 'the screen covers the tab bar');
 
       await tester.tap(find.byType(VeilBackButton));
       await pumpFrames(tester, frames: 6);
       expect(find.byType(SettingsScreen), findsOneWidget);
-      expect(find.byType(TrustedDevicesScreen), findsNothing);
+      expect(find.byType(DeviceTransferScreen), findsNothing);
     });
   });
 
-  // The list was pushed past the router, which could then neither take it
-  // down nor put it back: a location opened from elsewhere stayed hidden
-  // under it, and an unlock returned to the settings tab instead.
-  testWidgets('the devices list is a route: another location replaces it, and an unlock brings it back',
+  // A screen pushed past the router could be neither taken down nor put
+  // back: a location opened from elsewhere stayed hidden under it, and an
+  // unlock returned to the settings tab instead.
+  testWidgets('a screen a settings row opens is a route: another location replaces it, and an unlock brings it back',
       (tester) async {
     usePhoneView(tester, phoneSmall);
     final world = await LayoutWorld.create(identities: identities, account: LayoutAccount.signedIn, locale: 'en');
@@ -236,35 +222,35 @@ void main() {
       router.go('/settings');
       await pumpFrames(tester);
 
-      Future<void> openDevices() async {
-        final row = find.byKey(devicesRow);
+      Future<void> openMove() async {
+        final row = find.byKey(moveRow);
         await scrollTo(tester, row);
         await tester.tap(row);
         await pumpFrames(tester, frames: 6);
-        expect(find.byType(TrustedDevicesScreen), findsOneWidget);
-        expect(router.state.uri.path, '/trusted-devices');
+        expect(find.byType(DeviceTransferScreen), findsOneWidget);
+        expect(router.state.uri.path, '/device-transfer');
       }
 
-      await openDevices();
+      await openMove();
       final session = world.container.read(appSessionProvider.notifier);
       session.lock();
       await pumpFrames(tester, frames: 6);
       expect(find.byType(AppLockScreen), findsOneWidget);
-      expect(find.byType(TrustedDevicesScreen), findsNothing, reason: 'nothing of the account shows behind the lock');
+      expect(find.byType(DeviceTransferScreen), findsNothing, reason: 'nothing of the account shows behind the lock');
 
       session.unlock();
       await pumpFrames(tester, frames: 6);
       expect(find.byType(AppLockScreen), findsNothing);
-      expect(find.byType(TrustedDevicesScreen), findsOneWidget, reason: 'back where the lock interrupted');
+      expect(find.byType(DeviceTransferScreen), findsOneWidget, reason: 'back where the lock interrupted');
       await tester.tap(find.byType(VeilBackButton));
       await pumpFrames(tester, frames: 6);
       expect(find.byType(SettingsScreen), findsOneWidget, reason: 'with the settings tab under it');
 
       // A location opened from elsewhere (a link, the router's fallback).
-      await openDevices();
+      await openMove();
       router.go('/contacts');
       await pumpFrames(tester, frames: 6);
-      expect(find.byType(TrustedDevicesScreen), findsNothing, reason: 'the list does not stay on top of it');
+      expect(find.byType(DeviceTransferScreen), findsNothing, reason: 'the screen does not stay on top of it');
       expect(find.byType(ContactsScreen), findsOneWidget);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
@@ -273,35 +259,15 @@ void main() {
     }
   });
 
-  testWidgets('removing another device asks first, then it is no longer listed', (tester) async {
-    await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-      await scrollTo(tester, find.byKey(devicesRow));
-      await tester.tap(find.byKey(devicesRow));
-      await pumpFrames(tester, frames: 6);
-
-      // This phone is not tappable; the laptop asks to be removed.
-      final current = tester.widget<DeviceRow>(find.byType(DeviceRow).first);
-      expect(current.onTap, isNull);
-      await tester.tap(find.byKey(laptopRow));
-      await pumpFrames(tester, frames: 3);
-      expect(findCopy(en.settingsRevokeListedTitle('MacBook Air')), findsOneWidget);
-      expect(findCopy(en.settingsRevokeListedBody), findsOneWidget);
-      expect(find.byType(FilledButton), findsNothing, reason: 'no red fill: the confirming button is red text');
-      expect(world.api.revokedDevices, isEmpty, reason: 'nothing is removed before the answer');
-
-      await tester.tap(find.widgetWithText(TextButton, en.settingsDeviceRevokeAction));
-      await pumpFrames(tester, frames: 6);
-      expect(world.api.revokedDevices, ['dev-laptop']);
-      expect(find.byKey(laptopRow), findsNothing);
-      expect(find.text(en.settingsDevicesOtherHeader), findsNothing);
-      expect(findCopy(en.settingsRevokeListedDone('MacBook Air')), findsOneWidget);
-    });
-  });
-
   group('the account actions', () {
-    testWidgets('are the last group, two red rows that each open their own dialog', (tester) async {
+    testWidgets('close the last group, two red rows under Move to a new phone that each open their own dialog',
+        (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
         await scrollTo(tester, find.byKey(const ValueKey('settings-delete-account')));
+        final account = tester.widgetList<VeilGroup>(find.byType(VeilGroup, skipOffstage: false))
+            .singleWhere((group) => group.header == en.settingsSectionAccount);
+        expect([for (final child in account.children) (child.key as ValueKey<String>).value],
+            ['settings-device-transfer', 'settings-logout', 'settings-delete-account']);
         for (final key in ['settings-logout', 'settings-delete-account']) {
           final widget = row(tester, key);
           expect(widget.destructive, isTrue, reason: key);

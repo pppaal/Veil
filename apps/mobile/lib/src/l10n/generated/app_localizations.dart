@@ -592,24 +592,6 @@ abstract class AppLocalizations {
   /// **'Appearance'**
   String get settingsSectionAppearance;
 
-  /// No description provided for @settingsLoadingDeviceGraph.
-  ///
-  /// In en, this message translates to:
-  /// **'Loading devices…'**
-  String get settingsLoadingDeviceGraph;
-
-  /// No description provided for @settingsDeviceGraphUnavailable.
-  ///
-  /// In en, this message translates to:
-  /// **'Couldn\'t load devices'**
-  String get settingsDeviceGraphUnavailable;
-
-  /// No description provided for @settingsNoTrustedDevices.
-  ///
-  /// In en, this message translates to:
-  /// **'No devices'**
-  String get settingsNoTrustedDevices;
-
   /// No description provided for @settingsAppLockTitle.
   ///
   /// In en, this message translates to:
@@ -676,23 +658,11 @@ abstract class AppLocalizations {
   /// **'Security'**
   String get settingsSectionSecurity;
 
-  /// No description provided for @settingsSectionDevices.
-  ///
-  /// In en, this message translates to:
-  /// **'Devices'**
-  String get settingsSectionDevices;
-
   /// No description provided for @settingsSectionAccount.
   ///
   /// In en, this message translates to:
   /// **'Account'**
   String get settingsSectionAccount;
-
-  /// No description provided for @settingsDevicesTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Devices'**
-  String get settingsDevicesTitle;
 
   /// No description provided for @settingsLogoutConfirmTitle.
   ///
@@ -703,7 +673,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLogoutConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'This signs this phone out and erases Veil from it. If it\'s your only device, your account is gone for good.'**
+  /// **'This signs this phone out and erases Veil from it. You lose the account for good.'**
   String get settingsLogoutConfirmBody;
 
   /// No description provided for @settingsLogoutFailed.
@@ -717,66 +687,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Type {phrase} to confirm.'**
   String settingsTypePhraseToContinue(String phrase);
-
-  /// No description provided for @settingsRevokeListedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Remove {deviceName}?'**
-  String settingsRevokeListedTitle(String deviceName);
-
-  /// No description provided for @settingsRevokeListedBody.
-  ///
-  /// In en, this message translates to:
-  /// **'It will be signed out and can\'t use your account again.'**
-  String get settingsRevokeListedBody;
-
-  /// No description provided for @settingsRevokeListedDone.
-  ///
-  /// In en, this message translates to:
-  /// **'{deviceName} removed'**
-  String settingsRevokeListedDone(String deviceName);
-
-  /// No description provided for @settingsRevokeListedFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Couldn\'t remove the device. Try again.'**
-  String get settingsRevokeListedFailed;
-
-  /// No description provided for @settingsDeviceStateCurrent.
-  ///
-  /// In en, this message translates to:
-  /// **'This device'**
-  String get settingsDeviceStateCurrent;
-
-  /// No description provided for @settingsDeviceRevokeAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Remove'**
-  String get settingsDeviceRevokeAction;
-
-  /// No description provided for @settingsDeviceCreated.
-  ///
-  /// In en, this message translates to:
-  /// **'Added {when}'**
-  String settingsDeviceCreated(String when);
-
-  /// No description provided for @settingsDeviceSeen.
-  ///
-  /// In en, this message translates to:
-  /// **'Last active {when}'**
-  String settingsDeviceSeen(String when);
-
-  /// No description provided for @settingsDeviceInactiveSince.
-  ///
-  /// In en, this message translates to:
-  /// **'Inactive since {when}'**
-  String settingsDeviceInactiveSince(String when);
-
-  /// No description provided for @settingsDevicesOtherHeader.
-  ///
-  /// In en, this message translates to:
-  /// **'Other devices'**
-  String get settingsDevicesOtherHeader;
 
   /// No description provided for @settingsReadReceiptsCaption.
   ///

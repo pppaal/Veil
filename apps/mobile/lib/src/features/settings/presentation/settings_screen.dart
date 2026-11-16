@@ -12,7 +12,6 @@ import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../app_lock/data/lock_request_provider.dart';
 import '../../safety/presentation/blocked_accounts_screen.dart';
-import '../data/trusted_devices.dart';
 import 'settings_danger_zone.dart';
 
 /// The settings tab, as Signal and WhatsApp lay theirs out: the account,
@@ -54,7 +53,6 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
           const _SecurityGroup(),
-          const _DevicesGroup(),
           const SettingsDangerZone(),
         ],
       ),
@@ -257,38 +255,6 @@ class _AppLockRow extends ConsumerWidget {
       // Nothing until the keystore has answered, rather than a guess.
       value: switch (on) { true => l10n.commonOn, false => l10n.commonOff, null => null },
       onTap: on == false ? onTurnOn : null,
-    );
-  }
-}
-
-/// The devices that hold the account, as one row with their number, and
-/// moving to a new phone.
-class _DevicesGroup extends ConsumerWidget {
-  const _DevicesGroup();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
-    final list = ref.watch(trustedDevicesProvider).valueOrNull;
-    return VeilGroup(
-      header: l10n.settingsSectionDevices,
-      children: [
-        VeilRow(
-          key: const ValueKey('settings-devices'),
-          title: l10n.settingsDevicesTitle,
-          // The devices the list shows: removed ones are not among them.
-          value: list == null ? null : '${list.activeCount}',
-          // A route of its own, above the tab bar like every other screen a
-          // settings row opens: the router can take it down again (a link
-          // that opens another screen) and puts it back after an unlock.
-          onTap: () => context.push('/trusted-devices'),
-        ),
-        VeilRow(
-          key: const ValueKey('settings-device-transfer'),
-          title: l10n.settingsDeviceTransferTitle,
-          onTap: () => context.push('/device-transfer'),
-        ),
-      ],
     );
   }
 }

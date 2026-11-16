@@ -7,10 +7,12 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// The last group of Settings: signing this phone out and deleting the
-/// account, both for good. Each row opens a dialog that says what it
-/// erases and asks for the user's own handle typed first, as Signal and
-/// WhatsApp ask for the phone number.
+/// The last group of Settings, as Signal's Account page: moving to a new
+/// phone, then signing this phone out and deleting the account, both for
+/// good. Each of those two opens a dialog that says what it erases and
+/// asks for the user's own handle typed first, as Signal and WhatsApp ask
+/// for the phone number. The account runs on one phone at a time, so there
+/// is no list of devices: a move is the only way to another one.
 class SettingsDangerZone extends ConsumerWidget {
   const SettingsDangerZone({super.key});
 
@@ -44,6 +46,11 @@ class SettingsDangerZone extends ConsumerWidget {
     return VeilGroup(
       header: l10n.settingsSectionAccount,
       children: [
+        VeilRow(
+          key: const ValueKey('settings-device-transfer'),
+          title: l10n.settingsDeviceTransferTitle,
+          onTap: () => context.push('/device-transfer'),
+        ),
         VeilRow(
           key: const ValueKey('settings-logout'),
           destructive: true,

@@ -15,7 +15,7 @@ VEIL private beta uses a trusted-device graph, not cloud recovery and not Telegr
 - `users.active_device_id` remains the preferred routing device for directory and compatibility purposes.
 - Authentication and realtime access are granted to any trusted device that is still active and not revoked.
 - The preferred device can change without revoking older trusted devices.
-- UI trust states are exposed as `current`, `preferred`, `trusted`, `stale`, and `revoked`.
+- The device list (`GET /devices`) reports trust states as `current`, `preferred`, `trusted`, `stale`, and `revoked`. The mobile app does not show it: with one active device per account, it could only ever list the phone in hand.
 
 ## Join flow
 
@@ -48,7 +48,7 @@ These values are metadata only. Message bodies remain ciphertext-like payloads.
 - A device becomes `stale` when it has no recent trusted activity for an extended window.
 - `trusted activity` uses the newest of device `last_seen_at` and device `last_sync_at`.
 - `stale` does not mean revoked. It is still trusted until explicitly revoked.
-- The settings UI should surface stale devices clearly so the user can retire them deliberately.
+- No client lists devices, so no client offers to retire one; a phone leaves the account by Sign out (it revokes itself) or by a completed transfer.
 
 ## What stays unchanged for real crypto
 

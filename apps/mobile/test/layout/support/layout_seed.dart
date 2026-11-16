@@ -16,7 +16,7 @@ import 'layout_world.dart';
 // where a person scrolls up to them (the chat-room-history case). Priya's
 // chat holds the one notice from the other side, Jonas's the disappearing
 // timer, Lena's nothing yet, and the group the cases that ask for one.
-// Then contacts and devices.
+// Then contacts.
 
 /// Peers by handle, with the name the relay lists them under. One of them
 /// set no name and is listed by handle; one name is long enough to overflow
@@ -293,9 +293,6 @@ Future<void> seedConversations(
   }
 }
 
-/// The devices the settings screen lists.
-const _deviceNames = ['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone'];
-
 const _transferSessionId = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d';
 const _transferToken = 'vt_3QmZ8xT1uKcR7pLwN5sYhB2dJ9aFgE4o';
 
@@ -340,7 +337,7 @@ Future<List<String>> seedHistory(FakeRelay relay, {required String peer, require
 }
 
 /// The relay as alex's device reaches it, with the routes the screens
-/// outside the messenger call: contacts, the device list and the old-device
+/// outside the messenger call: contacts, signing out and the old-device
 /// half of a transfer.
 class LayoutRelayClient extends FakeRelayClient {
   LayoutRelayClient(super.relay, super.me);
@@ -377,8 +374,8 @@ class LayoutRelayClient extends FakeRelayClient {
     };
   }
 
-  // What the contacts tab, the start screens and the device list ask the
-  // relay to change, kept for the test that asked. A handle the relay has no
+  // What the contacts tab, the start screens and Sign out ask the relay to
+  // change, kept for the test that asked. A handle the relay has no
   // party for is refused, as a real relay refuses it.
   final List<String> addedContacts = [];
   final Set<String> removedContacts = {};
@@ -451,46 +448,6 @@ class LayoutRelayClient extends FakeRelayClient {
 
   @override
   Future<Map<String, dynamic>> logoutAuth(String accessToken, {String? refreshToken}) async => const {};
-
-  @override
-  Future<Map<String, dynamic>> listDevices(String accessToken) async {
-    Map<String, dynamic> device(
-      String id,
-      String name,
-      String platform,
-      String trust, {
-      required DateTime trustedAt,
-      String? joinedFrom,
-      bool revoked = false,
-    }) =>
-        {
-          'id': id,
-          'deviceName': name,
-          'platform': platform,
-          'isActive': !revoked,
-          'trustState': trust,
-          'revokedAt': revoked ? DateTime.utc(2026, 4, 1, 9).toIso8601String() : null,
-          'trustedAt': trustedAt.toIso8601String(),
-          'joinedFromDeviceId': joinedFrom == null ? null : me.deviceId,
-          'joinedFromDeviceName': joinedFrom,
-          'joinedFromPlatform': joinedFrom == null ? null : 'android',
-          'createdAt': trustedAt.toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 2).toIso8601String(),
-          'lastSyncAt': DateTime.utc(2026, 3, 30).toIso8601String(),
-          'lastTrustedActivityAt': DateTime.utc(2026, 4, 2).toIso8601String(),
-        };
-    // The laptop has gone quiet, until a test revokes it.
-    final laptopRevoked = revokedDevices.contains('dev-laptop');
-    return {
-      'activeDeviceId': me.deviceId,
-      'items': [
-        device(me.deviceId, _deviceNames[0], 'android', 'current', trustedAt: DateTime.utc(2026, 4, 1, 8)),
-        device('dev-laptop', _deviceNames[1], 'macos', laptopRevoked ? 'revoked' : 'stale',
-            trustedAt: DateTime.utc(2026, 3, 20, 8), joinedFrom: _deviceNames[0], revoked: laptopRevoked),
-        device('dev-old', _deviceNames[2], 'ios', 'revoked', trustedAt: DateTime.utc(2026, 3, 10, 8), revoked: true),
-      ],
-    };
-  }
 
   @override
   Future<Map<String, dynamic>> initTransfer(String accessToken, String deviceId) async => {

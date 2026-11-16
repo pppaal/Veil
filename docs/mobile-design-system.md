@@ -28,7 +28,7 @@ Field names of `VeilPalette` (apps/mobile/lib/src/core/theme/veil_theme.dart) ar
 | Token | Hex | Use | Verified |
 |---|---|---|---|
 | canvas | #FFFFFF | page of Chats, Contacts, chat room, auth, onboarding, lock | |
-| canvasAlt | #F2F2F7 | page of grouped screens: Settings, Profile, Devices, Security, App lock settings, One-time link, Device transfer | |
+| canvasAlt | #F2F2F7 | page of grouped screens: Settings, Profile, Blocked accounts, App lock settings, One-time link, Device transfer | |
 | surface | #FFFFFF | group container on a grouped page, list rows, bars | |
 | surfaceAlt | #E9E9EB | incoming bubble, search and composer field fill, disabled button fill, notice fill on white pages | |
 | surfaceRaised | #FFFFFF | sheets, dialogs, menus (the only shadowed surfaces) | |
@@ -263,14 +263,14 @@ Rules
 | relay, the relay | server (or nothing: "Connecting…") |
 | opaque envelope / opaque blob / payload / envelope | encrypted message |
 | bind this device / binding / bound / device-bound | create account / this phone / your account lives on this phone |
-| trusted device graph / graph summary / graph expansion | Devices |
+| trusted device graph / graph summary / graph expansion | (deleted: an account runs on one phone at a time, so nothing lists devices) |
 | local barrier / privacy shield | App lock / locked |
 | claim code / transfer payload / token / new-device claim | transfer code |
 | identity material / secret refs / private material | keys |
 | discovery / discovery layer / handle discovery | find (people find you by your handle) |
 | peer | contact (or the person's name) |
 | conversation (in UI labels) | chat ("Chats", "New chat", "Delete chat") |
-| wipe / erase / revoke this device (mixed) | "Sign out" for this phone (the server signs it out, then it is erased); "Delete account" for the account; "Remove" for another device |
+| wipe / erase / revoke this device (mixed) | "Sign out" for this phone (the server signs it out, then it is erased); "Delete account" for the account |
 | session rejected by the server | Couldn't sign in as @alex |
 | Keys: Published | (not shown: the Security details screen is gone) |
 | private beta | (deleted) |
@@ -282,7 +282,7 @@ Rules
 - appLockHeroTitle "VEIL never unlocks itself remotely." → key deleted; the setup screen's one line is `appLockSetupFooter` "If you forget your PIN, there's no way to reset it."
 - onboardingWarnTitle "No backup.\nNo recovery.\nNo leaks." → "Before you start"
 - onboardingWarnDestructiveBody (any variant) → `onboardingWarnLine2` "If you lose the phone, your account and messages are gone for good."
-- settingsSectionDeviceGraph "TRUSTED DEVICE GRAPH" → "Devices"; settingsSectionSession "SESSION" → "Account"; settingsSectionPrivacy → "Privacy"; settingsSectionSecurity → "Security"
+- settingsSectionDeviceGraph "TRUSTED DEVICE GRAPH" → deleted with the Devices screen (one phone per account; "Move to a new phone" sits in Account, as Signal's Transfer account does); settingsSectionSession "SESSION" → "Account"; settingsSectionPrivacy → "Privacy"; settingsSectionSecurity → "Security"
 - conversationsRelayLinked / conversationsCount / conversationsNoBackup "Relay linked · 8 conversations · No backup" → keys deleted
 - chatBannerDeliveryStalled "Delivery stalled" + "Retry once the relay is reachable." → key deleted, and every other banner for sending: a failed message says "Not sent. Tap to retry." under its own bubble, and while offline the bar's subtitle reads "Connecting…".
 - chatIdentityChangedTitle "Safety number changed" (keep) + body "Nothing is sent to the new key until you review it." → "Nothing is sent until you review it." action "Review"
@@ -293,16 +293,16 @@ Rules
 - securityStatusAccountRecoveryDetail "No recovery email, reset flow, or admin restore path exists" → deleted with the Security details screen; Before you start says it once.
 - deviceTransferTitle "Device Transfer" → "Move to a new phone" on the old phone and `deviceTransferNewTitle` "Move from another phone" on the new one; the "Old phone / New phone" switch is deleted (each side has its own entry).
 - safetyNumbersDetailBody (em dash version) → "Check these numbers match {name}'s phone, in person or on a call."
-- settingsDeviceNoteStale "recent trusted activity has gone quiet" → deleted; a stale device's one grey line is `settingsDeviceInactiveSince` "Inactive since {when}".
+- settingsDeviceNoteStale "recent trusted activity has gone quiet" → deleted, with the Devices screen and every key of it: devices are created only at sign-up and when a move completes, which revokes the old phone in the same transaction, so a real account never had a second device to list.
 - Hints: start_direct_chat_screen.dart hint "icarus" → "Name or handle"; start_group hints "Signal Boost" → none (the label says "Group name (required)"), "icarus, daedalus, minos" → "Add a handle"
 - Seed and demo names (test/layout/support/layout_seed.dart, web fixtures): ordinary names (Alex Kim, Sam Rivera, Priya Nair, Jonas Weber, Mia Chen, Omar Haddad, Lena Fischer, Tom Walsh); keep exactly one long name for the overflow case ("Alexandra Montgomery-Whitfield").
 - Seed messages (the same file, and the Play and iPhone shots drawn from it): short lines as people text them, mostly one line, lowercase starts allowed, each with its own time on Tuesday, April 7, 2026. The long message and the long link sit in Sam's history of the evening before, which only the chat-room-history case scrolls to; the one notice from the other side ("@priya took a screenshot") is in Priya's chat (chat-room-notices). The Play shots show the natural chat: no link, no notice, no file.
 6. Banned words and phrases in UI copy: deliberate, ephemerality, charter, opaque, graph, barrier, binding, relay, payload, envelope, material, "by design", "private by", "not just", "this is intentional", "loss is final", any sentence beginning "VEIL".
-7. Titles and labels (final): Chats, Contacts, Settings, New chat, New group, Choose a handle, Before you start, Privacy notice, App lock, Move to a new phone, Move from another phone, Devices, Blocked accounts, Safety number, Profile, One-time link, Sign out, Delete account.
+7. Titles and labels (final): Chats, Contacts, Settings, New chat, New group, Choose a handle, Before you start, Privacy notice, App lock, Move to a new phone, Move from another phone, Blocked accounts, Safety number, Profile, One-time link, Sign out, Delete account.
 
 ## 11. Screen rules (mobile)
 
-Common: every screen is a `VeilShell`; white pages (Chats, Contacts, chat room, New chat, New group, auth, onboarding, privacy notice, lock, Safety number) use `grouped: false`; Settings, Profile, Devices, Blocked accounts, App lock setup, both transfer flows and One-time link use `grouped: true`. Each screen copies the stock messenger it is closest to (Signal first, then WhatsApp and Telegram): one title, one line where one is needed, one primary button. A failure is a toast, a field's error, or one line by the control that was used; never a box of explanation.
+Common: every screen is a `VeilShell`; white pages (Chats, Contacts, chat room, New chat, New group, auth, onboarding, privacy notice, lock, Safety number) use `grouped: false`; Settings, Profile, Blocked accounts, App lock setup, both transfer flows and One-time link use `grouped: true`. Each screen copies the stock messenger it is closest to (Signal first, then WhatsApp and Telegram): one title, one line where one is needed, one primary button. A failure is a toast, a field's error, or one line by the control that was used; never a box of explanation.
 
 ### 11.1 Chats (conversation_list_screen/phone/pane/parts)
 Bar "Chats" with a pencil `IconButton` (New chat); while not connected the title itself reads "Connecting…" or "Offline". No filters, no status line. Search field 44 under the bar; results in "Chats" and "Messages" sections, a section with no hit hidden, the match in bold; no hits: 'No results for "…"'. A failed refresh is one muted line "Couldn't refresh chats" with a ghost Retry above the list. `ConversationRow`: avatar 48, name, time (none on a chat with no message), preview "You: …" or "{first name}: …" in groups, a system line as its own words; unread badge; a muted chat's bell-off glyph. Empty: "No chats yet" and "New chat". Wide: the empty pane shows "Select a chat" in muted text, also when the list is empty.
@@ -317,13 +317,13 @@ New chat: one search field "Name or handle"; rows "New group" and "One-time link
 White page. Search field, then one run of rows in name order with no letter headers (avatar 40, name, @handle). A failed refresh is one muted line "Couldn't refresh contacts" with Retry above the list. Empty: "No contacts yet" and "Add contact"; a search with no hit: "No results". Add sheet: title, "Handle" with a fixed "@", "Nickname (optional)", "Add"; no helper, no footer; a handle the server doesn't know is the field's error "Couldn't find @x". Actions sheet: the contact, then Message, Edit nickname, Remove contact, Report, Block (only Block in danger). Nickname sheet: title, field with "Only you see this." under it, Save.
 
 ### 11.5 Settings (settings_screen, settings_danger_zone)
-Grouped page, one centred column of at most 600 on wide screens. Profile row (avatar, name, @handle, chevron, no value). Appearance: "Theme" with its value; a tap opens a sheet of Light, Dark, System with a check. Privacy: "Send read receipts" (one line under it), "Send typing indicators", "Blocked accounts" (the count when above 0). Security: App lock (On/Off; a tap turns it on while off), Lock now, Screenshots, App switcher preview, Notifications (values, not tappable), and one footer line (section 9). Devices: "Devices" (the number of listed devices) and "Move to a new phone". Account: "Sign out" and "Delete account", both red. Sign out is the server-confirmed revoke of this phone and then the erase; if the server doesn't confirm, nothing is erased and a toast says so. Both dialogs ask for the user's own handle ("Type @alex to confirm."), compared without case or "@".
+Grouped page, one centred column of at most 600 on wide screens. Profile row (avatar, name, @handle, chevron, no value). Appearance: "Theme" with its value; a tap opens a sheet of Light, Dark, System with a check. Privacy: "Send read receipts" (one line under it), "Send typing indicators", "Blocked accounts" (the count when above 0). Security: App lock (On/Off; a tap turns it on while off), Lock now, Screenshots, App switcher preview, Notifications (values, not tappable), and one footer line (section 9). Account: "Move to a new phone", then "Sign out" and "Delete account", both red (Signal's Account page: Transfer account, then Delete account). No Devices row or screen: an account runs on one phone at a time, so the list could only ever hold this one. Sign out is the server-confirmed revoke of this phone and then the erase; if the server doesn't confirm, nothing is erased and a toast says so. Both dialogs ask for the user's own handle ("Type @alex to confirm."), compared without case or "@".
 
 ### 11.6 Profile (profile_screen)
 Grouped page. Avatar 72, name, "@alex" centred; a tap on the handle copies it ("Handle copied"). One group "Name" with the field (hint "Optional"); "Save" in the bar while the name changed; footer "Only you see your name."
 
-### 11.7 Devices and Blocked accounts (trusted_devices_screen, blocked_accounts_screen)
-Devices: no refresh button (it refreshes on open and on a pull). "This device": name, "Android · Added Apr 1", not tappable. "Other devices": name, "Last active Apr 2" or "Inactive since Apr 2" once quiet (today/yesterday for recent days; the server keeps only the UTC day). A tap asks "Remove MacBook Air?" with Cancel and a red Remove; a toast "MacBook Air removed". Removed devices are not listed; no icons, no state words, no colours. Load failed: the title and Retry. Blocked accounts: rows with name and @handle, or "@handle" alone, and an inline Unblock; empty: "No blocked accounts" at the top of the list.
+### 11.7 Blocked accounts (blocked_accounts_screen)
+There is no Devices screen (section 11.5). Blocked accounts: rows with name and @handle, or "@handle" alone, and an inline Unblock; empty: "No blocked accounts" at the top of the list.
 
 ### 11.8 Safety number (safety_numbers_screen, safety_number_cards)
 White page. Person row: avatar 56, name, @handle, "Verified" with a check in success or "Not verified" in textMuted. The 12 groups of 5 digits in tabular figures, then one sentence "Check these numbers match {name}'s phone, in person or on a call.", "Verified Nov 16, 2026" when verified, "Mark as verified" while not, then one row of two text buttons "Copy my code" and "Paste their code" (no QR code: no app here scans one), and "Renew keys" as a quiet button at the bottom. Identity change: the notice first, the person, "New safety number" over the new digits, the sentence, "Verify the new number" (or "Accept new number"; "Keep the old one" where declining is allowed), the two text buttons. Changed in a group you share: the notice "Changed in a group you share" / "Review it there first." / Review, then "Number before the change" over the pinned digits, and nothing that would confirm the old key. Group: a row per member, "Verified" with a check only on verified members, no footer; empty: the title alone.

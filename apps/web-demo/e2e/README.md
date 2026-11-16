@@ -29,7 +29,9 @@ replies, reactions, edits, deletes with undo, search, forwarding, tabs,
 read receipts, history paging and local history deletion (`messaging`),
 pushes, read receipts and typing with the realtime gateway on
 (`realtime`), image and file round trips (`attachments`), safety numbers
-and identity changes accepted and declined (`trust`), device transfer onto
+and identity changes accepted and declined (`trust`), blocking from a
+message, what a block refuses and the Settings list of blocked accounts
+(`blocking`), device transfer onto
 a browser that holds another identity, through a lost completion answer
 and a refused completion (`transfer`), one-time secret links
 (`secret-link`) and the KakaoTalk import (`kakao-import`). They were

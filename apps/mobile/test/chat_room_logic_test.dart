@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
-import 'package:veil_mobile/src/features/chat/presentation/chat_message_runs.dart' show chatDayLabel;
+import 'package:veil_mobile/src/features/chat/presentation/chat_message_runs.dart' show chatDayLabel, sameChatRun;
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart' show conversationTitle;
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
@@ -34,6 +34,17 @@ void main() {
     // Stamped by a server ahead of this phone's clock: today, as its Chats
     // row shows its time, not tomorrow's date.
     expect(chatDayLabel(l10n, DateTime(2026, 11, 16, 0, 5), now: now), 'Today');
+  });
+
+  test('a run follows the day dividers: one stamped after the phone\'s midnight runs on from today\'s', () {
+    // Three minutes apart across midnight, seen while this phone reads
+    // 11:59 PM: both sit under the one "Today" divider (sameChatDay), so
+    // they are one run.
+    final before = _message(MessageDeliveryState.sent, sentAt: DateTime(2026, 4, 6, 23, 58));
+    final after = _message(MessageDeliveryState.sent, sentAt: DateTime(2026, 4, 7, 0, 1));
+    expect(sameChatRun(before, after, now: DateTime(2026, 4, 6, 23, 59)), isTrue);
+    // Seen the next morning, they are on two days with a divider between.
+    expect(sameChatRun(before, after, now: DateTime(2026, 4, 7, 9)), isFalse);
   });
 
   test('messageBubbleSemanticsLabel includes delivery state for sent messages', () {
@@ -133,12 +144,12 @@ void main() {
   });
 }
 
-ChatMessage _message(MessageDeliveryState state) {
+ChatMessage _message(MessageDeliveryState state, {DateTime? sentAt}) {
   return ChatMessage(
     id: 'msg-1',
     clientMessageId: 'client-1',
     senderDeviceId: 'device-1',
-    sentAt: DateTime.utc(2026, 4, 7, 10),
+    sentAt: sentAt ?? DateTime.utc(2026, 4, 7, 10),
     envelope: const CryptoEnvelope(
       version: 'dev-v1',
       conversationId: 'conv-1',

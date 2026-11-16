@@ -173,8 +173,8 @@ class ChatMessageList extends ConsumerWidget {
     final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
     final now = ref.watch(wallClockProvider)();
     final startsDay = !hidden && (previous == null || !sameChatDay(previous.sentAt, message.sentAt, now: now));
-    final runsOn = previous != null && sameChatRun(previous, message);
-    final runsInto = next != null && sameChatRun(message, next);
+    final runsOn = previous != null && sameChatRun(previous, message, now: now);
+    final runsInto = next != null && sameChatRun(message, next, now: now);
     final position = switch ((runsOn, runsInto)) {
       (false, false) => VeilBubblePosition.single,
       (false, true) => VeilBubblePosition.first,

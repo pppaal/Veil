@@ -32,7 +32,8 @@ void main() {
       handle: 'alice',
       userId: 'user-alice',
       deviceId: 'dev-alice',
-      // As the app wires it (messenger_providers.dart).
+      // Built the way messenger_providers.dart builds it; the app's own
+      // wiring is checked in app_notification_filter_test.dart.
       notificationsFor: (recorder) => SilencedNotifications(
         recorder,
         isSilenced: (conversationId) => conversationSilenced(

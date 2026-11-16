@@ -432,6 +432,8 @@ claims:
         name: "a block refuses sends both ways until it is lifted"
       - test: apps/mobile/test/safety/safety_relay_test.dart
         name: "a muted chat raises no notification until the mute ends"
+      - test: apps/mobile/test/safety/app_notification_filter_test.dart
+        name: "the app raises no notification for a muted chat or a 1:1 with someone blocked, and does for the rest"
       - test: apps/mobile/test/transport/veil_api_client_transport_test.dart
         name: "an abuse report carries the FileAbuseReportRequest fields and no text"
       - test: apps/api/src/modules/messages/messages.service.spec.ts

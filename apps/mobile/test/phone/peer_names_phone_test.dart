@@ -10,6 +10,7 @@ import 'package:veil_mobile/src/features/conversations/presentation/conversation
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../layout/support/layout_seed.dart';
+import '../support/fake_relay.dart';
 import 'phone_app.dart';
 
 // The names on the screens come from this phone. The relay keeps none: it
@@ -130,6 +131,33 @@ void main() {
       expect(find.text(_en.chatTypingSuffix('Sam Rivera')), findsOneWidget);
       world.messenger.presenceTyping.typingStopped(groupConversationId);
       await pumpFrames(tester, frames: 2);
+    });
+  });
+
+  // The row's "Omar: …" names the writer as the bubbles do, so it follows
+  // what this phone binds as well as the nicknames: once omar_h's handle is
+  // bound to another account too, the nickname names neither, and the row
+  // says "@omar_h" at once, though no nickname changed.
+  testWidgets('a group row names its last writer anew when a binding changes, not only a nickname', (tester) async {
+    await withPhoneApp(tester, identities, location: '/conversations', withGroup: true, body: (world) async {
+      String? snippet() => tester.widget<ConversationRow>(_row(groupName)).snippet;
+      expect(snippet(), 'Omar: $latestGroupLine');
+
+      // The relay lists another account to alex as @omar_h in a 1:1,
+      // which alex lets through.
+      world.relay.addParty(RelayParty(
+        handle: 'mallory',
+        userId: 'user-mallory',
+        deviceId: 'dev-mallory',
+        identity: identities.peer,
+      ));
+      world.relay.listedHandles[selfHandle] = {'mallory': 'omar_h'};
+      world.relay.addDirect('conv-mallory', 'mallory', selfHandle);
+      await world.messenger.refreshConversations();
+      await world.messenger.acknowledgePeerAccount('conv-mallory');
+      await pumpFrames(tester, frames: 4);
+
+      expect(snippet(), '@omar_h: $latestGroupLine');
     });
   });
 }

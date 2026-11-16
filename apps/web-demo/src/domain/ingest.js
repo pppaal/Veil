@@ -24,15 +24,17 @@ import { createMediaHandle } from './media.js';
 import { KIND_LABELS, UNSUPPORTED_TEXT } from './payload.js';
 
 export const DELETED_TEXT = 'Message deleted';
+// What a message that could not be opened shows, by why: keys of
+// i18n/en.json, which the app resolves through options.label.
 export const LOCKED_LABELS = Object.freeze({
-  legacy: 'Encrypted message (older format)',
-  'no-key': 'Encrypted message (no key yet)',
-  failed: 'Encrypted message (could not decrypt)',
-  identityRejected: 'Encrypted message (safety number changed)',
+  legacy: 'msg.placeholder.legacy',
+  'no-key': 'msg.placeholder.noKey',
+  failed: 'msg.placeholder.failed',
+  identityRejected: 'msg.placeholder.locked',
   // a key the user declined, or a device of another contact: nothing to review
-  identityRefused: 'Encrypted message (declined security key)',
-  sessionMissing: 'Encrypted message (no session)',
-  'own-missing': 'Encrypted message (not on this device)',
+  identityRefused: 'msg.placeholder.refused',
+  sessionMissing: 'msg.placeholder.noKey',
+  'own-missing': 'msg.placeholder.ownMissing',
 });
 const PREVIEW_MAX_CHARS = 120;
 // Views with nothing left to show: no bubble, preview or search hit.
@@ -45,21 +47,22 @@ const GONE_KINDS = new Set(['cleared', 'expired']);
 // same message: when the ciphertext and everything its decryption is bound
 // to are unchanged, its content is reused instead of opening it again, which
 // keeps blob URLs alive across refreshes. options.now is the time expiries
-// are judged at (src/core/expiry.js expiryNow).
-export async function ingestMessage(raw, { open, retire, media, previous = null, now = expiryNow() }) {
+// are judged at (src/core/expiry.js expiryNow). options.label(key) turns a
+// LOCKED_LABELS key into the words shown; without it the key stands.
+export async function ingestMessage(raw, { open, retire, media, previous = null, now = expiryNow(), label = (key) => key }) {
   const envelope = serializeMessageForCache(raw);
   if (raw.deletedAt) {
     // A view that is already a tombstone was retired when it became one.
     if (previous?.kind !== 'deleted') await retire(raw);
     return view(envelope, { kind: 'deleted', displayText: DELETED_TEXT });
   }
-  const opened = await openView(envelope, raw, { open, media, previous });
+  const opened = await openView(envelope, raw, { open, media, previous, label });
   if (!isPast(opened.expiresAtMs, now)) return opened;
   await retire(raw);
   return view(envelope, { kind: 'expired', displayText: '' });
 }
 
-async function openView(envelope, raw, { open, media, previous }) {
+async function openView(envelope, raw, { open, media, previous, label }) {
   if (previous && previous.kind !== 'locked' && sameSealedContent(previous, raw)) {
     // The relay can bring an expiry forward, never push it back.
     const expiresAtMs = GONE_KINDS.has(previous.kind) ? null : effectiveExpiry(previous.expiresAtMs, envelope.expiresAt);
@@ -75,7 +78,7 @@ async function openView(envelope, raw, { open, media, previous }) {
   if (!result?.content) {
     return view(envelope, {
       kind: 'locked',
-      displayText: LOCKED_LABELS[result?.failure] ?? LOCKED_LABELS.failed,
+      displayText: label(LOCKED_LABELS[result?.failure] ?? LOCKED_LABELS.failed),
       expiresAtMs: effectiveExpiry(null, envelope.expiresAt),
     });
   }

@@ -8,19 +8,21 @@ import { isLegacyIdentity } from '../../crypto/identity.js';
 import { shownHandle } from '../../domain/handles.js';
 import { isGone, isShown } from '../../domain/ingest.js';
 import { isPendingId } from '../../domain/local-messages.js';
-import { muteSecondsFromMinutes } from '../../domain/mute.js';
 import { reactionsByTarget } from '../../domain/reactions.js';
 import { $, avatarFor, el, icon, iconButton } from '../dom.js';
+import { shortcutLabel } from '../keys.js';
 import { toast } from '../toast.js';
+import { createChatMenu } from './chat-menu.js';
 import { holdTextKey } from './key-change-banner.js';
 
 // Near enough to the bottom to follow new messages down.
 const NEAR_BOTTOM_PX = 120;
 
 // messageList, composer, keyChangeBanner, safetyDialog, panelSearch: the
-// views a panel is made of; messages: src/app/services/messages.js;
-// safety: src/app/services/safety.js; confirm: src/ui/confirm.js.
-export function createChatView({ store, stack, messages, messageList, composer, keyChangeBanner, safetyDialog, panelSearch, safety, confirm }) {
+// views a panel is made of; reportDialog: what the menu's Report opens;
+// messages: src/app/services/messages.js; safety:
+// src/app/services/safety.js; confirm: src/ui/confirm.js.
+export function createChatView({ store, stack, messages, messageList, composer, keyChangeBanner, safetyDialog, panelSearch, reportDialog, safety, confirm }) {
   const { state } = store;
   const readMarked = new Set(); // message ids this session marked read
   const observers = new Map(); // convId -> IntersectionObserver
@@ -70,8 +72,8 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     try {
       await stack.secure.forgetConversation(convId, Math.max(0, ...known.map((message) => message.conversationOrder ?? 0)));
       for (const message of known) await messages.uncache(message);
-    } catch (error) {
-      toast(t('history.deleteFailed', { error: error.message }), 'error');
+    } catch {
+      toast(t('history.deleteFailed'), 'error');
       return;
     }
     messages.setMessages(convId, []);
@@ -79,29 +81,12 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     store.notify('sidebar', 'panels');
   }
 
-  // The bell shows whether the conversation is muted.
-  function showMuted(button, muted) {
-    button.setAttribute('aria-pressed', String(muted));
-    button.replaceChildren(icon(muted ? 'bell-off' : 'bell'));
-  }
+  const chatMenu = createChatMenu({ store, safety, reportDialog, confirm, clearHistory: deleteLocalHistory });
 
-  // Unmuted, a click asks how long to mute for; muted, it unmutes.
-  async function toggleMute(convId, button) {
-    if (state.muted.has(convId)) {
-      await safety.setMute(convId, null);
-      showMuted(button, false);
-      return;
-    }
-    const minutes = window.prompt(t('chat.mutePrompt'), '60');
-    if (!minutes) return;
-    await safety.setMute(convId, muteSecondsFromMinutes(minutes));
-    showMuted(button, true);
-  }
-
-  // Typing beats presence; otherwise the line under the name stays empty.
+  // Only typing shows under the name: nothing tells this device whether a
+  // contact is online.
   function subtitle(conv, peer) {
     if (peer && state.typing.get(conv.id)?.has(peer.userId)) return { text: t('chat.typing'), className: 'sub typing' };
-    if (peer && state.online.has(peer.userId)) return { text: t('chat.online'), className: 'sub online' };
     return { text: '', className: 'sub' };
   }
 
@@ -125,25 +110,25 @@ export function createChatView({ store, stack, messages, messageList, composer, 
 
   function header(conv, peer, directPeer, legacyIdentity) {
     const sub = subtitle(conv, peer);
-    const mute = iconButton('bell', t('chat.muteToggle'), {
-      class: 'icon-btn mute-toggle',
-      onclick: (event) => toggleMute(conv.id, event.currentTarget),
-    });
-    showMuted(mute, state.muted.has(conv.id));
+    const muted = store.isMuted(conv.id);
     return el('div', { class: 'panel-header' }, [
       avatarFor(peer?.handle ?? '?', 'sm'),
       el('div', { class: 'panel-title' }, [
         el('div', { class: 'panel-title-row' }, [
           el('div', { class: 'name' }, ['@' + shownHandle(peer?.handle)]),
           directPeer && !legacyIdentity ? verifiedBadge(conv.id) : null,
+          muted ? el('span', { class: 'muted-mark', title: t('mute.doneAlways') }, [icon('bell-off'), el('span', { class: 'sr-only' }, [t('mute.doneAlways')])]) : null,
         ]),
         el('div', { class: sub.className }, [sub.text]),
       ]),
       el('div', { class: 'panel-actions' }, [
-        iconButton('search', t('chat.findShortcut'), { title: t('chat.find'), onclick: () => panelSearch.open(conv.id) }),
+        iconButton('search', t('chat.findShortcut', { shortcut: shortcutLabel('F') }), { onclick: () => panelSearch.open(conv.id) }),
         directPeer && !legacyIdentity ? iconButton('shield', t('safety.open'), { onclick: () => safetyDialog.open(conv.id, directPeer) }) : null,
-        iconButton('trash', t('history.delete'), { onclick: () => deleteLocalHistory(conv.id) }),
-        mute,
+        iconButton('more', t('chat.menu'), {
+          class: 'icon-btn chat-menu-btn',
+          'aria-haspopup': 'menu',
+          onclick: (event) => chatMenu.open(event.currentTarget, conv.id, directPeer),
+        }),
       ]),
     ]);
   }

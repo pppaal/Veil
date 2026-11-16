@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   bubbleTexts,
   chooseAction,
+  chooseChatMenuItem,
   closeAll,
   expectNoErrors,
   openChatWith,
@@ -51,21 +52,31 @@ test.describe('a direct conversation', () => {
     await expect(page.locator('#new-peer-error')).toHaveText('Enter a handle');
     await page.fill('#new-peer-input', alice.handle);
     await page.click('#new-confirm');
-    await expect(page.locator('#new-peer-error')).toHaveText("You can't chat with yourself");
+    await expect(page.locator('#new-peer-error')).toHaveText("That's your own handle");
     await page.fill('#new-peer-input', `nobody${id}`);
     await page.press('#new-peer-input', 'Enter');
-    await expect(page.locator('#new-peer-error')).toHaveText('User not found');
+    await expect(page.locator('#new-peer-error')).toHaveText(`Couldn't find @nobody${id}`);
     await page.click('#new-cancel');
     await expect(page.locator('#new-chat-dialog')).toBeHidden();
 
     await startChat(alice, bob);
     await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}`]);
+    // One open chat needs no tabs: the strip shows once a second one opens.
+    await expect(page.locator('#tab-strip')).toBeHidden();
     await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('No messages yet');
     await expect(page.locator('.panel-input textarea')).toHaveAttribute('placeholder', 'Message');
     await expect(page.locator('.panel-input > *')).toHaveCount(5);
     await expect(page.locator('.panel-input .file-btn')).toHaveAttribute('aria-label', 'Attach a file');
     await expect(page.locator('.panel-input .image-btn:not(.file-btn)')).toHaveAttribute('aria-label', 'Attach an image');
-    await expect(page.locator('.panel-header .mute-toggle')).toHaveAttribute('aria-pressed', 'false');
+    // Search, the safety number and a menu for the rest: no trash or bell.
+    await expect(page.locator('.panel-header .panel-actions button')).toHaveCount(3);
+    await expect(page.locator('.panel-header .chat-menu-btn')).toHaveAttribute('aria-label', 'More options');
+    await page.locator('.panel-header .chat-menu-btn').click();
+    await expect(page.locator('.chat-menu .menu-item')).toHaveText(['Mute notifications', 'Report…', 'Block…', 'Clear chat history…']);
+    await expect(page.locator('.chat-menu .menu-danger')).toHaveText(['Block…', 'Clear chat history…']);
+    await page.locator('.chat-menu .menu-item', { hasText: 'Mute notifications' }).click();
+    await expect(page.locator('.chat-menu .menu-item')).toHaveText(['1 hour', '8 hours', '1 week', 'Always']);
+    await page.keyboard.press('Escape');
     await expect(bob.page.locator('.conv-item', { hasText: `@${alice.handle}` })).toContainText('No messages yet');
     expectNoErrors(alice, bob);
   });
@@ -79,7 +90,7 @@ test.describe('a direct conversation', () => {
     await expect(bob.page.locator('.panel-msgs .group-meta')).toHaveCount(0);
     await expect(bob.page.locator('.panel-msgs .msg-group.them > .avatar')).toHaveCount(0);
     await expect(alice.page.locator('.msg-group.me .msg-status')).toHaveAttribute('title', 'Sent');
-    await expect(alice.page.locator('.msg-group.me .msg-status use')).toHaveAttribute('href', '#i-check');
+    await expect(alice.page.locator('.msg-group.me .msg-status use')).toHaveAttribute('href', '#i-tick-sent');
 
     await send(bob, 'hi *alice* and `code`', 'hi alice and code');
     await expect.poll(() => bubbleTexts(alice), { timeout: 15_000 }).toEqual(['hello bob', 'hi alice and code']);
@@ -111,12 +122,14 @@ test.describe('a direct conversation', () => {
       await rowOf(bob, 'hello bob').click({ button: 'right' });
       await bob.page.locator('.msg-action-menu .msg-action-row button').first().click({ timeout: 2_000 });
     }).toPass({ timeout: 20_000 });
+    // One reaction shows no count, as on mobile.
     const mine = rowOf(bob, 'hello bob').locator('.msg-reaction-chip');
-    await expect(mine).toHaveText('👍 1');
+    await expect(mine).toHaveText('👍');
+    await expect(mine.locator('.msg-reaction-count')).toHaveCount(0);
     await expect(mine).toHaveClass(/mine/);
-    await expect(mine).toHaveAttribute('title', 'Your reaction. Click to remove it');
+    await expect(mine).toHaveAttribute('title', 'Remove reaction');
     const theirs = rowOf(alice, 'hello bob').locator('.msg-reaction-chip');
-    await expect(theirs).toHaveText('👍 1', { timeout: 15_000 });
+    await expect(theirs).toHaveText('👍', { timeout: 15_000 });
     await expect(theirs).not.toHaveClass(/mine/);
     await expect(alice.page.locator('.panel-msgs')).not.toContainText('Reaction');
 
@@ -132,10 +145,9 @@ test.describe('a direct conversation', () => {
     await rowOf(alice, 'hello bob').click({ button: 'right' });
     const own = alice.page.locator('.msg-action-menu');
     await expect(own.locator('.msg-action-row button')).toHaveText(['👍', '❤️', '😂', '😢', '🔥', '🎉']);
-    await expect(own.locator('.msg-action-item').first()).toHaveText('Reply');
-    await expect(own.locator('.msg-action-item', { hasText: 'Edit' })).toHaveText('Edit');
-    await expect(own.locator('.msg-action-item.danger', { hasText: 'Delete' })).toHaveText('Delete');
-    await alice.page.locator('#sidebar-me').click();
+    await expect(own.locator('.msg-action-item')).toHaveText(['Reply', 'Copy', 'Forward', 'Edit', 'Delete…']);
+    await expect(own.locator('.msg-action-item.danger')).toHaveText(['Delete…']);
+    await alice.page.locator('.topbar-name').click();
     await expect(own).toHaveCount(0);
 
     await rowOf(alice, 'replying to you').click({ button: 'right' });
@@ -143,14 +155,14 @@ test.describe('a direct conversation', () => {
     await expect(peers.locator('.msg-action-item', { hasText: 'Copy' })).toHaveText('Copy');
     await expect(peers.locator('.msg-action-item', { hasText: 'Edit' })).toHaveCount(0);
     await alice.page.keyboard.press('Escape');
-    await alice.page.locator('#sidebar-me').click();
+    await alice.page.locator('.topbar-name').click();
     expectNoErrors(alice, bob);
   });
 
   // Added with the split, which fixed this: the monolith added these items
   // to an open menu from the row right-clicked before, so the first
   // right-click had none and a report could name the previous message.
-  test('a peer message offers forward, block and report about itself on the first right-click', async () => {
+  test('a peer message offers forward and report about itself on the first right-click', async () => {
     const { page } = alice;
     const row = rowOf(alice, 'replying to you');
     const messageId = await row.getAttribute('data-msg-id');
@@ -166,20 +178,27 @@ test.describe('a direct conversation', () => {
       }).observe(document.body, { childList: true });
     });
     await rowOf(alice, 'hello bob').click({ button: 'right' });
-    await page.locator('#sidebar-me').click();
+    await page.locator('.topbar-name').click();
     await row.click({ button: 'right' });
     await expect.poll(() => page.evaluate(() => (window as unknown as { __openedMenus: Element[] }).__openedMenus.length)).toBe(2);
     expect(await page.evaluate(() => {
       const [, menu] = (window as unknown as { __openedMenus: Element[] }).__openedMenus;
       return [...menu.querySelectorAll('.msg-action-item')].map((item) => item.textContent);
-    })).toEqual(['Reply', 'Copy', 'Forward', 'Block', 'Report']);
+    })).toEqual(['Reply', 'Copy', 'Forward', 'Report…']);
 
     const menu = page.locator('.msg-action-menu');
     await expect(async () => {
       if (!(await menu.isVisible())) await row.click({ button: 'right' });
       await menu.locator('.msg-action-item', { hasText: 'Report' }).click({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
+    // From a message, the dialog says the message is named but not read;
+    // blocking too is on until unticked.
+    await expect(page.locator('#report-dialog .dialog-sub')).toHaveText(
+      'We get both accounts, the reason and which message, but not what it says. They won\'t be told.',
+    );
+    await expect(page.locator('#report-also-block')).toBeChecked();
     await page.locator('#report-dialog input[value="harassment"]').check();
+    await page.locator('#report-also-block').uncheck();
     await page.locator('#report-submit').click();
     await expect(toast(alice, 'Report sent')).toBeVisible();
     type Report = { reportedHandle: string; body: { messageId: string; reason: string } };
@@ -189,10 +208,18 @@ test.describe('a direct conversation', () => {
   });
 
   test('an edit replaces the text on both sides', async () => {
-    await alice.page.evaluate(() => {
-      window.prompt = () => 'hello bob, edited';
-    });
+    // The edit happens in the composer, under its bar.
     await chooseAction(alice, 'hello bob', 'Edit');
+    await expect(alice.page.locator('.edit-banner .reply-banner-meta')).toHaveText('Editing message');
+    await expect(alice.page.locator('.panel-input textarea')).toHaveValue('hello bob');
+    await alice.page.evaluate(() => {
+      const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
+      textarea.value = 'hello bob, edited';
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(0);
+    await expect(alice.page.locator('.panel-input textarea')).toHaveValue('');
     await expect(rowOf(alice, 'hello bob, edited').locator('.msg-edited')).toHaveText('(edited)');
     await expect(rowOf(bob, 'hello bob, edited').locator('.msg-edited')).toHaveText('(edited)', { timeout: 15_000 });
     expectNoErrors(alice, bob);
@@ -202,13 +229,14 @@ test.describe('a direct conversation', () => {
     await send(alice, 'regretted words');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toContain('regretted words');
     await chooseAction(alice, 'regretted words', 'Delete');
-    await expect(alice.page.locator('#confirm-title')).toHaveText('Delete message');
+    await expect(alice.page.locator('#confirm-title')).toHaveText('Delete for everyone?');
+    await expect(alice.page.locator('#confirm-body')).toHaveText("They'll see that a message was deleted.");
     await alice.page.click('#confirm-ok');
     const undo = toast(alice, 'Message deleted');
     await expect(undo).toBeVisible();
     await undo.locator('button', { hasText: 'Undo' }).click();
     await expect(alice.page.locator('.panel-input textarea')).toHaveValue('regretted words');
-    await expect(toast(alice, 'Put back in the message box. Press Enter to send it again')).toBeVisible();
+    await expect(toast(alice, 'Back in the message box')).toBeVisible();
     for (const device of [alice, bob]) {
       await expect.poll(() => bubbleTexts(device), { timeout: 15_000 }).toContain('Message deleted');
       expect(await bubbleTexts(device)).not.toContain('regretted words');
@@ -227,11 +255,11 @@ test.describe('a direct conversation', () => {
     const search = page.locator('.panel-search input');
     await expect(search).toBeFocused();
     await search.fill('bob');
-    await expect(page.locator('.panel-search .count')).toHaveText('1/1');
+    await expect(page.locator('.panel-search .count')).toHaveText('1 of 1');
     await expect(rowOf(alice, 'hello bob, edited')).toHaveClass(/search-active/);
     await expect(rowOf(alice, 'hello bob, edited').locator('mark')).toHaveText('bob');
     await search.fill('nothing like this');
-    await expect(page.locator('.panel-search .count')).toHaveText('0/0');
+    await expect(page.locator('.panel-search .count')).toHaveText('No results');
     await search.press('Escape');
     await expect(page.locator('.panel-search')).toHaveCount(0);
     expectNoErrors(alice);
@@ -255,7 +283,7 @@ test.describe('a direct conversation', () => {
     await startChat(alice, carol);
     await openChatWith(alice, bob);
     await chooseAction(alice, 'replying to you', 'Forward');
-    const dialog = alice.page.locator('.dialog', { hasText: 'Forward message' });
+    const dialog = alice.page.locator('.dialog', { hasText: 'Forward to…' });
     await expect(dialog.locator('.forward-list-item')).toHaveCount(1);
     await expect(dialog.locator('.forward-list-item')).toContainText(`@${carol.handle}`);
     await expect(dialog.locator('#fwd-confirm')).toBeDisabled();
@@ -269,6 +297,7 @@ test.describe('a direct conversation', () => {
   test('tabs switch, split and close', async () => {
     const { page } = alice;
     await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}`, `@${carol.handle}`]);
+    await expect(page.locator('#tab-strip')).toBeVisible();
     await expect(page.locator('#tab-strip .tab.active')).toHaveText(`@${bob.handle}`);
     await page.click('#split-btn');
     await expect(page.locator('#split-btn')).toHaveClass(/active/);
@@ -280,6 +309,7 @@ test.describe('a direct conversation', () => {
     await expect(page.locator('.panel .panel-title .name')).toHaveText(`@${carol.handle}`);
     await page.locator('#tab-strip .tab', { hasText: carol.handle }).locator('.tab-close').click();
     await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}`]);
+    await expect(page.locator('#tab-strip')).toBeHidden();
     await expect(page.locator('.panel .panel-title .name')).toHaveText(`@${bob.handle}`);
     expectNoErrors(alice);
   });
@@ -295,14 +325,15 @@ test.describe('a direct conversation', () => {
       await openChatWith(device, device === bob ? alice : bob);
       await expect.poll(() => bubbleTexts(device), { timeout: 30_000 }).toEqual(expected);
     }
-    await expect(bob.page.locator('.panel-msgs')).not.toContainText('Encrypted message');
+    await expect(bob.page.locator('.panel-msgs .msg-locked')).toHaveCount(0);
     expectNoErrors(alice, bob);
   });
 
-  test('deleting history on this device empties the conversation for good', async () => {
+  test('clearing the chat on this device empties the conversation for good', async () => {
     const { page } = bob;
-    await page.locator('.panel-header button[aria-label="Delete history on this device"]').click();
-    await expect(page.locator('#confirm-title')).toHaveText('Delete history on this device');
+    await chooseChatMenuItem(bob, 'Clear chat history');
+    await expect(page.locator('#confirm-title')).toHaveText('Clear this chat?');
+    await expect(page.locator('#confirm-body')).toHaveText('Messages are deleted from this browser for good. The other person keeps their copy.');
     await page.click('#confirm-ok');
     await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('No messages yet');
     await expect(page.locator('.conv-item', { hasText: `@${alice.handle}` }).locator('.conv-preview')).toHaveText('No messages yet');

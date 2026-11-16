@@ -10,9 +10,9 @@ const TYPING_IDLE_MS = 4000;
 
 // getIo() -> the socket.io client factory (window.io from socket.io.min.js),
 // or nothing when it did not load: then the app stays in polling mode.
-// inbound: src/app/services/inbound.js. onStatus(kind, text) reports the
-// connection; onPeerMessage() fires for every message pushed from another
-// device.
+// inbound: src/app/services/inbound.js. onStatus(kind) reports the
+// connection ('connected', 'connecting' or 'offline'); onPeerMessage() fires
+// for every message pushed from another device.
 export function createRealtime({ store, stack, history, outbox, inbound, messages, getIo, onStatus, onPeerMessage }) {
   const { state } = store;
   let socket = null;
@@ -43,27 +43,23 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
 
   function listen(s) {
     s.on('connect', () => {
-      onStatus('connected', 'Connected');
+      onStatus('connected');
       history.slowToHeartbeat();
       outbox.drain();
       for (const convId of state.openTabs) history.refreshMessages(convId);
     });
     // The bar's two words for a missing live connection (spec 12.2).
-    s.on('disconnect', (reason) => (reason === 'io server disconnect'
-      ? onStatus('offline', 'Offline')
-      : onStatus('connecting', 'Connecting…')));
-    s.on('connect_error', () => onStatus('offline', 'Offline'));
+    s.on('disconnect', (reason) => onStatus(reason === 'io server disconnect' ? 'offline' : 'connecting'));
+    s.on('connect_error', () => onStatus('offline'));
 
     s.on('message.new', (message) => inbound.onMessageNew(message));
     s.on('message.delivered', ({ messageId, deliveredAt }) => inbound.patchMessage(messageId, { deliveredAt }));
     s.on('message.read', ({ messageId, readAt }) => inbound.patchMessage(messageId, { readAt }));
     s.on('message.edited', (message) => inbound.onMessageEdited(message));
     s.on('message.deleted', ({ messageId, deletedAt }) => inbound.markDeleted(messageId, deletedAt));
-    s.on('presence.update', ({ userId, status }) => {
-      if (status === 'online') state.online.add(userId);
-      else state.online.delete(userId);
-      store.notify('sidebar', 'panels');
-    });
+    // presence.update goes only to the user's own sockets (the gateway
+    // never tells a peer), so it is not listened to: nothing here shows
+    // whether someone is online.
     s.on('typing.start', ({ conversationId, userId, handle }) => {
       let perConv = state.typing.get(conversationId);
       if (!perConv) {
@@ -110,11 +106,11 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
       if (!state.me) return;
       const io = getIo();
       if (typeof io !== 'function') {
-        onStatus('offline', 'Polling');
+        onStatus('offline');
         return;
       }
       close();
-      onStatus('connecting', 'Connecting…');
+      onStatus('connecting');
       socket = io({
         path: '/v1/realtime',
         auth: (send) => send({ token: stack.sessionStore.getAccessToken() }),
@@ -130,7 +126,6 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
     disconnect() {
       close();
       socket = null;
-      state.online.clear();
       state.typing.clear();
     },
 

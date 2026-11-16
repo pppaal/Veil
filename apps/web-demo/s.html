@@ -7,11 +7,13 @@
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-<title>Veil one-time link</title>
+<title>One-time link</title>
 <style>
   /* The web demo's tokens (app.css), inline so this page stays four files
-     (apps/api/src/web-assets.ts SECRET_VIEWER_FILES). It follows the
-     system's light or dark setting. */
+     (apps/api/src/web-assets.ts SECRET_VIEWER_FILES): for the same reason
+     its words are in this page and s.js, not in i18n/en.json, which a
+     production server does not serve. It follows the system's light or
+     dark setting. */
   :root {
     color-scheme: light;
     --bg: #FFFFFF; --bg-alt: #E9E9EB; --line: #C6C6C8; --line-strong: #AEAEB2;
@@ -91,7 +93,8 @@
   }
   .reveal { min-height: 60px; padding: 12px; border-radius: 10px; background: var(--bg-alt); font-size: 16px; white-space: pre-wrap; word-break: break-word; }
   .hint { margin-top: 16px; font-size: 13px; color: var(--fg-muted); }
-  .hint code { font-family: var(--mono); }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  #pass, #passIn { margin-top: 8px; }
   .err { margin-top: 12px; font-size: 13px; color: var(--danger); }
   .copied { min-height: 18px; margin-top: 8px; font-size: 13px; color: var(--good); }
   .gone { font-size: 15px; color: var(--fg-muted); }
@@ -111,38 +114,39 @@
 
   <!-- COMPOSE -->
   <section id="compose" hidden>
-    <h1>Send a message that can be read once</h1>
-    <label for="secret">Message</label>
-    <textarea id="secret" placeholder="A password, an account number, a private note. The recipient opens it once, without the app."></textarea>
-    <label class="opt"><input type="checkbox" id="usePass"> Add a passphrase (the link opens only with both)</label>
-    <div id="passWrap" hidden><input type="password" id="pass" placeholder="A passphrase you tell them separately" aria-label="Passphrase"></div>
+    <h1>One-time link</h1>
+    <label for="secret" class="sr-only">Secret</label>
+    <textarea id="secret" placeholder="A password, an account number, a note"></textarea>
+    <label class="opt"><input type="checkbox" id="usePass"> Add a passphrase</label>
+    <div id="passWrap" hidden><input type="password" id="pass" placeholder="Passphrase" aria-label="Passphrase"></div>
     <button class="btn" id="genBtn">Create link</button>
     <div id="out" hidden>
       <div class="linkbox" id="linkText"></div>
       <button class="btn ghost" id="copyBtn"><svg class="i"><use href="#i-copy"/></svg>Copy link</button>
       <div class="copied" id="copied" role="status"></div>
+      <p class="hint" id="passApart" hidden>Send the passphrase separately.</p>
     </div>
     <div class="err" id="cErr" role="alert" hidden></div>
-    <p class="hint">Only the encrypted message is kept on the server, and it is deleted the first time it is opened. The key is in the part of the link after <code>#</code>, which is never sent to the server. Nothing is deleted until the recipient opens it.</p>
+    <p class="hint">It opens once, for whoever opens it first. If it isn't opened, it's deleted after 1 day.</p>
   </section>
 
   <!-- VIEW -->
   <section id="view" hidden>
-    <h1 id="viewTitle">You have a message</h1>
+    <h1 id="viewTitle">Someone sent you a secret</h1>
     <div id="revealPanel">
-      <p class="hint">Opening it deletes it from the server, and it cannot be opened again. Open it when you are ready to read it.</p>
+      <p class="hint">It opens once. Open it when you're ready to read it.</p>
       <div id="passPrompt" hidden>
-        <label for="passIn" class="hint">Passphrase</label>
-        <input type="password" id="passIn" placeholder="The passphrase the sender gave you">
+        <label for="passIn" class="sr-only">Passphrase</label>
+        <input type="password" id="passIn" placeholder="Passphrase">
       </div>
       <button class="btn" id="revealBtn">Reveal</button>
       <div class="err" id="vErr" role="alert" hidden></div>
     </div>
     <div id="revealWrap" hidden>
       <div class="reveal" id="revealText"></div>
-      <p class="hint">This message is shown once. It has already been deleted from the server, so a refresh will not bring it back.</p>
+      <p class="hint">This is the only time it shows. Copy it now if you need it.</p>
     </div>
-    <p id="gone" class="gone" hidden><span id="goneMsg">This link was already opened or has expired</span></p>
+    <p id="gone" class="gone" hidden><span id="goneMsg">This link was already opened, or it expired.</span></p>
     <div class="cta"><a href="https://pppaal.github.io/Veil/" rel="noreferrer">About Veil</a></div>
   </section>
 </div>

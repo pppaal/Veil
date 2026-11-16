@@ -39,7 +39,7 @@ test.describe('attachments', () => {
     await chooser.setFiles({ name: 'dot.png', mimeType: 'image/png', buffer: PNG });
     const preview = page.locator('.image-confirm[role="dialog"]');
     await expect(preview).toContainText('Send this image?');
-    await expect(preview).toContainText('dot.png, 0 KB');
+    await expect(preview).toContainText(`dot.png · ${PNG.length} B`);
     await preview.locator('button', { hasText: 'Send' }).click();
     await expect(preview).toHaveCount(0);
 
@@ -69,7 +69,9 @@ test.describe('attachments', () => {
     await chooser.setFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from(NOTES) });
     const own = page.locator('.msg-row.me .msg-file-chip');
     await expect(own.locator('.msg-file-chip-name')).toHaveText('notes.txt');
-    await expect(own.locator('.msg-file-chip-size')).toHaveText(`.txt${NOTES.length} B, click to download`);
+    // A file card: the name, then the type and size.
+    await expect(own.locator('.msg-file-chip-size')).toHaveText(`TXT · ${NOTES.length} B`);
+    await expect(own).toHaveAttribute('title', 'Download');
     await expect(page.locator('.msg-row.me .msg.pending')).toHaveCount(0, { timeout: 10_000 });
 
     const chip = bob.page.locator('.msg-row.them .msg-file-chip');

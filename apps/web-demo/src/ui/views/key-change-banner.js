@@ -51,7 +51,7 @@ export function createKeyChangeBanner({ identityTrust, safetyDialog, confirm }) 
     const ok = await confirm({
       title: t('keyChange.declineTitle', { handle: shownHandle(peer.handle) }),
       body: t('keyChange.declineBody', { handle: shownHandle(peer.handle) }),
-      okLabel: t('keyChange.decline'),
+      okLabel: t('keyChange.declineConfirm'),
     });
     if (!ok) return;
     const outcome = await identityTrust.decline(convId, peer, reviewed);
@@ -74,8 +74,8 @@ export function createKeyChangeBanner({ identityTrust, safetyDialog, confirm }) 
     let outcome;
     try {
       outcome = await identityTrust.accept(peer, reviewed);
-    } catch (error) {
-      toast(t('keyChange.acceptFailed', { error: error.message }), 'error');
+    } catch {
+      toast(t('keyChange.acceptFailed'), 'error');
       return;
     }
     if (outcome === 'accepted') await identityTrust.reopenLockedMessages(peer.userId);
@@ -93,8 +93,8 @@ export function createKeyChangeBanner({ identityTrust, safetyDialog, confirm }) 
     if (!ok) return;
     try {
       await identityTrust.acknowledgeAccount(convId);
-    } catch (error) {
-      toast(t('accountConflict.failed', { error: error.message }), 'error');
+    } catch {
+      toast(t('accountConflict.failed'), 'error');
     }
   }
 

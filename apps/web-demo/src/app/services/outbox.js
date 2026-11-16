@@ -3,6 +3,7 @@
 // one tab at a time, with backoff, until the server takes them or refuses
 // them for good.
 
+import { t } from '../../../i18n/i18n.js';
 import { ENVELOPE_VERSION_V2 } from '../../crypto/frame.js';
 import { isPermanentRefusal, retryDelayMs } from '../../domain/delivery.js';
 import { AuthError } from '../../platform/api-client.js';
@@ -88,7 +89,7 @@ export function createOutbox({ store, stack, messages, toast }) {
           // The bubble keeps the sealed envelope, in memory only, for Retry.
           const index = findOwn(item.conversationId, item.clientMessageId);
           if (index >= 0) Object.assign(store.messagesOf(item.conversationId)[index], { _status: 'failed', _envelope: item.envelope });
-          toast('Not sent: ' + error.message, 'error');
+          toast(t('send.failed'), 'error');
           store.notify('panels');
         }
       }
@@ -110,7 +111,7 @@ export function createOutbox({ store, stack, messages, toast }) {
       const queued = await stack.idb.get('outbound', clientMessageId);
       const envelope = queued?.envelope ?? message._envelope;
       if (!envelope) {
-        toast('There is nothing to send again. Send it as a new message.', 'error');
+        toast(t('send.nothingToRetry'), 'error');
         return;
       }
       await stack.identityDb.put('outbound', queued
@@ -134,7 +135,7 @@ export function createOutbox({ store, stack, messages, toast }) {
         await stack.identityDb.delete('outbound', clientMessageId);
       } catch {}
       store.notify('panels');
-      toast('Send cancelled');
+      toast(t('send.cancelled'));
     },
   };
 }

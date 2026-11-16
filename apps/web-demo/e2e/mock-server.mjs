@@ -2,7 +2,7 @@
 // e2e/characterization/) run the web demo against, with no Postgres, Redis
 // or object storage: it serves the demo at /demo/ and an in-memory /v1 relay
 // (auth, key directory, prekeys, conversations, messages, receipts,
-// attachments, blocks, reports, device transfer, one-time secret links). It relays
+// attachments, blocks, mutes, reports, device transfer, one-time secret links). It relays
 // ciphertext and never decrypts. Its realtime gateway (mock-realtime.mjs) is
 // off until a test turns it on, so by default /v1/realtime refuses the
 // upgrade and the demo falls back to polling.
@@ -187,6 +187,7 @@ function reset() {
     transfers: new Map(), // id -> { id, userId, oldDeviceId, token, expiresAt, completedAt, ended, claim, newDeviceId }
     secrets: new Map(), // id -> { ciphertext, expiresAt }
     blocks: [], // { blockerId, blockedId, createdAt }, oldest first
+    mutes: new Map(), // `${userId}:${conversationId}` -> mutedUntil (ISO) or null for no end
     reports: [],
     shuffle: false,
     tamper: false,
@@ -818,6 +819,23 @@ const routes = [
     if (!UUID.test(userId)) throw new HttpError(400, 'validation_failed', 'userId must be a UUID');
     db.blocks = db.blocks.filter(({ blockerId, blockedId }) => !(blockerId === user.id && blockedId === userId));
     return { userId, unblocked: true };
+  }],
+  // SetConversationMuteDto: null unmutes, no value mutes with no end, a
+  // number of seconds (1 to 10 years) mutes until then; members only.
+  ['POST', /^\/v1\/safety\/mutes\/([^/]+)$/, (req, [conversationId]) => {
+    const { user } = authenticate(req);
+    if (!UUID.test(conversationId)) throw new HttpError(400, 'validation_failed', 'conversationId must be a UUID');
+    const seconds = req.body?.mutedForSeconds;
+    if (seconds !== null) validateBody(req.body, { mutedForSeconds: optional(intWithin(1, 10 * 365 * 24 * 60 * 60)) });
+    if (!isMember(user.id, conversationId)) throw new HttpError(403, 'forbidden', 'Conversation membership required');
+    const key = `${user.id}:${conversationId}`;
+    if (seconds === null) {
+      db.mutes.delete(key);
+      return { mute: null };
+    }
+    const mutedUntil = seconds === undefined ? null : new Date(Date.now() + seconds * 1000).toISOString();
+    db.mutes.set(key, mutedUntil);
+    return { mute: { conversationId, mutedUntil } };
   }],
   // FileAbuseReportDto. The API accepts a deprecated note and never stores
   // it; this relay keeps what it was sent, so a test can see that no note

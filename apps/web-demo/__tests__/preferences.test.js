@@ -36,19 +36,30 @@ describe('preferences', () => {
       'veil-demo-notif-prompt-dismissed-v1': '1',
       'veil-demo-notification-level-v1': 'sender',
     });
-    expect(preferences.lightTheme()).toBe(true);
+    expect(preferences.theme()).toBe('light');
     expect(preferences.soundsEnabled()).toBe(true);
-    expect([...preferences.mutedConversations()]).toEqual(['c1', 'c2']);
+    expect([...preferences.mutedConversations().keys()]).toEqual(['c1', 'c2']);
     expect(preferences.notificationPromptDismissed()).toBe(true);
     expect(preferences.notificationLevel()).toBe('sender');
     preferences.setSoundsEnabled(false);
     expect(storage.entries()['veil-demo-sounds-enabled-v1']).toBe('0');
   });
 
+  it('keep when a timed mute ends, and forget it once it has', () => {
+    const storage = memoryStorage();
+    const preferences = createPreferences(storage);
+    const end = Date.now() + 3_600_000;
+    preferences.setMutedConversations(new Map([['c1', null], ['c2', end]]));
+    expect(storage.entries()['veil-demo-muted-convs-v1']).toBe(JSON.stringify(['c1', ['c2', end]]));
+    expect([...preferences.mutedConversations()]).toEqual([['c1', null], ['c2', end]]);
+    expect([...preferences.mutedConversations(end)]).toEqual([['c1', null]]);
+  });
+
   it('fall back to the defaults when storage is missing, refuses, or holds garbage', () => {
     for (const storage of [null, throwingStorage, memoryStorage({ 'veil-demo-muted-convs-v1': '{not json' })]) {
       const preferences = createPreferences(storage);
-      expect(preferences.lightTheme()).toBe(false);
+      // With nothing chosen the theme follows the system.
+      expect(preferences.theme()).toBe('system');
       expect(preferences.soundsEnabled()).toBe(false);
       expect(preferences.mutedConversations().size).toBe(0);
       expect(preferences.notificationLevel()).toBe('generic');

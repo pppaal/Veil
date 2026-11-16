@@ -27,10 +27,10 @@ test.describe('KakaoTalk import', () => {
     const sent: string[] = [];
     page.on('request', (request) => sent.push(`${request.url()} ${request.postData() ?? ''}`));
     await openMenuItem(device, 'kakao-import');
-    const dialog = page.locator('.dialog', { hasText: 'Import a KakaoTalk export' });
+    const dialog = page.locator('.dialog', { hasText: 'Import from KakaoTalk' });
     await expect(dialog.locator('#kakao-confirm')).toBeDisabled();
     await dialog.locator('#kakao-file').setInputFiles({ name: 'notes.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF') });
-    await expect(dialog.locator('#kakao-error')).toHaveText('Only .txt files are supported.');
+    await expect(dialog.locator('#kakao-error')).toHaveText('Choose the .txt file KakaoTalk exported.');
     await dialog.locator('#kakao-file').setInputFiles({ name: 'family.txt', mimeType: 'text/plain', buffer: Buffer.from(EXPORT) });
     await expect(dialog.locator('#kakao-preview')).toBeVisible();
     await expect(dialog.locator('.kakao-import-summary')).toHaveText('2 messages2 participants (홍길동, 김철수)');
@@ -41,19 +41,19 @@ test.describe('KakaoTalk import', () => {
     const row = page.locator('#conv-list .conv-item', { hasText: 'family' });
     await expect(page.locator('#conv-list [data-kakao-section]')).toHaveText('KakaoTalk archives');
     await expect(row).toContainText('family');
-    await expect(row).toContainText('2 messages, read only');
+    await expect(row.locator('.conv-preview')).toHaveText('2 messages');
     await row.click();
     const panel = page.locator('#panels .panel');
     await expect(panel.locator('.panel-title .name')).toHaveText('family');
-    await expect(panel.locator('.kakao-archive-banner')).toHaveText('KakaoTalk archive. Read only. Stored in this browser only.');
+    await expect(panel.locator('.kakao-archive-banner')).toHaveText('Imported from KakaoTalk. Read-only, saved in this browser only.');
     await expect(panel.locator('.msg-text')).toHaveText(['안녕하세요', '네 반갑습니다']);
     await expect(panel.locator('.group-meta')).toHaveText(['홍길동', '김철수']);
     await expect(panel.locator('.panel-input')).toHaveCount(0);
-    await expect(panel.locator('.mute-toggle')).toHaveCount(0);
+    await expect(panel.locator('.panel-actions')).toHaveCount(0);
     expect(sent.filter((request) => /family|홍길동|안녕하세요/.test(request))).toEqual([]);
 
     await reload(device);
-    await expect(page.locator('#conv-list .conv-item', { hasText: 'family' })).toContainText('2 messages, read only');
+    await expect(page.locator('#conv-list .conv-item', { hasText: 'family' }).locator('.conv-preview')).toHaveText('2 messages');
     expectNoErrors(device);
   });
 });

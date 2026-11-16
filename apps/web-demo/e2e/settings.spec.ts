@@ -17,8 +17,8 @@ test.describe('VEIL web demo — settings + shortcuts', () => {
 
     await expect(page.locator('#settings-dialog')).toBeVisible();
 
-    // Default theme is dark — switch to light and verify the
-    // documentElement gets the .theme-light class.
+    // The theme follows the system until one is chosen: choose light and
+    // the documentElement gets the .theme-light class.
     await page.selectOption('[data-key="theme"]', 'light');
     await expect(page.locator('html')).toHaveClass(/theme-light/);
 

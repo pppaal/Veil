@@ -1,11 +1,17 @@
-// The auth screen: register a new handle, continue (or retry) the identity
-// stored in this browser, or delete it.
+// The auth screen: register a new handle, continue (or retry) the account
+// stored in this browser, or remove it. Also the two confirmations that
+// destroy that account: Remove (from the auth screen) and Sign out (from
+// the menu, with moving it elsewhere as the safe alternative).
 
 import { t } from '../../../i18n/i18n.js';
 import { isValidHandle, normalizeHandle } from '../../domain/composer-text.js';
 import { isAuthRejection } from '../../platform/api-client.js';
 import { $, avatarFor } from '../dom.js';
 import { toast } from '../toast.js';
+
+// What a failed registration says: a taken handle, or that it did not work.
+// The server's own wording never reaches the screen.
+const registrationError = (error) => t(error?.code === 'handle_taken' ? 'auth.form.handle.taken' : 'auth.form.failed');
 
 // session: src/app/services/session.js; confirm: src/ui/confirm.js.
 export function createAuthView({ stack, session, confirm }) {
@@ -16,27 +22,36 @@ export function createAuthView({ stack, session, confirm }) {
     if (!stored) {
       try {
         stored = await stack.sessionStore.load();
-      } catch (error) {
-        toast(t('auth.restore.loadFailed', { error: error.message }), 'error');
+      } catch {
+        toast(t('auth.restore.loadFailed'), 'error');
       }
     }
-    $('restore-row').classList.toggle('hidden', !stored);
-    if (stored) {
-      $('restore-handle').textContent = '@' + stored.handle;
-      $('restore-avatar').replaceChildren(avatarFor(stored.handle, 'md'));
+    const handle = stored?.handle;
+    $('restore-row').classList.toggle('hidden', !handle);
+    if (handle) {
+      $('restore-handle').textContent = '@' + handle;
+      $('restore-avatar').replaceChildren(avatarFor(handle, 'md'));
+      $('restore-rejected-text').textContent = t('auth.restore.rejected', { handle });
     }
-    $('restore-rejected').classList.toggle('hidden', !(stored && rejected));
-    $('restore-btn').textContent = t(rejected ? 'auth.restore.retry' : 'auth.restore.continue');
-    // The wipe button stays whatever happened: a corrupted or half-restored
-    // session must be removable without first restoring it.
+    // A rejected account offers Try again and Remove in its notice, instead
+    // of Continue and the line under the row.
+    const refused = Boolean(handle && rejected);
+    $('restore-rejected').classList.toggle('hidden', !refused);
+    $('restore-btn').classList.toggle('hidden', refused);
+    // The remove action shows whenever something is stored, so a corrupted
+    // or half-restored account can go without first signing in to it.
+    const anythingStored = Boolean(stored) || (await session.hasStoredIdentity());
+    const wipe = $('wipe-btn');
+    wipe.classList.toggle('hidden', !anythingStored || refused);
+    wipe.textContent = handle ? t('auth.wipe', { handle }) : t('auth.wipe.noHandle');
   }
 
-  // Asks before destroying the identity stored here. Resolves to whether it
-  // was destroyed.
-  async function confirmAndDestroyIdentity() {
+  // Asks before removing the account stored here. Resolves to whether it
+  // was removed.
+  async function confirmAndRemove() {
     const handle = stack.sessionStore.current()?.handle;
     const ok = await confirm({
-      title: t('auth.restore.delete'),
+      title: handle ? t('auth.wipe.title', { handle }) : t('auth.wipe.titleNoHandle'),
       body: handle ? t('auth.wipe.bodyHandle', { handle }) : t('auth.wipe.body'),
       okLabel: t('auth.wipe.ok'),
       destructive: true,
@@ -47,66 +62,81 @@ export function createAuthView({ stack, session, confirm }) {
     return true;
   }
 
-  // failureKey: the message of a sign-in that failed, with {error}.
+  // Signing out deletes the only copy of the account, so the dialog offers
+  // to move it to another device instead (onMove).
+  async function confirmAndSignOut(onMove) {
+    const handle = stack.sessionStore.current()?.handle;
+    if (!handle) return confirmAndRemove();
+    const ok = await confirm({
+      title: t('signOut.title', { handle }),
+      body: t('signOut.body', { handle }),
+      okLabel: t('signOut.confirm'),
+      destructive: true,
+      alternative: { label: t('signOut.move'), onChoose: onMove },
+    });
+    if (!ok) return false;
+    await session.destroyIdentity();
+    toast(t('signOut.done'));
+    return true;
+  }
+
+  // failureKey: the message of a sign-in that failed.
   async function restore(failureKey) {
     try {
       return await session.restore();
     } catch (error) {
-      toast(t(failureKey, { error: error.message }), 'error');
+      toast(t(failureKey), 'error');
       await show({ rejected: isAuthRejection(error) });
       return true;
     }
   }
 
-  // "How Veil works": two paragraphs, shown and hidden by the text button.
-  function toggleExplainer() {
-    const button = $('auth-explainer-toggle');
-    const open = button.getAttribute('aria-expanded') !== 'true';
-    button.setAttribute('aria-expanded', String(open));
-    $('auth-explainer').classList.toggle('hidden', !open);
+  async function retry(button) {
+    button.disabled = true;
+    try {
+      await restore('auth.restore.failed');
+    } finally {
+      button.disabled = false;
+    }
   }
 
   return {
     show,
-    confirmAndDestroyIdentity,
+    confirmAndRemove,
+    confirmAndSignOut,
 
     mount() {
-      $('auth-explainer-toggle').addEventListener('click', toggleExplainer);
       $('register-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const handle = normalizeHandle($('reg-handle').value);
         if (!handle) return toast(t('auth.form.handle.missing'), 'error');
         if (!isValidHandle(handle)) return toast(t('auth.form.handle.invalid'), 'error');
-        // A new handle replaces the identity stored here, which destroys it.
-        if ((await session.hasStoredIdentity()) && !(await confirmAndDestroyIdentity())) return;
+        // A new handle replaces the account stored here, which destroys it.
+        if ((await session.hasStoredIdentity()) && !(await confirmAndRemove())) return;
         $('reg-btn').disabled = true;
         try {
           await session.register(handle);
+          $('reg-handle').value = '';
           await session.enterApp();
-          toast(t('auth.welcome', { handle }), 'good');
         } catch (error) {
-          toast(error.message, 'error');
-          if (stack.sessionStore.current()) await show({ rejected: isAuthRejection(error) });
+          // Registered but not signed in: the account is stored, and the
+          // auth screen offers to try again.
+          const registered = Boolean(stack.sessionStore.current());
+          toast(registered ? t('auth.restore.failed') : registrationError(error), 'error');
+          if (registered) await show({ rejected: isAuthRejection(error) });
         } finally {
           $('reg-btn').disabled = false;
         }
       });
 
-      $('restore-btn').addEventListener('click', async () => {
-        $('restore-btn').disabled = true;
-        try {
-          await restore('auth.restore.failed');
-        } finally {
-          $('restore-btn').disabled = false;
-        }
-      });
-
-      for (const id of ['restore-delete-btn', 'wipe-btn', 'legacy-new-identity']) {
-        $(id).addEventListener('click', confirmAndDestroyIdentity);
+      $('restore-btn').addEventListener('click', (event) => retry(event.currentTarget));
+      $('restore-retry').addEventListener('click', (event) => retry(event.currentTarget));
+      for (const id of ['restore-remove', 'wipe-btn', 'legacy-new-identity']) {
+        $(id).addEventListener('click', confirmAndRemove);
       }
     },
 
-    // The stored identity signs in again on load; without one, the auth
+    // The stored account signs in again on load; without one, the auth
     // screen shows.
     async boot() {
       if (!(await restore('auth.restore.bootFailed'))) await show();

@@ -5,13 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/contacts/data/contacts_providers.dart';
 
 import '../support/fake_relay.dart';
 import '../support/memory_secure_store.dart';
 
 // The contact list belongs to the account signed in: a sign-out takes it
-// away, and an answer to a read made before it does not bring it back.
+// away, and an answer to a read or an add made before it does not bring
+// it, or a nickname, back.
 
 /// The relay's contact list, able to hold an answer back as a slow network
 /// would.
@@ -19,6 +21,7 @@ class _HeldClient extends FakeRelayClient {
   _HeldClient(super.relay, super.me);
 
   Completer<void>? gate;
+  Completer<void>? addGate;
 
   @override
   Future<List<dynamic>> getContacts(String accessToken) async {
@@ -26,6 +29,12 @@ class _HeldClient extends FakeRelayClient {
     return [
       {'handle': 'bob', 'addedAt': DateTime.utc(2026, 4, 7).toIso8601String()},
     ];
+  }
+
+  @override
+  Future<Map<String, dynamic>> addContact(String accessToken, Map<String, dynamic> body) async {
+    await addGate?.future;
+    return {'handle': body['handle'], 'addedAt': DateTime.utc(2026, 4, 7).toIso8601String()};
   }
 }
 
@@ -46,7 +55,11 @@ class _Session extends AppSessionController {
 }
 
 void main() {
-  test('a contact list the server sends after a sign-out is not kept', () async {
+  late _HeldClient api;
+  late SecureStorageService storage;
+  late ProviderContainer container;
+
+  setUp(() async {
     final relay = FakeRelay();
     final adapter = createDefaultCryptoAdapter();
     relay.addParty(RelayParty(
@@ -55,15 +68,17 @@ void main() {
       deviceId: 'dev-alice',
       identity: await adapter.identity.generateDeviceIdentity('dev-alice'),
     ));
-    final api = _HeldClient(relay, relay.partiesByHandle['alice']!);
-    final storage = SecureStorageService(MemorySecureStore());
-    final container = ProviderContainer(overrides: [
+    api = _HeldClient(relay, relay.partiesByHandle['alice']!);
+    storage = SecureStorageService(MemorySecureStore());
+    container = ProviderContainer(overrides: [
       secureStorageProvider.overrideWithValue(storage),
       apiClientProvider.overrideWithValue(api),
       appSessionProvider.overrideWith((ref) => _Session(storage, api, adapter)),
     ]);
     addTearDown(container.dispose);
+  });
 
+  test('a contact list the server sends after a sign-out is not kept', () async {
     final contacts = container.read(contactsControllerProvider);
     await pumpEventQueue();
     expect(contacts.contacts.map((contact) => contact.handle), ['bob']);
@@ -78,5 +93,21 @@ void main() {
     await refreshing;
     expect(contacts.contacts, isEmpty, reason: 'the list of the account signed out came back');
     expect(contacts.isLoading, isFalse);
+  });
+
+  // The next account made on this phone would find the nickname, naming no
+  // account, for the first list that shows the handle to give one.
+  test('a nickname saved with a contact the server adds after a sign-out is not written into the wiped keystore', () async {
+    final contacts = container.read(contactsControllerProvider);
+    await pumpEventQueue();
+    final gate = api.addGate = Completer<void>();
+    final adding = contacts.addContact(handle: 'dana', nickname: 'Dana Park');
+    await pumpEventQueue();
+    await (container.read(appSessionProvider.notifier) as _Session).wipeLocalDeviceState();
+    await pumpEventQueue();
+    gate.complete();
+    expect(await adding, isFalse);
+    expect(await ContactNicknames(storage.scoped(SecureScope.contacts)).readAll(), isEmpty);
+    expect(contacts.contacts, isEmpty);
   });
 }

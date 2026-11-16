@@ -45,8 +45,10 @@ export function createMessageActions({ store, send, composer, forwardDialog, rep
     });
   }
 
-  // The server's soft delete is what the peer sees and is not undone; the
-  // undo puts the text back in the composer to be sent as a new message.
+  // The server's soft delete is not undone, and only a client that acts on
+  // message.deleted shows it (the web does, the phone app not yet): a copy
+  // already received may stay. The undo puts the text back in the composer
+  // to be sent as a new message.
   async function remove(message) {
     const ok = await confirm({
       title: t('msg.delete.title'),

@@ -229,8 +229,12 @@ test.describe('a direct conversation', () => {
     await send(alice, 'regretted words');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toContain('regretted words');
     await chooseAction(alice, 'regretted words', 'Delete');
-    await expect(alice.page.locator('#confirm-title')).toHaveText('Delete for everyone?');
-    await expect(alice.page.locator('#confirm-body')).toHaveText("They'll see that a message was deleted.");
+    // The phone app does not act on a delete yet, so the dialog promises
+    // only what the server does.
+    await expect(alice.page.locator('#confirm-title')).toHaveText('Delete this message?');
+    await expect(alice.page.locator('#confirm-body')).toHaveText(
+      "It's removed from the server. Anyone who already received it may still see it.",
+    );
     await alice.page.click('#confirm-ok');
     const undo = toast(alice, 'Message deleted');
     await expect(undo).toBeVisible();
@@ -333,7 +337,8 @@ test.describe('a direct conversation', () => {
     const { page } = bob;
     await chooseChatMenuItem(bob, 'Clear chat history');
     await expect(page.locator('#confirm-title')).toHaveText('Clear this chat?');
-    await expect(page.locator('#confirm-body')).toHaveText('Messages are deleted from this browser for good. The other person keeps their copy.');
+    // True of a group as of a direct chat.
+    await expect(page.locator('#confirm-body')).toHaveText('Messages are deleted from this browser for good. Others keep their copies.');
     await page.click('#confirm-ok');
     await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('No messages yet');
     await expect(page.locator('.conv-item', { hasText: `@${alice.handle}` }).locator('.conv-preview')).toHaveText('No messages yet');

@@ -229,8 +229,12 @@ test.describe('a direct conversation', () => {
     await send(alice, 'regretted words');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toContain('regretted words');
     await chooseAction(alice, 'regretted words', 'Delete');
-    await expect(alice.page.locator('#confirm-title')).toHaveText('Delete for everyone?');
-    await expect(alice.page.locator('#confirm-body')).toHaveText("They'll see that a message was deleted.");
+    // The phone app does not act on a delete yet, so the dialog promises
+    // only what the server does.
+    await expect(alice.page.locator('#confirm-title')).toHaveText('Delete this message?');
+    await expect(alice.page.locator('#confirm-body')).toHaveText(
+      "It's removed from the server. Anyone who already received it may still see it.",
+    );
     await alice.page.click('#confirm-ok');
     const undo = toast(alice, 'Message deleted');
     await expect(undo).toBeVisible();
@@ -333,7 +337,8 @@ test.describe('a direct conversation', () => {
     const { page } = bob;
     await chooseChatMenuItem(bob, 'Clear chat history');
     await expect(page.locator('#confirm-title')).toHaveText('Clear this chat?');
-    await expect(page.locator('#confirm-body')).toHaveText('Messages are deleted from this browser for good. The other person keeps their copy.');
+    // True of a group as of a direct chat.
+    await expect(page.locator('#confirm-body')).toHaveText('Messages are deleted from this browser for good. Others keep their copies.');
     await page.click('#confirm-ok');
     await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('No messages yet');
     await expect(page.locator('.conv-item', { hasText: `@${alice.handle}` }).locator('.conv-preview')).toHaveText('No messages yet');
@@ -341,6 +346,67 @@ test.describe('a direct conversation', () => {
     expect(await bubbleTexts(bob)).toEqual([]);
     await send(alice, 'after the purge');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toEqual(['after the purge']);
+    expectNoErrors(alice, bob);
+  });
+});
+
+// What was being written is set aside while an edit is under way, and comes
+// back whether the edit is dropped (its ✕, Esc) or sent.
+test.describe('an edit and the unsent draft', () => {
+  const id = stamp();
+  let alice: Device;
+  let bob: Device;
+
+  test.beforeAll(async ({ browser }) => {
+    alice = await register(browser, `dalice${id}`);
+    bob = await register(browser, `dbob${id}`);
+    await startChat(alice, bob);
+    await send(alice, 'see you at 8');
+  });
+
+  test.afterAll(async () => {
+    await closeAll(alice, bob);
+  });
+
+  const box = () => alice.page.locator('.panel-input textarea');
+  const type = (text: string, { enter = false } = {}) =>
+    alice.page.evaluate(({ text, enter }) => {
+      const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
+      textarea.value = text;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      if (enter) textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    }, { text, enter });
+
+  test('comes back after the edit is dropped or sent', async () => {
+    await type('and bring the');
+
+    // Dropped with the bar's ✕.
+    await chooseAction(alice, 'see you at 8', 'Edit');
+    await expect(box()).toHaveValue('see you at 8');
+    await alice.page.locator('.edit-banner .reply-banner-close').click();
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(0);
+    await expect(box()).toHaveValue('and bring the');
+
+    // Dropped with Esc, with a reply quoted: both come back.
+    await chooseAction(alice, 'see you at 8', 'Reply');
+    await expect(alice.page.locator('.reply-banner')).toHaveCount(1);
+    await chooseAction(alice, 'see you at 8', 'Edit');
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(1);
+    await expect(alice.page.locator('.reply-banner:not(.edit-banner)')).toHaveCount(0);
+    await box().press('Escape');
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(0);
+    await expect(box()).toHaveValue('and bring the');
+    await expect(alice.page.locator('.reply-banner .reply-banner-meta')).toHaveText(`Reply to @${alice.handle}`);
+    await alice.page.locator('.reply-banner .reply-banner-close').click();
+
+    // Sent: the message changes on both sides, and the draft is back.
+    await chooseAction(alice, 'see you at 8', 'Edit');
+    await type('see you at 9', { enter: true });
+    await expect(alice.page.locator('.edit-banner')).toHaveCount(0);
+    await expect(rowOf(alice, 'see you at 9').locator('.msg-edited')).toHaveText('(edited)');
+    await expect(rowOf(bob, 'see you at 9').locator('.msg-edited')).toHaveText('(edited)', { timeout: 15_000 });
+    await expect(box()).toHaveValue('and bring the');
+    await expect(alice.page.locator('.panel-input .send-btn')).toBeEnabled();
     expectNoErrors(alice, bob);
   });
 });

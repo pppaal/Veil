@@ -25,7 +25,7 @@ export function createStore({ mutedConversations = [], soundsEnabled = false } =
     splitView: false,
     typing: new Map(), // convId -> Map<userId, { handle, expiresAt }>
     replyDrafts: new Map(), // convId -> { id, snippet, sender } awaiting send
-    editing: new Map(), // convId -> { id, snippet } of our message being edited in the composer
+    editing: new Map(), // convId -> { id, snippet, stashed: { text, reply } }: our message being edited in the composer, and the draft set aside for it
     // Unsent text is plaintext: it lives in memory only, never on disk.
     drafts: new Map(), // convId -> text
     focusClaims: new Set(), // convIds whose composer takes focus on the next draw

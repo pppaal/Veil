@@ -5,11 +5,9 @@
 // 10 MB paste from locking the encrypt/render path.
 export const MESSAGE_MAX_CHARS = 8000;
 
-const HANDLE_RE = /^[a-z0-9_]{1,32}$/;
-
-// Handles are lowercase; what a user types is trimmed and lowered first.
+// Handles are lowercase; what a user types is trimmed and lowered first,
+// then checked against the server's own rules (src/domain/handles.js).
 export const normalizeHandle = (typed) => typed.trim().toLowerCase();
-export const isValidHandle = (handle) => HANDLE_RE.test(handle);
 
 // The "@prefix" being typed at the caret: { start, prefix } when the caret
 // sits right after an '@' word that starts the input or follows whitespace

@@ -87,7 +87,7 @@ allowlisting serializers in `src/platform/persist.js`.
 | `session.js` | register, restore, enter the app, end a session (keys kept), destroy or replace the identity |
 | `messages.js` | the one ingest path from envelope to view, blob URL lifetimes, the message and conversation caches |
 | `history-sync.js` | cache hydration, the conversation list, history paging, the expiry sweep, polling |
-| `realtime.js` | the Socket.IO channel, its events, typing indicators sent |
+| `realtime.js` | the Socket.IO channel, its events, typing indicators sent and received (a peer's message ends its typing), connecting again as soon as the browser is back online |
 | `inbound.js` | pushed messages, receipts, edits and deletions into the store |
 | `outbox.js` | the sealed outbound queue: one leader tab, backoff, permanent refusals, retry of a refused send |
 | `send.js` | text, reactions, edits and deletions; what a refused send tells the user |

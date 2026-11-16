@@ -5,8 +5,9 @@
 // (src/platform/persist.js); views are rebuilt through the same ingest path.
 
 import { t } from '../../../i18n/i18n.js';
+import { DecryptStatus } from '../../crypto/session-cipher.js';
 import { byLastActivity } from '../../domain/conversations.js';
-import { ingestMessage } from '../../domain/ingest.js';
+import { HELD_FAILURE, ingestMessage } from '../../domain/ingest.js';
 import { isPendingId, pendingId } from '../../domain/local-messages.js';
 import { messageCacheRecord, serializeConversationForCache } from '../../platform/persist.js';
 
@@ -30,12 +31,23 @@ export function createMessages({ store, stack }) {
   let reingestSeq = 0;
   const latestReingest = new Map();
 
+  // A frame of a conversation held for its listed handle is refused before
+  // its key is even compared with the pins (src/domain/peer-bindings.js
+  // createConversationVerifier), so its rejection says the account waits to
+  // be confirmed, not that a safety number changed.
+  async function openFrame(envelope) {
+    const opened = await stack.secure.open(envelope);
+    if (opened?.failure !== DecryptStatus.IDENTITY_REJECTED) return opened;
+    const peer = stack.peerOf(envelope.conversationId);
+    return peer && stack.bindings.hold(envelope.conversationId, peer) ? { failure: HELD_FAILURE } : opened;
+  }
+
   // `content` is passed only for our own sends, whose content we already hold.
   // That content is authoritative, so no earlier view is reused for it: our
   // own edit's echo from the relay can arrive before the edit is stored and
   // leave a view with the new ciphertext but the old text.
   async function ingest(raw, { previous = null, content } = {}) {
-    const open = content === undefined ? (envelope) => stack.secure.open(envelope) : async () => ({ content });
+    const open = content === undefined ? openFrame : async () => ({ content });
     const view = await ingestMessage(raw, {
       open,
       retire: (envelope) => stack.secure.retire(envelope),

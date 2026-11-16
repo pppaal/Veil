@@ -300,6 +300,39 @@ describe('MessagesService', () => {
       expect(fixture.push.sentHints).toHaveLength(1);
     });
 
+    // A mute the phone told the server about (POST /safety/mutes) wakes no
+    // device for the chat; the message is still kept for when the app opens.
+    it('wakes no device of a recipient who muted the chat, until the mute ends', async () => {
+      const fixture = makeService();
+      const alice = fixture.prisma.seedUser('alice');
+      const bob = fixture.prisma.seedUser('bob', { pushToken: 'bob-device-token' });
+      const conversationId = fixture.prisma.seedConversation('direct', [alice.userId, bob.userId]);
+      const send = () =>
+        fixture.service.send(
+          alice,
+          buildSendDto({ conversationId, sender: alice, recipientUserId: bob.userId }),
+        );
+
+      fixture.safety.setMute(bob.userId, conversationId, null);
+      await send();
+      await settleDetachedWork();
+      expect(fixture.push.sentHints).toEqual([]);
+      expect(fixture.prisma.messages).toHaveLength(1);
+
+      fixture.safety.setMute(bob.userId, conversationId, new Date(Date.now() + 60_000));
+      await send();
+      await settleDetachedWork();
+      expect(fixture.push.sentHints).toEqual([]);
+
+      fixture.safety.setMute(bob.userId, conversationId, new Date(Date.now() - 1_000));
+      await send();
+      await settleDetachedWork();
+      expect(fixture.push.sentHints).toEqual([
+        { pushToken: 'bob-device-token', hint: { kind: 'wake' } },
+      ]);
+      expect(fixture.prisma.messages).toHaveLength(3);
+    });
+
     it('answers and fans out to every member while a push provider hangs', async () => {
       // A provider that accepts the wake and never settles, like an APNs
       // peer that stalls the stream.

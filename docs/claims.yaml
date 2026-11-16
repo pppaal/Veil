@@ -442,3 +442,7 @@ claims:
         name: "an abuse report carries the FileAbuseReportRequest fields and no text"
       - test: apps/api/src/modules/messages/messages.service.spec.ts
         name: "refuses to send to a peer blocked in either direction"
+      - test: apps/api/src/modules/messages/messages.service.spec.ts
+        name: "wakes no device of a recipient who muted the chat, until the mute ends"
+      - test: apps/api/src/modules/safety/safety.service.spec.ts
+        name: "is false with no mute, true with no end or an end ahead, false once it ended"

@@ -117,9 +117,10 @@ class ContactsController extends ChangeNotifier {
     notifyListeners();
     try {
       await apiClient.addContact(token, {'handle': handle.trim()});
-      // Saved for the handle: it names the account this phone knows under
-      // it, or else the first one a list of chats shows (PeerNames), not an
-      // account an earlier nickname of the handle named.
+      // Saved anew, naming no account: PeerNames.claims gives it the
+      // account this phone bound the handle to, even one an earlier
+      // nickname of the handle named, or else the one account the chats
+      // and Blocked accounts show under the handle.
       await nicknames.write(handle.trim(), nickname ?? '', anew: true);
       await refresh();
       return true;

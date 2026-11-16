@@ -38,6 +38,23 @@ class _HeldClient extends FakeRelayClient {
   }
 }
 
+/// A keystore whose wipe lets a held answer in right after the keystore is
+/// wiped, while the sign-out still has the chat cache and the attachments
+/// to wipe before the session reads signed out.
+class _Storage extends SecureStorageService {
+  _Storage(super.storage);
+
+  Completer<void>? releaseOnWipe;
+
+  @override
+  Future<void> wipeLocalDeviceState({bool preserveOnboardingAccepted = true, bool preservePin = false}) async {
+    await super.wipeLocalDeviceState(preserveOnboardingAccepted: preserveOnboardingAccepted, preservePin: preservePin);
+    releaseOnWipe?.complete();
+    // The cache and attachment wipes that follow in _clearLocalState.
+    await pumpEventQueue();
+  }
+}
+
 /// The app's session controller, signed in as alice.
 class _Session extends AppSessionController {
   _Session(super.storage, super.api, super.adapter) {
@@ -56,7 +73,7 @@ class _Session extends AppSessionController {
 
 void main() {
   late _HeldClient api;
-  late SecureStorageService storage;
+  late _Storage storage;
   late ProviderContainer container;
 
   setUp(() async {
@@ -69,7 +86,7 @@ void main() {
       identity: await adapter.identity.generateDeviceIdentity('dev-alice'),
     ));
     api = _HeldClient(relay, relay.partiesByHandle['alice']!);
-    storage = SecureStorageService(MemorySecureStore());
+    storage = _Storage(MemorySecureStore());
     container = ProviderContainer(overrides: [
       secureStorageProvider.overrideWithValue(storage),
       apiClientProvider.overrideWithValue(api),
@@ -110,4 +127,19 @@ void main() {
     expect(await ContactNicknames(storage.scoped(SecureScope.contacts)).readAll(), isEmpty);
     expect(contacts.contacts, isEmpty);
   });
+
+  // The same, with the answer coming while the sign-out is still wiping:
+  // the keystore is clear, but the session does not read signed out yet.
+  test('a nickname saved with a contact the server adds while a sign-out is wiping is not written into the wiped keystore', () async {
+    final contacts = container.read(contactsControllerProvider);
+    await pumpEventQueue();
+    final gate = api.addGate = Completer<void>();
+    storage.releaseOnWipe = gate;
+    final adding = contacts.addContact(handle: 'dana', nickname: 'Dana Park');
+    await pumpEventQueue();
+    await (container.read(appSessionProvider.notifier) as _Session).wipeLocalDeviceState();
+    expect(await adding, isFalse);
+    expect(await ContactNicknames(storage.scoped(SecureScope.contacts)).readAll(), isEmpty);
+  });
+
 }

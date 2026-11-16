@@ -601,10 +601,20 @@ class SecureStorageService {
     await _storage.delete(key: _pinLockoutTierKey);
   }
 
+  int _wipesBegun = 0;
+
+  /// How many wipes of this device's state have begun. A write that waited
+  /// on the network compares it before it goes in, so one that a sign-out
+  /// overtook is dropped even while the sign-out is still wiping the rest.
+  int get wipesBegun => _wipesBegun;
+
   Future<void> wipeLocalDeviceState({
     bool preserveOnboardingAccepted = true,
     bool preservePin = false,
   }) async {
+    // Counted before the first await: a write queued into a scope after
+    // this reads it and is dropped, and one queued before is cleared below.
+    _wipesBegun++;
     await clearSession();
     await clearDeviceSecrets();
     await clearPendingTransfer();

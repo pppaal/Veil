@@ -122,15 +122,19 @@ class ContactsController extends ChangeNotifier {
     final token = _accessToken;
     if (token == null) return false;
     final account = ref.read(appSessionProvider).userId;
+    final storage = ref.read(secureStorageProvider);
+    final wipes = storage.wipesBegun;
     _mutating = true;
     _errorMessage = null;
     notifyListeners();
     try {
       await apiClient.addContact(token, {'handle': handle.trim()});
-      // An answer that comes after a sign-out writes nothing: the keystore
-      // is wiped, and the next account made on this phone would find the
-      // nickname there.
-      if (ref.read(appSessionProvider).userId != account) return false;
+      // An answer that comes once a sign-out or wipe has begun writes
+      // nothing: the keystore is being wiped, and the next account made on
+      // this phone would find the nickname there. This check and the
+      // write's place in the keystore's queue happen in one step, so a
+      // wipe that begins later clears the write.
+      if (storage.wipesBegun != wipes || ref.read(appSessionProvider).userId != account) return false;
       // Saved anew, naming no account: PeerNames.claims gives it the
       // account this phone bound the handle to, even one an earlier
       // nickname of the handle named, or else the one account the chats

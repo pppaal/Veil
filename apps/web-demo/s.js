@@ -20,7 +20,8 @@ const TEXT = Object.freeze({
   gone: 'This link was already opened, or it expired.',
   wrongPassphrase: "Couldn't open it. Check the passphrase and try again. If you close this page, it can't be opened again.",
   invalid: "This link isn't valid.",
-  revealed: 'Message',
+  // The compose field's word for what was sent.
+  revealed: 'Secret',
   createFailed: "Couldn't create the link. Try again.",
   createLink: 'Create link',
   copied: 'Copied',

@@ -31,7 +31,7 @@ test.describe('one-time secret links', () => {
     await expect(viewer.locator('#passPrompt')).toBeHidden();
     await viewer.click('#revealBtn');
     await expect(viewer.locator('#revealText')).toHaveText('the vault code is 4711');
-    await expect(viewer.locator('#viewTitle')).toHaveText('Message');
+    await expect(viewer.locator('#viewTitle')).toHaveText('Secret');
     expect(new URL(viewer.url()).hash).toBe('');
     // A production relay serves only the viewer under /demo/, so the page
     // points at the public site, never at the demo.

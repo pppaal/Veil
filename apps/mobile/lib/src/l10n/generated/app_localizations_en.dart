@@ -354,7 +354,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsLogoutConfirmBody =>
-      'This signs this phone out and erases Veil from it. You lose the account for good.';
+      'This signs this phone out and deletes your chats from it. Your account is gone for good.';
 
   @override
   String get settingsLogoutFailed =>
@@ -553,6 +553,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get chatDecryptIdentityRejected =>
       'Locked until you review the new safety number';
+
+  @override
+  String get chatDecryptHeldAccount => 'Locked until you confirm this account';
 
   @override
   String get notificationNewMessage => 'New message';

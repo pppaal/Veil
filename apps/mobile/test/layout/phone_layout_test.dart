@@ -315,6 +315,7 @@ Future<LayoutFindings> _render(
     transferStarted: screenCase.transferStarted,
     transferClaimed: screenCase.transferClaimed,
     withGroup: screenCase.withGroup,
+    searchesArchive: screenCase.searchesArchive,
   );
 
   Future<void> audit() async {

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
 import '../../../l10n/generated/app_localizations.dart';
@@ -11,6 +10,7 @@ import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../chat/presentation/chat_bar.dart';
 import '../../chat/presentation/chat_room_screen.dart';
+import '../../chat/presentation/message_time.dart';
 import '../data/conversation_models.dart';
 import 'conversation_list_logic.dart';
 import 'conversation_list_parts.dart';
@@ -34,7 +34,6 @@ class ConversationListScreen extends ConsumerStatefulWidget {
 }
 
 class _ConversationListScreenState extends ConsumerState<ConversationListScreen> {
-  final _timeFormat = DateFormat('HH:mm');
   final _searchController = TextEditingController();
   Timer? _archiveSearchDebounce;
   int _archiveSearchRequestId = 0;
@@ -129,7 +128,8 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           archiveHasMore:
               _archiveNextBeforeSentAt != null && _archiveNextBeforeMessageId != null,
           searchController: _searchController,
-          timeFormat: _timeFormat,
+          timeFormat: MessageTimeFormat.of(context),
+          now: ref.watch(wallClockProvider)(),
           selectedConversationId: isWideLayout ? _selectedConversationId : null,
           onSelectConversation: (conversationId) {
             if (isWideLayout) {

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
@@ -11,6 +10,7 @@ import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_message_runs.dart';
 import 'message_bubble.dart';
+import 'message_time.dart';
 import 'reaction_chips_row.dart';
 import 'system_notice_bubble.dart';
 
@@ -66,7 +66,9 @@ class ChatMessageList extends ConsumerWidget {
   /// Owned by the screen; keys of messages no longer shown are dropped.
   final Map<String, GlobalKey> messageKeys;
   final String? highlightedMessageId;
-  final DateFormat sentAtFormat;
+
+  /// How a bubble writes the time it was sent.
+  final MessageTimeFormat sentAtFormat;
   final Future<void> Function(String attachmentId) onResolveAttachment;
 
   /// A long press on [message], whose row is at [anchor] on screen.
@@ -230,7 +232,12 @@ class ChatMessageList extends ConsumerWidget {
               label: isLoadingHistory ? l10n.chatLoadingOlder : l10n.chatLoadOlder,
             ),
           ),
-        if (startsDay) ChatDayDivider(day: message.sentAt, first: index == 0 && !showLoadOlder),
+        if (startsDay)
+          ChatDayDivider(
+            day: message.sentAt,
+            now: ref.watch(wallClockProvider)(),
+            first: index == 0 && !showLoadOlder,
+          ),
         entry,
       ],
     );
@@ -298,6 +305,7 @@ class ChatMessageList extends ConsumerWidget {
       position: position,
       highlighted: message.id == highlightedMessageId,
       searchQuery: searchQuery,
+      heldAccount: controller.peerAccountHoldFor(conversationId) != null,
       reactions: message.reactions.isEmpty
           ? null
           : ReactionChipsRow(

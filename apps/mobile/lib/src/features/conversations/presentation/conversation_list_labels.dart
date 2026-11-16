@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../chat/presentation/chat_room_labels.dart';
@@ -103,13 +101,4 @@ String? conversationExpiryLabel(
 ) {
   final expiresAt = item.lastEnvelope?.expiresAt;
   return expiresAt == null ? null : formatMessageExpiry(l10n, expiresAt, now: controller.expiryNow());
-}
-
-/// The time of a message sent today, the day of an older one.
-String messageDateLabel(DateTime sentAt, DateFormat timeFormat, String localeName) {
-  final now = DateTime.now();
-  if (sentAt.year == now.year && sentAt.month == now.month && sentAt.day == now.day) {
-    return timeFormat.format(sentAt);
-  }
-  return DateFormat.MMMd(localeName).format(sentAt);
 }

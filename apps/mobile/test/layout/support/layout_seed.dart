@@ -10,27 +10,36 @@ import '../../support/fake_relay.dart';
 import 'layout_world.dart';
 
 // What the layout cases show: the chats of an ordinary Tuesday morning,
-// April 7, 2026, with the names and the short lines of people texting.
-// Sam's chat is the one most cases open; its history from the evening
-// before holds the long message and the long link, above the first screen,
-// where a person scrolls up to them (the chat-room-history case). Priya's
+// April 7, 2026, with the names and the short lines of people texting, seen
+// at [layoutNow], a little after the last of them.
+// Sam's chat is the one most cases open; its history from Thursday
+// evening holds the long message and the long link, above last night's
+// short lines and so off the first screen at every size, where a person
+// scrolls up to them (the chat-room-history case). Priya's
 // chat holds the one notice from the other side, Jonas's the disappearing
 // timer, Lena's nothing yet, and the group the cases that ask for one.
 // Then contacts.
 
 /// Peers by handle, with the name the relay lists them under. One of them
 /// set no name and is listed by handle; one name is long enough to overflow
-/// a row.
+/// a row. A person's avatar colour comes from their handle (VeilAvatar), so
+/// the handles are picked for rows that sit next to each other, in Chats,
+/// in Contacts and in the store's Chats shot, to differ in colour: Sam
+/// ochre, Priya slate blue, Jonas purple, Alexandra and tom_walsh olive,
+/// Omar purple, Mia rose, Lena ochre, and no two neighbours alike.
 const peerNames = <String, String?>{
   peerHandle: 'Sam Rivera',
   noticeChatPeerHandle: 'Priya Nair',
   timerChatPeerHandle: 'Jonas Weber',
   'alexandra': 'Alexandra Montgomery-Whitfield',
   'mia': 'Mia Chen',
-  'omar': 'Omar Haddad',
+  _omar: 'Omar Haddad',
   'tom_walsh': null,
   emptyChatPeerHandle: 'Lena Fischer',
 };
+
+/// Omar's handle: in the group, and with a chat of his own.
+const _omar = 'omar_h';
 
 /// The peer whose chat holds a system notice, and that chat.
 const noticeChatPeerHandle = 'priya';
@@ -74,6 +83,13 @@ void seedParties(FakeRelay relay, LayoutIdentities identities) {
   }
 }
 
+/// What the phone's clock reads in every case and every store shot
+/// (wallClockProvider): 10:20 that Tuesday, a few minutes after the last
+/// line of the morning. So the morning's chats show their times, Mia's
+/// "Yesterday" and tom_walsh's "Sat", and Sam's chat says "Yesterday" and
+/// "Today" over its days, on any day the gate runs.
+final DateTime layoutNow = DateTime.utc(2026, 4, 7, 10, 20);
+
 /// When a line was sent: April [day], 2026, at [hour]:[minute] in the
 /// gate's time zone (UTC), so the list and the bubbles read like a real
 /// morning.
@@ -111,21 +127,40 @@ class _Line {
   final String? from;
 }
 
-// Sam's chat. The evening before: the long message and the long link, as a
-// person writes them.
-const _samsEvening = <_Line>[
+// Sam's chat. Thursday evening: the long message and the long link, as a
+// person writes them. They sit above last night's lines, so the first
+// screen of the chat starts on ordinary bubbles at every size.
+const _samsThursday = <_Line>[
   _Line(
-    _At(21, 2, day: 6),
+    _At(21, 2, day: 2),
     false,
     'ok so the landlord wants two months up front and the sublet clause changed again. '
     "can you read section 7 before we sign? I really don't want to argue about it later",
   ),
-  _Line(_At(21, 5, day: 6), true, 'will do tomorrow morning'),
+  _Line(_At(21, 5, day: 2), true, 'will read it this weekend'),
   _Line(
-    _At(21, 6, day: 6),
+    _At(21, 6, day: 2),
     false,
     'this is the place btw https://$longLinkHost/berlin/kreuzberg/two-room-flat-with-balcony-and-courtyard-view-4417',
   ),
+];
+
+// Last night: section 7 read, the signing set for the morning, the van.
+// Enough short lines that even the tallest case, the tablet's, opens on
+// them and not on Thursday's.
+const _samsEvening = <_Line>[
+  _Line(_At(18, 52, day: 6), true, 'read section 7 finally'),
+  _Line(_At(18, 52, day: 6), true, 'looks fine to me'),
+  _Line(_At(18, 55, day: 6), false, 'great'),
+  _Line(_At(18, 56, day: 6), false, "can you sign it in the morning? I'm at work till 6"),
+  _Line(_At(19, 1, day: 6), true, 'sure, first thing'),
+  _Line(_At(19, 2, day: 6), false, "you're the best"),
+  _Line(_At(19, 30, day: 6), false, 'do we still need a van?'),
+  _Line(_At(19, 34, day: 6), true, 'omar said he can bring his'),
+  _Line(_At(19, 35, day: 6), true, 'after 6 though'),
+  _Line(_At(19, 35, day: 6), false, 'works for me'),
+  _Line(_At(19, 41, day: 6), false, "I'll ask the movers about the 14th"),
+  _Line(_At(19, 44, day: 6), true, 'ok'),
 ];
 
 // The morning: short lines, a file, a disappearing message.
@@ -152,18 +187,32 @@ const _samsKeyChange = <_Line>[
   _Line(_At(9, 40), true, "call me when you're there"),
 ];
 
-const _chat = [..._samsEvening, ..._samsMorning, ..._samsEnd];
+const _chat = [..._samsThursday, ..._samsEvening, ..._samsMorning, ..._samsEnd];
+
+// Sam's chat as the account-hold cases list it: under @sam, but with
+// another account than the one this phone talked to, so it is not the same
+// conversation and holds nothing of Sam's history. All it has is what that
+// account sent, which stays locked until the user confirms the account.
+const _heldAccountLines = <_Line>[
+  _Line(_At(9, 52), false, 'hey, new phone. this is sam'),
+  _Line(_At(9, 53), false, 'can you send me the address again?'),
+];
+
+/// How many messages the held conversation of the account-hold cases holds.
+int get heldAccountLineCount => _heldAccountLines.length;
 
 /// How many messages the chat's conversation holds.
 int get chatLineCount => _chat.length;
 
 // Every other chat, oldest first. Omar sent a photo and Alexandra a voice
-// message, neither with words; Lena's chat has no message yet.
+// message, neither with words; Lena's chat has no message yet. tom_walsh
+// last wrote on Saturday and Mia last night, so the list has older days
+// under the morning's times.
 const _others = <String, List<_Line>>{
   emptyChatPeerHandle: [],
-  'tom_walsh': [_Line(_At(8, 7), true, "what's the address again?")],
-  'omar': [_Line(_At(8, 14), false, '', kind: MessageKind.image)],
-  'mia': [_Line(_At(8, 21), false, 'can you send the photos from saturday?')],
+  'tom_walsh': [_Line(_At(18, 40, day: 4), true, "what's the address again?")],
+  'mia': [_Line(_At(20, 15, day: 6), false, 'can you send the photos from saturday?')],
+  _omar: [_Line(_At(8, 14), false, '', kind: MessageKind.image)],
   'alexandra': [_Line(_At(8, 28), false, '', kind: MessageKind.voice)],
   timerChatPeerHandle: [
     _Line(_At(8, 30), true, 'You set disappearing messages to 1 day', kind: MessageKind.system),
@@ -180,7 +229,7 @@ const _others = <String, List<_Line>>{
 /// The group of the group cases: this user and three of the peers, in a
 /// legacy group (frames through the pairwise engine, like every 1:1 here).
 const groupConversationId = 'conv-group';
-const groupMemberHandles = [peerHandle, noticeChatPeerHandle, 'omar'];
+const groupMemberHandles = [peerHandle, noticeChatPeerHandle, _omar];
 
 /// The group's name, as its creator typed it in New group.
 const groupName = 'Moving day';
@@ -189,7 +238,7 @@ const _group = <_Line>[
   _Line(_At(9, 52), false, 'movers can do the 14th or 16th', from: peerHandle),
   _Line(_At(9, 59), false, '14th works for me', from: noticeChatPeerHandle),
   _Line(_At(10, 6), true, "14th then, I'll book the lift"),
-  _Line(_At(10, 13), false, latestGroupLine, from: 'omar'),
+  _Line(_At(10, 13), false, latestGroupLine, from: _omar),
 ];
 
 /// How many messages the group's conversation holds.
@@ -198,12 +247,15 @@ int get groupLineCount => _group.length;
 /// Fills the relay with the conversations above and stores the content of
 /// this device's own messages, which no device can decrypt back. With
 /// [withGroup] the newest conversation is the group. With [keyChange]
-/// Sam's chat ends on the change of his safety number.
+/// Sam's chat ends on the change of his safety number. With [heldAccount]
+/// the chat listed under @sam is another account's, and holds only what
+/// that account sent.
 Future<void> seedConversations(
   FakeRelay relay,
   LayoutMemoryCache cache, {
   bool withGroup = false,
   bool keyChange = false,
+  bool heldAccount = false,
 }) async {
   final sealer = createDefaultCryptoAdapter();
   // The lines are dated April; what disappears must still be there today.
@@ -249,6 +301,19 @@ Future<void> seedConversations(
     );
     final sentAt = line.at.time;
     stored['serverReceivedAt'] = sentAt.toIso8601String();
+    if (line.kind == MessageKind.text && body.isNotEmpty && !line.attachment) {
+      cache.archive.add(MessageSearchResult(
+        conversationId: conversationId,
+        messageId: stored['id'] as String,
+        peerHandle: peer,
+        peerDisplayName: peerNames[peer],
+        sentAt: sentAt,
+        messageKind: line.kind,
+        isMine: line.mine,
+        bodySnippet: body,
+        conversationOrder: stored['conversationOrder'] as int?,
+      ));
+    }
     if (!line.mine) return;
     stored['deliveredAt'] = sentAt.add(const Duration(seconds: 2)).toIso8601String();
     await cache.put(MessageContentRecord(
@@ -285,7 +350,12 @@ Future<void> seedConversations(
   for (final MapEntry(key: peer, value: lines) in _others.entries) {
     await seedDirect(peer, lines);
   }
-  await seedDirect(peerHandle, [..._samsEvening, ..._samsMorning, ...keyChange ? _samsKeyChange : _samsEnd]);
+  await seedDirect(
+    peerHandle,
+    heldAccount
+        ? _heldAccountLines
+        : [..._samsThursday, ..._samsEvening, ..._samsMorning, ...keyChange ? _samsKeyChange : _samsEnd],
+  );
   if (!withGroup) return;
   relay.addGroup(groupConversationId, [selfHandle, ...groupMemberHandles], useSenderKeys: false, name: groupName);
   for (final line in _group) {
@@ -306,8 +376,9 @@ const layoutClaimFingerprint = '9f2c 41ab 07de 5c33 e18a 6b40 d2f7 0c95 7a1e 33b
 const _transferToken = 'c47d2e19-8a3b-4f60-b915-2e7a0d6c3f84';
 
 /// What a case types into a search field: a part of two names (Sam Rivera,
-/// Priya Nair) and of nothing else, and a word of two of Sam's messages
-/// (his first of the morning and the name of the file).
+/// Priya Nair) and of two messages (Priya's last, "I'll bring the slides
+/// tomorrow", and one of last night's in Sam's chat), and a word of two of Sam's messages (his first of the
+/// morning and the name of the file).
 const conversationSearchQuery = 'ri';
 const chatSearchQuery = 'lease';
 
@@ -483,9 +554,17 @@ class LayoutRelayClient extends FakeRelayClient {
 class LayoutMemoryCache implements ConversationCacheService, MessageContentStore {
   final InMemoryMessageContentStore _contents = InMemoryMessageContentStore();
 
-  /// What a search of the archive finds, whatever the query: there is no
-  /// index here, so a test names the hits it is about.
+  /// What a search of the archive finds, whatever the query, when a test
+  /// names the hits it is about.
   List<MessageSearchResult> archiveHits = const <MessageSearchResult>[];
+
+  /// Every seeded line with words, as the archive a phone that opened every
+  /// chat would hold (seedConversations fills it).
+  final List<MessageSearchResult> archive = [];
+
+  /// Whether a search with no [archiveHits] looks through [archive] for the
+  /// query, as the phone's own index does; off, it finds nothing.
+  bool searchesArchive = false;
 
   @override
   Future<void> put(MessageContentRecord record) => _contents.put(record);
@@ -549,8 +628,17 @@ class LayoutMemoryCache implements ConversationCacheService, MessageContentStore
   Future<MessageSearchPage> searchMessageArchive({
     required MessageSearchQuery query,
     required String currentDeviceId,
-  }) async =>
-      MessageSearchPage(items: archiveHits);
+  }) async {
+    if (archiveHits.isNotEmpty || !searchesArchive) return MessageSearchPage(items: archiveHits);
+    final term = query.normalizedQuery;
+    if (term.isEmpty) return const MessageSearchPage(items: <MessageSearchResult>[]);
+    // Newest first, as the phone's index answers.
+    final hits = [
+      for (final hit in archive)
+        if (hit.bodySnippet.toLowerCase().contains(term)) hit,
+    ]..sort((a, b) => b.sentAt.compareTo(a.sentAt));
+    return MessageSearchPage(items: hits.take(query.limit).toList());
+  }
 
   @override
   Future<void> storeConversations(List<ConversationPreview> conversations) async {}

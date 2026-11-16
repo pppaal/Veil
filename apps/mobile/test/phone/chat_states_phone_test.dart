@@ -122,7 +122,7 @@ void main() {
         withGroup: true,
         location: _group,
         prepare: (world) async {
-          await _injectGroupLine(world, from: 'omar', body: 'And the lamp.', at: _lastGroupLineAt.add(const Duration(minutes: 2)));
+          await _injectGroupLine(world, from: 'omar_h', body: 'And the lamp.', at: _lastGroupLineAt.add(const Duration(minutes: 2)));
           return null;
         },
         body: (world) async {
@@ -145,8 +145,8 @@ void main() {
         withGroup: true,
         location: _group,
         prepare: (world) async {
-          // jonas is on the relay, but not in this group.
-          await _injectGroupLine(world, from: 'jonas', body: 'Change of plan: the 16th.');
+          // Jonas is on the relay, but not in this group.
+          await _injectGroupLine(world, from: timerChatPeerHandle, body: 'Change of plan: the 16th.');
           return null;
         },
         body: (world) async {

@@ -40,11 +40,11 @@ const peerHandle = 'sam';
 const chatConversationId = 'conv-$peerHandle';
 
 /// A peer nobody has written to yet, and the conversation with them.
-const emptyChatPeerHandle = 'lena';
+const emptyChatPeerHandle = 'lena_berlin';
 const emptyChatConversationId = 'conv-$emptyChatPeerHandle';
 
 /// The conversation whose messages disappear after a day.
-const timerChatPeerHandle = 'jonas';
+const timerChatPeerHandle = 'jonask';
 const timerChatConversationId = 'conv-$timerChatPeerHandle';
 
 /// Real identity keys, generated once per run: safety numbers take 32-byte
@@ -113,7 +113,9 @@ class ChatAttention {
   final int failedSends;
 
   /// The chat is listed under the peer's handle with another account than
-  /// the one this device talked to, and waits for the user to say so.
+  /// the one this device talked to, and waits for the user to say so. Such
+  /// a chat is a conversation of its own: it holds only the two messages
+  /// that account sent, both locked until the user confirms it.
   final bool accountHeld;
 
   /// The peer is typing while the chat is open.
@@ -179,6 +181,10 @@ class LayoutWorld {
       ? SecureStorageService(MemorySecureStore())
       : _PinSetStorage(MemorySecureStore());
   final LayoutMemoryCache cache = LayoutMemoryCache();
+
+  /// What the phone's clock reads (wallClockProvider): [layoutNow] unless a
+  /// test moves it.
+  DateTime now = layoutNow;
   late final LayoutRelayClient api;
   late final IdentityTrust trust;
   late final VeilMessengerController messenger;
@@ -212,10 +218,13 @@ class LayoutWorld {
     bool transferClaimed = false,
     bool transferStarted = false,
     bool withGroup = false,
+    bool searchesArchive = false,
     String? sessionError,
     void Function(FakeRelay relay)? beforeSession,
   }) async {
     final world = LayoutWorld._(identities, account, locale, sessionError);
+    // A search of Chats looks through every seeded line with words.
+    world.cache.searchesArchive = searchesArchive;
     await world._build(
       attention: attention,
       bootstrapping: bootstrapping,
@@ -245,6 +254,7 @@ class LayoutWorld {
         cache,
         withGroup: withGroup,
         keyChange: attention.identityChanged && attention.failedSends > 0,
+        heldAccount: attention.accountHeld,
       );
     }
     // A caller that shows less than the seed changes the relay here, before
@@ -337,6 +347,8 @@ class LayoutWorld {
       identityTrustProvider.overrideWithValue(trust),
       conversationCacheProvider.overrideWith((ref) async => null),
       appLockServiceProvider.overrideWithValue(AppLockService(const _Biometrics(), storage)),
+      // The seed's Tuesday morning, whatever day the case runs.
+      wallClockProvider.overrideWithValue(() => now),
       if (account == LayoutAccount.choosingPin) lockRequestedInSettingsProvider.overrideWith((ref) => true),
       localSecuritySnapshotProvider.overrideWith(
         (ref) async => const LocalSecuritySnapshot(
@@ -532,6 +544,17 @@ class _LayoutMessenger extends VeilMessengerController {
 
   @override
   Future<DecryptedMessage> decryptMessage(ChatMessage message) async {
+    // A held chat admits no identity until the user confirms the account
+    // (ConversationCryptoRouter.verifyRemoteIdentity), so nothing that
+    // account sent opens: the engine refuses each frame as it would one
+    // from a changed identity.
+    if (attention.accountHeld && !message.isMine && message.envelope.conversationId == chatConversationId) {
+      return DecryptedMessage(
+        body: '',
+        messageKind: message.envelope.messageKind,
+        status: DecryptStatus.identityRejected,
+      );
+    }
     final opened = await super.decryptMessage(message);
     if (!attention.legacyMessage || !opened.isOk || message.isMine || opened.body != legacyMessageBody) {
       return opened;

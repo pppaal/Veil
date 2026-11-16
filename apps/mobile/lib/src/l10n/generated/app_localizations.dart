@@ -673,7 +673,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLogoutConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'This signs this phone out and erases Veil from it. You lose the account for good.'**
+  /// **'This signs this phone out and deletes your chats from it. Your account is gone for good.'**
   String get settingsLogoutConfirmBody;
 
   /// No description provided for @settingsLogoutFailed.
@@ -1017,6 +1017,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Locked until you review the new safety number'**
   String get chatDecryptIdentityRejected;
+
+  /// No description provided for @chatDecryptHeldAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked until you confirm this account'**
+  String get chatDecryptHeldAccount;
 
   /// No description provided for @notificationNewMessage.
   ///

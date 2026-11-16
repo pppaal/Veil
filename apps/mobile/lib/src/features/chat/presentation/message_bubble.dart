@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
@@ -13,6 +12,7 @@ import 'chat_room_labels.dart';
 import 'decrypt_status_view.dart';
 import 'message_attachment_views.dart';
 import 'message_expiration.dart';
+import 'message_time.dart';
 import 'message_read_glyph.dart';
 
 /// One message as a bubble on its sender's side: who of a group wrote it
@@ -45,11 +45,14 @@ class MessageBubble extends StatelessWidget {
     this.position = VeilBubblePosition.single,
     this.reactions,
     this.searchQuery,
+    this.heldAccount = false,
   });
 
   final ChatMessage message;
   final bool highlighted;
-  final DateFormat sentAtFormat;
+
+  /// How the time it was sent is written.
+  final MessageTimeFormat sentAtFormat;
   final Future<DecryptedMessage> decryptFuture;
   final Future<void> Function(String attachmentId) onResolveAttachment;
   final VoidCallback? onCancelAttachment;
@@ -75,6 +78,10 @@ class MessageBubble extends StatelessWidget {
 
   /// A chat search's query, drawn in bold where the text holds it.
   final String? searchQuery;
+
+  /// The chat is held for its handle until the user confirms the account
+  /// (see DecryptFailureLine.heldAccount).
+  final bool heldAccount;
 
   /// How far the reactions overlap the bubble's foot.
   static const double reactionOverlap = 6;
@@ -118,7 +125,7 @@ class MessageBubble extends StatelessWidget {
               ),
             ),
           DecryptStatus.ok || DecryptStatus.legacyUnauthenticated => Text(decrypted!.body, style: bodyStyle),
-          _ => DecryptFailureLine(status: status, color: metaColor),
+          _ => DecryptFailureLine(status: status, heldAccount: heldAccount, color: metaColor),
         };
         final bubble = VeilBubble(
           isMine: message.isMine,
@@ -259,7 +266,7 @@ class _Meta extends StatelessWidget {
   });
 
   final ChatMessage message;
-  final DateFormat sentAtFormat;
+  final MessageTimeFormat sentAtFormat;
   final DateTime Function() expiryNow;
   final TextStyle? style;
 
@@ -282,7 +289,7 @@ class _Meta extends StatelessWidget {
             MessageDeliveryState.read => MessageReadGlyph(color: color ?? Colors.white, cutColor: bubbleFill),
           };
     final items = <Widget>[
-      Text(sentAtFormat.format(message.sentAt), style: style),
+      Text(sentAtFormat.timeOfDay(message.sentAt), style: style),
       if (message.expiresAt != null) Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: color),
       if (status != null) status,
     ];

@@ -20,6 +20,11 @@ const _code = 'VEIL_TRANSFER::session-1::token-1';
 // What the box shows of it: no prefix, which no one reads.
 const _shown = 'session-1::token-1';
 
+// A code as the relay's ids make it: a session and a token, both UUIDs.
+const _realCode =
+    'VEIL_TRANSFER::8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d::c47d2e19-8a3b-4f60-b915-2e7a0d6c3f84';
+const _realShown = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d::c47d2e19-8a3b-4f60-b915-2e7a0d6c3f84';
+
 // [expiresAt] null is a device that has no session open.
 Future<void> _pump(
   WidgetTester tester, {
@@ -28,6 +33,7 @@ Future<void> _pump(
   String? errorMessage,
   Size view = const Size(400, 3000),
   TextEditingController? claim,
+  String code = _code,
 }) {
   tester.view
     ..physicalSize = view
@@ -42,7 +48,7 @@ Future<void> _pump(
         child: TransferOldDevicePanel(
           isBusy: false,
           transferSessionId: expiresAt == null ? null : 'session-1',
-          transferCode: expiresAt == null ? null : _code,
+          transferCode: expiresAt == null ? null : code,
           status: status,
           transferExpiresAt: expiresAt,
           transferExpired: expiresAt != null && !expiresAt.isAfter(_now),
@@ -119,17 +125,57 @@ void main() {
     expect(find.text(_en.deviceTransferOldStep1), findsNothing, reason: 'the instructions were the start screen');
   });
 
-  // A real code is longer than a phone is wide; drawn whole it wrapped into
-  // a block of machine text. "Copy code" copies the whole of it.
-  testWidgets('the code is one line that ends in "…" when it does not fit', (tester) async {
-    await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.add(const Duration(minutes: 4)), view: const Size(360, 3000));
+  // A real code is longer than a phone is wide. Cut to one line that ended
+  // in "…", it could be neither read off nor typed in on the new phone, only
+  // copied; now it is all there, and a long press selects it.
+  testWidgets('the whole code is shown, wrapping, selectable, in the body\'s type', (tester) async {
+    await _pump(
+      tester,
+      status: const TransferTokenReady(),
+      expiresAt: _now.add(const Duration(minutes: 4)),
+      view: const Size(360, 3000),
+      code: _realCode,
+    );
 
-    final code = tester.widget<Text>(find.text(_shown));
-    expect(code.maxLines, 1);
-    expect(code.softWrap, isFalse);
-    expect(code.overflow, TextOverflow.ellipsis);
-    final box = tester.getSize(find.byKey(const ValueKey('transfer-code')));
-    expect(box.height, lessThan(44), reason: 'one line, whatever the code\'s length');
+    final shown = find.byKey(const ValueKey('transfer-code'));
+    final code = tester.widget<SelectableText>(shown);
+    expect(code.data, _realShown, reason: 'every character of it, the prefix aside');
+    expect(code.maxLines, isNull);
+    // It is selectable: its text is an editable's, read-only, which a long
+    // press selects.
+    final editable = tester.widget<EditableText>(find.descendant(of: shown, matching: find.byType(EditableText)));
+    expect(editable.controller.text, _realShown);
+    expect(editable.readOnly, isTrue);
+    expect(editable.selectionEnabled, isTrue);
+    // The body's own type: no monospace, no tracking.
+    final bodyLarge = Theme.of(tester.element(shown)).textTheme.bodyLarge!;
+    expect(editable.style.fontFamily, bodyLarge.fontFamily);
+    expect(editable.style.fontFamily, isNot('monospace'));
+    expect(editable.style.fontSize, bodyLarge.fontSize);
+    expect(editable.style.letterSpacing ?? 0, lessThanOrEqualTo(0));
+    // It wraps inside the screen rather than running off it or ending in "…".
+    final rect = tester.getRect(shown);
+    expect(rect.right, lessThanOrEqualTo(360));
+    expect(rect.height, greaterThan(bodyLarge.fontSize! * 2), reason: 'more than one line at 360');
+    // "Copy code" stays, under it.
+    final copy = find.widgetWithText(OutlinedButton, _en.deviceTransferCopyPayload);
+    expect(copy, findsOneWidget);
+    expect(rect.bottom, lessThanOrEqualTo(tester.getRect(copy).top));
+  });
+
+  testWidgets('a long press selects the code', (tester) async {
+    await _pump(
+      tester,
+      status: const TransferTokenReady(),
+      expiresAt: _now.add(const Duration(minutes: 4)),
+      view: const Size(360, 3000),
+      code: _realCode,
+    );
+    final shown = find.byKey(const ValueKey('transfer-code'));
+    await tester.longPress(shown);
+    await tester.pumpAndSettle();
+    final editable = tester.state<EditableTextState>(find.descendant(of: shown, matching: find.byType(EditableText)));
+    expect(editable.textEditingValue.selection.isCollapsed, isFalse, reason: 'a word of it is selected');
   });
 
   testWidgets('what an approval came to is said under the button that approves, in green', (tester) async {

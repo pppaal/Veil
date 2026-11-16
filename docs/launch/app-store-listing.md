@@ -33,7 +33,7 @@ phone in a form the server can read.
 - **Disappearing messages.** Set a timer on a chat, and its messages are
   deleted from every device when the timer runs out.
 - **Block, report and mute.** Block or report someone from a chat or your
-  contacts, and turn a chat's notifications off for a while.
+  contacts, and mute a chat.
 
 Veil has no ads and no analytics, and there is no account recovery: if you
 lose your phone, you lose the account.

@@ -100,6 +100,36 @@ test.describe('blocking', () => {
     expectNoErrors(alice);
   });
 
+  // With the focus on the page (a click on the dialog's text), Esc still
+  // closes the report dialog for good, so it opens again.
+  test('the report dialog closes on Esc from outside it, and opens again', async () => {
+    const { page } = alice;
+    const dialog = page.locator('#report-dialog');
+    await chooseAction(alice, 'are you there?', 'Report');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('.dialog-sub')).toHaveText(
+      'The report includes your account, theirs, the reason and which chat and message, but not what it says.',
+    );
+    await expect(dialog.locator('.choice span')).toHaveText([
+      'Spam',
+      'Harassment',
+      'Pretending to be someone',
+      'Child sexual abuse',
+      'Violence or threats',
+      'Scam or fraud',
+      'Something else',
+    ]);
+    await dialog.locator('#report-title').click();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+
+    await chooseAction(alice, 'are you there?', 'Report');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('button', { hasText: 'Cancel' }).click();
+    await expect(dialog).toHaveCount(0);
+    expectNoErrors(alice);
+  });
+
   test('a list that could not be loaded is not shown as empty', async () => {
     await alice.page.route('**/v1/safety/blocks', (route) =>
       route.fulfill({ status: 503, json: { code: 'internal_error', message: 'try later' } }));

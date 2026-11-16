@@ -143,6 +143,23 @@ test.describe('a contact verified by safety number', () => {
     expectNoErrors(alice, bob);
   });
 
+  // A click on the dialog's text leaves the focus on the page, so the Esc
+  // reaches the page's handler rather than the dialog's. The dialog still
+  // closes for good (its resize listener with it), and opens again.
+  test('Esc with the focus outside the dialog closes it, and it opens again', async () => {
+    const page = alice.page;
+    const dialog = await openSafetyDialog(page);
+    await dialog.locator('#safety-title').click();
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+
+    const again = await openSafetyDialog(page);
+    await again.locator('button', { hasText: 'Cancel' }).click();
+    await expect(again).toHaveCount(0);
+    expectNoErrors(alice, bob);
+  });
+
   test('a new key of a verified contact is accepted only by comparing it', async () => {
     await relay('/__test/impersonate', { victim: bob.handle, target: alice.handle, text: 'relay as verified bob' });
     const { page } = alice;

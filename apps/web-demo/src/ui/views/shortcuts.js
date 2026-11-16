@@ -14,12 +14,18 @@ export function createShortcuts({ openHelp, toggleSounds }) {
     const mod = event.ctrlKey || event.metaKey;
     // Esc closes an open dialog, else the menu. A dialog that handled Esc
     // itself (a confirmation) has closed already; without this check the
-    // dialog it was stacked on would close with it.
+    // dialog it was stacked on would close with it. With the focus outside
+    // the dialog (a click on its text leaves it on the page), the Esc goes
+    // to the dialog's own handler first, so a dialog that cleans up when it
+    // closes (the safety number's resize listener, a confirmation's answer)
+    // does; only one without such a handler is just hidden.
     if (event.key === 'Escape' && !event.defaultPrevented) {
       const open = document.querySelector('.dialog-backdrop:not(.hidden)') ?? document.querySelector('.menu:not(.hidden)');
       if (open) {
         event.preventDefault();
-        open.classList.add('hidden');
+        const forwarded = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+        open.dispatchEvent(forwarded);
+        if (!forwarded.defaultPrevented) open.classList.add('hidden');
         return;
       }
     }

@@ -106,8 +106,11 @@ Nothing you send is stored on our servers in a form we can read.
 
 The shot list, the sizes and how to capture them are in
 [`store/appstore/screenshot-spec.md`](../../store/appstore/screenshot-spec.md):
-six shots, iPhone only (there is no iPad build), captured on the iOS
-Simulator. They cannot be rendered like the Google Play set
+six shots per iPhone size, captured on the iOS Simulator. The Xcode project
+still builds for iPad as well (`TARGETED_DEVICE_FAMILY = "1,2"`), and App
+Store Connect asks for iPad screenshots for such a build: set the device
+family to iPhone before archiving, as the spec plans, or capture a 13" iPad
+set too. The shots cannot be rendered like the Google Play set
 (`store/play/screenshots/`), because iOS draws SF Pro, which the renderer
 does not have.
 

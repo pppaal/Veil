@@ -167,6 +167,29 @@ export const STALE_STATEMENTS = [
     ],
     statements: [/\bprotocol status\b.*\benvelope-v3-unified-spec\b/i],
   },
+  {
+    // The launch docs once called Veil an iPhone-only app with no iPad build
+    // and said iPad support is something not to declare in App Store Connect.
+    // The binary's device family is what declares it, and Apple asks for iPad
+    // screenshots for any binary that runs on iPad.
+    id: 'ipad-build-absent',
+    fact:
+      'the Xcode project builds for iPhone and iPad (TARGETED_DEVICE_FAMILY "1,2"), ' +
+      'so App Store Connect asks for iPad screenshots until the family is iPhone alone',
+    code: [
+      {
+        file: 'apps/mobile/ios/Runner.xcodeproj/project.pbxproj',
+        pattern: /\bTARGETED_DEVICE_FAMILY = "1,2";/,
+      },
+    ],
+    statements: [
+      /\bno iPad build\b/i,
+      /\b(?:is|an?) iPhone[- ](?:only|scope)\b/i,
+      /\b(?:do not|don't|must not|never) declare iPad\b/i,
+      /\biPad (?:device )?support is not declared\b/i,
+      /\biPad screenshots (?:are|is) not (?:required|requested|needed)\b/i,
+    ],
+  },
 ];
 
 // --- no-stale-counts

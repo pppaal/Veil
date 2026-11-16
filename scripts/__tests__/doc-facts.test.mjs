@@ -33,6 +33,7 @@ const CLEAN = {
     'return `ip:${clientAddress(req, this.config.clientIpSource)}`;\n',
   'apps/api/src/common/client-address.ts': 'switch (source) {\n}\n',
   'apps/web-demo/src/crypto/frame.js': "export const ENVELOPE_VERSION_V2 = 'veil-envelope-v2';\n",
+  'apps/mobile/ios/Runner.xcodeproj/project.pbxproj': '\t\t\t\tTARGETED_DEVICE_FAMILY = "1,2";\n',
   'apps/api/src/modules/auth/auth.module.ts': '',
   'apps/api/src/modules/users/users.module.ts': '',
   'README.md': [
@@ -186,6 +187,7 @@ test('each stale statement fails while its code stands', () => {
       '- Custom `CfThrottlerGuard` prefers `cf-connecting-ip`, falls back to `deviceId`',
     'web-protocol-in-superseded-spec':
       '- Web demo: its protocol status is tracked in `docs/envelope-v3-unified-spec.md`.',
+    'ipad-build-absent': 'Six shots, iPhone only (there is no iPad build), captured on the Simulator.',
   };
   assert.deepEqual(Object.keys(statements).sort(), STALE_STATEMENTS.map(({ id }) => id).sort());
   for (const [id, statement] of Object.entries(statements)) {
@@ -212,6 +214,47 @@ test('an entry whose code is gone fails instead of guarding nothing', () => {
   assert.equal(
     failuresOf(RULES.staleStatement, { 'apps/web-demo/src/crypto/frame.js': null }).length,
     1,
+  );
+});
+
+test('while the Xcode project builds for iPad, no document says there is no iPad build', () => {
+  // What store/appstore/screenshot-spec.md and docs/launch/app-store-listing.md
+  // said while TARGETED_DEVICE_FAMILY was "1,2".
+  const said = [
+    'Veil on iOS is an **iPhone-only Flutter app** (`apps/mobile`, iOS deployment target 14.0).',
+    'There is no iPad-optimized build, so iPad screenshots are **not required and should not be supplied**.',
+    '| iPad 13" display | **No** | Veil is iPhone-scope only. Do not declare iPad support. |',
+    '> Connect submission must not declare iPad device support.',
+    '- [ ] iPad device support is **not** declared in App Store Connect; no iPad screenshots uploaded.',
+    'Six shots, iPhone only (there is no iPad build), captured on the iOS Simulator.',
+  ];
+  for (const sentence of said) {
+    const failures = failuresOf(RULES.staleStatement, { 'store/appstore/spec.md': `${sentence}\n` });
+    assert.ok(
+      failures.some((failure) => failure.startsWith(`[${RULES.staleStatement}] ipad-build-absent:`)),
+      sentence,
+    );
+  }
+  // What the documents say instead passes.
+  assert.deepEqual(
+    failuresOf(RULES.staleStatement, {
+      'store/appstore/spec.md':
+        'The Xcode project builds for iPhone and iPad. Set the device family to iPhone before ' +
+        'you archive, or capture a 13" iPad set as well.\n',
+    }),
+    [],
+  );
+  // Once the family is iPhone alone the entry has nothing left to guard.
+  assert.deepEqual(
+    failuresOf(RULES.staleStatement, {
+      'apps/mobile/ios/Runner.xcodeproj/project.pbxproj': '\t\t\t\tTARGETED_DEVICE_FAMILY = 1;\n',
+    }),
+    [
+      `[${RULES.staleStatement}] ipad-build-absent: apps/mobile/ios/Runner.xcodeproj/project.pbxproj ` +
+        'no longer shows that the Xcode project builds for iPhone and iPad (TARGETED_DEVICE_FAMILY "1,2"), ' +
+        'so App Store Connect asks for iPad screenshots until the family is iPhone alone; ' +
+        'update STALE_STATEMENTS in scripts/doc-facts.mjs',
+    ],
   );
 });
 

@@ -5,9 +5,12 @@ to the Apple App Store: the device sizes and pixel dimensions Apple
 requires in 2025/2026, the shot list mapped to what the app really does,
 and how to capture them.
 
-Veil on iOS is an **iPhone-only Flutter app** (`apps/mobile`, iOS deployment
-target 14.0). There is no iPad-optimized build, so iPad screenshots are
-**not required and should not be supplied** (see "Device scope" below).
+Veil on iOS is the Flutter app in `apps/mobile` (iOS deployment target
+14.0). This spec plans the listing for iPhone alone, but the Xcode project
+does not say so yet: it sets `TARGETED_DEVICE_FAMILY = "1,2"` (iPhone and
+iPad) in all three build configurations, so a build archived from it runs
+on iPad, and App Store Connect then asks for iPad screenshots too (see
+"Device scope" below).
 
 ---
 
@@ -18,13 +21,16 @@ target 14.0). There is no iPad-optimized build, so iPad screenshots are
 | iPhone 6.9" display | **Yes, mandatory** | Primary required iPhone size in App Store Connect (2025/2026). |
 | iPhone 6.5" display | **Yes, fallback set** | Covers older large-display devices; supply if not relying on Apple's automatic up-scaling from 6.9". |
 | iPhone 6.3" / 6.1" / 5.5" | Optional | App Store Connect can scale from the 6.9" set; supply only if pixel-perfect framing matters. |
-| iPad 13" display | **No** | Veil is iPhone-scope only; no iPad-optimized UI is shipped. Do not declare iPad support, so iPad screenshots are not requested. |
+| iPad 13" display | **Only if the build runs on iPad** | The project targets iPad today (`TARGETED_DEVICE_FAMILY = "1,2"`). Set the family to iPhone before archiving and no iPad set is needed; keep it and a 13" set is required. |
 
-> **Phone scope:** the Flutter project builds an iPhone app and an Android
-> app. It does **not** ship an iPad-optimized layout, so the App Store
-> Connect submission must not declare iPad device support. When iPad is not
-> supported, App Store Connect does not require (and will not show an upload
-> slot for) the 13" iPad screenshot set. Only the iPhone sizes below apply.
+> **Device scope:** whether App Store Connect asks for iPad screenshots
+> depends on the build you upload, not on a setting in App Store Connect:
+> it asks for a 13" iPad set for any build that runs on iPad. This spec
+> plans the listing for iPhone alone, so before archiving, set the Runner
+> target's device family to iPhone (in Xcode: Runner target, General,
+> Supported Destinations, remove iPad; the project then reads
+> `TARGETED_DEVICE_FAMILY = 1`). If the family stays `"1,2"`, also capture
+> the six shots on a 13" iPad simulator (portrait 2064 x 2752).
 
 ---
 
@@ -84,7 +90,8 @@ The app and the listing are English only, so there is one App Store locale:
 
 **Total: 12 image files** (6 shots x 2 sizes). If you rely on Apple
 up-scaling from the 6.9" set only, the deliverable is **6 image files**,
-plus the 6.5" set as an optional quality upgrade.
+plus the 6.5" set as an optional quality upgrade. A build that still runs
+on iPad needs 6 more: the 13" iPad set (§1).
 
 ---
 
@@ -138,9 +145,11 @@ Notes:
   messages. No real personal data and no phone numbers anywhere (the app
   does not use them).
 - **Consistency:** same demo accounts, same avatars and one theme (light or
-  dark) for the whole set. The Google Play set is light, with the same
-  accounts and messages: match it
-  ([`../play/screenshots/`](../play/screenshots/README.md)).
+  dark) for the whole set. The Google Play set is light: match its
+  accounts, messages and theme
+  ([`../play/screenshots/`](../play/screenshots/README.md)). Its status
+  bar strip is blank because a test draws it; the iPhone captures keep the
+  clean status bar described above.
 
 ---
 
@@ -159,8 +168,10 @@ captured on a **Mac**, because the iOS Simulator and Xcode are macOS-only:
 1. Build and run the Veil iOS app on the **iOS Simulator** in Xcode on a
    Mac (for example an iPhone 16 Pro Max simulator for the 6.9" set at
    1290 x 2796, and an iPhone 14 Plus / 11 Pro Max simulator for the 6.5"
-   set at 1242 x 2688). The simulator renders at native resolution, so
-   captures already match Apple's required pixel sizes.
+   set at 1242 x 2688; an iPad Pro 13-inch simulator for the iPad set at
+   2064 x 2752, if the build still runs on iPad). The simulator renders at
+   native resolution, so captures already match Apple's required pixel
+   sizes.
 2. Capture all 6 shots with **Simulator > File > Save Screen** (or `⌘S`),
    which writes a PNG at the device's native resolution. Do not resize
    afterward.
@@ -183,5 +194,5 @@ captured on a **Mac**, because the iOS Simulator and Xcode are macOS-only:
 - [ ] No phone numbers, no real personal data, clean status bar.
 - [ ] Device-transfer shot does not imply backup/recovery.
 - [ ] PNG/JPEG, RGB, no alpha, no rounded corners, full native resolution.
-- [ ] iPad device support is **not** declared in App Store Connect; no iPad
-      screenshots uploaded.
+- [ ] The archived build's device family is iPhone alone
+      (`TARGETED_DEVICE_FAMILY = 1`), or a 13" iPad set is uploaded too.

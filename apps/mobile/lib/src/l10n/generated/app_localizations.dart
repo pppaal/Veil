@@ -568,6 +568,18 @@ abstract class AppLocalizations {
   /// **'Use 3 to 32 lowercase letters, numbers, dots or underscores.'**
   String get authHandleInvalid;
 
+  /// No description provided for @authHandleEdges.
+  ///
+  /// In en, this message translates to:
+  /// **'Start and end with a letter or number.'**
+  String get authHandleEdges;
+
+  /// No description provided for @authHandleRun.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t put 2 dots or underscores in a row.'**
+  String get authHandleRun;
+
   /// No description provided for @authCreating.
   ///
   /// In en, this message translates to:

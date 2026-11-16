@@ -278,7 +278,7 @@ Rules
 5. Before / after examples (ARB key, old, what it is now):
 - appTitle: "VEIL" → "Veil"
 - authCreateHeroTitle "This device becomes your identity." → key deleted, and the Create account screen with it: the name never leaves the phone, so it lives in Profile under one line, `profileNicknameFooter` "Only you see your name."
-- authHandleHeroBody / authHandleFieldCaption "Lowercase. Minimal. Permanent enough to matter." → `authHandleFindCaption` "You can't change it later."; the rule shows only as the field's error, `authHandleInvalid` "Use 3 to 32 lowercase letters, numbers, dots or underscores."
+- authHandleHeroBody / authHandleFieldCaption "Lowercase. Minimal. Permanent enough to matter." → `authHandleFindCaption` "You can't change it later."; the rules show only as the field's error, naming the one the handle breaks, in the web sign-in's words: `authHandleInvalid` "Use 3 to 32 lowercase letters, numbers, dots or underscores.", `authHandleEdges` "Start and end with a letter or number." or `authHandleRun` "Don't put 2 dots or underscores in a row."
 - appLockHeroTitle "VEIL never unlocks itself remotely." → key deleted; the setup screen's one line is `appLockSetupFooter` "If you forget your PIN, there's no way to reset it."
 - onboardingWarnTitle "No backup.\nNo recovery.\nNo leaks." → "Before you start"
 - onboardingWarnDestructiveBody (any variant) → `onboardingWarnLine2` "If you lose the phone, your account and messages are gone for good."
@@ -332,7 +332,7 @@ White page. Person row: avatar 56, name, @handle, "Verified" with a check in suc
 Lock state (white page, no bar): "Veil is locked", the PIN field (centred digits over a line, no box, as Signal's PIN entry: a filled box read as a second button over the disabled "Unlock"), "Unlock", and a text button naming the method ("Use Face ID", "Use Touch ID", "Use fingerprint"); the biometric prompt opens by itself once the screen is up. Lockout and compromised-device states are one line under the field. Setup (grouped page "App lock"): "PIN" and "Confirm PIN", footer "If you forget your PIN, there's no way to reset it.", "Turn on". When opened from Settings the bar has a back button that cancels (no PIN exists yet); the lock the app engages by itself has no way back.
 
 ### 11.10 Choose a handle (choose_handle_screen)
-The signed-out home (Create account is gone). One field with a fixed "@", the line "People find you by this handle…" under it, characters no handle can have as the field's live error, "Create account" (a spinner and "Creating…" inside it while it works), and a ghost "Move from another phone".
+The signed-out home (Create account is gone). One field with a fixed "@", the line "You can't change it later." under it, "Create account" (a spinner and "Creating account…" inside it while it works), and a ghost "Move from another phone". A character no handle can have, or more than 32, is the field's error as it is typed, and "Create account" stays off. Too short, a dot or underscore at either end, or two in a row may be on the way to a good handle, so they show only when the handle is submitted, naming the rule it breaks as the web sign-in does (`handleRuleBroken`, issued_handle.dart).
 
 ### 11.11 Before you start (onboarding_warning_screen)
 White page, no bar. "Before you start", then the facts as plain bodyLarge sentences with no icons, the checkbox, and "Continue" pinned at the bottom, enabled by the checkbox.

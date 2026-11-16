@@ -92,6 +92,8 @@
   "authHandleInputHint": "alex",
   "authHandleBindCta": "Create account",
   "authHandleInvalid": "Use 3 to 32 lowercase letters, numbers, dots or underscores.",
+  "authHandleEdges": "Start and end with a letter or number.",
+  "authHandleRun": "Don't put 2 dots or underscores in a row.",
   "authCreating": "Creating account…",
   "authDefaultDeviceName": "My phone",
 

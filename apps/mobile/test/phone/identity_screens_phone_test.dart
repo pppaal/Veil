@@ -196,6 +196,37 @@ void main() {
       });
     });
 
+    testWidgets('a submitted handle that breaks a rule names that rule, as the web sign-in does', (tester) async {
+      await withPhoneApp(tester, identities, size: phoneMedium, location: '/choose-handle', account: signedOut,
+          body: (world) async {
+        TextField field() => tester.widget<TextField>(find.byType(TextField));
+        final create = find.widgetWithText(FilledButton, l10n.authHandleBindCta);
+        // The same words as apps/web-demo/i18n/en.json, rule for rule.
+        final cases = {
+          '_sam': l10n.authHandleEdges,
+          'sam.': l10n.authHandleEdges,
+          'sam..r': l10n.authHandleRun,
+          'sa_.m': l10n.authHandleRun,
+          'al': l10n.authHandleInvalid,
+        };
+        for (final MapEntry(key: handle, value: error) in cases.entries) {
+          await tester.enterText(find.byType(TextField), handle);
+          await pumpFrames(tester, frames: 2);
+          // On the way to a good handle while it is typed: no error yet.
+          expect(field().decoration?.errorText, isNull, reason: handle);
+          expect(tester.widget<FilledButton>(create).onPressed, isNotNull, reason: handle);
+          await tester.tap(create);
+          await pumpFrames(tester, frames: 2);
+          expect(field().decoration?.errorText, error, reason: handle);
+          // Refused here: no account is being created.
+          expect(find.text(l10n.authCreating), findsNothing, reason: handle);
+        }
+        await tester.enterText(find.byType(TextField), 'sam.r');
+        await pumpFrames(tester, frames: 2);
+        expect(field().decoration?.errorText, isNull);
+      });
+    });
+
     testWidgets('a failure is the field\'s error until the handle is changed, not a box', (tester) async {
       await withPhoneApp(tester, identities,
           size: phoneSmall,

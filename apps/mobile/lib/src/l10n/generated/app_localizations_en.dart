@@ -301,6 +301,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Use 3 to 32 lowercase letters, numbers, dots or underscores.';
 
   @override
+  String get authHandleEdges => 'Start and end with a letter or number.';
+
+  @override
+  String get authHandleRun => 'Don\'t put 2 dots or underscores in a row.';
+
+  @override
   String get authCreating => 'Creating account…';
 
   @override

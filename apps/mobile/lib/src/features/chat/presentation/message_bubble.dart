@@ -4,7 +4,6 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
-import '../../attachments/attachments_feature.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import '../../conversations/presentation/conversation_list_logic.dart';
@@ -30,16 +29,15 @@ class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
     required this.message,
+    required this.conversationId,
     required this.highlighted,
     required this.sentAtFormat,
     required this.decryptFuture,
-    required this.onResolveAttachment,
     required this.onCancelAttachment,
-    required this.isResolvingAttachment,
-    required this.attachmentDownloadError,
     required this.transferSnapshot,
     required this.expiryNow,
     this.onRetryMessage,
+    this.authorName,
     this.senderName,
     this.senderSeed,
     this.position = VeilBubblePosition.single,
@@ -49,18 +47,22 @@ class MessageBubble extends StatelessWidget {
   });
 
   final ChatMessage message;
+
+  /// The conversation the message is in, which its attachment belongs to.
+  final String conversationId;
   final bool highlighted;
 
   /// How the time it was sent is written.
   final MessageTimeFormat sentAtFormat;
   final Future<DecryptedMessage> decryptFuture;
-  final Future<void> Function(String attachmentId) onResolveAttachment;
   final VoidCallback? onCancelAttachment;
-  final bool Function(String attachmentId) isResolvingAttachment;
-  final String? Function(String attachmentId) attachmentDownloadError;
   final AttachmentTransferSnapshot? transferSnapshot;
   final DateTime Function() expiryNow;
   final VoidCallback? onRetryMessage;
+
+  /// Who wrote the message as the chat names them, on every message of
+  /// someone else (a viewer's title says it); null on the user's own.
+  final String? authorName;
 
   /// Who of a group wrote the message, shown above it; null in a 1:1, on
   /// the user's own messages, and under another message of the same run.
@@ -108,7 +110,6 @@ class MessageBubble extends StatelessWidget {
         // Attachment metadata comes only from the authenticated payload;
         // the envelope carries a bare pointer.
         final attachment = decrypted?.attachment;
-        final attachmentId = attachment?.attachmentId;
         final query = searchQuery?.trim() ?? '';
         final body = switch (status) {
           null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle?.copyWith(color: metaColor)),
@@ -166,9 +167,6 @@ class MessageBubble extends StatelessWidget {
                   MessageAttachmentCard(
                     attachment: attachment,
                     name: decrypted!.body,
-                    resolving: attachmentId != null && isResolvingAttachment(attachmentId),
-                    downloadError: attachmentId == null ? null : attachmentDownloadError(attachmentId),
-                    onResolve: kAttachmentsEnabled ? () => onResolveAttachment(attachment.attachmentId) : null,
                     framed: onBrand,
                     voice: decrypted.messageKind == MessageKind.voice,
                   ),

@@ -50,4 +50,8 @@ class SilencedNotifications implements LocalNotificationService {
     if (_isSilenced(conversationId)) return;
     await _inner.showMessageNotification(conversationId: conversationId, title: title, body: body);
   }
+
+  // Muted or not: one raised before the mute still goes when it is read.
+  @override
+  Future<void> cancelConversation(String conversationId) => _inner.cancelConversation(conversationId);
 }

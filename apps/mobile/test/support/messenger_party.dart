@@ -33,6 +33,7 @@ const _testCacheKey = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
 /// Records notifications instead of talking to the platform plugin.
 class RecordingNotifications implements LocalNotificationService {
   final List<String> shownForConversations = [];
+  final List<String> cancelledForConversations = [];
 
   @override
   Future<void> showMessageNotification({
@@ -41,6 +42,11 @@ class RecordingNotifications implements LocalNotificationService {
     required String body,
   }) async {
     shownForConversations.add(conversationId);
+  }
+
+  @override
+  Future<void> cancelConversation(String conversationId) async {
+    cancelledForConversations.add(conversationId);
   }
 
   @override
@@ -261,6 +267,8 @@ class MessengerParty {
       realtimeService: realtime,
       cacheService: cache,
       attachmentTempFileStore: DefaultAttachmentTempFileStore(paths: attachmentPaths),
+      attachmentPaths: attachmentPaths,
+      mediaIndex: mediaIndex,
       notificationService: _notificationsFor?.call(notifications) ?? notifications,
       sessionSnapshotRestorer: () => lib.restoreSessionsFromSnapshots(
         Map<String, Map<String, dynamic>>.of(_ratchetSnapshots),

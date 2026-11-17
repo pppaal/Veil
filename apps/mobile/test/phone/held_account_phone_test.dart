@@ -107,6 +107,7 @@ void main() {
           home: Scaffold(
             body: MessageBubble(
               message: message,
+              conversationId: chatConversationId,
               highlighted: false,
               heldAccount: heldAccount,
               sentAtFormat: MessageTimeFormat(_en, use24HourFormat: false),
@@ -115,10 +116,7 @@ void main() {
                 messageKind: MessageKind.text,
                 status: DecryptStatus.identityRejected,
               )),
-              onResolveAttachment: (_) async {},
               onCancelAttachment: null,
-              isResolvingAttachment: (_) => false,
-              attachmentDownloadError: (_) => null,
               transferSnapshot: null,
               expiryNow: () => DateTime.utc(2026, 4, 7, 10),
             ),

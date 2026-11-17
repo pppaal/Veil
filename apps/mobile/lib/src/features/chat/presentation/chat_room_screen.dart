@@ -200,6 +200,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     final peerVerified = _peerVerified && !peerInQuestion;
 
     final isDirect = conversation?.type == ConversationType.direct;
+    final title = conversation == null
+        ? l10n.chatTitleFallback
+        : conversationTitle(l10n, conversation, names, localUserId: controller.localUserId);
+    // A group message this device can attribute to none of the members
+    // says so, once the members' devices have been read.
+    final String? Function(ChatMessage)? groupMemberName = isDirect
+        ? null
+        : (message) => groupSenderName(message, names) ?? (groupSenderNamesRead ? l10n.chatGroupUnknownSender : null);
     syncGroupSenderNames(conversation, messages);
     // A failure while the chat is open is a toast, as in Signal; a history
     // that could not load says so in the message area instead.
@@ -232,15 +240,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       loadFailed: _loadFailed,
       onRetryLoad: () => unawaited(_loadConversationState()),
       searchQuery: hasSearchQuery ? searchController.text : null,
-      // A group message this device can attribute to none of the members
-      // says so, once the members' devices have been read.
-      senderNameOf: isDirect
-          ? null
-          : (message) => groupSenderName(message, names) ?? (groupSenderNamesRead ? l10n.chatGroupUnknownSender : null),
+      senderNameOf: groupMemberName,
+      authorNameOf: groupMemberName ?? (_) => title,
       senderHandleOf: isDirect ? null : groupSenderHandle,
       // Asked here, above the shell, whose body no longer sees the keyboard.
       keyboardUp: MediaQuery.viewInsetsOf(context).bottom > 0,
-      onResolveAttachment: _showAttachmentTicket,
       onReact: _showReactionPicker,
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
     );
@@ -262,9 +266,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     return ChatPhoneScaffold(
       pane: widget.embedded,
       conversation: conversation,
-      title: conversation == null
-          ? l10n.chatTitleFallback
-          : conversationTitle(l10n, conversation, names, localUserId: controller.localUserId),
+      title: title,
       connecting: !controller.realtimeConnected,
       peerVerified: peerVerified,
       messageTtl: _messageTtl,
@@ -354,16 +356,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       if (!confirmed || !mounted) return;
     }
     await ref.read(messengerControllerProvider).acknowledgePeerAccount(widget.conversationId);
-  }
-
-  Future<void> _showAttachmentTicket(String attachmentId) async {
-    final url = await ref
-        .read(messengerControllerProvider)
-        .getAttachmentDownloadUrl(attachmentId);
-    if (!mounted || url == null) {
-      return;
-    }
-    await showAttachmentTicketDialog(context, url);
   }
 
   Future<void> _showReactionPicker(ChatMessage message, Rect anchor) async {

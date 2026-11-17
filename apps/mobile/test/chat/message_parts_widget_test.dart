@@ -66,9 +66,6 @@ void main() {
       await tester.pumpWidget(_app(MessageAttachmentCard(
         attachment: _reference('application/pdf', 3 * 1024 * 1024),
         name: 'lease-signed.pdf',
-        resolving: false,
-        downloadError: null,
-        onResolve: null,
       )));
 
       expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
@@ -87,62 +84,30 @@ void main() {
     testWidgets('a voice message is called one, with a microphone, whatever its file type', (tester) async {
       await tester.pumpWidget(_app(MessageAttachmentCard(
         attachment: _reference('audio/mp4', 57344),
-        resolving: false,
-        downloadError: null,
-        onResolve: null,
         voice: true,
       )));
       expect(find.byIcon(Icons.mic_none_outlined), findsOneWidget);
       expect(find.text('${l10n.chatAttachmentKindVoice} · 56 KB'), findsOneWidget);
       expect(find.text(l10n.chatAttachmentCannotOpen), findsOneWidget);
 
-      await tester.pumpWidget(_app(MessageAttachmentCard(
-        attachment: _reference('audio/mp4', 57344),
-        resolving: false,
-        downloadError: null,
-        onResolve: null,
-      )));
+      await tester.pumpWidget(_app(MessageAttachmentCard(attachment: _reference('audio/mp4', 57344))));
       expect(find.byIcon(Icons.audiotrack_outlined), findsOneWidget);
       expect(find.text('Audio · 56 KB'), findsOneWidget);
     });
 
-    testWidgets('where a build can open them, a text button asks for the download ticket', (tester) async {
-      var resolved = 0;
-      await tester.pumpWidget(_app(MessageAttachmentCard(
-        attachment: _reference('application/pdf', 3 * 1024 * 1024),
-        resolving: false,
-        downloadError: null,
-        onResolve: () => resolved++,
-      )));
-      expect(find.text(l10n.chatAttachmentCannotOpen), findsNothing);
-      await tester.tap(find.text(l10n.chatAttachmentResolveAction));
-      expect(resolved, 1);
-    });
-
-    testWidgets('while a ticket resolves it cannot be asked for again, and a refusal says so', (tester) async {
-      var resolved = 0;
-      await tester.pumpWidget(_app(MessageAttachmentCard(
-        attachment: _reference('image/png', 512),
-        resolving: true,
-        downloadError: 'ticket refused',
-        onResolve: () => resolved++,
-      )));
-
+    // The card has no download button and no ticket state any more: every
+    // received attachment says this version can't open it, a photo too.
+    testWidgets('a photo says so as well, with no button', (tester) async {
+      await tester.pumpWidget(_app(MessageAttachmentCard(attachment: _reference('image/png', 512))));
       expect(find.text('Photo · 512 B'), findsOneWidget);
-      final resolve = tester.widget<TextButton>(find.widgetWithText(TextButton, l10n.chatAttachmentResolvingAction));
-      expect(resolve.onPressed, isNull);
-      expect(find.text(l10n.chatAttachmentTicketFailed), findsOneWidget);
-      expect(find.text('ticket refused'), findsOneWidget);
-      expect(resolved, 0);
+      expect(find.text(l10n.chatAttachmentCannotOpen), findsOneWidget);
+      expect(find.byType(TextButton), findsNothing);
     });
 
     testWidgets('a flat tile: grey only on the brand fill of an own bubble, never a border', (tester) async {
       Future<BoxDecoration?> tile({required bool framed}) async {
         await tester.pumpWidget(_app(MessageAttachmentCard(
           attachment: _reference('image/png', 512),
-          resolving: false,
-          downloadError: null,
-          onResolve: null,
           framed: framed,
         )));
         final boxes = tester.widgetList<DecoratedBox>(
@@ -256,13 +221,11 @@ void main() {
               width: 390,
               child: MessageBubble(
                 message: message,
+                conversationId: 'conv-1',
                 highlighted: false,
                 sentAtFormat: MessageTimeFormat(AppLocalizationsEn(), use24HourFormat: true),
                 decryptFuture: Future.value(DecryptedMessage(body: body, messageKind: MessageKind.text)),
-                onResolveAttachment: (_) async {},
                 onCancelAttachment: null,
-                isResolvingAttachment: (_) => false,
-                attachmentDownloadError: (_) => null,
                 transferSnapshot: null,
                 expiryNow: () => DateTime(2026, 4, 7, 9, 18),
                 onRetryMessage: onRetry ?? () {},

@@ -39,12 +39,12 @@ class ChatMessageList extends ConsumerWidget {
     required this.messageKeys,
     required this.highlightedMessageId,
     required this.sentAtFormat,
-    required this.onResolveAttachment,
     required this.onReact,
     this.loadFailed = false,
     this.onRetryLoad,
     this.searchQuery,
     this.senderNameOf,
+    this.authorNameOf,
     this.senderHandleOf,
     this.keyboardUp = false,
     this.padding = EdgeInsets.zero,
@@ -69,7 +69,6 @@ class ChatMessageList extends ConsumerWidget {
 
   /// How a bubble writes the time it was sent.
   final MessageTimeFormat sentAtFormat;
-  final Future<void> Function(String attachmentId) onResolveAttachment;
 
   /// A long press on [message], whose row is at [anchor] on screen.
   final void Function(ChatMessage message, Rect anchor) onReact;
@@ -85,6 +84,10 @@ class ChatMessageList extends ConsumerWidget {
   /// Who of a group wrote a message, as far as this device knows; null in
   /// a 1:1, where the side a bubble is on says it.
   final String? Function(ChatMessage message)? senderNameOf;
+
+  /// Who wrote a message of someone else, as the chat names them (its
+  /// title in a 1:1, the member in a group), for every such message.
+  final String? Function(ChatMessage message)? authorNameOf;
 
   /// The handle of who of a group wrote a message, which their avatar and
   /// the tint of their name are drawn from; null where it is not known.
@@ -301,6 +304,8 @@ class ChatMessageList extends ConsumerWidget {
   }) {
     final bubble = MessageBubble(
       message: message,
+      conversationId: conversationId,
+      authorName: message.isMine ? null : authorNameOf?.call(message),
       senderName: senderName,
       senderSeed: senderSeed,
       position: position,
@@ -318,14 +323,11 @@ class ChatMessageList extends ConsumerWidget {
             ),
       sentAtFormat: sentAtFormat,
       decryptFuture: decryptFuture,
-      onResolveAttachment: onResolveAttachment,
       onCancelAttachment: message.clientMessageId == null
           ? null
           : () => ref
               .read(messengerControllerProvider)
               .cancelPendingAttachment(message.clientMessageId!),
-      isResolvingAttachment: controller.isResolvingAttachment,
-      attachmentDownloadError: controller.attachmentDownloadError,
       transferSnapshot: message.clientMessageId == null
           ? null
           : controller.attachmentTransferForMessage(message.clientMessageId!),

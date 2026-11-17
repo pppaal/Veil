@@ -7,9 +7,13 @@ import '../../../../core/network/veil_api_client.dart';
 import '../../../../core/notifications/local_notification_service.dart';
 import '../../../../core/realtime/realtime_service.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
+import '../../../../core/storage/media_index.dart';
+import '../../../attachments/data/attachment_storage_paths.dart';
 import '../../../attachments/data/attachment_temp_file_store.dart';
+import '../../../attachments/data/media_blob_store.dart';
 import '../conversation_models.dart';
 import '../group_sender_key_coordinator.dart';
+import 'attachment_media_service.dart';
 import 'attachment_transfer_service.dart';
 import 'conversation_crypto_router.dart';
 import 'conversation_peer_bindings.dart';
@@ -34,6 +38,7 @@ import 'pending_messages.dart';
 import 'prekey_maintenance.dart';
 import 'presence_typing_service.dart';
 import 'reaction_service.dart';
+import 'read_state_service.dart';
 import 'realtime_event_router.dart';
 import 'receipt_service.dart';
 import 'session_change.dart';
@@ -63,12 +68,18 @@ class MessengerServices {
     required PrekeyMaintenance? prekeyMaintenance,
     required void Function() onChanged,
     required void Function() onSignedOut,
+    AttachmentStoragePaths? attachmentPaths,
+    MediaIndex? mediaIndex,
+    bool Function(String conversationId)? isBlockedDirect,
   })  : _envelopeVersions = envelopeVersions,
         _onSignedOut = onSignedOut,
         _peerBindings = peerBindings,
         _groupCrypto = groupCrypto,
         _sessionSnapshotRestorer = sessionSnapshotRestorer,
-        _prekeys = prekeyMaintenance {
+        _prekeys = prekeyMaintenance,
+        _isBlockedDirect = isBlockedDirect ?? ((_) => false) {
+    final paths = attachmentPaths ?? AttachmentStoragePaths();
+    blobs = MediaBlobStore(paths: paths, index: mediaIndex ?? MemoryMediaIndex());
     store = MessengerStateStore(
       onChanged: onChanged,
       decorate: (conversationId, messages) => receipts.applyBacklog(reactions.decorate(conversationId, messages)),
@@ -163,6 +174,19 @@ class MessengerServices {
       writeNotice: notices.write,
       now: expiryClock,
     );
+    media = AttachmentMediaService(
+      store: store,
+      session: session,
+      apiClient: apiClient,
+      mapper: mapper,
+      ops: ops,
+      contents: contents,
+      paths: paths,
+      blobs: blobs,
+      autoDownloadWithheld: autoDownloadWithheld,
+      pendingAttachmentIds: () => outbox.pendingAttachmentIds,
+      now: expiryClock,
+    );
     sync = ConversationSyncService(
       store: store,
       session: session,
@@ -203,9 +227,19 @@ class MessengerServices {
       refreshAccessToken: apiClient.refreshAccessToken,
     );
     search = MessageSearchService(store: store, contents: contents, cache: cache, session: session);
+    reads = ReadStateService(
+      store: store,
+      receipts: receipts,
+      notifications: notificationService,
+      contents: contents,
+      receiptsWithheld: receiptsWithheld,
+      now: expiryClock,
+    );
     store
       ..addObserver(persistence)
-      ..addObserver(disappearing);
+      ..addObserver(disappearing)
+      ..addObserver(reads)
+      ..addObserver(media);
   }
 
   final IdentityTrust trust;
@@ -215,6 +249,7 @@ class MessengerServices {
   final Future<void> Function()? _sessionSnapshotRestorer;
   final PrekeyMaintenance? _prekeys;
   final void Function() _onSignedOut;
+  final bool Function(String conversationId) _isBlockedDirect;
   final MessengerSessionContext session = MessengerSessionContext();
   late final MessengerStateStore store;
   late final MessengerOperationRunner ops;
@@ -233,6 +268,9 @@ class MessengerServices {
   late final PresenceTypingService presence;
   late final RealtimeEventRouter realtime;
   late final MessageSearchService search;
+  late final ReadStateService reads;
+  late final AttachmentMediaService media;
+  late final MediaBlobStore blobs;
 
   /// The clock disappearing-message expiries are stamped and checked on:
   /// the relay's, corrected by at most an hour (ServerClock.boundedNow).
@@ -241,6 +279,21 @@ class MessengerServices {
 
   /// Whether this device can run Sender Keys groups.
   bool get canUseSenderKeys => _groupCrypto != null;
+
+  /// Whether no read receipt may go for [conversationId]: who its peer is waits
+  /// for the user (an identity change or a held account there, or for a 1:1 the
+  /// peer's change pending elsewhere), or it is a 1:1 with someone blocked.
+  bool receiptsWithheld(String conversationId) {
+    if (identity.pendingFor(conversationId) != null || identity.accountHoldFor(conversationId) != null) return true;
+    final conversation = store.conversationById(conversationId);
+    final peerChangePending = conversation != null &&
+        conversation.type == ConversationType.direct &&
+        trust.pendingChangeAbout(conversation.recipientBundle.userId) != null;
+    return peerChangePending || _isBlockedDirect(conversationId);
+  }
+
+  /// Whether nothing in [conversationId] may be fetched on its own: the same rule.
+  bool autoDownloadWithheld(String conversationId) => receiptsWithheld(conversationId);
 
   /// Moves the messenger to [next]: a new token reaches the socket only,
   /// a sign-out forgets everything the identity held, and a new identity
@@ -331,12 +384,19 @@ class MessengerServices {
     store.clear();
     outbox.clear();
     receipts.clear();
+    reads.clear();
+    media.clear();
+    unawaited(_clearBlobs());
     sync.clearQueuedHints();
     _onSignedOut();
     _sessionsRestored = false;
     _groupCrypto?.clearInMemory();
     await forgettingDecisions;
   }
+
+  // The session's purge and the cache's wipe delete these too; a media folder
+  // that cannot be reached holds nothing to clear.
+  Future<void> _clearBlobs() => blobs.clear().catchError((Object _) {});
 
   // Everything held for the previous identity in memory; the stored
   // records stay.
@@ -350,6 +410,8 @@ class MessengerServices {
     peers.clear();
     latest.clear();
     sync.forgetHistoryMarks();
+    reads.clear();
+    media.clear();
   }
 
   // Runs whenever content becomes bound to a relayed message (the ack path

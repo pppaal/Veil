@@ -11,8 +11,7 @@ import 'chat_room_labels.dart';
 /// The attachment a received message carries, from its authenticated
 /// payload: one tile with its [name], "PDF · 2.3 MB" ("Voice message ·
 /// 56 KB" for a [voice] message), and the line that this version cannot
-/// open it. Where a build can open attachments
-/// ([onResolve]), a text button asks for the download instead.
+/// open it.
 ///
 /// In a grey bubble the bubble is the tile; on the brand fill of the
 /// user's own bubble ([framed]) the tile is drawn, so its text reads.
@@ -21,9 +20,6 @@ class MessageAttachmentCard extends StatelessWidget {
     super.key,
     required this.attachment,
     this.name = '',
-    required this.resolving,
-    required this.downloadError,
-    required this.onResolve,
     this.framed = false,
     this.voice = false,
   });
@@ -33,11 +29,6 @@ class MessageAttachmentCard extends StatelessWidget {
   /// The file's name, as the message's text gives it; empty when it has
   /// none.
   final String name;
-  final bool resolving;
-  final String? downloadError;
-
-  /// Asks for the download; null when this build cannot open attachments.
-  final VoidCallback? onResolve;
 
   /// Whether to draw the tile's own grey fill.
   final bool framed;
@@ -90,18 +81,7 @@ class MessageAttachmentCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: VeilSpace.xs),
-        if (onResolve == null)
-          Text(l10n.chatAttachmentCannotOpen, style: muted)
-        else ...[
-          if (downloadError != null) ...[
-            Text(l10n.chatAttachmentTicketFailed, style: muted?.copyWith(color: palette.danger)),
-            Text(veilErrorText(l10n, downloadError!), style: muted),
-          ],
-          TextButton(
-            onPressed: resolving ? null : onResolve,
-            child: Text(resolving ? l10n.chatAttachmentResolvingAction : l10n.chatAttachmentResolveAction),
-          ),
-        ],
+        Text(l10n.chatAttachmentCannotOpen, style: muted),
       ],
     );
     if (!framed) return content;

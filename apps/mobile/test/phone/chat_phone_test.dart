@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
@@ -165,12 +164,10 @@ void main() {
     });
   });
 
-  // The attach button is there only in a build that can send a file
-  // (kAttachmentsEnabled); without it nothing stands before the draft (the
-  // composer has no padlock, design system 7.7).
-  testWidgets('offers no attachment from the composer while attachments are switched off', (tester) async {
+  // Nothing about encryption stands before the draft: the composer has no
+  // padlock (design system 7.7).
+  testWidgets('the composer has no padlock', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
-      expect(find.byTooltip('Attach'), kAttachmentsEnabled ? findsOneWidget : findsNothing);
       expect(
         find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline)),
         findsNothing,

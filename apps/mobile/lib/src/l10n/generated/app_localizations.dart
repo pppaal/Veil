@@ -904,36 +904,6 @@ abstract class AppLocalizations {
   /// **'Off'**
   String get chatTtlDisabledLabel;
 
-  /// No description provided for @chatAttachmentTicketTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Can\'t open this file'**
-  String get chatAttachmentTicketTitle;
-
-  /// No description provided for @chatAttachmentTicketBody.
-  ///
-  /// In en, this message translates to:
-  /// **'This version can\'t download files yet.\n\n{summary}'**
-  String chatAttachmentTicketBody(String summary);
-
-  /// No description provided for @chatAttachmentTicketFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Couldn\'t request the download'**
-  String get chatAttachmentTicketFailed;
-
-  /// No description provided for @chatAttachmentResolveAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Request download'**
-  String get chatAttachmentResolveAction;
-
-  /// No description provided for @chatAttachmentResolvingAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Requesting…'**
-  String get chatAttachmentResolvingAction;
-
   /// No description provided for @chatAttachmentStateBanner.
   ///
   /// In en, this message translates to:

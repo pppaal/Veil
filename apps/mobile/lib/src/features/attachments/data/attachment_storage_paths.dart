@@ -1,10 +1,7 @@
 import 'dart:io';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-
-import '../../../core/di/core_providers.dart';
 
 /// Where photos and files live on the phone, and how each place is emptied.
 ///
@@ -131,11 +128,3 @@ class AttachmentStoragePaths {
     _prepared.remove(entity.path);
   }
 }
-
-/// The app's attachment folders on the phone's own storage. Each folder is
-/// excluded from backup when it is created.
-final attachmentStoragePathsProvider = Provider<AttachmentStoragePaths>((ref) {
-  return AttachmentStoragePaths(
-    onDirectoryPrepared: (path) => ref.read(platformSecurityServiceProvider).excludePathFromBackup(path),
-  );
-});

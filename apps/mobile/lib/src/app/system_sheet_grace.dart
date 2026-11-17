@@ -19,9 +19,6 @@ enum SystemSheet {
 /// the sheet was up. Callers treat it as a cancel.
 class SheetClosedByLock implements Exception {
   const SheetClosedByLock();
-
-  @override
-  String toString() => 'SheetClosedByLock';
 }
 
 /// The app lock while a system sheet the user asked for is up (D40).
@@ -65,7 +62,7 @@ class SystemSheetGrace {
   /// result or an error.
   Future<T> run<T>(SystemSheet sheet, Future<T> Function() openSheet, {void Function(T late)? onLateResult}) {
     if (sheet == SystemSheet.quickLook && !isIOS) {
-      throw ArgumentError.value(sheet, 'sheet', 'Quick Look is iOS only; opening a file on Android gets no grace');
+      throw ArgumentError('Quick Look is iOS only; opening a file on Android gets no grace.');
     }
     final result = Completer<T>();
     final running = _RunningSheet(sheet, _clock(), () {

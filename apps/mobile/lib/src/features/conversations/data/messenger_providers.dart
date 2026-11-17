@@ -16,7 +16,6 @@ import '../../../core/network/keys_api.dart';
 import '../../../core/storage/media_index.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../attachments/data/attachment_providers.dart';
-import '../../attachments/data/attachment_storage_paths.dart';
 import '../../device_transfer/data/device_transfer_providers.dart';
 import '../../safety/application/silenced_notifications.dart';
 import '../../safety/data/safety_providers.dart';

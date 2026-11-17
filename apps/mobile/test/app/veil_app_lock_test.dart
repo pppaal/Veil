@@ -149,6 +149,27 @@ void main() {
       await closeApp(tester, app.world);
     });
 
+    testWidgets('$flavour: media work runs only while the app is in front and unlocked', (tester) async {
+      final app = await openApp(tester, isIOS: isIOS);
+      final media = app.world.messenger.media;
+      expect(media.inUse, isTrue, reason: 'resumed and unlocked');
+
+      away(tester, until: AppLifecycleState.inactive);
+      expect(media.inUse, isFalse, reason: 'inactive, and locked');
+      back(tester);
+      await tester.pump(const Duration(seconds: 1));
+      expect(media.inUse, isFalse, reason: 'still locked');
+      app.world.container.read(appSessionProvider.notifier).unlock();
+      await tester.pump(const Duration(seconds: 1));
+      expect(media.inUse, isTrue, reason: 'unlocked in front');
+
+      app.world.container.read(appSessionProvider.notifier).lock();
+      await tester.pump();
+      expect(media.inUse, isFalse, reason: 'locked in front');
+      await tester.pump(const Duration(seconds: 1));
+      await closeApp(tester, app.world);
+    });
+
     testWidgets('$flavour: a lock from the integrity check also tells the platform', (tester) async {
       final app = await openApp(tester, isIOS: isIOS);
       app.platform.integrityCompromised = true;

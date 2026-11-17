@@ -47,8 +47,13 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
   /// session locked.
   void evictDecrypted() {}
 
+  /// Whether the app is in front and unlocked (the app sets it through
+  /// [setInUse]); media work runs only then.
+  bool get inUse => _inUse;
+  bool _inUse = false;
+
   /// Whether the app is in front and unlocked; media work runs only then.
-  void setInUse(bool inUse) {}
+  void setInUse(bool inUse) => _inUse = inUse;
 
   /// Forgets everything held for the identity that left.
   void clear() {}

@@ -131,8 +131,10 @@ class MediaBlobStore {
     if (ids == null) return null;
     final entry = await _index.find(ids.$1, ids.$2, digest);
     if (entry == null) return null;
-    final path = p.join((await _paths.mediaDir()).path, entry.fileName);
-    if (!await File(path).exists()) {
+    // A row only this store writes; one naming anything but a blob is
+    // dropped rather than joined onto the folder.
+    final path = _blobName.hasMatch(entry.fileName) ? p.join((await _paths.mediaDir()).path, entry.fileName) : null;
+    if (path == null || !await File(path).exists()) {
       await _index.remove(entry.fileName);
       _forget(entry.fileName);
       return null;
@@ -224,6 +226,7 @@ class MediaBlobStore {
 
   Future<void> _deleteFile(String fileName) async {
     _forget(fileName);
+    if (!_blobName.hasMatch(fileName)) return;
     await _deleteEntity(File(p.join((await _paths.mediaDir()).path, fileName)));
   }
 

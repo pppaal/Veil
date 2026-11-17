@@ -200,6 +200,31 @@ void main() {
     expect(await store.entries(), isEmpty);
   });
 
+  test('a row whose file name is not a blob name never reaches outside the folder', () async {
+    final outside = File(p.join(root.path, 'outside.txt'))..writeAsStringSync('keep');
+    final folder = await media();
+    // The media folder is <root>/support/<...>; walk back up to the root.
+    final escape = p.relative(outside.path, from: folder.path);
+    expect(escape, startsWith('..'));
+    final hostile = MediaIndexEntry(
+      fileName: escape,
+      conversationId: 'conv-sam',
+      attachmentId: _photoId,
+      digest: 'd',
+      sizeBytes: 4,
+      lastUsedAt: now,
+    );
+    await index.put(hostile);
+    expect(await store.pathOf('conv-sam', _photoId, 'd'), isNull);
+    expect(await index.all(), isEmpty, reason: 'the row goes');
+    expect(outside.readAsStringSync(), 'keep');
+
+    await index.put(hostile);
+    await store.deleteEntry(hostile);
+    expect(outside.existsSync(), isTrue, reason: 'deleteEntry took a file outside the folder');
+    expect(await index.all(), isEmpty);
+  });
+
   test('clear empties the index and the folder', () async {
     await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sealedBytes: const [1]);
     File(p.join((await media()).path, '${'a' * 64}.part')).writeAsBytesSync(const [1]);

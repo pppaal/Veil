@@ -365,6 +365,7 @@ class MessengerServices {
     outbox.dispose();
     sync.dispose();
     disappearing.dispose();
+    media.dispose();
     presence.dispose();
     attachments.cancelUploads();
     realtime.disconnect();

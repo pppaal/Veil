@@ -14,6 +14,8 @@ import 'messenger_state_store.dart';
 ///
 /// For now it holds the sealed media store and the rules it will go by,
 /// and does nothing else: no photo is fetched or opened yet.
+/// MessengerServices.dispose disposes it with the messenger, so whatever
+/// it runs (timers, transfers) stops in its [dispose].
 class AttachmentMediaService extends ChangeNotifier implements MessengerStateObserver {
   AttachmentMediaService({
     required MessengerStateStore store,

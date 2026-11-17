@@ -32,8 +32,10 @@ void main() {
   late IdentityTrust trust;
   late Set<String> blockedConversations;
   late VeilMessengerController controller;
+  late bool disposed;
 
   setUp(() async {
+    disposed = false;
     relay = FakeRelay();
     seedMockParties(relay, 'conv-1', ['atlas', 'selene']);
     relay.addGroup('conv-team', ['atlas', 'selene'], useSenderKeys: false);
@@ -64,7 +66,7 @@ void main() {
   });
 
   tearDown(() {
-    controller.dispose();
+    if (!disposed) controller.dispose();
     root.deleteSync(recursive: true);
   });
 
@@ -89,6 +91,14 @@ void main() {
     await controller.sendText(conversationId: 'conv-1', body: 'still here');
     await waitFor(() => controller.pendingCountFor('conv-1') == 0, reason: 'not acked');
     expect(controller.messagesFor('conv-1'), hasLength(1));
+  });
+
+  test('disposing the messenger disposes the media service, so its timers can stop with it', () {
+    final media = controller.media;
+    expect(() => media.addListener(() {}), returnsNormally);
+    controller.dispose();
+    disposed = true;
+    expect(() => media.addListener(() {}), throwsFlutterError, reason: 'the media service outlived its messenger');
   });
 
   test('sending a photo or a file is not built yet', () async {

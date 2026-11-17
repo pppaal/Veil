@@ -74,7 +74,7 @@ void main() {
       expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
       // One card says it all, as WhatsApp's file card does.
       expect(find.text('lease-signed.pdf'), findsOneWidget);
-      expect(find.text('PDF · 3.0 MB'), findsOneWidget);
+      expect(find.text('PDF · 3 MB'), findsOneWidget);
       expect(find.text(l10n.chatAttachmentCannotOpen), findsOneWidget);
       expect(find.byType(TextButton), findsNothing);
       // Nothing restates that the file is encrypted, and no pill or banner.
@@ -467,10 +467,15 @@ void main() {
       expect(attachmentIcon('application/zip'), Icons.insert_drive_file_outlined);
     });
 
+    // Changed on purpose: kilobytes were written to one place ("56.0 KB"),
+    // and so was a whole number of megabytes or gigabytes ("5.0 GB").
     test('sizes and durations read in their largest whole unit', () {
       expect(formatFileSize(1023), '1023 B');
-      expect(formatFileSize(1536), '1.5 KB');
-      expect(formatFileSize(5 * 1024 * 1024 * 1024), '5.0 GB');
+      expect(formatFileSize(57344), '56 KB');
+      expect(formatFileSize(1536), '2 KB');
+      expect(formatFileSize(2411724), '2.3 MB');
+      expect(formatFileSize(1024 * 1024), '1 MB');
+      expect(formatFileSize(5 * 1024 * 1024 * 1024), '5 GB');
       expect(formatDurationLabel(l10n, const Duration(seconds: 10)), l10n.chatDurationSeconds(10));
       expect(formatDurationLabel(l10n, const Duration(minutes: 90)), l10n.chatDurationHours(1));
       expect(formatDurationLabel(l10n, const Duration(days: 2)), l10n.chatDurationDays(2));

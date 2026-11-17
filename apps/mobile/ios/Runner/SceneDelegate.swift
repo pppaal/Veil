@@ -3,7 +3,16 @@ import UIKit
 
 class SceneDelegate: FlutterSceneDelegate {
   private static let privacyShieldTag = 0x5645494C
+  // How long after the app becomes active the shield waits for Flutter to
+  // report the lock screen drawn before it goes anyway.
+  private static let lockScreenFallback: TimeInterval = 1.5
   private var screenshotObserver: NSObjectProtocol?
+  // The session locked (lockEngaged) and has not been unlocked since: what
+  // is presented over Flutter is closed before the shield goes.
+  private var sessionLocked = false
+  // The lock screen has not been drawn since the lock: the shield stays.
+  private var awaitingLockScreen = false
+  private var shieldFallback: DispatchWorkItem?
 
   func applyPrivacyProtections() {
     guard let window else {
@@ -11,10 +20,37 @@ class SceneDelegate: FlutterSceneDelegate {
     }
 
     if window.windowScene?.activationState == .foregroundActive {
-      removePrivacyShield()
+      if !awaitingLockScreen {
+        removePrivacyShield()
+      }
     } else {
       installPrivacyShieldIfNeeded()
     }
+  }
+
+  /// The session locked: close whatever is presented over the app (Quick
+  /// Look, a picker, the save sheet) without animation, and keep the shield
+  /// up until the lock screen is drawn.
+  func lockEngaged() {
+    sessionLocked = true
+    awaitingLockScreen = true
+    dismissPresentedControllers()
+    if window?.windowScene?.activationState != .foregroundActive {
+      installPrivacyShieldIfNeeded()
+    }
+  }
+
+  /// Flutter drew the lock screen: the shield may go.
+  func lockScreenShown() {
+    awaitingLockScreen = false
+    removePrivacyShieldIfActive()
+  }
+
+  /// The session is no longer locked.
+  func sessionUnlocked() {
+    sessionLocked = false
+    awaitingLockScreen = false
+    removePrivacyShieldIfActive()
   }
 
   override func scene(
@@ -48,14 +84,56 @@ class SceneDelegate: FlutterSceneDelegate {
     installPrivacyShieldIfNeeded()
   }
 
+  // Only a real move to the background gets here: a sheet presented over
+  // the app (a picker, Quick Look) leaves the scene in the foreground. The
+  // app locks on it whatever is up.
   override func sceneDidEnterBackground(_ scene: UIScene) {
     super.sceneDidEnterBackground(scene)
     installPrivacyShieldIfNeeded()
+    PlatformSecurityEventBus.shared.emitSceneEnteredBackground()
   }
 
   override func sceneDidBecomeActive(_ scene: UIScene) {
     super.sceneDidBecomeActive(scene)
-    removePrivacyShield()
+    if sessionLocked {
+      dismissPresentedControllers()
+    }
+    if awaitingLockScreen {
+      scheduleShieldFallback()
+    } else {
+      removePrivacyShield()
+    }
+  }
+
+  // Dismissing from the root closes every controller presented above it.
+  // A file open in Quick Look then answers its pending call as closed.
+  private func dismissPresentedControllers() {
+    guard let root = window?.rootViewController, root.presentedViewController != nil else {
+      return
+    }
+    root.dismiss(animated: false) {
+      FileOpenPlugin.presentationDismissedByLock()
+    }
+  }
+
+  private func scheduleShieldFallback() {
+    shieldFallback?.cancel()
+    let fallback = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.shieldFallback = nil
+      self.awaitingLockScreen = false
+      self.removePrivacyShieldIfActive()
+    }
+    shieldFallback = fallback
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.lockScreenFallback, execute: fallback)
+  }
+
+  private func removePrivacyShieldIfActive() {
+    shieldFallback?.cancel()
+    shieldFallback = nil
+    if window?.windowScene?.activationState == .foregroundActive {
+      removePrivacyShield()
+    }
   }
 
   private func installPrivacyShieldIfNeeded() {

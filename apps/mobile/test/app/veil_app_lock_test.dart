@@ -124,6 +124,31 @@ void main() {
       await closeApp(tester, app.world);
     });
 
+    testWidgets('$flavour: a picker that answers before the app is back does not lock it, and the next hide does',
+        (tester) async {
+      final app = await openApp(tester, isIOS: isIOS);
+      final picker = Completer<String?>();
+      final picked = app.grace.run(SystemSheet.filePicker, () => picker.future);
+      away(tester);
+      await tester.pump();
+      expect(session(app.world).locked, isFalse);
+
+      // A cancel answers inside onActivityResult, before onResume sends the
+      // way back (hidden, inactive, then resumed once the window has focus).
+      picker.complete(null);
+      expect(await picked, isNull);
+      back(tester);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(session(app.world).locked, isFalse, reason: 'back from a picker within 3 minutes (D40)');
+      expect(app.platform.calls, isEmpty);
+
+      away(tester, until: AppLifecycleState.inactive);
+      expect(session(app.world).locked, isTrue);
+      back(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await closeApp(tester, app.world);
+    });
+
     testWidgets('$flavour: a lock from the integrity check also tells the platform', (tester) async {
       final app = await openApp(tester, isIOS: isIOS);
       app.platform.integrityCompromised = true;
@@ -193,6 +218,37 @@ void main() {
     back(tester);
     expect(world.container.read(appSessionProvider).locked, isTrue);
     expect(platform.count('lockEngaged'), 1);
+    await expectLater(picked, throwsA(isA<SheetClosedByLock>()));
+    await tester.pump(const Duration(milliseconds: 200));
+    await closeApp(tester, world);
+  });
+
+  testWidgets('Android: a wall clock set back while away still locks a resume long after the picker opened',
+      (tester) async {
+    var now = DateTime.utc(2026, 4, 7, 9);
+    final platform = RecordingPlatformSecurity();
+    final grace = SystemSheetGrace(isIOS: false, clock: () => now);
+    final world = await LayoutWorld.create(
+      identities: identities,
+      account: LayoutAccount.signedIn,
+      locale: 'en',
+      overrides: [
+        platformSecurityServiceProvider.overrideWithValue(platform),
+        systemSheetGraceProvider.overrideWithValue(grace),
+        localNotificationServiceProvider.overrideWithValue(_QuietNotifications()),
+      ],
+    );
+    addTearDown(platform.close);
+    await tester.pumpWidget(UncontrolledProviderScope(container: world.container, child: const VeilApp()));
+    await tester.pump();
+
+    final picker = Completer<String?>();
+    final picked = grace.run(SystemSheet.photoPicker, () => picker.future);
+    away(tester);
+    // 30 minutes later, the date set back a day in Settings.
+    now = now.add(const Duration(minutes: 30)).subtract(const Duration(days: 1));
+    back(tester);
+    expect(world.container.read(appSessionProvider).locked, isTrue);
     await expectLater(picked, throwsA(isA<SheetClosedByLock>()));
     await tester.pump(const Duration(milliseconds: 200));
     await closeApp(tester, world);

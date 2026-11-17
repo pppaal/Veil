@@ -532,6 +532,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatAttachmentKindFile => 'File';
 
   @override
+  String get chatAttachmentKindVoice => 'Voice message';
+
+  @override
   String get reactionsMoreTooltip => 'More reactions';
 
   @override

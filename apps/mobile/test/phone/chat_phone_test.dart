@@ -5,6 +5,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -174,6 +175,19 @@ void main() {
         find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline)),
         findsNothing,
       );
+    });
+  });
+
+  // Alexandra's voice message is an audio file, as the web app records
+  // one. Her chat calls it what her Chats row does.
+  testWidgets('a voice message is called one, with a microphone', (tester) async {
+    await withPhoneApp(tester, identities, location: '/chat/conv-alexandra', body: (world) async {
+      await pumpFrames(tester, frames: 4);
+      final card = find.byType(MessageAttachmentCard);
+      expect(card, findsOneWidget);
+      expect(find.descendant(of: card, matching: find.text('Voice message · 56 KB')), findsOneWidget);
+      expect(find.descendant(of: card, matching: find.byIcon(Icons.mic_none_outlined)), findsOneWidget);
+      expect(find.textContaining('Audio'), findsNothing);
     });
   });
 

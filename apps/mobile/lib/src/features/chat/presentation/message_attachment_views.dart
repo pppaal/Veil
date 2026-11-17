@@ -9,8 +9,9 @@ import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_room_labels.dart';
 
 /// The attachment a received message carries, from its authenticated
-/// payload: one tile with its [name], "PDF · 2.3 MB", and the line that
-/// this version cannot open it. Where a build can open attachments
+/// payload: one tile with its [name], "PDF · 2.3 MB" ("Voice message ·
+/// 56 KB" for a [voice] message), and the line that this version cannot
+/// open it. Where a build can open attachments
 /// ([onResolve]), a text button asks for the download instead.
 ///
 /// In a grey bubble the bubble is the tile; on the brand fill of the
@@ -24,6 +25,7 @@ class MessageAttachmentCard extends StatelessWidget {
     required this.downloadError,
     required this.onResolve,
     this.framed = false,
+    this.voice = false,
   });
 
   final AttachmentReference attachment;
@@ -40,6 +42,10 @@ class MessageAttachmentCard extends StatelessWidget {
   /// Whether to draw the tile's own grey fill.
   final bool framed;
 
+  /// Whether the message is a voice message (its kind), which the tile
+  /// names so, with a microphone, whatever type the recording's file is.
+  final bool voice;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -53,7 +59,11 @@ class MessageAttachmentCard extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(attachmentIcon(attachment.contentType), size: VeilIconSize.md, color: palette.textMuted),
+            Icon(
+              voice ? Icons.mic_none_outlined : attachmentIcon(attachment.contentType),
+              size: VeilIconSize.md,
+              color: palette.textMuted,
+            ),
             const SizedBox(width: VeilSpace.sm),
             Flexible(
               child: Column(
@@ -69,7 +79,7 @@ class MessageAttachmentCard extends StatelessWidget {
                     ),
                   Text(
                     l10n.chatAttachmentTypeSize(
-                      attachmentTypeLabel(l10n, attachment.contentType),
+                      voice ? l10n.chatAttachmentKindVoice : attachmentTypeLabel(l10n, attachment.contentType),
                       formatFileSize(attachment.sizeBytes),
                     ),
                     style: name.isEmpty ? theme.textTheme.titleSmall?.copyWith(color: palette.text) : muted,

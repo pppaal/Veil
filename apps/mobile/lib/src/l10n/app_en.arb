@@ -169,6 +169,7 @@
   "chatAttachmentKindVideo": "Video",
   "chatAttachmentKindAudio": "Audio",
   "chatAttachmentKindFile": "File",
+  "chatAttachmentKindVoice": "Voice message",
   "reactionsMoreTooltip": "More reactions",
   "chatScreenshotSystemNotice": "@{handle} took a screenshot",
   "@chatScreenshotSystemNotice": {"placeholders": {"handle": {"type": "String"}}},

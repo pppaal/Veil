@@ -976,6 +976,12 @@ abstract class AppLocalizations {
   /// **'File'**
   String get chatAttachmentKindFile;
 
+  /// No description provided for @chatAttachmentKindVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice message'**
+  String get chatAttachmentKindVoice;
+
   /// No description provided for @reactionsMoreTooltip.
   ///
   /// In en, this message translates to:

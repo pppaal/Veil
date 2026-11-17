@@ -82,6 +82,30 @@ void main() {
       expect(find.byType(VeilNotice), findsNothing);
     });
 
+    // A voice note the web app records is an audio file; the message's kind
+    // says it is a voice message, as its Chats row does.
+    testWidgets('a voice message is called one, with a microphone, whatever its file type', (tester) async {
+      await tester.pumpWidget(_app(MessageAttachmentCard(
+        attachment: _reference('audio/mp4', 57344),
+        resolving: false,
+        downloadError: null,
+        onResolve: null,
+        voice: true,
+      )));
+      expect(find.byIcon(Icons.mic_none_outlined), findsOneWidget);
+      expect(find.text('${l10n.chatAttachmentKindVoice} · 56 KB'), findsOneWidget);
+      expect(find.text(l10n.chatAttachmentCannotOpen), findsOneWidget);
+
+      await tester.pumpWidget(_app(MessageAttachmentCard(
+        attachment: _reference('audio/mp4', 57344),
+        resolving: false,
+        downloadError: null,
+        onResolve: null,
+      )));
+      expect(find.byIcon(Icons.audiotrack_outlined), findsOneWidget);
+      expect(find.text('Audio · 56 KB'), findsOneWidget);
+    });
+
     testWidgets('where a build can open them, a text button asks for the download ticket', (tester) async {
       var resolved = 0;
       await tester.pumpWidget(_app(MessageAttachmentCard(

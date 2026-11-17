@@ -235,13 +235,21 @@ int maxCiphertextBytes(int plaintextSize) {
 }
 
 final RegExp _localNameUnsafe = RegExp(r'[/\\:\u0000]');
+final RegExp _leadingDots = RegExp(r'^\.+');
 
 /// A name for a local Open or Save copy of a file whose sanitized name is
 /// [sanitizedName]: path separators, ':' and NUL replaced, leading dots
-/// stripped, at most 200 UTF-8 bytes keeping a real extension of 1 to 10
-/// letters or digits, cut only between code points; never empty.
+/// stripped (with any spaces between them, so never "." or ".."), at most
+/// 200 UTF-8 bytes keeping a real extension of 1 to 10 letters or digits,
+/// cut only between code points; never empty.
 String safeLocalFileName(String sanitizedName) {
-  var name = sanitizedName.replaceAll(_localNameUnsafe, '_').replaceFirst(RegExp(r'^\.+'), '').trim();
+  var name = sanitizedName.replaceAll(_localNameUnsafe, '_').trim();
+  // ". .." trims to ". .." and strips to " ..": strip and trim until
+  // neither changes anything.
+  for (var previous = ''; previous != name;) {
+    previous = name;
+    name = name.replaceFirst(_leadingDots, '').trim();
+  }
   if (name.isEmpty) name = 'file';
   if (utf8.encode(name).length <= kMaxLocalNameBytes) return name;
   final extension = _lastExtension(name);

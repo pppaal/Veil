@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:veil_mobile/src/core/crypto/message_padding.dart';
 import 'package:veil_mobile/src/core/util/uuid_v4.dart';
 import 'package:veil_mobile/src/features/attachments/domain/attachment_rules.dart';
@@ -146,14 +147,38 @@ process.stdout.write(JSON.stringify(names.map((name) => {
       expect(name.runes.toSet(), {0xC0AC});
     });
 
+    test('dots split by spaces are stripped too, so no name is "." or ".."', () {
+      // The web sanitizer keeps these as they are (or only trims them).
+      expect(safeLocalFileName(sanitizeFileName('. ..')), 'file');
+      expect(safeLocalFileName(sanitizeFileName('. .')), 'file');
+      expect(safeLocalFileName(sanitizeFileName(' . .. ')), 'file');
+      expect(safeLocalFileName(sanitizeFileName('.. ..')), 'file');
+      expect(safeLocalFileName(sanitizeFileName('. .pdf')), 'pdf');
+      expect(safeLocalFileName(sanitizeFileName('.. ..hidden')), 'hidden');
+      expect(safeLocalFileName('.\u{3000}.\u{00A0}..x.txt'), 'x.txt');
+      // Long enough to be cut: the cut keeps the stripped start.
+      final long = safeLocalFileName('. . ${'g' * 300}.pdf');
+      expect(long, startsWith('g'));
+      expect(long, endsWith('.pdf'));
+      expect(utf8.encode(long).length, lessThanOrEqualTo(kMaxLocalNameBytes));
+    });
+
     test('no result reaches outside its folder', () {
-      for (final (name, _, _) in _names) {
+      const folder = '/tmp/veil_open/abcdefghijklmnopqrstuvwx';
+      final hostile = [
+        '. ..', '. .', ' . .. ', '.. ..', '. .pdf', '.. ..hidden', '. . .', '.\t.', '.\u{3000}..',
+        '..', '.', '. ../x', '..\u{200E} ..', '\u{202E}. ..', '. ..${'h' * 300}',
+      ];
+      for (final name in [for (final (name, _, _) in _names) name, ...hostile]) {
         final local = safeLocalFileName(sanitizeFileName(name));
-        expect(local, isNot(contains('/')));
-        expect(local, isNot(contains('\\')));
-        expect(local, isNot(startsWith('.')));
-        expect(local, isNotEmpty);
-        expect(utf8.encode(local).length, lessThanOrEqualTo(kMaxLocalNameBytes));
+        expect(local, isNot(contains('/')), reason: name);
+        expect(local, isNot(contains('\\')), reason: name);
+        expect(local, isNot(startsWith('.')), reason: name);
+        expect(local, isNot(anyOf('.', '..')), reason: name);
+        expect(local, isNotEmpty, reason: name);
+        expect(local.trim(), local, reason: name);
+        expect(utf8.encode(local).length, lessThanOrEqualTo(kMaxLocalNameBytes), reason: name);
+        expect(p.isWithin(folder, p.join(folder, local)), isTrue, reason: name);
       }
     });
   });

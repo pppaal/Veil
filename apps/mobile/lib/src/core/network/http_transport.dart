@@ -74,42 +74,57 @@ class ObjectStoragePolicy {
 
   /// Parses [uploadUrl] or throws a non-retryable `attachment_upload_invalid`
   /// [VeilApiException] when this policy forbids it.
-  Uri checkUploadUrl(String uploadUrl) {
-    final uri = Uri.tryParse(uploadUrl);
+  Uri checkUploadUrl(String uploadUrl) => _check(uploadUrl, AttachmentTransfer.upload);
+
+  /// Parses [downloadUrl] (a download ticket's) or throws a non-retryable
+  /// `attachment_download_invalid` [VeilApiException] when this policy
+  /// forbids it: the same hosts and the same TLS rule as uploads.
+  Uri checkDownloadUrl(String downloadUrl) => _check(downloadUrl, AttachmentTransfer.download);
+
+  Uri _check(String url, AttachmentTransfer transfer) {
+    final what = transfer.name;
+    final uri = Uri.tryParse(url);
     if (uri == null ||
         uri.host.isEmpty ||
         !(uri.isScheme('https') || uri.isScheme('http'))) {
-      throw _rejected('the upload URL is invalid');
+      throw _rejected(transfer, 'the $what URL is invalid');
     }
     if (requireHttps && !uri.isScheme('https')) {
-      throw _rejected('the upload URL must use TLS');
+      throw _rejected(transfer, 'the $what URL must use TLS');
     }
     if (allowedHosts.isNotEmpty &&
         !allowedHosts.contains(uri.host.toLowerCase())) {
-      throw _rejected('storage host ${uri.host} is not allowed');
+      throw _rejected(transfer, 'storage host ${uri.host} is not allowed');
     }
     return uri;
   }
 
-  VeilApiException _rejected(String reason) {
+  VeilApiException _rejected(AttachmentTransfer transfer, String reason) {
     return VeilApiException(
-      'Attachment upload failed: $reason.',
-      code: 'attachment_upload_invalid',
+      'Attachment ${transfer.name} failed: $reason.',
+      code: 'attachment_${transfer.name}_invalid',
     );
   }
 }
 
-/// Abandons an upload that is canceled or stops making progress.
+/// Which way attachment bytes go, for the words and codes of a failure.
+enum AttachmentTransfer { upload, download }
+
+/// Abandons an upload (or, with [transfer], a download) that is canceled or
+/// stops making progress.
 ///
 /// Stopping aborts the request (so its socket is released) and makes [run]
 /// complete with the reason at once, even with clients that ignore aborts.
 class UploadGuard {
-  UploadGuard({required Duration idleTimeout}) : _idleTimeout = idleTimeout {
+  UploadGuard({required Duration idleTimeout, this.transfer = AttachmentTransfer.upload})
+      : _idleTimeout = idleTimeout {
     // [run] may attach its listener after a stop that happened first.
     _failure.future.ignore();
     _restartIdleTimer();
   }
 
+  /// What is guarded, which a cancel's code and a stall's words name.
+  final AttachmentTransfer transfer;
   final Duration _idleTimeout;
   final Completer<void> _abort = Completer<void>();
   final Completer<Never> _failure = Completer<Never>();
@@ -135,8 +150,8 @@ class UploadGuard {
     _canceled = true;
     _stop(
       VeilApiException(
-        'Attachment upload canceled.',
-        code: 'attachment_upload_canceled',
+        'Attachment ${transfer.name} canceled.',
+        code: 'attachment_${transfer.name}_canceled',
       ),
     );
   }
@@ -160,7 +175,7 @@ class UploadGuard {
     _idleTimer = Timer(_idleTimeout, () {
       _stop(
         VeilApiException(
-          'Attachment upload stalled: no progress for '
+          'Attachment ${transfer.name} stalled: no progress for '
           '${_idleTimeout.inSeconds}s.',
           code: TransportErrorCode.timeout,
         ),

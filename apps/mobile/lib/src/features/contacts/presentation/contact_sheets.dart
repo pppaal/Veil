@@ -121,7 +121,9 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
     if (!added) {
       setState(() {
         _saving = false;
-        _failure = contacts.failedAsNotFound ? l10n.safetyAccountNotFound(handle) : l10n.contactsAddFailed;
+        // In lower case, as the server looks it up and the add toast says it.
+        _failure =
+            contacts.failedAsNotFound ? l10n.safetyAccountNotFound(handle.toLowerCase()) : l10n.contactsAddFailed;
       });
       return;
     }

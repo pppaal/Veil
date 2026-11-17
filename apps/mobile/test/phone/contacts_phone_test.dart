@@ -183,14 +183,16 @@ void main() {
       expect(tester.widget<TextField>(fields.first).decoration!.helperText, isNull);
       expect(inSheet(find.textContaining('server', skipOffstage: false)), findsNothing);
 
-      // A handle the relay does not know.
-      await tester.enterText(fields.first, 'nobody');
+      // A handle the relay does not know, typed with a capital.
+      await tester.enterText(fields.first, 'Nobody');
       await tester.pump();
       await tester.tap(save);
       await pumpFrames(tester, frames: 4);
       expect(find.byType(BottomSheet), findsOneWidget, reason: 'the sheet stays for another try');
-      // Not found is said as such; any other failure is contactsAddFailed.
+      // Not found is said as such, in lower case as the server looks it up
+      // and the add toast says it; any other failure is contactsAddFailed.
       expect(inSheet(findCopy(en.safetyAccountNotFound('nobody'))), findsOneWidget);
+      expect(inSheet(findCopy(en.safetyAccountNotFound('Nobody'))), findsNothing);
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300), reason: 'still above the keyboard');
       expect(world.api.addedContacts, isEmpty);
       expect(tester.takeException(), isNull);

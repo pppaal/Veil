@@ -27,6 +27,9 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications uses java.time on every API level and
+        // fails the AAR metadata check without library desugaring.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -95,6 +98,8 @@ flutter {
 }
 
 dependencies {
+    // Version from flutter_local_notifications' README; bump with that plugin.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     if (veilLibsignal) {
         // Signal's audited protocol implementation (Rust core + JNI, prebuilt
         // AAR from Maven Central). Pinned exactly; bump together with the iOS

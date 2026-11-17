@@ -28,7 +28,7 @@ The backend must never become a plaintext message processor.
 - local app lock hooks via `local_auth`
 - local cache definitions via Drift/SQLite
 - feature-oriented screens: onboarding, chat, contacts, transfer, settings, reactions, and profile
-- a text-only build: it sends and receives text, reactions and the notices around them, and has no screen or route for anything it cannot do end to end (calls, a media picker, voice messages, a sticker picker, stories, an assistant, sending an attachment). Sending an attachment is switched off by `kAttachmentsEnabled` (`features/attachments/attachments_feature.dart`) because the app has no file picker; while it is false the composer has no attach button, and an attachment a web client sent is shown as what it is, with a line saying this version cannot open it
+- a text-only build: it sends and receives text, reactions and the notices around them, and has no screen or route for anything it cannot do end to end (calls, a media picker, voice messages, a sticker picker, stories, an assistant, sending an attachment). The composer has no attach button yet (the pickers and the sealed storage behind it are in place but not wired to a screen), and an attachment a web client sent is shown as what it is, with a line saying this version cannot open it
 
 ### Layers (`apps/mobile/lib/src`)
 

@@ -1,14 +1,12 @@
 # Attachment Flow
 
-Status in the mobile app: receive only, and switched off (`kAttachmentsEnabled`
-in `apps/mobile/lib/src/features/attachments/attachments_feature.dart`). The
-app has no file picker and no screen that sends an attachment, so nothing a
-user chose can be sent, and a received attachment stops at its download
-ticket. While the flag is false the composer has no attach button, and a
-message that carries an attachment shows its kind and size with a line saying
-this version cannot open it. The transfer code this document describes is in
-the app and tested; the web client (`apps/web-demo`) sends and opens
-attachments today.
+Status in the mobile app: not sent or opened yet. The composer has no attach
+button and no screen sends an attachment, so nothing a user chose can be
+sent, and a message that carries an attachment shows its kind and size with a
+line saying this version cannot open it. The transfer code this document
+describes is in the app and tested, and the pickers, the sealed media storage
+and the download size caps it will use are in place but not wired to a
+screen. The web client (`apps/web-demo`) sends and opens attachments today.
 
 ## Send path
 

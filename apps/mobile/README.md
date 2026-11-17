@@ -22,13 +22,16 @@ flutter run \
 This is a text-only build: it sends and receives text messages, reactions
 and the notices around them, and has no screen for anything it cannot do
 end to end (no calls, media picker, voice messages, sticker picker, stories
-or assistant, and no screen that sends an attachment). The one constant left
-is `kAttachmentsEnabled` (`lib/src/features/attachments/attachments_feature.dart`),
-false because the app has no file picker. While it is false the composer has
-no attach button, and an attachment a web client sent is shown as what it is
-(its kind and size) with a line saying this version cannot open it; the
-transfer code underneath (sealing, upload tickets, retry) is real and stays
-tested, since it is what a file picker will feed. The route table
+or assistant, and no screen that sends an attachment). The composer has no
+attach button yet, and an attachment a web client sent is shown as what it is
+(its kind and size) with a line saying this version cannot open it. What
+photos and files will use is in place but not wired to a screen: the system
+photo and file pickers (`image_picker`, `flutter_file_dialog`), a media
+folder that holds only sealed blobs under random names (which blob belongs
+to which message is kept only in the encrypted database), size-capped
+downloads, an app lock that lets a system picker stay up for a bounded time,
+and a channel that opens a file in another app. The transfer code (sealing,
+upload tickets, retry) is tested. The route table
 (`lib/src/app/router/app_router.dart`) has no route for anything the build
 cannot do, and a location no route has (an old link, a mistyped one) opens
 the conversation list instead of the router's "Page Not Found". The bottom

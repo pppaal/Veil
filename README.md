@@ -181,11 +181,10 @@ those checks fails the build:
 - Block, report and mute: from a chat's menu, a message's long-press sheet
   and a contact's sheet, with Settings > Privacy > Blocked accounts; a muted
   chat raises no notification on the phone
-- Sending attachments is switched off: `kAttachmentsEnabled`
-  (`lib/src/features/attachments/attachments_feature.dart`) is false because
-  the app has no file picker, and while it is false no button leads to it
-  ([apps/mobile/README.md](apps/mobile/README.md)). The app has no calls,
-  voice messages, stories, stickers or assistant
+- Sending attachments is not in the app yet: the system photo and file
+  pickers and the sealed storage behind them are in place, but no button
+  leads to them ([apps/mobile/README.md](apps/mobile/README.md)). The app has
+  no calls, voice messages, stories, stickers or assistant
 - English only, one design system:
   [docs/mobile-design-system.md](docs/mobile-design-system.md)
 - Refresh on 401 in the API client

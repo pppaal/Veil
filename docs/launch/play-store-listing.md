@@ -107,9 +107,12 @@ Declared in the app's `AndroidManifest.xml` and surfaced in Play Console:
 | WAKE_LOCK                | push wake-ups, once push is wired | no                |
 | USE_BIOMETRIC            | app lock                          | no (per-use)      |
 
-The plugins' own manifests add nothing to this: `flutter_local_notifications`
+The plugins' own manifests add no permission to this: `flutter_local_notifications`
 declares `VIBRATE` and `POST_NOTIFICATIONS`, `local_auth_android`
-`USE_BIOMETRIC`, and the rest none. Libraries they depend on add two more,
+`USE_BIOMETRIC`, `image_picker_android` a file provider and a disabled Photo
+Picker backport service, and the rest none. The app's own manifest adds one
+file provider, limited to the one cache folder a received file is opened
+from. Libraries they depend on add two more,
 which the merged manifest of a debug build shows (CI's `android-build` job
 prints the list on every run):
 
@@ -126,10 +129,10 @@ the permissions Play Console lists for the bundle, and add any other it shows
 here.
 
 No `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_*` or `READ_EXTERNAL_STORAGE`: the
-app sends text only (sending attachments is switched off by
-`kAttachmentsEnabled` in
-`apps/mobile/lib/src/features/attachments/attachments_feature.dart`, and there
-are no voice messages or calls), and none of its plugins declares them. No
+app sends text only for now (no screen sends an attachment yet, and there are
+no voice messages or calls), the system photo picker and document picker it
+will use for photos and files need none of them, and none of its plugins
+declares them. No
 `READ_CONTACTS`, no `ACCESS_FINE_LOCATION`, no `QUERY_ALL_PACKAGES`. A feature
 that needs one of these declares it in the change that makes the feature
 work, together with the matching usage string in `ios/Runner/Info.plist`

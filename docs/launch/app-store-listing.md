@@ -185,9 +185,11 @@ English and Korean (`docs/privacy-policy-en.md`, `docs/privacy-policy-ko.md`).
 - [ ] No placeholders in Promotional text / Description
 - [ ] Screenshots exist for every required device class
 - [ ] Legal has reviewed "description" + "promotional text"
-- [ ] `Info.plist` asks only for what the build uses: today that is
-      `NSFaceIDUsageDescription` (app lock) alone. No camera, microphone or
-      photo library usage string while the app sends text only
+- [ ] `Info.plist` asks only for what the build uses:
+      `NSFaceIDUsageDescription` (app lock) and
+      `NSPhotoLibraryUsageDescription`, which the photo picker plugin
+      requires even though the system picker never asks for access. No
+      camera, microphone or photo-library-add usage string
 - [ ] Push entitlement only if push is actually wired to APNs for this
       build (otherwise reject-risk)
 - [ ] App Privacy answers transcribed from `store/appstore/app-privacy-answers.md`

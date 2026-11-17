@@ -109,13 +109,21 @@ Declared in the app's `AndroidManifest.xml` and surfaced in Play Console:
 
 The plugins' own manifests add nothing to this: `flutter_local_notifications`
 declares `VIBRATE` and `POST_NOTIFICATIONS`, `local_auth_android`
-`USE_BIOMETRIC`, and the rest none. Libraries they depend on can add more:
-`local_auth_android` depends on `androidx.biometric`, whose manifest usually
-adds `USE_FINGERPRINT` (a normal permission, for the fingerprint API of
-Android 9 and older, with no prompt). This page was written without a Gradle
-build, so before submission read the merged manifest
+`USE_BIOMETRIC`, and the rest none. Libraries they depend on add two more,
+which the merged manifest of a debug build shows (CI's `android-build` job
+prints the list on every run):
+
+- `USE_FINGERPRINT`, from `androidx.biometric` (which `local_auth_android`
+  uses): a normal permission for the fingerprint API of Android 9 and older,
+  with no prompt.
+- `io.veil.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which
+  `androidx.core` declares at signature level so that only this app can send
+  to its own runtime receivers.
+
+Before submission, also read the release bundle's merged manifest
 (`build/app/intermediates/merged_manifests/release/AndroidManifest.xml`) or
-the permissions Play Console lists for the bundle, and add any it shows here.
+the permissions Play Console lists for the bundle, and add any other it shows
+here.
 
 No `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_*` or `READ_EXTERNAL_STORAGE`: the
 app sends text only (sending attachments is switched off by

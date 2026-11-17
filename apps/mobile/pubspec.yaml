@@ -27,6 +27,11 @@ dependencies:
   qr_flutter: ^4.1.0
   flutter_localizations:
     sdk: flutter
+  image_picker: 1.2.4
+  image_picker_android: 0.8.13+25
+  image_picker_platform_interface: 2.11.2
+  flutter_file_dialog: 3.3.6
+  image: 4.8.0
 
 dev_dependencies:
   flutter_test:
@@ -37,7 +42,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.28.2
   build_runner: ^2.7.0
-  image: ^4.3.0
   flutter_launcher_icons: ^0.14.1
   flutter_native_splash: ^2.4.3
 

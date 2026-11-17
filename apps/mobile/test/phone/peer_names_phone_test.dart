@@ -10,6 +10,7 @@ import 'package:veil_mobile/src/features/conversations/presentation/conversation
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../layout/support/layout_seed.dart';
+import '../support/fake_relay.dart';
 import 'phone_app.dart';
 
 // The names on the screens come from this phone. The relay keeps none: it
@@ -47,7 +48,8 @@ void main() {
         expect(contact.keys.toSet(), {'handle', 'addedAt'}, reason: 'a contact as the relay lists one');
       }
       final saved = await ContactNicknames(world.storage.scoped(SecureScope.contacts)).readAll();
-      expect(saved[peerHandle], 'Sam Rivera');
+      // Saved for the handle, and given the account Chats lists under it.
+      expect(saved[peerHandle], const ContactNickname('Sam Rivera', userId: 'user-$peerHandle'));
 
       expect(_row('Sam Rivera'), findsOneWidget);
       expect(_row(peerHandle), findsNothing);
@@ -103,6 +105,14 @@ void main() {
         expect(find.text(_en.chatAccountHoldOtherTitle), findsOneWidget);
         expect(_inBar('@$peerHandle'), findsOneWidget);
         expect(find.text('Sam Rivera'), findsNothing);
+
+        // So does a block of it.
+        await tester.tap(find.byTooltip(_en.chatMenuTooltip));
+        await pumpFrames(tester, frames: 3);
+        await tester.tap(find.byKey(const ValueKey('chat-menu-block')));
+        await pumpFrames(tester, frames: 4);
+        expect(find.text(_en.blockConfirmTitle('@$peerHandle')), findsOneWidget);
+        expect(find.text('Sam Rivera'), findsNothing);
       },
     );
   });
@@ -123,12 +133,49 @@ void main() {
       }
       expect(find.text('@$peerHandle'), findsNothing);
 
-      // Who is typing is called the same.
-      world.messenger.presenceTyping.typingStarted(groupConversationId, peerHandle);
+      // Who is typing is called the same: the account the event names.
+      world.messenger.presenceTyping.typingStarted(groupConversationId, peerHandle, userId: 'user-$peerHandle');
       await pumpFrames(tester, frames: 2);
       expect(find.text(_en.chatTypingSuffix('Sam Rivera')), findsOneWidget);
       world.messenger.presenceTyping.typingStopped(groupConversationId);
       await pumpFrames(tester, frames: 2);
+      // An account the group does not list, under sam's handle, is not sam,
+      // nor any member: nothing says anyone is typing. Changed on purpose:
+      // it read "@sam is typing…" while Sam Rivera was in the group.
+      world.messenger.presenceTyping.typingStarted(groupConversationId, peerHandle, userId: 'user-mallory');
+      await pumpFrames(tester, frames: 2);
+      expect(find.text(_en.chatTypingSuffix('@$peerHandle')), findsNothing);
+      expect(find.text(_en.chatTypingSuffix('Sam Rivera')), findsNothing);
+      expect(find.text(_en.chatTypingUnnamed), findsNothing);
+      world.messenger.presenceTyping.typingStopped(groupConversationId);
+      await pumpFrames(tester, frames: 2);
+    });
+  });
+
+  // The row's "Omar: …" names the writer as the bubbles do, so it follows
+  // what this phone binds as well as the nicknames: once omar_h's handle is
+  // bound to another account too, the nickname names neither, and the row
+  // says "@omar_h" at once, though no nickname changed.
+  testWidgets('a group row names its last writer anew when a binding changes, not only a nickname', (tester) async {
+    await withPhoneApp(tester, identities, location: '/conversations', withGroup: true, body: (world) async {
+      String? snippet() => tester.widget<ConversationRow>(_row(groupName)).snippet;
+      expect(snippet(), 'Omar: $latestGroupLine');
+
+      // The relay lists another account to alex as @omar_h in a 1:1,
+      // which alex lets through.
+      world.relay.addParty(RelayParty(
+        handle: 'mallory',
+        userId: 'user-mallory',
+        deviceId: 'dev-mallory',
+        identity: identities.peer,
+      ));
+      world.relay.listedHandles[selfHandle] = {'mallory': 'omar_h'};
+      world.relay.addDirect('conv-mallory', 'mallory', selfHandle);
+      await world.messenger.refreshConversations();
+      await world.messenger.acknowledgePeerAccount('conv-mallory');
+      await pumpFrames(tester, frames: 4);
+
+      expect(snippet(), '@omar_h: $latestGroupLine');
     });
   });
 }

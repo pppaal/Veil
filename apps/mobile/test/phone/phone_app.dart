@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../layout/support/layout_world.dart';
 import '../layout/support/phone_layout_probe.dart';
+import '../support/fake_relay.dart';
 
 export '../layout/support/layout_world.dart';
 export '../layout/support/phone_layout_probe.dart';
@@ -16,7 +17,8 @@ export '../layout/support/phone_layout_probe.dart';
 /// outlives it. [prepare] changes the seeded world before the app opens;
 /// what it returns is what the route is opened with. [withGroup] adds the
 /// seeded group to the account's conversations. [sessionError] is the
-/// failure the session reports when the app opens.
+/// failure the session reports when the app opens. [beforeSession] changes
+/// the relay before the session loads anything from it.
 Future<void> withPhoneApp(
   WidgetTester tester,
   LayoutIdentities identities, {
@@ -32,6 +34,7 @@ Future<void> withPhoneApp(
   bool transferStarted = false,
   bool withGroup = false,
   String? sessionError,
+  void Function(FakeRelay relay)? beforeSession,
 }) async {
   usePhoneView(tester, size, keyboardHeight: keyboardHeight, textScale: textScale);
   final world = await LayoutWorld.create(
@@ -42,6 +45,7 @@ Future<void> withPhoneApp(
     transferStarted: transferStarted,
     withGroup: withGroup,
     sessionError: sessionError,
+    beforeSession: beforeSession,
   );
   try {
     final extra = await prepare?.call(world);

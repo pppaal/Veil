@@ -173,7 +173,7 @@ class ContactRow extends StatelessWidget {
     return Semantics(
       container: true,
       button: true,
-      label: l10n.contactsRowSemantics(contact.label),
+      label: l10n.contactsRowSemantics(contact.title),
       onTap: onTap,
       excludeSemantics: true,
       child: VeilRow(

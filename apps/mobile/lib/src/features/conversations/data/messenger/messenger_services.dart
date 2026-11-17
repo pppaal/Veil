@@ -281,6 +281,13 @@ class MessengerServices {
       }
     }
 
+    // Read before the cached list is shown, which may be all there is for a
+    // while: the screens name people by whom each 1:1 is bound to (see
+    // PeerNames). A keystore that cannot be read now is read again by the
+    // first list.
+    try {
+      await _peerBindings.all();
+    } catch (_) {}
     await sync.hydrate();
     await sync.refreshConversations();
     await realtime.connect();

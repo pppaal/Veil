@@ -28,9 +28,18 @@ class MessageTimeFormat {
       // draw as a box. A no-break space keeps the two together as well.
       _timeOfDay.format(at.toLocal()).replaceAll(' ', ' ');
 
-  /// A day and a time of day, as an expiry says it: "Apr 8 2:05 PM", or
-  /// "Apr 8 14:05" on a phone set to 24-hour time.
-  String dayAndTime(DateTime at) => '${DateFormat.MMMd(_l10n.localeName).format(at.toLocal())} ${timeOfDay(at)}';
+  /// A day and a time of day, as an expiry says it, seen on [now]: "today
+  /// at 2:05 PM", "tomorrow at 2:05 PM", else "on Apr 8 at 2:05 PM"; with
+  /// "14:05" on a phone set to 24-hour time.
+  String dayAndTime(DateTime at, {required DateTime now}) {
+    final local = at.toLocal();
+    final time = timeOfDay(local);
+    return switch (calendarDaysBetween(now.toLocal(), local)) {
+      0 => _l10n.dayAtTime(_l10n.chatDayToday.toLowerCase(), time),
+      1 => _l10n.dayAtTime(_l10n.chatDayTomorrow.toLowerCase(), time),
+      _ => _l10n.dateAtTime(DateFormat.MMMd(_l10n.localeName).format(local), time),
+    };
+  }
 
   /// When [at] was, as seen on [now]: the time of day for today,
   /// "Yesterday", the short weekday ("Mon") for the six days before, then

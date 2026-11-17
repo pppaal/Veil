@@ -20,6 +20,10 @@ class TypingIndicator extends StatelessWidget {
 
   bool get named => name != null;
 
+  /// The column a group's incoming bubbles keep for their writer's avatar,
+  /// and the gap after it (ChatMessageList).
+  static const double groupAvatarColumn = 32 + VeilSpace.xs;
+
   @override
   Widget build(BuildContext context) {
     if (handle == null || handle!.isEmpty) {
@@ -29,8 +33,14 @@ class TypingIndicator extends StatelessWidget {
     final palette = context.veilPalette;
     final label = named ? l10n.chatTypingSuffix(name!) : l10n.chatTypingUnnamed;
     return Padding(
-      // In line with the peer's bubbles above it.
-      padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xxs, VeilSpace.md, VeilSpace.xxs),
+      // In line with the peer's bubbles above it: in a group, past the
+      // column their avatars keep.
+      padding: EdgeInsets.fromLTRB(
+        VeilSpace.sm + (named ? groupAvatarColumn : 0),
+        VeilSpace.xxs,
+        VeilSpace.md,
+        VeilSpace.xxs,
+      ),
       child: Row(
         children: [
           DecoratedBox(

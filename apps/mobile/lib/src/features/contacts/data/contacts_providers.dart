@@ -67,6 +67,9 @@ class ContactsController extends ChangeNotifier {
   bool _mutating = false;
   bool _loadFailed = false;
   String? _errorMessage;
+  // Moves on at every refresh: an answer to an earlier one, made for the
+  // account signed in then or overtaken by a later read, is dropped.
+  int _generation = 0;
 
   List<ContactEntry> get contacts => _contacts;
   bool get isLoading => _loading;
@@ -80,9 +83,11 @@ class ContactsController extends ChangeNotifier {
   String? get _accessToken => ref.read(appSessionProvider).accessToken;
 
   Future<void> refresh() async {
+    final generation = ++_generation;
     final token = _accessToken;
     if (token == null) {
       _contacts = const [];
+      _loading = false;
       notifyListeners();
       return;
     }
@@ -92,17 +97,21 @@ class ContactsController extends ChangeNotifier {
     try {
       final raw = await apiClient.getContacts(token);
       final labels = await nicknames.load();
+      if (generation != _generation) return;
       _contacts = [
         for (final json in raw.whereType<Map<String, dynamic>>())
-          ContactEntry.fromJson(json, nickname: labels[(json['handle'] as String?)?.toLowerCase()]),
+          ContactEntry.fromJson(json, nickname: labels[(json['handle'] as String?)?.toLowerCase()]?.name),
       ];
       _loadFailed = false;
     } catch (error) {
+      if (generation != _generation) return;
       _loadFailed = true;
       _errorMessage = formatUserFacingError(error);
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (generation == _generation) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -112,12 +121,25 @@ class ContactsController extends ChangeNotifier {
   Future<bool> addContact({required String handle, String? nickname}) async {
     final token = _accessToken;
     if (token == null) return false;
+    final account = ref.read(appSessionProvider).userId;
+    final storage = ref.read(secureStorageProvider);
+    final wipes = storage.wipesBegun;
     _mutating = true;
     _errorMessage = null;
     notifyListeners();
     try {
       await apiClient.addContact(token, {'handle': handle.trim()});
-      await nicknames.write(handle.trim(), nickname ?? '');
+      // An answer that comes once a sign-out or wipe has begun writes
+      // nothing: the keystore is being wiped, and the next account made on
+      // this phone would find the nickname there. This check and the
+      // write's place in the keystore's queue happen in one step, so a
+      // wipe that begins later clears the write.
+      if (storage.wipesBegun != wipes || ref.read(appSessionProvider).userId != account) return false;
+      // Saved anew, naming no account: PeerNames.claims gives it the
+      // account this phone bound the handle to, even one an earlier
+      // nickname of the handle named, or else the one account the chats
+      // and Blocked accounts show under the handle.
+      await nicknames.write(handle.trim(), nickname ?? '', anew: true);
       await refresh();
       return true;
     } catch (error) {
@@ -151,8 +173,13 @@ class ContactsController extends ChangeNotifier {
   }
 
   /// Changes the name this device calls a contact by; an empty one clears
-  /// it. The relay never learns it.
-  Future<void> renameContact(String handle, String nickname) async {
+  /// it. It names the same account as before. The relay never learns it.
+  /// Nothing is written once a sign-out or wipe has begun since the count
+  /// of wipes was [wipesSeen] (read when the rename was asked for): the
+  /// keystore is being wiped, and the next account made on this phone
+  /// would find the nickname there.
+  Future<void> renameContact(String handle, String nickname, {required int wipesSeen}) async {
+    if (ref.read(secureStorageProvider).wipesBegun != wipesSeen) return;
     final label = nickname.trim();
     await nicknames.write(handle, label);
     _contacts = [

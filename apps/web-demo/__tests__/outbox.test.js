@@ -63,7 +63,7 @@ async function aliceApp() {
   const send = createSend({ store, stack, messages, realtime: { stopTyping() {} }, onSent() {}, toast });
   const outbox = createOutbox({ store, stack, messages, toast });
   const own = () => store.messagesOf(CONVERSATION).filter((message) => message.senderDeviceId === 'd-alice');
-  return { alice, bob, conv, relay, outbound, store, send, outbox, toasts, own };
+  return { alice, bob, conv, relay, outbound, store, stack, send, outbox, toasts, own };
 }
 
 async function expectDelivered(app, text) {
@@ -104,6 +104,36 @@ describe('a send in flight', () => {
     await sending;
     await expectDelivered(app, 'slow network');
     expect(app.relay.posts).toHaveLength(1);
+  });
+});
+
+describe('a text sent as a reply', () => {
+  beforeEach(() => vi.stubGlobal('BroadcastChannel', undefined));
+  afterEach(() => vi.unstubAllGlobals());
+
+  // The reply draft goes once the text that answers it is sealed; a reply
+  // the user picked while it was sealing is the next message's, and stays.
+  it('takes away its own reply draft once sealed, not one picked meanwhile', async () => {
+    const app = await aliceApp();
+    const { replyDrafts } = app.store.state;
+    replyDrafts.set(CONVERSATION, { id: 'm-first' });
+    let unseal;
+    const sealing = new Promise((resolve) => (unseal = resolve));
+    const seal = app.stack.sender.seal;
+    app.stack.sender.seal = async (...args) => {
+      await sealing;
+      return seal(...args);
+    };
+
+    const sending = app.send.sendText(CONVERSATION, 'sure');
+    replyDrafts.set(CONVERSATION, { id: 'm-second' });
+    unseal();
+    await sending;
+    expect(replyDrafts.get(CONVERSATION)).toEqual({ id: 'm-second' });
+
+    // Sent with nothing picked meanwhile: its own draft goes.
+    await app.send.sendText(CONVERSATION, 'and this');
+    expect(replyDrafts.has(CONVERSATION)).toBe(false);
   });
 });
 

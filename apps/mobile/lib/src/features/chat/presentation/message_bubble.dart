@@ -170,6 +170,7 @@ class MessageBubble extends StatelessWidget {
                     downloadError: attachmentId == null ? null : attachmentDownloadError(attachmentId),
                     onResolve: kAttachmentsEnabled ? () => onResolveAttachment(attachment.attachmentId) : null,
                     framed: onBrand,
+                    voice: decrypted.messageKind == MessageKind.voice,
                   ),
                 ],
                 const SizedBox(height: VeilSpace.xxs),

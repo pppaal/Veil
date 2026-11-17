@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_phone.dart';
@@ -21,13 +22,18 @@ import 'package:veil_mobile/src/features/conversations/presentation/peer_names.d
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 // The names this phone gave the peers in Contacts, which is where every
-// name the screens show comes from: the relay lists none.
-final _nicknames = peerNamesProvider.overrideWith(
-  (ref) => PeerNames(
-    const {'selene': 'Selene', 'rowan': 'Rowan'},
-    chats: ref.watch(messengerControllerProvider).conversations,
-  ),
-);
+// name the screens show comes from: the relay lists none. Each names the
+// account the list shows under its handle, as the app records it
+// (PeerNames.claims).
+final _nicknames = peerNamesProvider.overrideWith((ref) {
+  final messenger = ref.watch(messengerControllerProvider);
+  const saved = {'selene': ContactNickname('Selene'), 'rowan': ContactNickname('Rowan')};
+  final accounts = peerNamesFor(messenger, saved).claims();
+  return peerNamesFor(messenger, {
+    for (final MapEntry(key: handle, value: nickname) in saved.entries)
+      handle: ContactNickname(nickname.name, userId: accounts[handle]),
+  });
+});
 
 void main() {
   group('ConversationRow', () {
@@ -511,11 +517,13 @@ void main() {
           _conversationMap(
             id: 'conv-1',
             peerHandle: 'selene',
+            peerUserId: 'user-peer-1',
             envelope: firstEnvelope,
           ),
           _conversationMap(
             id: 'conv-2',
             peerHandle: 'rowan',
+            peerUserId: 'user-peer-2',
             envelope: secondEnvelope,
           ),
         ],
@@ -627,11 +635,13 @@ void main() {
           _conversationMap(
             id: 'conv-1',
             peerHandle: 'selene',
+            peerUserId: 'user-peer-1',
             envelope: firstEnvelope,
           ),
           _conversationMap(
             id: 'conv-2',
             peerHandle: 'rowan',
+            peerUserId: 'user-peer-2',
             envelope: secondEnvelope,
           ),
         ],
@@ -974,9 +984,13 @@ class _FakeConversationApiClient extends VeilApiClient {
   }
 }
 
+// [peerUserId] is the peer's account: two chats listed with one account
+// under two handles name neither by a nickname (see PeerNames), and no
+// honest relay lists them so.
 Map<String, dynamic> _conversationMap({
   required String id,
   required String peerHandle,
+  String peerUserId = 'user-peer',
   CryptoEnvelope? envelope,
   DateTime? expiresAt,
 }) {
@@ -990,7 +1004,7 @@ Map<String, dynamic> _conversationMap({
         'handle': 'atlas',
       },
       {
-        'userId': 'user-peer',
+        'userId': peerUserId,
         'handle': peerHandle,
       },
     ],

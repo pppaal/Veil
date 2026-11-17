@@ -8,7 +8,7 @@ section 4). Upload them in file-name order.
 |---|---|
 | `01-choose-handle.png` | Choose a handle, with "alex" typed in |
 | `02-chats.png` | Chats: a group and five one-to-one chats |
-| `03-chat.png` | Sam Rivera's chat from 09:03 on: his news with a thumbs-up, two replies (the second disappearing), his last word, Sam typing |
+| `03-chat.png` | Sam Rivera's chat this morning: his question about the lease and the reply, his news with a thumbs-up, two replies (the second disappearing), his last word, Sam typing |
 | `04-move-to-a-new-phone.png` | Move to a new phone, on the old phone, before it asks for a code |
 | `05-app-lock.png` | The lock screen with a PIN typed in |
 | `06-settings.png` | The top of Settings as it opens, from the profile row down |
@@ -63,10 +63,9 @@ What the test does:
 - The Chats shot leaves out three of the seeded chats: two whose last
   messages are a voice message and a photo, which the app cannot send, and
   one with no messages yet.
-- The chat shot keeps the morning from Sam's message after the file on. It
-  leaves out the evening before, where the gate keeps a long message and a
-  long link, and the first lines of the morning with the PDF the user sent
-  (the app cannot send attachments).
+- The chat shot keeps this morning's messages but one. It leaves out the
+  days before, where the gate keeps a long message and a long link, and the
+  PDF the user sent this morning (the app cannot send attachments).
 - The Settings shot is not scrolled. Should a line sit across the bottom
   edge, the list moves up just far enough for it to be whole.
 - The PNGs are 8-bit RGB without alpha, as Play asks.

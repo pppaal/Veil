@@ -63,6 +63,7 @@ class MessageSearchResult {
     required this.isMine,
     required this.bodySnippet,
     this.conversationOrder,
+    this.senderDeviceId,
   });
 
   final String conversationId;
@@ -78,4 +79,8 @@ class MessageSearchResult {
   final bool isMine;
   final String bodySnippet;
   final int? conversationOrder;
+
+  /// The device that sent the message, by which a group's hit says who
+  /// wrote it; null where it is not known.
+  final String? senderDeviceId;
 }

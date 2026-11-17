@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_adapter_registry.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
@@ -10,6 +11,7 @@ import 'package:veil_mobile/src/features/security/presentation/safety_numbers_sc
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../support/copy_finder.dart';
+import '../layout/support/layout_seed.dart' show layoutNow;
 import 'phone_app.dart';
 
 // What the screens around the chat say on a phone, and in which order: the
@@ -90,16 +92,19 @@ void main() {
     // itself stays.
     // The account itself stays on the server, its handle taken; what is lost
     // is the way back in, which no backup or reset gives (the web's sign
-    // out says the same).
+    // out says the same). Changed on purpose: the body no longer opens with
+    // "This signs this phone out", which said the title again; and it says
+    // the chats are deleted by this, as "are deleted" read as if they were
+    // gone already.
     test('Sign out says what it deletes and what is lost, not that the app goes', () {
       final body = l10n.settingsLogoutConfirmBody('alex');
       expect(body, isNot(contains('Veil')), reason: 'the app is not what goes');
       expect(body, isNot(contains('uninstall')));
-      expect(body, contains('signs this phone out'));
-      expect(body, contains('chats'));
-      expect(body, contains("You can't sign in as @alex again."));
+      expect(body, isNot(contains('signs this phone out')), reason: 'the title says it');
+      expect(body, contains('This deletes your chats from this phone'));
+      expect(body, contains("you can't sign in as @alex again."));
       expect(body, isNot(contains('account is gone')), reason: 'the account stays on the server');
-      expect(body.split(RegExp(r'(?<=[.!?])\s+')), hasLength(lessThanOrEqualTo(2)), reason: 'two short sentences');
+      expect(body.split(RegExp(r'(?<=[.!?])\s+')), hasLength(1), reason: 'one short sentence');
     });
 
     testWidgets('each account action says in its dialog what it erases, before the typed handle', (tester) async {
@@ -116,7 +121,7 @@ void main() {
           final said = find.descendant(of: dialog, matching: find.text(body));
           expect(said, findsOneWidget, reason: '$key says what it does');
           // What it erases, and that nothing brings it back.
-          expect(body, anyOf(contains('erases'), contains('deletes')), reason: key);
+          expect(body, anyOf(contains('erases'), contains('deletes'), contains('are deleted')), reason: key);
           expect(body, anyOf(contains("can't sign in"), contains("can't be undone")), reason: key);
           final prompt =
               find.descendant(of: dialog, matching: find.text(l10n.settingsTypePhraseToContinue('@$selfHandle')));
@@ -159,6 +164,16 @@ void main() {
       of: find.byType(SafetyNumberCard, skipOffstage: false),
       matching: find.text('Safety number', skipOffstage: false),
     );
+
+    // The seed's verification is stamped by the phone's clock: the morning
+    // the chats are from, not the day the test runs.
+    testWidgets('dates the verification by the phone\'s clock', (tester) async {
+      await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
+        await awaitSafetyNumber(tester);
+        final day = DateFormat.yMMMd('en').format(layoutNow.toLocal());
+        expect(find.text(l10n.safetyNumbersKeyChangedMessage(day), skipOffstage: false), findsOneWidget);
+      });
+    });
 
     testWidgets('a phone opens on the warning, before anything else', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {

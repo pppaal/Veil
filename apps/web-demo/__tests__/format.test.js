@@ -30,8 +30,18 @@ describe('formatTime', () => {
 
 describe('dayKey', () => {
   it('matches the current calendar day even at midnight UTC offsets', () => {
-    expect(dayKey(new Date(2026, 3, 15))).toBe('2026-4-15');
-    expect(dayKey(new Date(2026, 3, 15, 23, 59))).toBe('2026-4-15');
+    const today = new Date(2026, 3, 15, 12);
+    expect(dayKey(new Date(2026, 3, 15), today)).toBe('2026-4-15');
+    expect(dayKey(new Date(2026, 3, 15, 23, 59), today)).toBe('2026-4-15');
+  });
+
+  // dayLabel calls a message stamped ahead of this clock "Today": it is
+  // under today's divider, not a second "Today".
+  it('puts a message stamped ahead of this clock on today', () => {
+    const today = new Date(2026, 3, 15, 23, 59);
+    expect(dayKey(new Date(2026, 3, 16, 0, 1), today)).toBe('2026-4-15');
+    expect(dayKey(new Date(2026, 3, 15, 9), today)).toBe('2026-4-15');
+    expect(dayKey(new Date(2026, 3, 14, 22), today)).toBe('2026-4-14');
   });
 });
 
@@ -50,7 +60,7 @@ describe('dayLabel', () => {
   it('names the weekday for the six days before yesterday', () => {
     expect(dayLabel(new Date(2026, 3, 13, 9), today)).toBe('Monday');
     expect(dayLabel(new Date(2026, 3, 9, 9), today)).toBe('Thursday');
-    expect(dayLabel(new Date(2026, 3, 8, 9), today)).toBe('Apr 8');
+    expect(dayLabel(new Date(2026, 3, 8, 9), today)).toBe('April 8');
   });
 
   it('calls a message stamped ahead of this clock today, as its Chats row shows its time', () => {
@@ -58,11 +68,11 @@ describe('dayLabel', () => {
   });
 
   it('falls back to the month and day in the same year', () => {
-    expect(dayLabel(new Date(2026, 0, 5), today)).toBe('Jan 5');
+    expect(dayLabel(new Date(2026, 0, 5), today)).toBe('January 5');
   });
 
   it('includes the year for cross-year dates', () => {
-    expect(dayLabel(new Date(2024, 11, 31), today)).toBe('Dec 31, 2024');
+    expect(dayLabel(new Date(2024, 11, 31), today)).toBe('December 31, 2024');
   });
 });
 

@@ -31,6 +31,8 @@ class PresenceTypingService extends ChangeNotifier {
   final Duration _localTypingIdle;
 
   final Map<String, String> _typingByConversation = {};
+  // The account each of those typing events named, when it named one.
+  final Map<String, String> _typingUserIds = {};
   // One per conversation: a peer typing in one chat must not cut short the
   // indicator of another.
   final Map<String, Timer> _typingTimeouts = {};
@@ -41,12 +43,21 @@ class PresenceTypingService extends ChangeNotifier {
 
   String? typingHandleFor(String conversationId) => _typingByConversation[conversationId];
 
+  /// The account the typing event in [conversationId] named, if any.
+  String? typingUserIdFor(String conversationId) => _typingUserIds[conversationId];
+
   bool isUserOnline(String userId) => _onlineUserIds.contains(userId);
 
-  /// A peer started typing; the indicator clears by itself unless renewed.
-  void typingStarted(String conversationId, String handle) {
+  /// A peer started typing, as [handle] and the account [userId]; the
+  /// indicator clears by itself unless renewed.
+  void typingStarted(String conversationId, String handle, {String userId = ''}) {
     if (_disposed) return;
     _typingByConversation[conversationId] = handle;
+    if (userId.isEmpty) {
+      _typingUserIds.remove(conversationId);
+    } else {
+      _typingUserIds[conversationId] = userId;
+    }
     _typingTimeouts.remove(conversationId)?.cancel();
     _typingTimeouts[conversationId] = Timer(_remoteTypingTimeout, () => typingStopped(conversationId));
     notifyListeners();
@@ -57,6 +68,7 @@ class PresenceTypingService extends ChangeNotifier {
   void typingStopped(String conversationId) {
     if (_disposed) return;
     _typingTimeouts.remove(conversationId)?.cancel();
+    _typingUserIds.remove(conversationId);
     if (_typingByConversation.remove(conversationId) == null) return;
     notifyListeners();
   }

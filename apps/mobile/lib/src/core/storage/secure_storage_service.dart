@@ -601,10 +601,20 @@ class SecureStorageService {
     await _storage.delete(key: _pinLockoutTierKey);
   }
 
+  int _wipesBegun = 0;
+
+  /// How many wipes of this device's state have begun. A write that waited
+  /// on the network compares it before it goes in, so one that a sign-out
+  /// overtook is dropped even while the sign-out is still wiping the rest.
+  int get wipesBegun => _wipesBegun;
+
   Future<void> wipeLocalDeviceState({
     bool preserveOnboardingAccepted = true,
     bool preservePin = false,
   }) async {
+    // Counted before the first await: a write queued into a scope after
+    // this reads it and is dropped, and one queued before is cleared below.
+    _wipesBegun++;
     await clearSession();
     await clearDeviceSecrets();
     await clearPendingTransfer();
@@ -747,6 +757,27 @@ class ScopedSecureStore implements IdentityKeyValueBackend {
         await _storage.delete(key: _qualified(key));
         final keys = await _readIndex();
         if (keys.remove(key)) await _writeIndex(keys);
+      });
+
+  /// Replaces [key] with what [change] makes of its value, read and written
+  /// in one step that no other write to this scope, nor [clear], comes
+  /// between: so what a wipe forgot is never written back from a read made
+  /// before it. While [key] is absent, [change] is given the value of
+  /// [previousKey] instead (where an earlier version of the document was
+  /// kept), and that key is deleted once [key] is written. A null result
+  /// leaves both as they were.
+  Future<void> update(String key, String? Function(String? current) change, {String? previousKey}) => _serial(() async {
+        var current = await read(key);
+        final migrating = current == null && previousKey != null;
+        if (migrating) current = await read(previousKey);
+        final next = change(current);
+        if (next == null) return;
+        final keys = await _readIndex();
+        if (keys.add(key)) await _writeIndex(keys);
+        await _storage.write(key: _qualified(key), value: next);
+        if (!migrating) return;
+        await _storage.delete(key: _qualified(previousKey));
+        if (keys.remove(previousKey)) await _writeIndex(keys);
       });
 
   Future<void> clear() => _serial(() async {

@@ -30,7 +30,7 @@ class SafetyDetailData extends SafetyNumbersViewData {
   /// The nickname the user gave [peer] by [names] (see PeerNames), or null.
   /// Read as the page draws, so a name that loads later still shows.
   String? nameIn(PeerNames names, String conversationId) =>
-      isDirect ? names.directName(conversationId, peer.handle) : names.memberName(peer);
+      isDirect ? names.directName(conversationId, peer.handle, userId: peer.userId) : names.memberName(peer);
 
   /// What the page calls [peer]: their name, or their handle.
   String titleIn(PeerNames names, String conversationId) => nameIn(names, conversationId) ?? '@${peer.handle}';

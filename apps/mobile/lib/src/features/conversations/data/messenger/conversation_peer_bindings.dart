@@ -92,6 +92,14 @@ class ConversationPeerBindings {
   // Shared by every caller, so a binding recorded while the first read is
   // still in flight is not replaced by a second, older copy of the document.
   Future<Map<String, ConversationPeer>>? _bound;
+  // What [_bound] resolved to, with every binding recorded since, for the
+  // views to read synchronously ([boundNow]).
+  Map<String, ConversationPeer> _boundNow = const {};
+  // Whether the stored document has been read into [_boundNow] ([read]).
+  // One that cannot be decoded reads as none, so [_boundNow] then holds
+  // none of the bindings the document may still hold: only those this run
+  // records ([bindAll]), which are kept in memory and not written.
+  bool _boundRead = false;
   // Set when the stored document cannot be read. Nothing is written over it
   // then: that would drop every binding it holds.
   bool _unreadable = false;
@@ -119,6 +127,19 @@ class ConversationPeerBindings {
 
   /// Every binding recorded so far, by conversation id.
   Future<Map<String, ConversationPeer>> all() async => Map.unmodifiable(await _load());
+
+  /// [all] as far as it was read: empty until the first read for this
+  /// identity ends (the messenger reads it before it shows the cached list).
+  Map<String, ConversationPeer> get boundNow => Map.unmodifiable(_boundNow);
+
+  /// Whether [boundNow] is what was read for this identity: false until the
+  /// first read ends, and while every read so far threw. Until then a
+  /// handle [boundNow] leaves out may still be bound. A stored document
+  /// that cannot be decoded is read as holding none: [boundNow] holds none
+  /// of its bindings, only those [bindAll] records in this run (not
+  /// written), and this is true, as the holds fail open for such a
+  /// document too.
+  bool get read => _boundRead;
 
   /// Records whom each conversation in [peers] is with, unless it is bound
   /// already: a binding is never replaced.
@@ -209,6 +230,8 @@ class ConversationPeerBindings {
   /// wiped with the rest of the device state.
   void reset() {
     _bound = null;
+    _boundNow = const {};
+    _boundRead = false;
     _unreadable = false;
     _groups = null;
     _holds.clear();
@@ -248,7 +271,13 @@ class ConversationPeerBindings {
   Future<Map<String, ConversationPeer>> _load() async {
     final loading = _bound ??= _read();
     try {
-      return await loading;
+      final bound = await loading;
+      // Not a read a reset() dropped meanwhile.
+      if (identical(_bound, loading)) {
+        _boundNow = bound;
+        _boundRead = true;
+      }
+      return bound;
     } catch (_) {
       // A keystore error is retried by the next call.
       if (identical(_bound, loading)) _bound = null;

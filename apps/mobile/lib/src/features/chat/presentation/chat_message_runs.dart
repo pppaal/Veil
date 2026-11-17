@@ -21,10 +21,11 @@ const Duration chatRunWindow = Duration(minutes: 5);
 bool chatReactionHint(ChatMessage message) => message.envelope.messageKind == MessageKind.reaction;
 
 /// Whether [later] continues the run of [earlier]: the same sender, the
-/// same day, within [chatRunWindow], with nothing between them (a notice,
-/// or reactions under the earlier one, end a run). Like [chatReactionHint],
+/// same day (by [sameChatDay], with [now], so a run follows the dividers),
+/// within [chatRunWindow], with nothing between them (a notice, or
+/// reactions under the earlier one, end a run). Like [chatReactionHint],
 /// the envelope's word that a message is a notice only decides spacing.
-bool sameChatRun(ChatMessage earlier, ChatMessage later) =>
+bool sameChatRun(ChatMessage earlier, ChatMessage later, {DateTime? now}) =>
     earlier.isMine == later.isMine &&
     earlier.senderDeviceId == later.senderDeviceId &&
     !earlier.isLocalNotice &&
@@ -32,14 +33,22 @@ bool sameChatRun(ChatMessage earlier, ChatMessage later) =>
     earlier.envelope.messageKind != MessageKind.system &&
     later.envelope.messageKind != MessageKind.system &&
     earlier.reactions.isEmpty &&
-    sameChatDay(earlier.sentAt, later.sentAt) &&
+    sameChatDay(earlier.sentAt, later.sentAt, now: now) &&
     later.sentAt.difference(earlier.sentAt).abs() <= chatRunWindow;
 
-/// Whether [a] and [b] fall on the same day where the phone is.
-bool sameChatDay(DateTime a, DateTime b) {
-  final x = a.toLocal();
-  final y = b.toLocal();
-  return x.year == y.year && x.month == y.month && x.day == y.day;
+/// Whether [a] and [b] fall on the same day where the phone is. With
+/// [now], a day after now's counts as now's: a message stamped later than
+/// this phone's clock reads is under "Today" (chatDayLabel), with today's,
+/// not under a second "Today".
+bool sameChatDay(DateTime a, DateTime b, {DateTime? now}) {
+  final today = now == null ? null : DateTime(now.year, now.month, now.day);
+  DateTime dayOf(DateTime at) {
+    final local = at.toLocal();
+    final day = DateTime(local.year, local.month, local.day);
+    return today != null && day.isAfter(today) ? today : day;
+  }
+
+  return dayOf(a) == dayOf(b);
 }
 
 /// What the message area shows while the history is on its way: a small

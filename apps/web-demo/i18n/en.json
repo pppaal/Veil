@@ -145,6 +145,7 @@
   "msg.cantEdit": "This message can't be edited",
   "msg.delete.title": "Delete this message?",
   "msg.delete.body": "People who already got it may still see it.",
+  "msg.delete.bodyDirect": "If they already got it, they may still see it.",
   "msg.delete.confirm": "Delete",
   "msg.deleted": "Message deleted",
   "msg.undo": "Undo",

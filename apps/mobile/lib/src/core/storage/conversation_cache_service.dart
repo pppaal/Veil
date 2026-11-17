@@ -1247,6 +1247,7 @@ class DriftConversationCacheService
           isMine: isMine,
           bodySnippet: buildArchiveQuerySnippet(searchBody, normalizedQuery),
           conversationOrder: row.conversationOrder,
+          senderDeviceId: senderDeviceId,
         ),
       ));
     }

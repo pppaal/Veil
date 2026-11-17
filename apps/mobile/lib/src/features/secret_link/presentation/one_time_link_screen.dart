@@ -13,9 +13,15 @@ import '../data/one_time_link_service.dart';
 /// form, with the one rule of such a link under it, then the button; the
 /// link that was made follows.
 class OneTimeLinkScreen extends StatefulWidget {
-  const OneTimeLinkScreen({super.key, OneTimeLinkService? service}) : _service = service;
+  const OneTimeLinkScreen({super.key, OneTimeLinkService? service, DateTime Function() clock = DateTime.now})
+      : _service = service,
+        _clock = clock;
 
   final OneTimeLinkService? _service;
+
+  // The phone's clock, against which the link's expiry says "today" or
+  // "tomorrow".
+  final DateTime Function() _clock;
 
   @override
   State<OneTimeLinkScreen> createState() => _OneTimeLinkScreenState();
@@ -151,7 +157,7 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
             ),
           if (link != null) ...[
             const SizedBox(height: VeilSpace.lg),
-            _CreatedLink(key: _resultKey, link: link),
+            _CreatedLink(key: _resultKey, link: link, now: widget._clock()),
           ],
         ],
       ),
@@ -163,9 +169,12 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
 /// and under them when it is deleted unopened and, if it was sealed with
 /// one, the reminder to send its passphrase apart.
 class _CreatedLink extends StatelessWidget {
-  const _CreatedLink({super.key, required this.link});
+  const _CreatedLink({super.key, required this.link, required this.now});
 
   final CreatedOneTimeLink link;
+
+  /// When the link is shown, against which its expiry is said.
+  final DateTime now;
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +182,7 @@ class _CreatedLink extends StatelessWidget {
     final theme = Theme.of(context);
     final expiresAt = link.expiresAt?.toLocal();
     final notes = [
-      if (expiresAt != null) l10n.oneTimeLinkExpires(MessageTimeFormat.of(context).dayAndTime(expiresAt)),
+      if (expiresAt != null) l10n.oneTimeLinkExpires(MessageTimeFormat.of(context).dayAndTime(expiresAt, now: now)),
       if (link.passphraseLocked) l10n.oneTimeLinkSendPassphraseApart,
     ];
     return VeilGroup(

@@ -244,13 +244,18 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       onReact: _showReactionPicker,
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
     );
-    final typing = PresenceSelector<String?>(
+    final typing = PresenceSelector<(String?, String?)>(
       presence: controller.presenceTyping,
-      select: (presence) => presence.typingHandleFor(widget.conversationId),
-      builder: (context, handle) => TypingIndicator(
-        handle: handle,
-        name: isDirect || handle == null || conversation == null ? null : typingMemberTitle(conversation, handle, names),
-      ),
+      select: (presence) =>
+          (presence.typingHandleFor(widget.conversationId), presence.typingUserIdFor(widget.conversationId)),
+      builder: (context, typist) {
+        final (handle, userId) = typist;
+        if (handle == null || isDirect || conversation == null) return TypingIndicator(handle: handle);
+        // In a group, by its name; an account the group does not list is
+        // no member typing, and shows nothing.
+        final name = typingMemberTitle(conversation, handle, names, userId: userId ?? '');
+        return TypingIndicator(handle: name == null ? null : handle, name: name);
+      },
     );
 
     // The same chat on a phone and in the wide layout's second pane.
@@ -372,7 +377,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     // only one that opened takes a reaction, and not from someone blocked.
     final canReact = decrypted.isOk && !peerBlocked(conversation);
     final report = messageReport(message, conversation,
-        groupSenderUserId: groupSenderUserId, groupSenderHandle: groupSenderHandle);
+        groupSenderUserId: groupSenderUserId,
+        groupSenderHandle: groupSenderHandle,
+        groupSenderTitle: (message) => groupSenderName(message, ref.read(peerNamesProvider)));
     if (!canReact && report == null) return;
     VeilHaptics.selection();
     // The message list on screen, so a menu that shows alone keeps clear of

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
@@ -9,6 +10,7 @@ import '../data/conversation_models.dart';
 import '../data/veil_messenger_controller.dart';
 import 'conversation_list_labels.dart';
 import 'conversation_list_logic.dart';
+import 'group_last_sender.dart';
 import 'peer_names.dart';
 
 /// What a layout of the conversation list shows and what it can ask for:
@@ -92,7 +94,7 @@ class ConversationListHeader extends StatelessWidget {
 /// message with the query in bold. The avatar and the name are the ones the
 /// chat's own row shows: a group's neutral disc and its name, never the
 /// letter or the name of the member the search result happens to carry.
-class MessageSearchResultTile extends StatelessWidget {
+class MessageSearchResultTile extends ConsumerWidget {
   const MessageSearchResultTile({
     super.key,
     required this.result,
@@ -123,16 +125,26 @@ class MessageSearchResultTile extends StatelessWidget {
   /// The user's own id, which a group named after its members leaves out.
   final String? localUserId;
 
+  // The first name of who wrote a group's hit, when someone else did and
+  // this device knows them (groupLastSenderProvider, as the row has it).
+  String? _groupSender(WidgetRef ref) {
+    final deviceId = result.senderDeviceId;
+    if (result.isMine || deviceId == null || deviceId.isEmpty) return null;
+    return ref.watch(groupLastSenderProvider((conversationId: result.conversationId, deviceId: deviceId))).valueOrNull;
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final palette = context.veilPalette;
     final snippetStyle = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted);
     final chat = conversation;
     final group = chat?.type == ConversationType.group;
+    final sender = group ? _groupSender(ref) : null;
+    // Bare, as on a chat's row, also for a chat this device lists no more.
     final title = chat == null
-        ? names.nicknameOf(result.peerHandle) ?? '@${result.peerHandle}'
+        ? names.directName(result.conversationId, result.peerHandle) ?? result.peerHandle
         : conversationRowTitle(l10n, chat, names, localUserId: localUserId);
     return Semantics(
       button: true,
@@ -175,13 +187,19 @@ class MessageSearchResultTile extends StatelessWidget {
                       // they are the user's own, in a 1:1 too. That departs
                       // from the pattern sheet (M8: hits carry no You/Them
                       // label, as Signal's): a hit stands apart from its chat,
-                      // and nothing else on it says whose words they are. A
-                      // group's row leads its own last message the same way.
+                      // and nothing else on it says whose words they are. In
+                      // a group someone else's are led by their first name
+                      // ("Omar: "), as the group's row leads its last message;
+                      // by nothing when this device knows no member for the
+                      // device that sent them.
                       RichText(
                         text: TextSpan(
                           style: snippetStyle,
                           children: [
-                            if (result.isMine) TextSpan(text: l10n.conversationsPreviewYou('')),
+                            if (result.isMine)
+                              TextSpan(text: l10n.conversationsPreviewYou(''))
+                            else if (sender != null)
+                              TextSpan(text: l10n.conversationsPreviewSender(sender, '')),
                             ...buildSearchHighlightTextSpans(
                               text: result.bodySnippet,
                               query: query,

@@ -6,11 +6,13 @@ import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../conversations/presentation/peer_names.dart';
 import '../../safety/application/safety_accounts.dart';
 import '../../safety/data/abuse_reports.dart';
 import '../../safety/data/safety_providers.dart';
 import '../../safety/presentation/block_actions.dart';
 import '../../safety/presentation/report_sheet.dart';
+import '../data/contact_names.dart';
 import '../data/contacts_providers.dart';
 
 // The sheets of the contacts tab: adding a contact, what to do with one,
@@ -69,9 +71,9 @@ Future<void> showAddContactSheet(BuildContext context, WidgetRef ref) {
     context,
     (_) => _AddContactSheet(
       // Said on the screen behind the sheet, once the sheet is gone.
-      onAdded: (handle) {
+      onAdded: (name) {
         if (!context.mounted) return;
-        showVeilToast(context, l10n.contactsAdded(handle));
+        showVeilToast(context, l10n.contactsAdded(name));
       },
     ),
   );
@@ -80,6 +82,8 @@ Future<void> showAddContactSheet(BuildContext context, WidgetRef ref) {
 class _AddContactSheet extends ConsumerStatefulWidget {
   const _AddContactSheet({required this.onAdded});
 
+  /// Called once the contact is added, with what its row calls it: the
+  /// nickname typed, or the handle with its "@".
   final ValueChanged<String> onAdded;
 
   @override
@@ -117,12 +121,16 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
     if (!added) {
       setState(() {
         _saving = false;
-        _failure = contacts.failedAsNotFound ? l10n.safetyAccountNotFound(handle) : l10n.contactsAddFailed;
+        // In lower case, as the server looks it up and the add toast says it.
+        _failure =
+            contacts.failedAsNotFound ? l10n.safetyAccountNotFound(handle.toLowerCase()) : l10n.contactsAddFailed;
       });
       return;
     }
     navigator.pop();
-    widget.onAdded(handle);
+    final nickname = _nickname.text.trim();
+    // The server keeps handles in lower case, as the row shows it.
+    widget.onAdded(nickname.isEmpty ? '@${handle.toLowerCase()}' : nickname);
   }
 
   @override
@@ -184,16 +192,35 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
     return userId;
   }
 
+  // What Report, Block and Unblock call the account [userId] they reach:
+  // the name every other screen gives it (PeerNames.accountName), else
+  // "@handle", as a lying server can put another account under the
+  // handle. While the nickname names no account yet, the nickname, as the
+  // sheet's header says, unless it may come to name another account or the
+  // handle's 1:1 is held (PeerNames.mayNameUnclaimed).
+  String nameOf(String userId) {
+    final nickname = ref.read(contactNameBookProvider).nicknames[contact.handle.toLowerCase()];
+    if (nickname != null && nickname.userId == null) {
+      return ref.read(peerNamesProvider).mayNameUnclaimed(userId, contact.handle) ? contact.title : '@${contact.handle}';
+    }
+    return ref.read(safetyAccountsProvider).knownNameFor(userId: userId, handle: contact.handle) ??
+        '@${contact.handle}';
+  }
+
   Future<void> report() async {
     final userId = await account();
     if (userId == null || !context.mounted) return;
-    await showReportSheet(context, ReportTarget(userId: userId, handle: contact.handle, offerBlock: true));
+    await showReportSheet(
+      context,
+      ReportTarget(userId: userId, handle: contact.handle, offerBlock: true),
+      name: nameOf(userId),
+    );
   }
 
   Future<void> block() async {
     final userId = await account();
     if (userId == null || !context.mounted) return;
-    await confirmAndBlock(context, userId: userId, handle: contact.handle, announce: true);
+    await confirmAndBlock(context, userId: userId, handle: contact.handle, name: nameOf(userId), announce: true);
   }
 
   Future<void> startChat() async {
@@ -211,7 +238,7 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
     if (!context.mounted) return;
     showVeilToast(
       context,
-      removed ? l10n.contactsRemoved(contact.label) : l10n.contactsRemoveFailed,
+      removed ? l10n.contactsRemoved(contact.title) : l10n.contactsRemoveFailed,
     );
   }
 
@@ -266,7 +293,7 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
                 trailing: noChevron,
                 onTap: () {
                   close();
-                  unblockAccount(context, userId: blocked.userId, handle: contact.handle, announce: true);
+                  unblockAccount(context, userId: blocked.userId, name: nameOf(blocked.userId), announce: true);
                 },
               )
             else
@@ -302,6 +329,15 @@ class _NicknameSheet extends ConsumerStatefulWidget {
 
 class _NicknameSheetState extends ConsumerState<_NicknameSheet> {
   late final _nickname = TextEditingController(text: widget.contact.nickname ?? '');
+  // The keystore's wipes when the sheet opened: a sign-out or wipe that
+  // begins while it is open drops what it saves.
+  late final int _wipesSeen;
+
+  @override
+  void initState() {
+    super.initState();
+    _wipesSeen = ref.read(secureStorageProvider).wipesBegun;
+  }
 
   @override
   void dispose() {
@@ -311,7 +347,9 @@ class _NicknameSheetState extends ConsumerState<_NicknameSheet> {
 
   Future<void> _save() async {
     final navigator = Navigator.of(context);
-    await ref.read(contactsControllerProvider).renameContact(widget.contact.handle, _nickname.text);
+    await ref
+        .read(contactsControllerProvider)
+        .renameContact(widget.contact.handle, _nickname.text, wipesSeen: _wipesSeen);
     if (mounted) navigator.pop();
   }
 

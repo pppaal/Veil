@@ -9,6 +9,7 @@ import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.d
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
+import '../layout/support/layout_seed.dart' show peerNames;
 import '../support/copy_finder.dart';
 import '../support/fake_relay.dart';
 import 'phone_app.dart';
@@ -182,14 +183,16 @@ void main() {
       expect(tester.widget<TextField>(fields.first).decoration!.helperText, isNull);
       expect(inSheet(find.textContaining('server', skipOffstage: false)), findsNothing);
 
-      // A handle the relay does not know.
-      await tester.enterText(fields.first, 'nobody');
+      // A handle the relay does not know, typed with a capital.
+      await tester.enterText(fields.first, 'Nobody');
       await tester.pump();
       await tester.tap(save);
       await pumpFrames(tester, frames: 4);
       expect(find.byType(BottomSheet), findsOneWidget, reason: 'the sheet stays for another try');
-      // Not found is said as such; any other failure is contactsAddFailed.
+      // Not found is said as such, in lower case as the server looks it up
+      // and the add toast says it; any other failure is contactsAddFailed.
       expect(inSheet(findCopy(en.safetyAccountNotFound('nobody'))), findsOneWidget);
+      expect(inSheet(findCopy(en.safetyAccountNotFound('Nobody'))), findsNothing);
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300), reason: 'still above the keyboard');
       expect(world.api.addedContacts, isEmpty);
       expect(tester.takeException(), isNull);
@@ -206,8 +209,30 @@ void main() {
       await pumpFrames(tester, frames: 6);
       expect(find.byType(BottomSheet), findsNothing);
       expect(world.api.addedContacts, ['icarus']);
-      expect(findCopy(en.contactsAdded('icarus')), findsOneWidget);
+      // Said with the name the row now shows.
+      expect(findCopy(en.contactsAdded('Ica')), findsOneWidget);
       expect(find.text('Ica'), findsOneWidget, reason: 'listed under the name it was given');
+    });
+  });
+
+  // A handle typed in capitals is the server's lower-case one: the toast
+  // says it as the row does.
+  testWidgets('a contact added as "Dana" with no nickname is said as @dana', (tester) async {
+    await withPhoneApp(tester, identities, location: '/contacts', prepare: (world) async {
+      world.relay.addParty(
+        RelayParty(handle: 'dana', userId: 'user-dana', deviceId: 'dev-dana', identity: identities.peer),
+      );
+      return null;
+    }, body: (world) async {
+      await tester.tap(find.byTooltip(en.contactsAdd));
+      await pumpFrames(tester, frames: 4);
+      await tester.enterText(inSheet(find.byType(TextField)).first, 'Dana');
+      await tester.pump();
+      await tester.tap(inSheet(find.byType(FilledButton)));
+      await pumpFrames(tester, frames: 6);
+      expect(world.api.addedContacts, ['dana']);
+      expect(findCopy(en.contactsAdded('@dana')), findsOneWidget);
+      expect(findCopy(en.contactsAdded('@Dana')), findsNothing);
     });
   });
 
@@ -220,6 +245,7 @@ void main() {
       expect(inSheet(find.text('@alexandra')), findsOneWidget);
       await tester.tap(find.text(en.contactsEditNickname));
       await pumpFrames(tester, frames: 6);
+      final before = await ContactNicknames(world.storage.scoped(SecureScope.contacts)).readAll();
 
       final save = inSheet(find.widgetWithText(FilledButton, en.contactsSaveNickname));
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300), reason: 'the button is above the keyboard');
@@ -231,7 +257,15 @@ void main() {
       expect(find.text('Alexa'), findsOneWidget);
       expect(find.text(name), findsNothing);
       final stored = await ContactNicknames(world.storage.scoped(SecureScope.contacts)).readAll();
-      expect(stored['alexandra'], 'Alexa');
+      // That one name changed, and nothing else the phone holds; it still
+      // names the account it named.
+      expect({for (final MapEntry(:key, :value) in stored.entries) key: value.name}, {
+        for (final MapEntry(key: handle, value: name) in peerNames.entries)
+          if (name != null) handle: name,
+        'alexandra': 'Alexa',
+      });
+      expect({for (final MapEntry(:key, :value) in stored.entries) key: value.userId},
+          {for (final MapEntry(:key, :value) in before.entries) key: value.userId});
       expect(world.api.addedContacts, isEmpty, reason: 'the relay is not told');
     });
   });
@@ -260,5 +294,28 @@ void main() {
       await pumpFrames(tester, frames: 8);
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, timerChatConversationId);
     });
+  });
+
+  // M26: an account with no name is "@tom_walsh" wherever it is named
+  // outside a Chats row, as its row, the add toast and the block toast say.
+  testWidgets('a contact with no name is removed, and read out, as its @handle', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
+      final row = find.byWidgetPredicate((widget) => widget is ContactRow && widget.contact.handle == 'tom_walsh',
+          skipOffstage: false);
+      await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+      await pumpFrames(tester, frames: 2);
+      expect(find.bySemanticsLabel(en.contactsRowSemantics('@tom_walsh')), findsOneWidget);
+      expect(find.bySemanticsLabel(en.contactsRowSemantics('tom_walsh')), findsNothing);
+
+      await tester.tap(row);
+      await pumpFrames(tester, frames: 4);
+      await tester.tap(find.text(en.contactsRemove));
+      await pumpFrames(tester, frames: 6);
+      expect(world.api.removedContacts, {'tom_walsh'});
+      expect(findCopy(en.contactsRemoved('@tom_walsh')), findsOneWidget);
+      expect(findCopy(en.contactsRemoved('tom_walsh')), findsNothing);
+    });
+    semantics.dispose();
   });
 }

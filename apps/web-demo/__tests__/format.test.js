@@ -134,9 +134,18 @@ describe('formatBytes', () => {
   it('renders B / KB / MB / GB at boundaries', () => {
     expect(formatBytes(0)).toBe('0 B');
     expect(formatBytes(512)).toBe('512 B');
-    expect(formatBytes(1024)).toBe('1.0 KB');
-    expect(formatBytes(1024 * 1024)).toBe('1.0 MB');
-    expect(formatBytes(1024 * 1024 * 1024)).toBe('1.00 GB');
+    expect(formatBytes(1024)).toBe('1 KB');
+    expect(formatBytes(56 * 1024 + 100)).toBe('56 KB');
+    expect(formatBytes(1024 * 1024)).toBe('1 MB');
+    expect(formatBytes(Math.round(2.3 * 1024 * 1024))).toBe('2.3 MB');
+    expect(formatBytes(1024 * 1024 * 1024)).toBe('1 GB');
+    expect(formatBytes(5 * 1024 * 1024 * 1024)).toBe('5 GB');
+  });
+
+  it('moves up a unit when the rounded size reaches 1024, as the phone does', () => {
+    expect(formatBytes(1048064)).toBe('1 MB');
+    expect(formatBytes(1024 * 1024 - 1)).toBe('1 MB');
+    expect(formatBytes(1024 * 1024 * 1024 - 1)).toBe('1 GB');
   });
 
   it('returns an empty string for an unknown size', () => {

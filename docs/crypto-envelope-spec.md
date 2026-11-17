@@ -555,8 +555,9 @@ makes every 1:1 conversation with that contact ask the directory again.
 Handles are relayed by the server: a listing can name any account with any
 handle. The server keeps no display names: the mobile app shows the nicknames
 its user saved on the phone, each only for the one account it was given (not
-for whatever account a listing puts under the handle later), and the web app
-the handles. Pins, verification and
+for whatever account a listing puts under the handle later; the one exception,
+a contact sheet's dialogs for a nickname that names no account yet, is in
+docs/mobile-design-system.md), and the web app the handles. Pins, verification and
 safety numbers are about the account (its user id), never the name. So a
 binding also ties the handle it was recorded with to its account, and a 1:1
 that is not bound yet is held for one of three reasons, checked in this order

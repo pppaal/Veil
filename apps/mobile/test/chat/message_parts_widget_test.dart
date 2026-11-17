@@ -504,5 +504,12 @@ void main() {
       expect(formatDurationLabel(l10n, const Duration(minutes: 90)), l10n.chatDurationHours(1));
       expect(formatDurationLabel(l10n, const Duration(days: 2)), l10n.chatDurationDays(2));
     });
+
+    test('a size moves up a unit when it rounds to 1024, never "1024 KB"', () {
+      expect(formatFileSize(1048064), '1 MB');
+      expect(formatFileSize(1024 * 1024 - 1), '1 MB');
+      expect(formatFileSize(1024 * 1024 * 1024 - 1), '1 GB');
+      expect(formatFileSize(1047552), '1023 KB');
+    });
   });
 }

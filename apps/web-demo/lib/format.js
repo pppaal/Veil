@@ -71,11 +71,18 @@ export function listDate(date, now = new Date()) {
   return monthDay(d, now);
 }
 
-// Bytes as a human-readable size; an empty string for an unknown one.
+// Bytes as WhatsApp and Signal write them, and as the phone does: whole
+// bytes and kilobytes ("56 KB"), megabytes and gigabytes to one place without
+// a trailing ".0" ("2.3 MB", "5 GB"). A size is rounded first and moves up a
+// unit when the rounded number reaches 1024. An empty string for an unknown
+// size.
 export function formatBytes(n) {
   if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return '';
   if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  const kb = Math.round(n / 1024);
+  if (kb < 1024) return `${kb} KB`;
+  const onePlace = (value) => value.toFixed(1).replace(/\.0$/, '');
+  const mb = Number((n / 1024 / 1024).toFixed(1));
+  if (mb < 1024) return `${onePlace(mb)} MB`;
+  return `${onePlace(n / 1024 / 1024 / 1024)} GB`;
 }

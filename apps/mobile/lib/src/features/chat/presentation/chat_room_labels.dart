@@ -118,15 +118,19 @@ String attachmentTypeLabel(AppLocalizations l10n, String contentType) {
 
 /// A file's size as WhatsApp and Signal write it: whole bytes and
 /// kilobytes ("56 KB"), and megabytes and gigabytes to one place, without
-/// a trailing ".0" ("2.3 MB", "5 GB").
+/// a trailing ".0" ("2.3 MB", "5 GB"). A size is rounded first and then
+/// moves up a unit when the rounded number reaches 1024, so it never reads
+/// "1024 KB" or "1024 MB".
 String formatFileSize(int bytes) {
   if (bytes < 1024) return '$bytes B';
-  if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
+  final kb = (bytes / 1024).round();
+  if (kb < 1024) return '$kb KB';
   String onePlace(double value) {
     final text = value.toStringAsFixed(1);
     return text.endsWith('.0') ? text.substring(0, text.length - 2) : text;
   }
 
-  if (bytes < 1024 * 1024 * 1024) return '${onePlace(bytes / (1024 * 1024))} MB';
+  final mb = double.parse((bytes / (1024 * 1024)).toStringAsFixed(1));
+  if (mb < 1024) return '${onePlace(mb)} MB';
   return '${onePlace(bytes / (1024 * 1024 * 1024))} GB';
 }

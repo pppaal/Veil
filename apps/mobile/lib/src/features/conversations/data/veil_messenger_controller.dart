@@ -13,10 +13,14 @@ import '../../../core/network/veil_api_client.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/realtime/realtime_service.dart';
 import '../../../core/storage/conversation_cache_service.dart';
+import '../../../core/storage/media_index.dart';
+import '../../attachments/data/attachment_storage_paths.dart';
 import '../../attachments/data/attachment_temp_file_store.dart';
+import '../../attachments/domain/outgoing_attachment.dart';
 import '../../device_transfer/data/device_transfer_controller.dart';
 import 'conversation_models.dart';
 import 'group_sender_key_coordinator.dart';
+import 'messenger/attachment_media_service.dart';
 import 'messenger/attachment_transfer_service.dart';
 import 'messenger/conversation_peer_bindings.dart';
 import 'messenger/envelope_version_policy.dart';
@@ -24,6 +28,7 @@ import 'messenger/identity_trust.dart';
 import 'messenger/messenger_services.dart';
 import 'messenger/prekey_maintenance.dart';
 import 'messenger/presence_typing_service.dart';
+import 'messenger/read_state_service.dart';
 
 export 'messenger/attachment_transfer_service.dart' show AttachmentTransferPhase, AttachmentTransferSnapshot;
 
@@ -53,6 +58,9 @@ class VeilMessengerController extends ChangeNotifier {
     ConversationPeerBindings? peerBindings,
     PrekeyMaintenance? prekeyMaintenance,
     DeviceTransferController? deviceTransfer,
+    AttachmentStoragePaths? attachmentPaths,
+    MediaIndex? mediaIndex,
+    bool Function(String conversationId)? isBlockedDirect,
   }) : _ownsDeviceTransfer = deviceTransfer == null {
     _services = MessengerServices(
       apiClient: apiClient,
@@ -77,6 +85,9 @@ class VeilMessengerController extends ChangeNotifier {
       prekeyMaintenance: prekeyMaintenance,
       onChanged: notifyListeners,
       onSignedOut: () => _deviceTransfer.clearTransferState(),
+      attachmentPaths: attachmentPaths,
+      mediaIndex: mediaIndex,
+      isBlockedDirect: isBlockedDirect,
     );
     _deviceTransfer = deviceTransfer ??
         DeviceTransferController(
@@ -114,10 +125,12 @@ class VeilMessengerController extends ChangeNotifier {
   /// The signed-in user, who is one of the members a group lists.
   String? get localUserId => _services.session.userId;
 
-  bool isResolvingAttachment(String attachmentId) => _services.attachments.isResolving(attachmentId);
-  String? attachmentDownloadError(String attachmentId) => _services.attachments.downloadError(attachmentId);
   AttachmentTransferSnapshot? attachmentTransferForMessage(String clientMessageId) =>
       _services.attachments.transferFor(clientMessageId);
+
+  /// What has been read on this phone ([reads]); photos and files in messages ([media]).
+  ReadStateService get reads => _services.reads;
+  AttachmentMediaService get media => _services.media;
 
   /// Who is typing and who is online. A notifier of its own, so widgets
   /// that show these signals rebuild without the rest of the messenger.
@@ -133,8 +146,8 @@ class VeilMessengerController extends ChangeNotifier {
   /// has opened. Never the envelope's unauthenticated kind.
   MessageKind? lastMessageKindFor(String conversationId) => _services.latest.kindFor(conversationId);
 
-  /// Decrypted body of the latest message when it is text or a system line
-  /// that opened; null otherwise.
+  /// Decrypted body of the latest message when it is text, a system line or
+  /// a file (its name) that opened; null otherwise.
   String? lastMessageBodyFor(String conversationId) => _services.latest.bodyFor(conversationId);
 
   List<ChatMessage> messagesFor(String conversationId) => List.unmodifiable(_services.store.messagesOf(conversationId));
@@ -143,11 +156,9 @@ class VeilMessengerController extends ChangeNotifier {
   int pendingCountFor(String conversationId) => _services.store.pendingCountFor(conversationId);
   DateTime? nextRetryAtForConversation(String conversationId) => _services.outbox.nextRetryAt(conversationId);
 
-  /// Now, on the clock disappearing messages expire by: the relay's, as its
-  /// responses report it, corrected by at most an hour. Whatever shows or
-  /// hides a message by its expiry reads this, never the device clock, so a
-  /// device whose clock runs fast does not hide a message the relay still
-  /// keeps.
+  /// Now, on the clock disappearing messages expire by: the relay's, corrected
+  /// by at most an hour. Whatever shows or hides a message by its expiry reads
+  /// this, never the device clock, which may run fast.
   DateTime expiryNow() => _services.expiryNow();
 
   /// The conversation with [conversationId] in the current list, if any.
@@ -155,10 +166,9 @@ class VeilMessengerController extends ChangeNotifier {
 
   Future<void> applySession(AppSessionState session) => _services.applySession(session);
 
-  /// The conversation the user is looking at right now, or null. Incoming
-  /// messages there are marked read and raise no notification, so callers
-  /// must clear it as soon as the chat is no longer on screen.
-  void setActiveConversation(String? conversationId) => _services.store.activeConversationId = conversationId;
+  /// The conversation on screen now, or null: its messages are read and raise
+  /// no notification, so clear it as soon as the chat is no longer on screen.
+  void setActiveConversation(String? conversationId) => _services.reads.setActive(conversationId);
 
   Future<void> handleAppResumed() => _services.handleAppResumed();
 
@@ -257,18 +267,15 @@ class VeilMessengerController extends ChangeNotifier {
   /// start or sign-in until the stored bindings are read.
   bool get bindingsRead => _services.identity.bindingsRead;
 
-  /// The user chose to talk to the account the held [conversationId] is
-  /// listed with; what it sent and what waited to be sent go through. A
-  /// failure (the keystore refusing the binding, say) is shown like any
-  /// other user action's and leaves the conversation held.
+  /// The user chose to talk to the account the held [conversationId] is listed
+  /// with; what waited goes through. A failure (the keystore refusing the
+  /// binding, say) is shown as usual and leaves the conversation held.
   Future<void> acknowledgePeerAccount(String conversationId) =>
       _services.ops.run(() => _services.identity.acknowledgeAccount(conversationId));
 
   /// Whether every pinned device of the 1:1 [conversationId]'s peer was
-  /// verified out of band (safety number or QR); false for a group, and
-  /// false while who the peer is waits for the user's review: an identity
-  /// change of theirs (the pin that was verified is the one it puts in
-  /// question) or a held account (see [peerAccountHoldFor]).
+  /// verified out of band (safety number or QR); false for a group, and while
+  /// who the peer is waits for review ([peerIdentityInQuestion]).
   Future<bool> isPeerVerified(String conversationId) async {
     final conversation = conversationById(conversationId);
     if (conversation == null || conversation.type != ConversationType.direct) return false;
@@ -331,31 +338,17 @@ class VeilMessengerController extends ChangeNotifier {
   Future<void> sendAttachmentPlaceholder(String conversationId, {String filename = 'dossier.enc'}) =>
       _services.outbox.sendAttachmentPlaceholder(conversationId, filename: filename);
 
+  /// Seals [attachment] here and queues it as a photo or file message; false when that failed.
+  Future<bool> sendAttachment(
+          {required String conversationId, required OutgoingAttachment attachment, Duration? disappearAfter}) =>
+      _services.outbox.sendAttachment(conversationId: conversationId, attachment: attachment, disappearAfter: disappearAfter);
+
   Future<void> markRead(String messageId) => _services.receipts.markRead(messageId);
 
   Future<void> setDisappearingTimer(String conversationId, int? seconds) =>
       _services.disappearing.setTimer(conversationId, seconds);
 
-  Future<String?> getAttachmentDownloadUrl(String attachmentId) => _services.attachments.downloadUrl(attachmentId);
-
   Future<void> cancelPendingAttachment(String clientMessageId) => _services.outbox.cancelAttachment(clientMessageId);
-
-  @Deprecated('Use deviceTransferControllerProvider.')
-  String? get transferSessionId => _deviceTransfer.transferSessionId;
-  @Deprecated('Use deviceTransferControllerProvider.')
-  String? get transferToken => _deviceTransfer.transferToken;
-  @Deprecated('Use deviceTransferControllerProvider.')
-  TransferStatus? get transferStatus => _deviceTransfer.transferStatus;
-  @Deprecated('Use deviceTransferControllerProvider.')
-  DateTime? get transferExpiresAt => _deviceTransfer.transferExpiresAt;
-  @Deprecated('Use deviceTransferControllerProvider.')
-  String? get transferPayload => _deviceTransfer.transferPayload;
-  @Deprecated('Use deviceTransferControllerProvider.')
-  Future<void> initTransfer() => _deviceTransfer.initTransfer();
-  @Deprecated('Use deviceTransferControllerProvider.')
-  Future<void> approveTransfer(String claimId) => _deviceTransfer.approveTransfer(claimId);
-  @Deprecated('Use deviceTransferControllerProvider.')
-  void clearTransferState() => _deviceTransfer.clearTransferState();
 
   Future<DecryptedMessage> decryptEnvelope(CryptoEnvelope envelope) => _services.crypto.decrypt(envelope);
 

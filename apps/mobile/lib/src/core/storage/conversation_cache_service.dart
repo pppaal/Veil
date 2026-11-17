@@ -130,6 +130,7 @@ class AttachmentUploadDraft {
     this.bytesUploaded = 0,
     this.lastUpdatedAt,
     this.sealedReference,
+    this.disappearAfterSeconds,
   });
 
   final String filename;
@@ -147,6 +148,10 @@ class AttachmentUploadDraft {
   // Set once the staged file has been replaced by its ciphertext; carries
   // the wrapped content key the recipient needs.
   final AttachmentReference? sealedReference;
+  // The chat's disappearing timer when the attachment was sent, if any. The
+  // expiry is stamped from it only when the message is sealed, after the
+  // upload, so a slow upload cannot outlast a short timer.
+  final int? disappearAfterSeconds;
 
   bool get hasUploadTicket =>
       attachmentId != null &&
@@ -171,6 +176,7 @@ class AttachmentUploadDraft {
     int? bytesUploaded,
     Object? lastUpdatedAt = _unset,
     AttachmentReference? sealedReference,
+    Object? disappearAfterSeconds = _unset,
   }) {
     return AttachmentUploadDraft(
       filename: filename ?? this.filename,
@@ -197,6 +203,9 @@ class AttachmentUploadDraft {
           ? this.lastUpdatedAt
           : lastUpdatedAt as DateTime?,
       sealedReference: sealedReference ?? this.sealedReference,
+      disappearAfterSeconds: identical(disappearAfterSeconds, _unset)
+          ? this.disappearAfterSeconds
+          : disappearAfterSeconds as int?,
     );
   }
 
@@ -225,6 +234,7 @@ class AttachmentUploadDraft {
           'nonce': reference.nonce,
           'algorithmHint': reference.algorithmHint,
         },
+      if (disappearAfterSeconds case final seconds?) 'disappearAfterSeconds': seconds,
     };
   }
 
@@ -261,6 +271,8 @@ class AttachmentUploadDraft {
           ),
         _ => null,
       },
+      // Absent from drafts written before the timer rode on the draft.
+      disappearAfterSeconds: json['disappearAfterSeconds'] as int?,
     );
   }
 
@@ -1314,6 +1326,11 @@ class DriftConversationCacheService
       await _db.delete(_db.pendingMessages).go();
       await _db.delete(_db.cachedMessages).go();
       await _db.delete(_db.cachedConversations).go();
+      await _db.delete(_db.conversationReadMarks).go();
+      await _db.delete(_db.mediaBlobs).go();
+      // The next identity on this phone is new or moved here, as on a
+      // first install: its first list is read through (baselineReadMarkId).
+      await _db.insertBaselineReadMark();
     });
     await _db.customStatement('VACUUM');
     await _truncateWriteAheadLog();

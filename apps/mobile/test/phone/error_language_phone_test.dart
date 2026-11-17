@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/errors/user_facing_error.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
@@ -194,27 +193,6 @@ void main() {
       expect(findCopy(_en.chatPhaseCanceled), findsOneWidget);
       expect(findCopy(_en.chatAttachmentStateBanner), findsNothing);
       expect(findCopyContaining('canceled on this device'), findsNothing);
-    });
-
-    testWidgets('says a refused download in the ARB\'s words', (tester) async {
-      await tester.pumpWidget(_alone(MessageAttachmentCard(
-        attachment: const AttachmentReference(
-          attachmentId: 'att-1',
-          storageKey: 'blob-1',
-          contentType: 'application/pdf',
-          sizeBytes: 2048,
-          sha256: 'digest',
-          encryptedKey: 'wrapped',
-          nonce: 'nonce',
-        ),
-        resolving: false,
-        downloadError: UserFacingErrorCode.notFound.sentence,
-        onResolve: () {},
-      )));
-
-      expect(findCopy(_en.chatAttachmentTicketFailed), findsOneWidget);
-      expect(findCopy(_en.errorNotFound), findsOneWidget);
-      expect(findCopy(UserFacingErrorCode.notFound.sentence), findsNothing);
     });
   });
 }

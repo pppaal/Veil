@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/identity_keys.dart';
+import 'package:veil_mobile/src/core/network/http_transport.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
+import 'package:veil_mobile/src/core/util/uuid_v4.dart';
 
 // In-process stand-in for the VEIL relay, generalised from the `_Relay` in
 // group_sender_keys_controller_test.dart: several parties, direct and group
@@ -54,6 +58,10 @@ class RelayConversation {
   bool useSenderKeys;
   int epoch = 0;
   final List<Map<String, dynamic>> messages = [];
+
+  /// The attachment id each stored message names in its envelope, by
+  /// message id (lower-cased), as the API keeps Message.attachmentId.
+  final Map<String, String> attachmentIds = {};
 }
 
 /// An attachment row, with the fields the API's ticket rules look at.
@@ -118,6 +126,103 @@ class FakeRelay {
   /// Upload completions to answer with a transient failure, which leaves the
   /// sender's draft holding its ticket.
   int failUploadCompletions = 0;
+
+  /// While set, every blob PUT waits for it; a cancel of the upload makes
+  /// the PUT fail with attachment_upload_canceled meanwhile.
+  Completer<void>? uploadGate;
+
+  /// Blob PUTs to fail as an unreachable network makes them.
+  int failUploads = 0;
+
+  /// The attachment id of every download ticket asked for, in order. A
+  /// non-UUID id is refused by the client before it gets here.
+  final List<String> downloadTicketRequests = [];
+
+  /// The attachment id of every blob GET that reached storage, in order.
+  final List<String> blobDownloads = [];
+
+  /// How long a download ticket's URL lives (the API's presign: 90 s).
+  Duration downloadTicketLifetime = const Duration(seconds: 90);
+
+  /// Blob GETs to fail as an unreachable network makes them.
+  int failDownloads = 0;
+
+  /// HTTP statuses (403, 404, 500...) to answer a blob GET with, by
+  /// attachment id: once each, or on every GET while [downloadStatusSticky].
+  final Map<String, int> downloadStatus = {};
+  bool downloadStatusSticky = false;
+
+  /// Blobs served with one byte flipped, as a corrupting store would.
+  final Set<String> tamperedBlobs = {};
+
+  /// Blobs served with this many bytes more than were stored, by id.
+  final Map<String, int> oversizedBlobs = {};
+
+  /// While set, every blob GET waits for it (a cancel ends the wait).
+  Completer<void>? downloadGate;
+
+  /// The host download tickets point at instead of download.invalid, as a
+  /// relay pointing downloads elsewhere would.
+  String? downloadHost;
+
+  /// When true, a send whose expiresAt lies more than 60 s before the
+  /// relay's clock is refused, as message-send-policy.ts refuses it.
+  bool refusePastExpiry = false;
+
+  /// Message ids deleted for everyone, which no longer grant a download.
+  final Set<String> deletedMessageIds = {};
+
+  int _downloadTicketCounter = 0;
+  final Map<int, DateTime> _downloadTicketExpiries = {};
+
+  /// Puts [blob] in storage as an uploaded attachment of [uploaderDeviceId],
+  /// as if its upload had completed.
+  void putUploadedBlob(String attachmentId, List<int> blob, {required String uploaderDeviceId}) {
+    final id = attachmentId.toLowerCase();
+    uploadedBlobs[id] = List<int>.of(blob);
+    attachments[id] = RelayAttachment(
+      uploaderDeviceId: uploaderDeviceId,
+      sha256: sha256.convert(blob).toString(),
+      sizeBytes: blob.length,
+    )..uploadStatus = 'uploaded';
+  }
+
+  // AttachmentsService.createDownloadTicket: an unknown id is not found, one
+  // not uploaded is invalid, and only a stored, unexpired, undeleted message
+  // naming it in a conversation the caller is a member of grants it.
+  Map<String, dynamic> _downloadTicket(RelayParty caller, String attachmentId) {
+    final id = attachmentId.toLowerCase();
+    downloadTicketRequests.add(id);
+    final attachment = attachments[id];
+    if (attachment == null) {
+      throw VeilApiException('Attachment not found', statusCode: 404, code: 'attachment_not_found');
+    }
+    if (attachment.uploadStatus != 'uploaded') {
+      throw VeilApiException('Attachment blob is not available for download',
+          statusCode: 400, code: 'attachment_upload_invalid');
+    }
+    final at = now();
+    final live = conversations.values.any((conversation) =>
+        conversation.memberHandles.contains(caller.handle) &&
+        conversation.messages.any((message) {
+          if (conversation.attachmentIds[message['id']] != id || deletedMessageIds.contains(message['id'])) return false;
+          final expiresAt = message['expiresAt'] as String?;
+          return expiresAt == null || DateTime.parse(expiresAt).isAfter(at);
+        }));
+    if (!live) {
+      throw VeilApiException('Attachment is not accessible to actor', statusCode: 403, code: 'attachment_forbidden');
+    }
+    final sig = ++_downloadTicketCounter;
+    final expiresAt = at.add(downloadTicketLifetime);
+    _downloadTicketExpiries[sig] = expiresAt;
+    return {
+      'ticket': {
+        'attachmentId': id,
+        'downloadUrl': 'https://${downloadHost ?? 'download.invalid'}/$id?sig=$sig',
+        'expiresAt': expiresAt.toIso8601String(),
+      },
+    };
+  }
 
   /// Simulates a server that drops the outer expiresAt on relay.
   bool stripOuterExpiresAt = false;
@@ -302,6 +407,9 @@ class FakeRelay {
       'readAt': null,
     };
     conversation.messages.add(message);
+    if (envelope['attachment'] case {'attachmentId': final String attachmentId} when attachmentId.isNotEmpty) {
+      conversation.attachmentIds[message['id'] as String] = attachmentId.toLowerCase();
+    }
 
     if (fanOut) {
       for (final handle in conversation.memberHandles) {
@@ -410,7 +518,15 @@ class FakeRelayClient extends VeilApiClient {
           serverClock: ServerClock(
             localClock: () => DateTime.now().add(relay.deviceClockSkew[me.handle] ?? Duration.zero),
           ),
+          objectStoragePolicy: storagePolicy,
         );
+
+  /// Where this relay's storage lives, as a release build pins it: TLS, and
+  /// the upload and download hosts only.
+  static const storagePolicy = ObjectStoragePolicy(
+    allowedHosts: {'upload.invalid', 'download.invalid'},
+    requireHttps: true,
+  );
 
   final FakeRelay relay;
   final RelayParty me;
@@ -622,6 +738,12 @@ class FakeRelayClient extends VeilApiClient {
     Map<String, dynamic> body,
   ) async {
     if (unreachable) throw VeilApiException('The server is unreachable.', code: 'network_unavailable');
+    if (relay.refusePastExpiry) {
+      final expiresAt = (body['envelope'] as Map<String, dynamic>)['expiresAt'] as String?;
+      if (expiresAt != null && DateTime.parse(expiresAt).isBefore(relay.now().subtract(const Duration(seconds: 60)))) {
+        throw VeilApiException('expiresAt is in the past', statusCode: 400, code: 'validation_failed');
+      }
+    }
     final stored = relay._accept(me, body);
     return {'message': relay.rewriteAck?.call(Map<String, dynamic>.of(stored)) ?? stored, 'idempotent': false};
   }
@@ -777,8 +899,80 @@ class FakeRelayClient extends VeilApiClient {
     AttachmentUploadCancellationSignal? cancellationSignal,
   }) async {
     final bytes = await (file as File).readAsBytes();
+    if (relay.failUploads > 0) {
+      relay.failUploads -= 1;
+      throw VeilApiException('The server is unreachable.', code: 'network_unavailable');
+    }
+    await _wait(relay.uploadGate, cancellationSignal, AttachmentTransfer.upload);
     relay.uploadedBlobs[uploadUrl.split('/').last] = bytes;
     onProgress?.call(bytes.length, bytes.length);
+  }
+
+  @override
+  Future<Map<String, dynamic>> getDownloadTicket(String accessToken, String attachmentId) async {
+    // The real client refuses this before any request.
+    if (!isUuidString(attachmentId)) {
+      throw VeilApiException('Attachment id is not valid.', code: 'attachment_id_invalid');
+    }
+    return relay._downloadTicket(me, attachmentId);
+  }
+
+  // The real client's checks (the storage policy, the byte cap), then the
+  // relay's storage, as a presigned GET reaches it.
+  @override
+  Future<Uint8List> downloadEncryptedBlob({
+    required String downloadUrl,
+    required int maxBytes,
+    void Function(int received, int? total)? onProgress,
+    AttachmentUploadCancellationSignal? cancellationSignal,
+  }) async {
+    final uri = storagePolicy.checkDownloadUrl(downloadUrl);
+    final id = uri.pathSegments.last;
+    relay.blobDownloads.add(id);
+    await _wait(relay.downloadGate, cancellationSignal, AttachmentTransfer.download);
+    if (relay.failDownloads > 0) {
+      relay.failDownloads -= 1;
+      throw VeilApiException('The server is unreachable.', code: 'network_unavailable');
+    }
+    final expiresAt = relay._downloadTicketExpiries[int.tryParse(uri.queryParameters['sig'] ?? '')];
+    final scripted = relay.downloadStatusSticky ? relay.downloadStatus[id] : relay.downloadStatus.remove(id);
+    final stored = relay.uploadedBlobs[id];
+    // A presigned URL past its time is refused, as S3 refuses it.
+    final status = scripted ?? (expiresAt == null || relay.now().isAfter(expiresAt) ? 403 : (stored == null ? 404 : 200));
+    if (status != 200) {
+      throw switch (status) {
+        404 => VeilApiException('Attachment not found.', code: 'attachment_not_found', statusCode: status),
+        403 => VeilApiException('Attachment download refused.', code: 'attachment_forbidden', statusCode: status),
+        _ => VeilApiException('Attachment download failed: HTTP $status',
+            code: 'attachment_download_failed', statusCode: status),
+      };
+    }
+    final blob = List<int>.of(stored!);
+    if (relay.tamperedBlobs.contains(id) && blob.isNotEmpty) blob[blob.length ~/ 2] ^= 0x01;
+    blob.addAll(List<int>.filled(relay.oversizedBlobs[id] ?? 0, 0x5a));
+    if (blob.length > maxBytes) {
+      throw VeilApiException('Attachment download failed: the blob is larger than its pointer allows.',
+          code: 'attachment_download_invalid');
+    }
+    onProgress?.call(blob.length, blob.length);
+    return Uint8List.fromList(blob);
+  }
+
+  // Holds a transfer at [gate], if set; a cancel ends the wait with the
+  // code the real client gives.
+  static Future<void> _wait(
+    Completer<void>? gate,
+    AttachmentUploadCancellationSignal? signal,
+    AttachmentTransfer transfer,
+  ) async {
+    final canceled = Completer<void>();
+    signal?.register(() {
+      if (!canceled.isCompleted) canceled.complete();
+    });
+    if (gate != null) await Future.any([gate.future, canceled.future]);
+    if (signal?.isCanceled ?? false) {
+      throw VeilApiException('Attachment ${transfer.name} canceled.', code: 'attachment_${transfer.name}_canceled');
+    }
   }
 
   @override

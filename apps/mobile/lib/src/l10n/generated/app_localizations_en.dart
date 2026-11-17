@@ -492,23 +492,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtlDisabledLabel => 'Off';
 
   @override
-  String get chatAttachmentTicketTitle => 'Can\'t open this file';
-
-  @override
-  String chatAttachmentTicketBody(String summary) {
-    return 'This version can\'t download files yet.\n\n$summary';
-  }
-
-  @override
-  String get chatAttachmentTicketFailed => 'Couldn\'t request the download';
-
-  @override
-  String get chatAttachmentResolveAction => 'Request download';
-
-  @override
-  String get chatAttachmentResolvingAction => 'Requesting…';
-
-  @override
   String get chatAttachmentStateBanner => 'Attachment';
 
   @override

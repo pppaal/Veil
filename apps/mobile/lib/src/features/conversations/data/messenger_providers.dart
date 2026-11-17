@@ -4,13 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_session_state.dart';
 import '../../../app/session/session_providers.dart';
+import '../../../core/config/veil_config.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/crypto/group_sender_keys.dart';
 import '../../../core/crypto/lib_crypto_adapter.dart';
 import '../../../core/di/core_providers.dart';
+import '../../../core/domain/conversation_preview.dart';
 import '../../../core/identity/trusted_identity_resolver.dart';
 import '../../../core/identity/trusted_identity_store.dart';
 import '../../../core/network/keys_api.dart';
+import '../../../core/storage/media_index.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../attachments/data/attachment_providers.dart';
 import '../../device_transfer/data/device_transfer_providers.dart';
@@ -168,6 +171,22 @@ final messengerControllerProvider =
     peerBindings: ConversationPeerBindings(store: secureStorage.scoped(SecureScope.conversationPolicy)),
     prekeyMaintenance: prekeyMaintenance,
     deviceTransfer: ref.read(deviceTransferControllerProvider),
+    attachmentPaths: ref.read(attachmentStoragePathsProvider),
+    // Inside the encrypted database the cache opens; in memory for the
+    // process while that cannot be opened, or with no local cache at all.
+    mediaIndex: VeilConfig.enableLocalCache
+        ? DeferredMediaIndex(() async => (await openConversationCache(ref)) == null
+            ? throw StateError('No local cache')
+            : ref.read(appDatabaseFutureProvider.future))
+        : MemoryMediaIndex(),
+    // A 1:1 with someone blocked: nothing goes to them and nothing is
+    // fetched on its own (MessengerServices.receiptsWithheld).
+    isBlockedDirect: (conversationId) {
+      final conversation = controller.conversationById(conversationId);
+      return conversation != null &&
+          conversation.type == ConversationType.direct &&
+          blocked.isBlocked(conversation.recipientBundle.userId);
+    },
   );
 
   final pushCoordinator = ref.read(pushTokenCoordinatorProvider);

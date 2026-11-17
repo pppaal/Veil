@@ -23,6 +23,7 @@ class MainActivity : FlutterActivity() {
         // (-Pveil.libsignal=true, see app/build.gradle.kts); in the default
         // build this registers nothing.
         LibsignalBridgeRegistrar.register(flutterEngine.dartExecutor.binaryMessenger, applicationContext)
+        FileOpenChannel(applicationContext).register(flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             channelName,
@@ -47,6 +48,12 @@ class MainActivity : FlutterActivity() {
                 }
 
                 "excludePathFromBackup" -> {
+                    result.success(null)
+                }
+
+                // Nothing to close here: a file opens in its viewer's own
+                // task, and FLAG_SECURE keeps previews blank.
+                "lockEngaged", "lockScreenShown", "sessionUnlocked" -> {
                     result.success(null)
                 }
 
@@ -102,7 +109,7 @@ class MainActivity : FlutterActivity() {
             val process = Runtime.getRuntime().exec(arrayOf("/system/xbin/which", "su"))
             val exitCode = process.waitFor()
             exitCode == 0
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             false
         }
     }

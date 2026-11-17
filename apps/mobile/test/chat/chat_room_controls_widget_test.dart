@@ -433,22 +433,6 @@ void main() {
     Widget opener(Future<void> Function(BuildContext context) open) =>
         _app(Builder(builder: (context) => TextButton(onPressed: () => open(context), child: const Text('open'))));
 
-    testWidgets('a download ticket is shown only as a summary, never as the URL', (tester) async {
-      const url = 'https://blobs.example/attachments/0123456789abcdef?X-Amz-Signature=deadbeefsecret';
-      await tester.pumpWidget(opener((context) => showAttachmentTicketDialog(context, url)));
-      await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(l10n.chatAttachmentTicketTitle), findsOneWidget);
-      expect(find.text(l10n.chatAttachmentTicketBody('blobs.example / ...456789abcdef')), findsOneWidget);
-      expect(find.textContaining('deadbeefsecret'), findsNothing);
-      expect(find.textContaining(url), findsNothing);
-
-      await tester.tap(find.text(l10n.commonClose));
-      await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
-    });
-
     testWidgets('the reaction bar closes on a pick and hands the emoji on', (tester) async {
       final picked = <String>[];
       await tester.pumpWidget(opener((context) => showMessageActions(

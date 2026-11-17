@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../layout/support/layout_world.dart';
@@ -18,7 +19,10 @@ export '../layout/support/phone_layout_probe.dart';
 /// what it returns is what the route is opened with. [withGroup] adds the
 /// seeded group to the account's conversations. [sessionError] is the
 /// failure the session reports when the app opens. [beforeSession] changes
-/// the relay before the session loads anything from it.
+/// the relay before the session loads anything from it; [afterSession] runs
+/// once the session is applied and the first list is in, before the app
+/// opens. [overrides] go into the world's container (providers the world
+/// leaves alone).
 Future<void> withPhoneApp(
   WidgetTester tester,
   LayoutIdentities identities, {
@@ -35,6 +39,8 @@ Future<void> withPhoneApp(
   bool withGroup = false,
   String? sessionError,
   void Function(FakeRelay relay)? beforeSession,
+  Future<void> Function(LayoutWorld world)? afterSession,
+  List<Override> overrides = const [],
 }) async {
   usePhoneView(tester, size, keyboardHeight: keyboardHeight, textScale: textScale);
   final world = await LayoutWorld.create(
@@ -46,8 +52,10 @@ Future<void> withPhoneApp(
     withGroup: withGroup,
     sessionError: sessionError,
     beforeSession: beforeSession,
+    overrides: overrides,
   );
   try {
+    await afterSession?.call(world);
     final extra = await prepare?.call(world);
     await tester.pumpWidget(world.app(location: location, extra: extra));
     await pumpFrames(tester);

@@ -4,9 +4,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- No camera, microphone or media-library permission: the app sends
-         text only and has no camera, recorder or picker plugin. Declare one
-         again only together with a feature that uses it end to end. -->
+    <!-- No camera, microphone or media-library permission: photos come from
+         the system photo picker and files from the system document picker,
+         which need none. Declare one again only together with a feature that
+         uses it end to end. -->
 
     <application
         android:label="Veil"
@@ -49,6 +50,18 @@
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </activity>
+
+        <!-- Hands one decrypted file in cache/veil_open to the app the user
+             opens it with; nothing else is reachable through it. -->
+        <provider
+            android:name=".VeilOpenFileProvider"
+            android:authorities="${applicationId}.veil_open"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/veil_open_paths" />
+        </provider>
 
         <!-- FCM default notification channel -->
         <meta-data

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What VeilOpenFileProvider serves: the one cache folder a decrypted file
+     is opened from, and nothing else. -->
+<paths>
+    <cache-path name="veil_open" path="veil_open/" />
+</paths>

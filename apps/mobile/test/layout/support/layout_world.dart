@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,9 +13,11 @@ import 'package:veil_mobile/src/core/identity/identity_key_value_backend.dart';
 import 'package:veil_mobile/src/core/identity/trusted_identity_resolver.dart';
 import 'package:veil_mobile/src/core/identity/trusted_identity_store.dart';
 import 'package:veil_mobile/src/core/security/app_lock_service.dart';
+import 'package:veil_mobile/src/core/storage/media_index.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/data/lock_request_provider.dart';
+import 'package:veil_mobile/src/features/attachments/data/attachment_storage_paths.dart';
 import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
@@ -210,6 +213,24 @@ class LayoutWorld {
           ),
       };
 
+  /// The phone's attachment folders, every root (the iOS system temporary
+  /// folder too) under a temporary folder of this world's, so a purge or a
+  /// sweep runs for real and touches nothing else. Gone with [dispose].
+  final Directory attachmentRoot = Directory.systemTemp.createTempSync('veil-layout-');
+  late final AttachmentStoragePaths attachmentPaths = AttachmentStoragePaths(
+    temporaryRoot: () async => Directory('${attachmentRoot.path}/tmp')..createSync(recursive: true),
+    supportRoot: () async => Directory('${attachmentRoot.path}/support')..createSync(recursive: true),
+    systemTempRoot: () => Directory('${attachmentRoot.path}/system-tmp')..createSync(recursive: true),
+    sweepSystemTemp: true,
+  );
+
+  /// The media index, in memory, as the phone keeps it in its database.
+  final MediaIndex mediaIndex = MemoryMediaIndex();
+
+  /// [beforeSession] changes the relay before this device's session loads
+  /// anything from it; [overrides] go into the world's provider container
+  /// beside its own (a picker, an opener), so they name providers the world
+  /// leaves alone: a container takes one override per provider.
   static Future<LayoutWorld> create({
     required LayoutIdentities identities,
     required LayoutAccount account,
@@ -222,6 +243,7 @@ class LayoutWorld {
     bool searchesArchive = false,
     String? sessionError,
     void Function(FakeRelay relay)? beforeSession,
+    List<Override> overrides = const [],
   }) async {
     final world = LayoutWorld._(identities, account, locale, sessionError);
     // A search of Chats looks through every seeded line with words.
@@ -233,6 +255,7 @@ class LayoutWorld {
       transferStarted: transferStarted,
       withGroup: withGroup,
       beforeSession: beforeSession,
+      overrides: overrides,
     );
     return world;
   }
@@ -246,6 +269,7 @@ class LayoutWorld {
     required bool transferStarted,
     required bool withGroup,
     void Function(FakeRelay relay)? beforeSession,
+    List<Override> overrides = const [],
   }) async {
     _attention = attention;
     seedParties(relay, identities);
@@ -319,6 +343,8 @@ class LayoutWorld {
       attention: attention,
       peer: peer,
       changedKey: identities.self.identityPublicKey,
+      attachmentPaths: attachmentPaths,
+      mediaIndex: mediaIndex,
     );
     if (_hasAccount) await messenger.applySession(_session);
     // After the session is applied, which forgets what was pending before it.
@@ -360,6 +386,7 @@ class LayoutWorld {
       appLockServiceProvider.overrideWithValue(AppLockService(const _Biometrics(), storage)),
       // The seed's Tuesday morning, whatever day the case runs.
       wallClockProvider.overrideWithValue(() => now),
+      attachmentStoragePathsProvider.overrideWithValue(attachmentPaths),
       if (account == LayoutAccount.choosingPin) lockRequestedInSettingsProvider.overrideWith((ref) => true),
       localSecuritySnapshotProvider.overrideWith(
         (ref) async => const LocalSecuritySnapshot(
@@ -373,6 +400,7 @@ class LayoutWorld {
           appPreviewProtectionEnabled: true,
         ),
       ),
+      ...overrides,
     ]);
     if (transferStarted) await container.read(deviceTransferControllerProvider).initTransfer();
   }
@@ -422,6 +450,7 @@ class LayoutWorld {
     final messengerHandedOut = container.exists(messengerControllerProvider);
     container.dispose();
     if (!messengerHandedOut) messenger.dispose();
+    if (attachmentRoot.existsSync()) attachmentRoot.deleteSync(recursive: true);
   }
 }
 
@@ -489,6 +518,8 @@ class _LayoutMessenger extends VeilMessengerController {
     required this.attention,
     required this.peer,
     required this.changedKey,
+    required AttachmentStoragePaths attachmentPaths,
+    required MediaIndex mediaIndex,
   }) : super(
           apiClient: apiClient,
           cryptoEngine: adapter.messaging,
@@ -498,6 +529,8 @@ class _LayoutMessenger extends VeilMessengerController {
           realtimeService: realtime,
           cacheService: cache,
           identityTrust: trust,
+          attachmentPaths: attachmentPaths,
+          mediaIndex: mediaIndex,
         );
 
   final ChatAttention attention;

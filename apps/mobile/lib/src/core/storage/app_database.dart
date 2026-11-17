@@ -124,18 +124,67 @@ class RetiredMessages extends Table {
   Set<Column<Object>> get primaryKey => {messageKey};
 }
 
+// What has been read on this phone, one row per conversation: the
+// conversation order of the newest relayed message read here, and whether
+// the user marked the chat unread. Counts are derived, never stored. The
+// row whose id is [baselineReadMarkId] is no conversation: it says the next
+// successful relay list is this device's first (see AppDatabase). Its rows
+// are ConversationReadMarkRow, leaving ConversationReadMark to the domain.
+@DataClassName('ConversationReadMarkRow')
+class ConversationReadMarks extends Table {
+  TextColumn get conversationId => text()();
+  IntColumn get readThroughOrder => integer().nullable()();
+  BoolColumn get markedUnread => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {conversationId};
+}
+
+// Which sealed blob in the media folder belongs to which message. The files
+// carry random names, so this table, inside the encrypted database, is the
+// only place that ties one to a conversation. Ids are lower-cased; digest is
+// the pointer's `d`. Times are epoch milliseconds.
+@DataClassName('MediaBlobRow')
+class MediaBlobs extends Table {
+  TextColumn get fileName => text()();
+  TextColumn get conversationId => text()();
+  TextColumn get attachmentId => text()();
+  TextColumn get digest => text()();
+  IntColumn get sizeBytes => integer()();
+  IntColumn get expiresAt => integer().nullable()();
+  IntColumn get lastUsedAt => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {fileName};
+
+  @override
+  List<Set<Column<Object>>> get uniqueKeys => [
+        {conversationId, attachmentId, digest},
+      ];
+}
+
+/// The reserved read-mark row that no relay conversation id can be (they
+/// match `^[A-Za-z0-9_-]{1,128}$`). It is written when the database is
+/// created (a first install, which is a new account or a move to a new
+/// phone, since nothing is backed up), when it is wiped, and by the 11 to 12
+/// upgrade; the first successful relay list after a start that finds it
+/// marks every listed conversation read and deletes it.
+const baselineReadMarkId = '~baseline';
+
 @DriftDatabase(tables: [
   CachedConversations,
   CachedMessages,
   PendingMessages,
   MessageContents,
   RetiredMessages,
+  ConversationReadMarks,
+  MediaBlobs,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -143,6 +192,7 @@ class AppDatabase extends _$AppDatabase {
           await migrator.createAll();
           await _createIndexes();
           await _createRetirementGuard();
+          await insertBaselineReadMark();
         },
         onUpgrade: (migrator, from, to) async {
           if (from < 2) {
@@ -230,12 +280,33 @@ class AppDatabase extends _$AppDatabase {
             // table in the keystore decides them now.
             await customStatement('ALTER TABLE cached_conversations DROP COLUMN identity_mismatch_pending');
           }
+          if (from < 12) {
+            await migrator.createTable(conversationReadMarks);
+            await migrator.createTable(mediaBlobs);
+            // What is already on the phone was there before counts existed:
+            // each conversation is read through its newest cached message.
+            await customStatement(
+              'INSERT OR IGNORE INTO conversation_read_marks '
+              '(conversation_id, read_through_order, marked_unread) '
+              'SELECT conversation_id, MAX(conversation_order), 0 FROM cached_messages '
+              'WHERE conversation_order IS NOT NULL GROUP BY conversation_id',
+            );
+            await insertBaselineReadMark();
+          }
           await _createIndexes();
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
           await customStatement('PRAGMA secure_delete = ON');
         },
+      );
+
+  /// Writes the reserved baseline row (see [baselineReadMarkId]); a row
+  /// that is already there stays as it is.
+  Future<void> insertBaselineReadMark() => customStatement(
+        'INSERT OR IGNORE INTO conversation_read_marks '
+        '(conversation_id, read_through_order, marked_unread) VALUES (?, NULL, 0)',
+        [baselineReadMarkId],
       );
 
   // A decrypt still in flight when its message expired must not write the

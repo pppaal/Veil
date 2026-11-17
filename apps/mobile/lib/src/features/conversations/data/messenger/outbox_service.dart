@@ -5,6 +5,7 @@ import '../../../../core/errors/user_facing_error.dart';
 import '../../../../core/network/veil_api_client.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
 import '../../../../core/util/uuid_v4.dart';
+import '../../../attachments/domain/outgoing_attachment.dart';
 import '../conversation_models.dart';
 import '../group_sender_key_coordinator.dart';
 import 'attachment_transfer_service.dart';
@@ -68,6 +69,14 @@ class OutboxService {
   bool get hasPendingWork => !_pending.isEmpty;
 
   Iterable<String> get pendingConversationIds => _pending.all.map((pending) => pending.conversationId);
+
+  /// The attachment id of every queued upload already sealed, lower-cased:
+  /// blobs no cleanup may take.
+  Set<String> get pendingAttachmentIds => {
+        for (final pending in _pending.all)
+          if (pending.attachmentUploadDraft?.sealedReference?.attachmentId case final id? when id.isNotEmpty)
+            id.toLowerCase(),
+      };
 
   DateTime? nextRetryAt(String conversationId) {
     DateTime? earliest;
@@ -139,6 +148,15 @@ class OutboxService {
       unawaited(drain(conversationId: conversationId));
     });
   }
+
+  /// Seals [attachment] and queues it as a photo or file message; false when
+  /// that failed. Not built yet.
+  Future<bool> sendAttachment({
+    required String conversationId,
+    required OutgoingAttachment attachment,
+    Duration? disappearAfter,
+  }) async =>
+      throw UnimplementedError('Sending a photo or a file is not built yet.');
 
   /// Retries queued messages now, failed ones included.
   Future<void> retry([String? conversationId]) =>

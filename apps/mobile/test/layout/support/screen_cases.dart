@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
@@ -27,9 +28,13 @@ import 'package:veil_mobile/src/features/settings/presentation/settings_screen.d
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
+import '../../support/fake_relay.dart';
 import 'layout_seed.dart';
 import 'layout_world.dart';
 import 'phone_layout_probe.dart';
+import 'screen_cases_media_receive.dart';
+import 'screen_cases_media_send.dart';
+import 'screen_cases_unread.dart';
 
 // Every screen of the app as the phone layout gate opens it: where it lives
 // in the route table, the account it needs, and the state it is shown in.
@@ -67,6 +72,9 @@ class ScreenCase {
     this.minPrimaryExtent,
     this.primaryAction,
     this.settle,
+    this.beforeSession,
+    this.afterSession,
+    this.overrides,
   }) : assert((minPrimaryShare == null && minPrimaryExtent == null) || primaryExtent != null);
 
   /// Names the case in test names, the allow-list and PNG file names.
@@ -145,6 +153,19 @@ class ScreenCase {
   /// Brings the screen to the state the case is about, after its first
   /// frames.
   final Future<void> Function(WidgetTester tester)? settle;
+
+  /// Changes the relay before the session loads anything from it (seeded
+  /// blobs, messages the first list must already hold).
+  final void Function(FakeRelay relay)? beforeSession;
+
+  /// Runs once the session is applied and the first relay list is in,
+  /// before the router opens: what arrives after the list (new messages,
+  /// a held upload).
+  final Future<void> Function(LayoutWorld world)? afterSession;
+
+  /// Providers the case swaps in the world's container (a picker, an
+  /// opener); never one the world already overrides.
+  final List<Override> Function()? overrides;
 }
 
 /// The screens whose controls the gate does not hold to 44x44, each with
@@ -159,7 +180,16 @@ const double largerText = 1.3;
 const _signedOut = LayoutAccount.signedOut;
 const _chat = '/chat/$chatConversationId';
 
+/// Every phone case: the app's core screens, then each feature's cases in
+/// a file of its own, so work on one feature never edits another's list.
 const List<ScreenCase> screenCases = [
+  ..._coreCases,
+  ...unreadScreenCases,
+  ...mediaReceiveScreenCases,
+  ...mediaSendScreenCases,
+];
+
+const List<ScreenCase> _coreCases = [
   // Before there is an account.
   ScreenCase('splash',
       screen: SplashScreen, file: 'splash_screen.dart', location: '/splash', account: _signedOut, bootstrapping: true),

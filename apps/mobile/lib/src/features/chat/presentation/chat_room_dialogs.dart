@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../../core/security/sensitive_text_redactor.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
@@ -30,26 +29,6 @@ Future<bool> confirmOwnHandleHold(BuildContext context, String handle) async {
     ),
   );
   return confirmed == true;
-}
-
-/// Tells the user a download ticket was issued, showing only a redacted
-/// summary of its [url], never the URL itself.
-Future<void> showAttachmentTicketDialog(BuildContext context, String url) async {
-  final ticketSummary = summarizeSensitiveUrl(url);
-  final l10n = AppLocalizations.of(context);
-  await showDialog<void>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(l10n.chatAttachmentTicketTitle),
-      content: Text(l10n.chatAttachmentTicketBody(ticketSummary)),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.commonClose),
-        ),
-      ],
-    ),
-  );
 }
 
 /// What a long press on a message offers, over the chat where the message

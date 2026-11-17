@@ -1180,42 +1180,6 @@ void main() {
     expect(controller.messagesFor('conv-1').map((message) => message.id).toList(), ['srv-dedupe-1']);
   });
 
-  test('attachment download resolution exposes a transient resolving state',
-      () async {
-    final api = _FakeVeilApiClient(
-        downloadTicketDelay: const Duration(milliseconds: 50));
-    final crypto = createDefaultCryptoAdapter();
-    final controller = VeilMessengerController(
-      apiClient: api,
-      cryptoEngine: crypto.messaging,
-      keyBundleCodec: crypto.keyBundles,
-      envelopeCodec: crypto.envelopeCodec,
-      sessionBootstrapper: crypto.sessions,
-      realtimeService: _FakeRealtimeService(),
-      cacheService: _MemoryConversationCache(),
-    );
-
-    await controller.applySession(
-      const AppSessionState(
-        accessToken: 'token',
-        userId: 'user-local',
-        deviceId: 'device-local',
-        handle: 'atlas',
-        displayName: 'Atlas',
-        onboardingAccepted: true,
-        locked: false,
-        initializing: false,
-      ),
-    );
-
-    final future = controller.getAttachmentDownloadUrl('attachment-77');
-    expect(controller.isResolvingAttachment('attachment-77'), isTrue);
-
-    final ticketUrl = await future;
-    expect(ticketUrl, 'https://signed-download.invalid/attachment-77');
-    expect(controller.isResolvingAttachment('attachment-77'), isFalse);
-  });
-
   test('canceling an attachment upload preserves the draft for retry',
       () async {
     final api =
@@ -1460,7 +1424,6 @@ class _FakeVeilApiClient extends VeilApiClient {
     List<Map<String, dynamic>>? conversations,
     this.failSendAttempts = 0,
     this.failUploadAttempts = 0,
-    this.downloadTicketDelay = Duration.zero,
     this.uploadDelay = Duration.zero,
   })  : _pagedMessages = pagedMessages ?? {},
         _conversationsResponse = conversations,
@@ -1478,7 +1441,6 @@ class _FakeVeilApiClient extends VeilApiClient {
   int failSendAttempts;
   int failUploadAttempts;
   int failDownloadAttempts = 0;
-  final Duration downloadTicketDelay;
   final Duration uploadDelay;
   int _serverCounter = 0;
 
@@ -1707,9 +1669,6 @@ class _FakeVeilApiClient extends VeilApiClient {
     String accessToken,
     String attachmentId,
   ) async {
-    if (downloadTicketDelay > Duration.zero) {
-      await Future<void>.delayed(downloadTicketDelay);
-    }
     if (failDownloadAttempts > 0) {
       failDownloadAttempts -= 1;
       throw VeilApiException(

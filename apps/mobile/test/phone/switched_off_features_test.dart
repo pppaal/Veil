@@ -4,8 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/app/router/app_router.dart';
-import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
-import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/profile/presentation/profile_screen.dart';
@@ -15,12 +13,10 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
 
 import 'phone_app.dart';
 
-// This is a text-only build. The screens of what it could not do end to end
-// (calls, a media picker, voice messages, a sticker picker, stories, an
-// assistant, sending an attachment) are gone, and so are their routes, so
-// nothing leads where there is no screen: no route, no tab, no button. One
-// constant is left, kAttachmentsEnabled: the receive side of attachments is
-// real, and it says what the chat does with one it was sent.
+// The screens of what the app does not do end to end (calls, voice messages,
+// a sticker picker, stories, an assistant) are gone with their routes.
+// Photos and files work: the photo viewer is a page pushed over the chat,
+// not a route, so `/media` and `/attachment` stay dead.
 
 /// Where the deleted features lived. None of these may be a route again
 /// before the feature works end to end.
@@ -149,24 +145,6 @@ void main() {
       await tester.tap(find.text(l10n.profileSaveNickname));
       await pumpFrames(tester, frames: 2);
       expect(world.container.read(appSessionProvider).displayName, 'Moreau');
-    });
-  });
-
-  testWidgets('a chat offers an attachment only in a build that can send one', (tester) async {
-    await withPhoneApp(tester, identities, location: '/chat/$chatConversationId', body: (world) async {
-      expect(find.byTooltip(l10n.chatAttachAction), kAttachmentsEnabled ? findsOneWidget : findsNothing);
-
-      // The seeded chat holds one message with an attachment. It is shown
-      // for what it is; the download button only where a download works.
-      await tester.dragUntilVisible(
-        find.byType(MessageAttachmentCard),
-        find.byType(Scrollable).first,
-        const Offset(0, 200),
-      );
-      await pumpFrames(tester, frames: 2);
-      expect(find.byType(MessageAttachmentCard), findsOneWidget);
-      expect(find.text(l10n.chatAttachmentResolveAction), kAttachmentsEnabled ? findsOneWidget : findsNothing);
-      expect(find.text(l10n.chatAttachmentCannotOpen), kAttachmentsEnabled ? findsNothing : findsOneWidget);
     });
   });
 }

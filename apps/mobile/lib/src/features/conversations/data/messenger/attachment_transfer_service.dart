@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import '../../../../core/crypto/crypto_engine.dart';
-import '../../../../core/errors/user_facing_error.dart';
 import '../../../../core/network/veil_api_client.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
 import '../../../attachments/data/attachment_temp_file_store.dart';
@@ -51,9 +50,9 @@ class AttachmentTransferSnapshot {
 /// What an attachment message says in its body; the file is the payload.
 const attachmentMessageBody = 'Encrypted attachment';
 
-/// Attachment uploads and download tickets. A staged file is sealed on
-/// this device and only its ciphertext is ever uploaded; the message that
-/// points at it is encrypted once the upload completed.
+/// Attachment uploads. A staged file is sealed on this device and only its
+/// ciphertext is ever uploaded; the message that points at it is encrypted
+/// once the upload completed.
 class AttachmentTransferService {
   AttachmentTransferService({
     required MessengerStateStore store,
@@ -72,8 +71,7 @@ class AttachmentTransferService {
         _crypto = crypto,
         _contents = contents,
         _pending = pending,
-        _tempStore = tempStore,
-        _ops = ops;
+        _tempStore = tempStore;
 
   // Upload progress is kept in memory on every callback but written to the
   // cache only this often: a restart resumes from a ticket, not a byte.
@@ -88,17 +86,10 @@ class AttachmentTransferService {
   final MessageContentService _contents;
   final PendingMessages _pending;
   final AttachmentTempFileStore? _tempStore;
-  final MessengerOperationRunner _ops;
   final Map<String, AttachmentTransferSnapshot> _transfers = {};
-  final Map<String, String> _downloadErrors = {};
-  final Set<String> _resolving = {};
   final Map<String, AttachmentUploadCancellationSignal> _activeUploads = {};
 
   AttachmentTransferSnapshot? transferFor(String clientMessageId) => _transfers[clientMessageId];
-
-  bool isResolving(String attachmentId) => _resolving.contains(attachmentId);
-
-  String? downloadError(String attachmentId) => _downloadErrors[attachmentId];
 
   void _track(
     String clientMessageId, {
@@ -164,30 +155,6 @@ class AttachmentTransferService {
     if (normalized.endsWith('.webp')) return 'image/webp';
     if (normalized.endsWith('.pdf')) return 'application/pdf';
     return 'application/octet-stream';
-  }
-
-  /// The download URL for [attachmentId], or null when it cannot be had;
-  /// the failure is kept for [downloadError].
-  Future<String?> downloadUrl(String attachmentId) async {
-    final session = _session.authed;
-    if (session == null) return null;
-
-    _downloadErrors.remove(attachmentId);
-    _resolving.add(attachmentId);
-    _store.changed();
-    try {
-      final response = await _apiClient.getDownloadTicket(session.accessToken, attachmentId);
-      return _mapper.downloadUrl(response) ?? (throw StateError('Unexpected response shape'));
-    } catch (error) {
-      await _ops.handleSecurityException(error);
-      final message = formatUserFacingError(error);
-      _downloadErrors[attachmentId] = message;
-      _ops.showMessage(message);
-      return null;
-    } finally {
-      _resolving.remove(attachmentId);
-      _store.changed();
-    }
   }
 
   /// Seals, tickets and uploads [pending]'s attachment, then encrypts the
@@ -268,12 +235,8 @@ class AttachmentTransferService {
     _activeUploads.clear();
   }
 
-  /// Forgets every transfer shown and every download outcome.
-  void clear() {
-    _resolving.clear();
-    _downloadErrors.clear();
-    _transfers.clear();
-  }
+  /// Forgets every transfer shown.
+  void clear() => _transfers.clear();
 
   Future<void> _upload(PendingMessageRecord pending, AttachmentUploadDraft draft) async {
     final clientMessageId = pending.clientMessageId;

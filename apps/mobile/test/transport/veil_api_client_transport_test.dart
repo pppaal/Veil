@@ -327,6 +327,207 @@ void main() {
     });
   });
 
+  group('attachment downloads', () {
+    const attachmentId = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+    const blobUrl = 'https://blobs.veil.test/attachments/x?signature=abc';
+    final blob = List<int>.generate(4096, (i) => i % 251);
+
+    VeilApiClient clientWithStorage(http.Client storage, {Duration uploadTimeout = kDefaultUploadTimeout}) {
+      return VeilApiClient(
+        baseUrl: _baseUrl,
+        client: MockClient((_) async => fail('downloads must not use the API client')),
+        objectStorageClient: storage,
+        objectStoragePolicy: _storagePolicy,
+        uploadTimeout: uploadTimeout,
+      );
+    }
+
+    // A body that counts what was taken from it, with or without a length.
+    ({http.Client client, List<int> pulled}) streaming(List<int> bytes, {int? contentLength, int status = 200}) {
+      final pulled = <int>[];
+      Stream<List<int>> body() async* {
+        for (var offset = 0; offset < bytes.length; offset += 1024) {
+          final chunk = bytes.sublist(offset, offset + 1024 > bytes.length ? bytes.length : offset + 1024);
+          pulled.add(chunk.length);
+          yield chunk;
+        }
+      }
+
+      return (
+        client: MockClient.streaming(
+          (request, _) async => http.StreamedResponse(body(), status, contentLength: contentLength),
+        ),
+        pulled: pulled,
+      );
+    }
+
+    test('a ticket for an id that is not a UUID makes no request', () async {
+      var requests = 0;
+      final api = VeilApiClient(
+        baseUrl: _baseUrl,
+        client: MockClient((_) async {
+          requests += 1;
+          return http.Response('{}', 200);
+        }),
+      );
+      for (final bad in ['../keys/x', 'abc', '$attachmentId/../../users', '', '$attachmentId?x=1']) {
+        await expectLater(api.getDownloadTicket('token', bad), throwsA(_apiError('attachment_id_invalid')), reason: bad);
+      }
+      expect(requests, 0);
+    });
+
+    test('a ticket names the id in its own path segment', () async {
+      final paths = <List<String>>[];
+      final api = VeilApiClient(
+        baseUrl: _baseUrl,
+        client: MockClient((request) async {
+          paths.add(request.url.pathSegments);
+          return http.Response('{"ticket":{}}', 200);
+        }),
+      );
+      await api.getDownloadTicket('token', attachmentId);
+      await api.getDownloadTicket('token', attachmentId.toUpperCase());
+      expect(paths, [
+        ['v1', 'attachments', attachmentId, 'download-ticket'],
+        ['v1', 'attachments', attachmentId.toUpperCase(), 'download-ticket'],
+      ]);
+    });
+
+    test('a download goes through the storage client, without the bearer token', () async {
+      final received = <http.BaseRequest>[];
+      final progress = <(int, int?)>[];
+      final api = clientWithStorage(MockClient((request) async {
+        received.add(request);
+        return http.Response.bytes(blob, 200);
+      }));
+      final bytes = await api.downloadEncryptedBlob(
+        downloadUrl: blobUrl,
+        maxBytes: blob.length,
+        onProgress: (got, total) => progress.add((got, total)),
+      );
+      expect(bytes, blob);
+      final request = received.single;
+      expect(request.method, 'GET');
+      expect(request.url.host, 'blobs.veil.test');
+      expect(request.headers.keys.map((key) => key.toLowerCase()), isNot(contains('authorization')));
+      expect(request.followRedirects, isFalse);
+      expect(progress.last, (blob.length, blob.length));
+    });
+
+    test('a host outside the allowlist is refused before any request', () async {
+      var storageCalls = 0;
+      final api = clientWithStorage(MockClient((_) async {
+        storageCalls += 1;
+        return http.Response.bytes(blob, 200);
+      }));
+      await expectLater(
+        api.downloadEncryptedBlob(downloadUrl: 'https://attacker.example/blob', maxBytes: 1 << 20),
+        throwsA(_apiError('attachment_download_invalid')),
+      );
+      expect(storageCalls, 0);
+    });
+
+    test('release policy refuses plain http download URLs', () {
+      expect(
+        () => _storagePolicy.checkDownloadUrl('http://blobs.veil.test/object'),
+        throwsA(_apiError('attachment_download_invalid')),
+      );
+      expect(() => _storagePolicy.checkDownloadUrl('not a url'), throwsA(_apiError('attachment_download_invalid')));
+      expect(_storagePolicy.checkDownloadUrl(blobUrl).host, 'blobs.veil.test');
+    });
+
+    test('a redirect to another host is refused', () async {
+      final api = clientWithStorage(MockClient.streaming(
+        (request, _) async => http.StreamedResponse(
+          const Stream.empty(),
+          302,
+          headers: {'location': 'https://attacker.example/blob'},
+        ),
+      ));
+      await expectLater(
+        api.downloadEncryptedBlob(downloadUrl: blobUrl, maxBytes: 1 << 20),
+        throwsA(_apiError('attachment_download_invalid')),
+      );
+    });
+
+    test('statuses map to gone, refused and failed', () async {
+      for (final (status, code) in [
+        (404, 'attachment_not_found'),
+        (403, 'attachment_forbidden'),
+        (500, 'attachment_download_failed'),
+        (503, 'attachment_download_failed'),
+      ]) {
+        final api = clientWithStorage(MockClient((_) async => http.Response('no', status)));
+        await expectLater(
+          api.downloadEncryptedBlob(downloadUrl: blobUrl, maxBytes: 1 << 20),
+          throwsA(_apiError(code, statusCode: status)),
+          reason: '$status',
+        );
+      }
+    });
+
+    test('a Content-Length over the cap stops before the body is read', () async {
+      final body = streaming(blob, contentLength: blob.length);
+      final progress = <int>[];
+      await expectLater(
+        clientWithStorage(body.client).downloadEncryptedBlob(
+          downloadUrl: blobUrl,
+          maxBytes: blob.length - 1,
+          onProgress: (got, _) => progress.add(got),
+        ),
+        throwsA(_apiError('attachment_download_invalid')),
+      );
+      expect(progress, isEmpty);
+      expect(body.pulled, isEmpty);
+    });
+
+    test('a body without a length stops once it runs past the cap', () async {
+      final body = streaming(blob);
+      final progress = <int>[];
+      await expectLater(
+        clientWithStorage(body.client).downloadEncryptedBlob(
+          downloadUrl: blobUrl,
+          maxBytes: 2500,
+          onProgress: (got, _) => progress.add(got),
+        ),
+        throwsA(_apiError('attachment_download_invalid')),
+      );
+      expect(progress, [1024, 2048]);
+      expect(body.pulled.length, lessThan(4));
+      // Exactly at the cap is fine.
+      final whole = streaming(blob);
+      expect(await clientWithStorage(whole.client).downloadEncryptedBlob(downloadUrl: blobUrl, maxBytes: blob.length), blob);
+    });
+
+    test('a download that stalls throws network_timeout', () async {
+      final api = clientWithStorage(
+        MockClient((_) => Completer<http.Response>().future),
+        uploadTimeout: const Duration(milliseconds: 50),
+      );
+      await expectLater(
+        api.downloadEncryptedBlob(downloadUrl: blobUrl, maxBytes: 1 << 20),
+        throwsA(_apiError(TransportErrorCode.timeout)),
+      );
+    });
+
+    test('a canceled download throws attachment_download_canceled', () async {
+      final api = clientWithStorage(MockClient((_) => Completer<http.Response>().future));
+      final signal = AttachmentUploadCancellationSignal();
+      final download = api.downloadEncryptedBlob(downloadUrl: blobUrl, maxBytes: 1 << 20, cancellationSignal: signal);
+      await pumpEventQueue();
+      signal.cancel();
+      await expectLater(download, throwsA(_apiError('attachment_download_canceled')));
+    });
+
+    test('a socket failure maps to network_unavailable', () async {
+      final api = clientWithStorage(MockClient((_) => throw const SocketException('refused')));
+      await expectLater(
+        api.downloadEncryptedBlob(downloadUrl: blobUrl, maxBytes: 1 << 20),
+        throwsA(_apiError(TransportErrorCode.unavailable)),
+      );
+    });
+  });
+
   group('authenticated JSON helpers', () {
     test('a missing token fails with unauthorized before any request', () async {
       var requests = 0;

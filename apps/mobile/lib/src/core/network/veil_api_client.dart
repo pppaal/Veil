@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import '../config/veil_config.dart';
+import '../util/uuid_v4.dart';
 import 'http_transport.dart';
 import 'pinned_http_client.dart';
 import 'server_clock.dart';
@@ -482,12 +484,102 @@ class VeilApiClient {
     }
   }
 
+  /// A download ticket for [attachmentId]. An id that is not a UUID, which
+  /// no honest sender uses, is refused before any request, so a hostile
+  /// pointer cannot steer the request path.
   Future<Map<String, dynamic>> getDownloadTicket(
     String accessToken,
     String attachmentId,
   ) async {
-    return _get('/attachments/$attachmentId/download-ticket', accessToken: accessToken);
+    if (!isUuidString(attachmentId)) {
+      throw VeilApiException('Attachment id is not valid.', code: 'attachment_id_invalid');
+    }
+    return _get('/attachments/${Uri.encodeComponent(attachmentId)}/download-ticket', accessToken: accessToken);
   }
+
+  /// Fetches a sealed attachment from [downloadUrl] (a download ticket's
+  /// presigned URL) through the pinned object-storage client, with no
+  /// Authorization header. At most [maxBytes] are read: a Content-Length
+  /// over it stops the download before the body, a body that runs past it
+  /// stops it while reading. A redirect to another host is refused. It is
+  /// abandoned after [kDefaultUploadTimeout] without progress, or when
+  /// [cancellationSignal] fires.
+  ///
+  /// Failure codes: `attachment_not_found` (404), `attachment_forbidden`
+  /// (403), `attachment_download_failed` (any other status, with it),
+  /// `attachment_download_invalid` (a URL the policy refuses, a redirect
+  /// elsewhere, too many bytes), `attachment_download_canceled`, and the
+  /// transport's `network_*` codes.
+  Future<Uint8List> downloadEncryptedBlob({
+    required String downloadUrl,
+    required int maxBytes,
+    void Function(int received, int? total)? onProgress,
+    AttachmentUploadCancellationSignal? cancellationSignal,
+  }) async {
+    var uri = _objectStoragePolicy.checkDownloadUrl(downloadUrl);
+    // Built before the guard, as for uploads.
+    final client = _objectStorageClient;
+    final guard = UploadGuard(idleTimeout: _uploadTimeout, transfer: AttachmentTransfer.download);
+    cancellationSignal?.register(guard.cancel);
+
+    Future<Uint8List> fetch() async {
+      for (var redirects = 0;; redirects++) {
+        final request = http.AbortableRequest('GET', uri, abortTrigger: guard.abortTrigger)..followRedirects = false;
+        final response = await client.send(request);
+        guard.reportProgress();
+        final status = response.statusCode;
+        if (status >= 300 && status < 400) {
+          await response.stream.drain<void>().catchError((Object _) {});
+          final location = response.headers['location'];
+          final next = location == null ? null : uri.resolve(location);
+          if (next == null || next.host.toLowerCase() != uri.host.toLowerCase() || redirects >= 3) {
+            throw _downloadInvalid('the storage redirected the download elsewhere');
+          }
+          uri = _objectStoragePolicy.checkDownloadUrl(next.toString());
+          continue;
+        }
+        if (status < 200 || status >= 300) {
+          await response.stream.drain<void>().catchError((Object _) {});
+          throw switch (status) {
+            404 => VeilApiException('Attachment not found.', code: 'attachment_not_found', statusCode: status),
+            403 => VeilApiException('Attachment download refused.', code: 'attachment_forbidden', statusCode: status),
+            _ => VeilApiException('Attachment download failed: HTTP $status',
+                code: 'attachment_download_failed', statusCode: status),
+          };
+        }
+        final total = response.contentLength;
+        if (total != null && total > maxBytes) {
+          unawaited(response.stream.listen(null).cancel());
+          throw _downloadInvalid('the blob is larger than its pointer allows');
+        }
+        final body = BytesBuilder(copy: false);
+        await for (final chunk in response.stream) {
+          if (body.length + chunk.length > maxBytes) {
+            throw _downloadInvalid('the blob is larger than its pointer allows');
+          }
+          body.add(chunk);
+          guard.reportProgress();
+          onProgress?.call(body.length, total);
+        }
+        return body.takeBytes();
+      }
+    }
+
+    try {
+      return await guard.run(fetch());
+    } on VeilApiException {
+      rethrow;
+    } catch (error) {
+      if (guard.isCanceled) {
+        throw VeilApiException('Attachment download canceled.', code: 'attachment_download_canceled');
+      }
+      throw transportFailure(error) ??
+          VeilApiException('Attachment download failed: network unavailable', code: 'attachment_download_failed');
+    }
+  }
+
+  static VeilApiException _downloadInvalid(String reason) =>
+      VeilApiException('Attachment download failed: $reason.', code: 'attachment_download_invalid');
 
   Future<Map<String, dynamic>> initTransfer(
     String accessToken,

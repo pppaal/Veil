@@ -2,6 +2,13 @@ import 'dart:math';
 
 final Random _random = Random.secure();
 
+final RegExp _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', caseSensitive: false);
+
+/// Whether [value] is a UUID in canonical form, of any version, in either
+/// case: the web's ATTACHMENT_ID_RE. An attachment id that is not one is
+/// never put in a request path or a file name.
+bool isUuidString(String value) => _uuid.hasMatch(value);
+
 /// A random (version 4) UUID in canonical lowercase form. Drawn from a secure
 /// source because a client-proposed id must be unguessable: another device
 /// that could predict it could claim it first.

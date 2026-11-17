@@ -91,6 +91,13 @@ class LocalNotificationService {
     );
   }
 
+  /// Takes back the notification [conversationId] raised, if it still
+  /// shows: the chat was read on this phone.
+  Future<void> cancelConversation(String conversationId) async {
+    if (!_initialized) return;
+    await _plugin.cancel(id: conversationId.hashCode);
+  }
+
   void _onTap(NotificationResponse response) {
     onNotificationTapped?.call(response.payload);
   }

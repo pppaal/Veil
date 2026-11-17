@@ -100,6 +100,10 @@ flutter {
 dependencies {
     // Version from flutter_local_notifications' README; bump with that plugin.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // FileProvider, which VeilOpenFileProvider extends to hand one decrypted
+    // file to the app it is opened with: the version image_picker_android
+    // already brings in.
+    implementation("androidx.core:core:1.18.0")
     if (veilLibsignal) {
         // Signal's audited protocol implementation (Rust core + JNI, prebuilt
         // AAR from Maven Central). Pinned exactly; bump together with the iOS

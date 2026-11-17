@@ -77,6 +77,14 @@ void main() {
         reason: 'these cases name a screen file that no longer exists');
   });
 
+  // Each feature adds its cases in a file of its own; an id taken twice
+  // would make two renders write one PNG and one report entry.
+  test('no two cases share an id', () {
+    final seen = <String>{};
+    final repeated = [for (final screenCase in allCases) if (!seen.add(screenCase.id)) screenCase.id];
+    expect(repeated, isEmpty, reason: 'case ids must be unique');
+  });
+
   test('the allow-list names existing cases, once each', () {
     final cases = {for (final screenCase in allCases) screenCase.id: screenCase};
     expect(cases, hasLength(allCases.length), reason: 'case ids must be unique');
@@ -316,7 +324,11 @@ Future<LayoutFindings> _render(
     transferClaimed: screenCase.transferClaimed,
     withGroup: screenCase.withGroup,
     searchesArchive: screenCase.searchesArchive,
+    beforeSession: screenCase.beforeSession,
+    overrides: screenCase.overrides?.call() ?? const [],
   );
+  // What happens after the first list and before the screen opens.
+  await screenCase.afterSession?.call(world);
 
   Future<void> audit() async {
     if (screenCase.holdsTapTargets) {

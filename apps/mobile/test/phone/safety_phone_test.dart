@@ -710,6 +710,124 @@ void main() {
     });
   });
 
+  // The same sheet while Sam's nickname names no account yet, as right
+  // after it is saved on Contacts: Chats, which gives it one, has not been
+  // built. This phone has bound @sam to user-sam, so that is the account
+  // the nickname is to name; any other the lookup finds is "@sam", and so
+  // is the account of a chat held for @sam.
+  group('a contact sheet action while the nickname names no account yet', () {
+    // Sam's chat is stored by the first list and bound by the second, once
+    // its session is read; the nickname still names no one.
+    Future<void> bindSam(WidgetTester tester, LayoutWorld world) async {
+      await pumpFrames(tester, frames: 6);
+      await world.messenger.refreshConversations();
+      await world.messenger.refreshConversations();
+      await pumpFrames(tester, frames: 4);
+      expect(world.messenger.boundPeers[chatConversationId]?.userId, 'user-$peerHandle');
+      expect(world.container.read(contactNameBookProvider).nicknames[peerHandle], const ContactNickname('Sam Rivera'));
+    }
+
+    // The relay leaves Sam's chat out of the list and answers GET
+    // /users/sam with tom_walsh's account. Then Sam's sheet.
+    Future<void> openSamAfterTheRelayLies(WidgetTester tester, LayoutWorld world) async {
+      await bindSam(tester, world);
+      world.relay.conversations.remove(chatConversationId);
+      world.relay.partiesByHandle[peerHandle] = world.relay.partiesByHandle['tom_walsh']!;
+      await world.messenger.refreshConversations();
+      await pumpFrames(tester, frames: 6);
+      await tester.tap(find.text(_sam));
+      await pumpFrames(tester, frames: 4);
+    }
+
+    testWidgets('Block of the account @sam is bound to says the nickname', (tester) async {
+      await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
+        await bindSam(tester, world);
+        await tester.tap(find.text(_sam));
+        await pumpFrames(tester, frames: 4);
+        await tester.tap(find.byKey(const ValueKey('contact-block')));
+        await pumpFrames(tester, frames: 6);
+        expect(find.text(en.blockConfirmTitle(_sam)), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('block-confirm')));
+        await pumpFrames(tester, frames: 6);
+        expect(world.relay.blocks['user-$selfHandle']?.keys, ['user-$peerHandle']);
+        expect(findCopy(en.blockDone(_sam)), findsOneWidget);
+      });
+    });
+
+    testWidgets('Block of another account says the handle', (tester) async {
+      await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
+        await openSamAfterTheRelayLies(tester, world);
+        await tester.tap(find.byKey(const ValueKey('contact-block')));
+        await pumpFrames(tester, frames: 6);
+        expect(find.text(en.blockConfirmTitle('@$peerHandle')), findsOneWidget);
+        expect(find.text(en.blockConfirmTitle(_sam)), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('block-confirm')));
+        await pumpFrames(tester, frames: 6);
+        expect(world.relay.blocks['user-$selfHandle']?.keys, ['user-tom_walsh']);
+        expect(findCopy(en.blockDone('@$peerHandle')), findsOneWidget);
+        expect(findCopy(en.blockDone(_sam)), findsNothing);
+      });
+    });
+
+    testWidgets('Report of another account says the handle', (tester) async {
+      await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
+        await openSamAfterTheRelayLies(tester, world);
+        await tester.tap(find.byKey(const ValueKey('contact-report')));
+        await pumpFrames(tester, frames: 6);
+        expect(find.text(en.reportTitle('@$peerHandle')), findsOneWidget);
+        expect(find.text(en.reportTitle(_sam)), findsNothing);
+        await tester.tap(find.text(en.reportReasonSpam));
+        await pumpFrames(tester, frames: 4);
+        await tester.tap(find.byKey(const ValueKey('report-confirm')));
+        await pumpFrames(tester, frames: 6);
+        expect(world.relay.reports.single.fields['reportedUserId'], 'user-tom_walsh');
+        expect(findCopy(en.reportSentAndBlocked('@$peerHandle')), findsOneWidget);
+      });
+    });
+
+    // The relay lists the account tom_walsh blocked under @sam.
+    testWidgets('Unblock of another account says the handle', (tester) async {
+      await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
+        await bindSam(tester, world);
+        world.relay.blocks['user-$selfHandle'] = {'user-tom_walsh': DateTime.utc(2026, 4, 7, 9)};
+        world.relay.listedHandles[selfHandle] = {'tom_walsh': peerHandle};
+        await world.container.read(blockedAccountsProvider).refresh();
+        await pumpFrames(tester, frames: 6);
+        await tester.tap(find.text(_sam));
+        await pumpFrames(tester, frames: 4);
+        await tester.tap(find.byKey(const ValueKey('contact-unblock')));
+        await pumpFrames(tester, frames: 6);
+        expect(world.relay.blocks['user-$selfHandle'], isEmpty);
+        expect(findCopy(en.unblockDone('@$peerHandle')), findsOneWidget);
+        expect(findCopy(en.unblockDone(_sam)), findsNothing);
+      });
+    });
+
+    testWidgets('Block of the account of a held chat says the handle', (tester) async {
+      await withPhoneApp(
+        tester,
+        identities,
+        location: '/contacts',
+        attention: const ChatAttention(accountHeld: true),
+        body: (world) async {
+          await pumpFrames(tester, frames: 6);
+          expect(world.container.read(contactNameBookProvider).nicknames[peerHandle], const ContactNickname('Sam Rivera'));
+          expect(world.messenger.peerAccountHoldFor(chatConversationId), isNotNull);
+          await tester.tap(find.text(_sam));
+          await pumpFrames(tester, frames: 4);
+          await tester.tap(find.byKey(const ValueKey('contact-block')));
+          await pumpFrames(tester, frames: 6);
+          expect(find.text(en.blockConfirmTitle('@$peerHandle')), findsOneWidget);
+          expect(find.text(en.blockConfirmTitle(_sam)), findsNothing);
+          await tester.tap(find.byKey(const ValueKey('block-confirm')));
+          await pumpFrames(tester, frames: 6);
+          expect(world.relay.blocks['user-$selfHandle']?.keys, ['user-$peerHandle']);
+          expect(findCopy(en.blockDone('@$peerHandle')), findsOneWidget);
+        },
+      );
+    });
+  });
+
   // A contact with no chat yet is found through the server's lookup.
   testWidgets('a contact with no chat is reported by the account the server names', (tester) async {
     await withPhoneApp(

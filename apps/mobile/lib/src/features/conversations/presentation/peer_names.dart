@@ -115,6 +115,50 @@ class PeerNames {
         if (value.userId == null) key,
     };
     if (unclaimed.isEmpty) return const {};
+    final (:accountsUnder, :handlesOf) = _listings();
+    // Bound under exactly the handle: a 1:1 the user let through under
+    // 'Bob' is no binding of 'bob'.
+    final boundUnder = <String, Set<String>>{};
+    for (final peer in _bound.values) {
+      if (peer.userId.isNotEmpty) (boundUnder[peer.handle] ??= {}).add(peer.userId);
+    }
+    bool underOneHandle(String userId, String handle) =>
+        {...?_handlesOf[userId], ...?handlesOf[userId]}.every((other) => other == handle);
+    return {
+      for (final handle in unclaimed)
+        if ((boundUnder[handle] ?? accountsUnder[handle]) case final accounts?
+            when accounts.length == 1 && underOneHandle(accounts.single, handle))
+          handle: accounts.single,
+    };
+  }
+
+  /// Whether the nickname of [handle], while it names no account yet, may
+  /// call [userId], an account a lookup the server answers found under
+  /// [handle] (a contact's sheet): only when [claims] can give it no other
+  /// account. So not before the bindings are read, nor when this phone
+  /// bound [handle] to another account or [userId] under another handle,
+  /// nor when a list shows another account under [handle] or [userId]
+  /// under another handle, nor while a 1:1 under [handle] is held.
+  bool mayNameUnclaimed(String userId, String handle) {
+    if (!_bindingsRead) return false;
+    final key = handle.toLowerCase();
+    for (final chat in _listed) {
+      if (chat.type == ConversationType.direct &&
+          chat.peerHandle.toLowerCase() == key &&
+          (_isHeld?.call(chat.id) ?? false)) {
+        return false;
+      }
+    }
+    final (:accountsUnder, :handlesOf) = _listings();
+    if ({...?_accountsOf[key], ...?accountsUnder[key]}.any((account) => account != userId)) return false;
+    return {...?_handlesOf[userId], ...?handlesOf[userId]}.every((other) => other == key);
+  }
+
+  // The accounts the chats listed now (in a 1:1 not held, or as a group
+  // member) and the Blocked accounts list show under each handle, and the
+  // handles each account is shown under. Not this phone's own account, nor
+  // a handle in a form no server issues.
+  ({Map<String, Set<String>> accountsUnder, Map<String, Set<String>> handlesOf}) _listings() {
     final accountsUnder = <String, Set<String>>{};
     final handlesOf = <String, Set<String>>{};
     void list(String userId, String handle) {
@@ -137,20 +181,7 @@ class PeerNames {
     for (final account in _blocked) {
       list(account.userId, account.handle);
     }
-    // Bound under exactly the handle: a 1:1 the user let through under
-    // 'Bob' is no binding of 'bob'.
-    final boundUnder = <String, Set<String>>{};
-    for (final peer in _bound.values) {
-      if (peer.userId.isNotEmpty) (boundUnder[peer.handle] ??= {}).add(peer.userId);
-    }
-    bool underOneHandle(String userId, String handle) =>
-        {...?_handlesOf[userId], ...?handlesOf[userId]}.every((other) => other == handle);
-    return {
-      for (final handle in unclaimed)
-        if ((boundUnder[handle] ?? accountsUnder[handle]) case final accounts?
-            when accounts.length == 1 && underOneHandle(accounts.single, handle))
-          handle: accounts.single,
-    };
+    return (accountsUnder: accountsUnder, handlesOf: handlesOf);
   }
 }
 

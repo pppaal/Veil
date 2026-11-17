@@ -11,8 +11,11 @@ class ContactNickname {
   /// The account the nickname names: the one this phone knew under the
   /// handle when the nickname was saved, or else the first one the chats
   /// or Blocked accounts showed under it afterwards
-  /// ([ContactNicknames.claim]). Null until then, and no account is called
-  /// by the nickname while it is. Never replaced: another account later
+  /// ([ContactNicknames.claim]). Null until then, and while it is, only a
+  /// contact's sheet calls an account by the nickname: the one its Report,
+  /// Block or Unblock finds under the handle, when nothing this phone knows
+  /// points to another (PeerNames.mayNameUnclaimed), as for a contact just
+  /// added that no list shows yet. Never replaced: another account later
   /// listed under the handle (one that took it over after the first was
   /// deleted, or one a lying server puts there) is not the one the user
   /// named.

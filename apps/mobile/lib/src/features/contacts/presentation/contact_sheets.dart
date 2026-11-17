@@ -6,6 +6,7 @@ import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../conversations/presentation/peer_names.dart';
 import '../../safety/application/safety_accounts.dart';
 import '../../safety/data/abuse_reports.dart';
 import '../../safety/data/safety_providers.dart';
@@ -192,11 +193,14 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
   // What Report, Block and Unblock call the account [userId] they reach:
   // the name every other screen gives it (PeerNames.accountName), else
   // "@handle", as a lying server can put another account under the
-  // handle. While the nickname names no account yet, it names the contact,
-  // as the sheet's header does.
+  // handle. While the nickname names no account yet, the nickname, as the
+  // sheet's header says, unless it may come to name another account or the
+  // handle's 1:1 is held (PeerNames.mayNameUnclaimed).
   String nameOf(String userId) {
     final nickname = ref.read(contactNameBookProvider).nicknames[contact.handle.toLowerCase()];
-    if (nickname != null && nickname.userId == null) return contact.title;
+    if (nickname != null && nickname.userId == null) {
+      return ref.read(peerNamesProvider).mayNameUnclaimed(userId, contact.handle) ? contact.title : '@${contact.handle}';
+    }
     return ref.read(safetyAccountsProvider).knownNameFor(userId: userId, handle: contact.handle) ??
         '@${contact.handle}';
   }

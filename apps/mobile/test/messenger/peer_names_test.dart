@@ -266,6 +266,61 @@ void main() {
     });
   });
 
+  // A contact's sheet finds the account it blocks or reports by a lookup
+  // the server answers, and calls it by a nickname that names none yet
+  // only when claims could give that nickname no other account.
+  group('PeerNames.mayNameUnclaimed: whether a nickname that names no account yet may call one', () {
+    const bob = ContactNickname('Bob Smith');
+
+    test('an account no list shows, under a handle nothing is bound to, as Contacts adds one', () {
+      expect(PeerNames(const {'bob': bob}).mayNameUnclaimed('user-bob', 'bob'), isTrue);
+    });
+
+    test('the account the handle is bound to, or the one the list shows under it', () {
+      expect(PeerNames(const {'bob': bob}, bound: {'conv-ab': _peer('bob')}).mayNameUnclaimed('user-bob', 'Bob'), isTrue);
+      expect(PeerNames(const {'bob': bob}, listed: [_direct('conv-ab', 'bob')]).mayNameUnclaimed('user-bob', 'bob'), isTrue);
+    });
+
+    test('not another account than the one this phone bound the handle to', () {
+      final names = PeerNames(const {'bob': bob}, bound: {'conv-ab': _peer('bob')});
+      expect(names.mayNameUnclaimed('user-mallory', 'bob'), isFalse);
+    });
+
+    test('not another account than one the chats or Blocked accounts show under the handle', () {
+      final inGroup = PeerNames(
+        const {'bob': bob},
+        listed: [_group('grp', const [GroupMember(userId: 'user-bob', handle: 'bob')])],
+      );
+      expect(inGroup.mayNameUnclaimed('user-mallory', 'bob'), isFalse);
+      final blocked = PeerNames(
+        const {'bob': bob},
+        blocked: [BlockedAccount(userId: 'user-mallory', handle: 'bob', blockedAt: DateTime.utc(2026, 4, 7))],
+      );
+      expect(blocked.mayNameUnclaimed('user-bob', 'bob'), isFalse);
+    });
+
+    test('not an account bound or listed under another handle', () {
+      expect(
+        PeerNames(const {'bob': bob}, bound: {'conv-am': _peer('mallory')}).mayNameUnclaimed('user-mallory', 'bob'),
+        isFalse,
+      );
+      expect(
+        PeerNames(const {'bob': bob}, listed: [_direct('conv-am', 'mallory')]).mayNameUnclaimed('user-mallory', 'bob'),
+        isFalse,
+      );
+    });
+
+    test('not while a 1:1 under the handle is held, nor before the bindings are read', () {
+      final held = PeerNames(
+        const {'bob': bob},
+        listed: [_direct('conv-am', 'bob', userId: 'user-mallory')],
+        isHeld: (conversationId) => conversationId == 'conv-am',
+      );
+      expect(held.mayNameUnclaimed('user-mallory', 'bob'), isFalse);
+      expect(PeerNames(const {'bob': bob}, bindingsRead: false).mayNameUnclaimed('user-bob', 'bob'), isFalse);
+    });
+  });
+
   group('ContactNameBook', () {
     late SecureStorageService storage;
     late ContactNameBook book;

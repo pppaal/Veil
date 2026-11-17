@@ -9,7 +9,7 @@ import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/storage/app_database.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
-import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_store.dart';
+import 'package:veil_mobile/src/features/attachments/data/attachment_storage_paths.dart';
 import 'package:veil_mobile/src/features/safety/data/conversation_mutes.dart';
 import 'package:veil_mobile/src/features/safety/data/safety_providers.dart';
 
@@ -67,9 +67,11 @@ void main() {
     final attachments = Directory.systemTemp.createTempSync('veil-notification-filter-');
     addTearDown(() => attachments.deleteSync(recursive: true));
     container = ProviderContainer(overrides: [
-      attachmentTempFileStoreProvider.overrideWithValue(
-        DefaultAttachmentTempFileStore(rootDirectoryFactory: () => attachments),
-      ),
+      attachmentStoragePathsProvider.overrideWithValue(AttachmentStoragePaths(
+        temporaryRoot: () async => attachments,
+        supportRoot: () async => attachments,
+        systemTempRoot: () => attachments,
+      )),
       secureStorageProvider.overrideWithValue(storage),
       appDatabaseFutureProvider.overrideWith((ref) async => AppDatabase(NativeDatabase.memory())),
       apiClientProvider.overrideWithValue(api),

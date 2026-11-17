@@ -3,7 +3,8 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+import 'attachment_storage_paths.dart';
 
 class AttachmentTempBlob {
   const AttachmentTempBlob({
@@ -39,15 +40,12 @@ abstract class AttachmentTempFileStore {
   Future<void> purgeAll();
 }
 
+/// Staging in the staging folder of [AttachmentStoragePaths]; a purge
+/// empties every attachment folder the paths know.
 class DefaultAttachmentTempFileStore implements AttachmentTempFileStore {
-  DefaultAttachmentTempFileStore({
-    Directory Function()? rootDirectoryFactory,
-    Future<void> Function(String path)? onDirectoryPrepared,
-  })  : _rootDirectoryFactory = rootDirectoryFactory,
-        _onDirectoryPrepared = onDirectoryPrepared;
+  DefaultAttachmentTempFileStore({required AttachmentStoragePaths paths}) : _paths = paths;
 
-  final Directory Function()? _rootDirectoryFactory;
-  final Future<void> Function(String path)? _onDirectoryPrepared;
+  final AttachmentStoragePaths _paths;
   final Random _random = Random.secure();
 
   static const defaultMaxAge = Duration(hours: 24);
@@ -158,27 +156,9 @@ class DefaultAttachmentTempFileStore implements AttachmentTempFileStore {
   }
 
   @override
-  Future<void> purgeAll() async {
-    final directory = await _resolveDirectory();
-    if (await directory.exists()) {
-      await directory.delete(recursive: true);
-    }
-  }
+  Future<void> purgeAll() => _paths.purgeAll();
 
-  Future<Directory> _resolveDirectory() async {
-    final provided = _rootDirectoryFactory?.call();
-    if (provided != null) {
-      await provided.create(recursive: true);
-      await _onDirectoryPrepared?.call(provided.path);
-      return provided;
-    }
-
-    final base = await getTemporaryDirectory();
-    final directory = Directory(p.join(base.path, 'veil_attachment_cache'));
-    await directory.create(recursive: true);
-    await _onDirectoryPrepared?.call(directory.path);
-    return directory;
-  }
+  Future<Directory> _resolveDirectory() => _paths.stagingDir();
 
   Future<String> _digestFile(File file) async {
     final bytes = await file.readAsBytes();

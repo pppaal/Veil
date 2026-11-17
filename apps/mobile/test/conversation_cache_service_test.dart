@@ -165,6 +165,43 @@ void main() {
     expect(draft.sealedReference!.algorithmHint, 'x25519-aes256gcm');
   });
 
+  test('an attachment draft keeps the chat\'s timer, and one written without it reads none', () async {
+    PendingMessageRecord record(String clientMessageId, AttachmentUploadDraft draft) => PendingMessageRecord(
+          clientMessageId: clientMessageId,
+          conversationId: 'conv-1',
+          senderDeviceId: 'device-local',
+          recipientUserId: 'user-selene',
+          envelope: const CryptoEnvelope(
+            version: 'veil-envelope-v1-dev',
+            conversationId: 'conv-1',
+            senderDeviceId: 'device-local',
+            recipientUserId: 'user-selene',
+            ciphertext: '',
+            nonce: '',
+            messageKind: MessageKind.image,
+          ),
+          createdAt: DateTime.utc(2026, 4, 1),
+          state: MessageDeliveryState.uploading,
+          attachmentUploadDraft: draft,
+        );
+    const draft = AttachmentUploadDraft(filename: '', contentType: 'image/jpeg', sizeBytes: 10, sha256: 'd');
+    await cache.upsertPendingMessage(record('client-timer', draft.copyWith(disappearAfterSeconds: 10)));
+    await cache.upsertPendingMessage(record('client-none', draft));
+
+    final restored = {
+      for (final pending in await cache.readPendingMessages()) pending.clientMessageId: pending.attachmentUploadDraft!,
+    };
+    expect(restored['client-timer']!.disappearAfterSeconds, 10);
+    expect(restored['client-none']!.disappearAfterSeconds, isNull);
+    // A draft stored before the field existed has no key for it.
+    expect(draft.toJson().containsKey('disappearAfterSeconds'), isFalse);
+    expect(AttachmentUploadDraft.fromJson(draft.toJson()).disappearAfterSeconds, isNull);
+    // copyWith keeps it unless told, and can clear it.
+    final timed = draft.copyWith(disappearAfterSeconds: 300);
+    expect(timed.copyWith(bytesUploaded: 5).disappearAfterSeconds, 300);
+    expect(timed.copyWith(disappearAfterSeconds: null).disappearAfterSeconds, isNull);
+  });
+
   test('restores message ordering and delivery states from cache', () async {
     const baseEnvelope = CryptoEnvelope(
       version: 'veil-envelope-v1-dev',

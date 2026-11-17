@@ -13,7 +13,9 @@ import 'package:veil_mobile/src/core/notifications/local_notification_service.da
 import 'package:veil_mobile/src/core/security/local_data_cipher.dart';
 import 'package:veil_mobile/src/core/storage/app_database.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
+import 'package:veil_mobile/src/core/storage/media_index.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
+import 'package:veil_mobile/src/features/attachments/data/attachment_storage_paths.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_store.dart';
 import 'package:veil_mobile/src/features/conversations/data/group_sender_key_coordinator.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
@@ -120,6 +122,19 @@ class MessengerParty {
   final AppDatabase database;
   final Directory attachmentDirectory;
   final bool maintainPrekeys;
+
+  /// The device's attachment folders, every root under [attachmentDirectory]
+  /// (the iOS system temporary folder too, swept as on iOS), so purges and
+  /// sweeps run for real. Kept across restarts, as the phone's are.
+  late final AttachmentStoragePaths attachmentPaths = AttachmentStoragePaths(
+    temporaryRoot: () async => Directory('${attachmentDirectory.path}/tmp')..createSync(recursive: true),
+    supportRoot: () async => Directory('${attachmentDirectory.path}/support')..createSync(recursive: true),
+    systemTempRoot: () => Directory('${attachmentDirectory.path}/system-tmp')..createSync(recursive: true),
+    sweepSystemTemp: true,
+  );
+
+  /// The media index, kept across restarts as the encrypted database is.
+  final MediaIndex mediaIndex = MemoryMediaIndex();
   final SecureStorageService keystore = SecureStorageService(MemorySecureStore());
   final LocalPrekeyStore prekeyStore = InMemoryLocalPrekeyStore();
   late final TrustedIdentityResolver pins =
@@ -245,9 +260,7 @@ class MessengerParty {
       sessionBootstrapper: crypto.sessions,
       realtimeService: realtime,
       cacheService: cache,
-      attachmentTempFileStore: DefaultAttachmentTempFileStore(
-        rootDirectoryFactory: () => attachmentDirectory,
-      ),
+      attachmentTempFileStore: DefaultAttachmentTempFileStore(paths: attachmentPaths),
       notificationService: _notificationsFor?.call(notifications) ?? notifications,
       sessionSnapshotRestorer: () => lib.restoreSessionsFromSnapshots(
         Map<String, Map<String, dynamic>>.of(_ratchetSnapshots),

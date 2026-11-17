@@ -103,6 +103,57 @@ jobs:
       - name: Verify mobile
         run: pnpm ci:mobile
 
+  android-build:
+    # The Flutter suite never compiles the Android side: the Kotlin sources,
+    # the manifest, Gradle and every plugin's native code. A debug build does,
+    # with no signing key. The merged manifest is printed and kept so its
+    # permissions and providers can be read.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          channel: stable
+          cache: true
+
+      - name: Flutter dependencies
+        run: cd apps/mobile && flutter pub get --enforce-lockfile
+
+      - name: Generate Drift code
+        run: cd apps/mobile && dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build debug APK
+        run: cd apps/mobile && flutter build apk --debug
+
+      - name: Permissions in the merged manifest
+        run: |
+          manifest=$(find apps/mobile/build/app/intermediates -path '*debug*' -name AndroidManifest.xml | grep -i merged | head -1)
+          echo "$manifest"
+          grep -o '<uses-permission[^>]*android:name="[^"]*"' "$manifest" | sed 's/.*android:name=//' | sort -u
+          grep -o '<provider[^>]*android:authorities="[^"]*"' "$manifest" | sed 's/.*android:authorities=//' | sort -u
+          cp "$manifest" merged-AndroidManifest.xml
+
+      - name: Upload merged manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-merged-manifest
+          path: merged-AndroidManifest.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
   runtime-smoke:
     # Runs on PRs too (not just main): the web-demo e2e + deploy-preflight gates
     # were main-only, so a string of e2e bugs (navigation, edit-menu, off-screen

@@ -82,9 +82,12 @@ class MethodChannelPlatformSecurityService implements PlatformSecurityService {
 
   bool get _isSupportedPlatform => Platform.isAndroid || Platform.isIOS;
 
+  /// Only the iOS runner answers on the event channel (a screenshot, the
+  /// scene going to the background). Android has no handler for it, so
+  /// listening there would end in a MissingPluginException at every launch.
   @override
   Stream<PlatformSecurityEvent> get events {
-    if (!_isSupportedPlatform) {
+    if (!Platform.isIOS) {
       return const Stream<PlatformSecurityEvent>.empty();
     }
     return _eventStream ??= _eventChannel

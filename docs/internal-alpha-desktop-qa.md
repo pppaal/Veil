@@ -24,8 +24,8 @@ Use this when the Windows desktop client is already running.
 8. Open the chat room and send one normal text message.
 9. Enable disappearing mode and send one more message.
 10. Confirm the bubble shows a remaining lifetime label.
-11. Tap + in the chat, send a photo and then a PDF, and confirm both show in the chat from the first frame.
-12. On the other device, confirm the photo shows by itself and the PDF downloads and opens with a tap.
+11. Tap + in the chat, choose Photos, pick a photo in the Windows file dialog and send it; confirm it shows in the chat from the first frame.
+12. On the other device, confirm the photo shows by itself. Sending a file, opening a received PDF and Save need the Android or iOS app: the plugin behind File and Save (`flutter_file_dialog`) and the `veil/file_open` channel exist only on those two, so on Windows a PDF only shows "Couldn't open the file". Test them with the [internal alpha checklist](internal-alpha-test-checklist.md) on a phone.
 13. Open Settings -> App lock, set a PIN, lock the app, and unlock with the PIN.
 14. Open Settings -> Device transfer and confirm the old-device requirement is explicit.
 15. Open Security Status and confirm it shows:

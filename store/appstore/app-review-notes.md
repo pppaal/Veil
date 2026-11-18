@@ -62,8 +62,10 @@ No demo credentials are needed because **there are no credentials.** The flow:
    - Optionally create a group (**New group**) and send a message in it to
      confirm the group path.
    - On Device A, tap **+** in the chat with B, choose **Photos** and send a
-     photo, then choose **File** and send a PDF; on B the photo shows in the
-     chat (tap it to open it full screen) and the PDF opens with a tap.
+     photo, then choose **File** and send a PDF (save any PDF to Files first,
+     for example from Safari, since a new simulator's Files app is empty); on
+     B the photo shows in the chat (tap it to open it full screen) and the PDF
+     opens with a tap.
      Picking uses the system photo and file pickers, so the app asks for no
      photo access. This build has no voice messages or calls.
    - To report or block (guideline 1.2): on Device A, open the menu at the top

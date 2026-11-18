@@ -66,9 +66,10 @@ photos download on a tap. A download is refused above 50 MiB or for an id
 that is not a UUID, cut off at the size the pointer allows, and checked
 against its digest before anything is decrypted. A photo shows only when its
 bytes are JPEG, PNG or WebP within the decode limits, and opens full screen
-with a tap, where Save keeps a copy on the phone. A file opens in another app
-with a tap, and the long-press menu can save either. On iOS a photo or video
-that the in-app viewer cannot show goes to Save, never to Quick Look.
+with a tap, where Save keeps a copy on the phone. A file opens with a tap: in
+another app on Android, in Quick Look on iOS, and in the in-app viewer when it
+is a JPEG, PNG or WebP. The long-press menu can save either. On iOS a photo or
+video that the in-app viewer cannot show goes to Save, never to Quick Look.
 
 Downloaded and sent blobs stay sealed, in one flat folder (`veil_media/` in
 app support) under random names of 64 hex characters. Which blob belongs to
@@ -76,14 +77,14 @@ which message is kept only in the `media_blobs` table of the encrypted
 database. The folder is capped at 1 GiB, least recently used first, never
 touching a blob that is still uploading, and a blob goes when its message
 expires. Decrypted bytes live only in memory and are dropped on lock. The
-only plaintext files are the copies made to open or save a file, in
-`veil_open/` under the temporary folder. They go when Quick Look closes or
-the save screen returns (a Save copy also on lock), when their message
-expires, after 10 minutes (a sweep runs every 60 seconds) and at start. A picker's copy is moved into the
-staging folder at once and stays there only until it is sealed or the pick
-is cancelled; nothing in staging survives a restart. On iOS the system
-temporary folder the plugins write to is emptied after each pick and each
-save.
+only plaintext files are the copies made to open a file or to save a photo
+or a file, in `veil_open/` under the temporary folder. They go when Quick
+Look closes or the save screen returns (a Save copy also on lock), when their
+message expires, after 10 minutes (a sweep runs every 60 seconds) and at
+start. A picker's copy is moved into the staging folder at once and stays
+there only until it is sealed or the pick is cancelled; nothing in staging
+survives a restart. On iOS the system temporary folder the plugins write to
+is emptied after each pick and each save.
 
 A file opens through the app's own channel, `veil/file_open`
 (`lib/src/core/platform/file_open_channel.dart`, `FileOpenChannel.kt`, the
@@ -127,7 +128,8 @@ sheet or a page, and with each batch of messages that arrives while it is
 open. Each move clears the chat's notification and sends at most one read
 receipt, for the newest message from someone else that opened (none with read
 receipts off). A chat that waits on a safety number change or an account
-hold, or a 1:1 with a blocked account, sends no receipt at all: the mark
+hold, a 1:1 whose account has a safety number change waiting in another
+chat, and a 1:1 with a blocked account send no receipt at all: the mark
 still moves, and what was read then is never receipted later.
 
 An unread row in Chats has its name in bold and a count, or a dot when the

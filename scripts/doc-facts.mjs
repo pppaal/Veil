@@ -217,6 +217,7 @@ export const STALE_STATEMENTS = [
       /\bsends text only\b/i,
       /\btext-only build\b/i,
       /\bcannot send (?:an )?attachments?\b/i,
+      /\battachments? (?:is|are) (?:switched off|not in the app)\b/i,
       /\bhas no (?:file|media|photo) picker\b/i,
       /\bdoes not keep (?:an )?unread\b/i,
       /\bkAttachmentsEnabled\b/,

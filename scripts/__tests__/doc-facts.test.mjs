@@ -281,6 +281,8 @@ test('while the phone sends photos and files and keeps unread counts, no documen
     'The Chats list shows no unread count (the app does not keep an unread count).',
     'One constant is left: `kAttachmentsEnabled`, false while the app has no picker.',
     'A received file opens in another app through `open_filex`.',
+    'Sending attachments is switched off, so no button leads to it.',
+    'Sending attachments is not in the app yet.',
   ];
   for (const sentence of said) {
     const failures = failuresOf(RULES.staleStatement, { 'docs/mobile.md': `${sentence}\n` });

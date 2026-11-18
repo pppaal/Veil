@@ -107,6 +107,12 @@ For a concise click-by-click Windows flow, see [Internal Alpha Desktop QA](inter
 
 ### D. Attachments
 
+Steps 3 to 5 need the Android or iOS app. The Windows desktop runtime can send
+and show a photo (its photo picker is a file dialog), but the plugin behind
+File and Save (`flutter_file_dialog`) and the `veil/file_open` channel exist
+only on Android and iOS, so on Windows a received PDF only shows "Couldn't
+open the file".
+
 1. Tap + in the chat room and choose Photos; pick a photo and send it.
 2. Confirm the photo shows in the bubble at once, with a ring while it uploads.
 3. Choose File, pick a PDF and send it from the confirm dialog.

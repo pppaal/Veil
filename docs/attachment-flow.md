@@ -66,13 +66,15 @@ they say otherwise.
    time) in an isolate that reads the sealed file itself. It renders only
    when its bytes are JPEG, PNG or WebP and the header is within the decode
    limits; it is decoded at the bubble's width, and in the full-screen viewer
-   at a long edge of at most 4096 px or twice the screen's.
+   at a long edge of at most the smaller of 4096 px and twice the screen's
+   long edge.
 4. A tap on a file downloads it if needed, decrypts it into `veil_open/` and
-   opens it. A file whose
-   bytes are a JPEG, PNG or WebP within the limits opens in the in-app viewer.
+   opens it. A file whose bytes are a JPEG, PNG or WebP within the limits
+   opens in the in-app viewer.
    On iOS any other photo or video goes to Save instead, never to Quick Look.
-   Everything else opens in another app through the app's own channel
-   `veil/file_open`, with the MIME type taken from the file's extension.
+   Everything else opens through the app's own channel `veil/file_open`, in
+   another app on Android and in Quick Look on iOS, with the MIME type taken
+   from the file's extension.
 5. Save (in the viewer and in a photo or file message's long-press menu)
    asks first, every time: "Save to your phone?" / "Other apps, and any
    cloud you save it to, can open it." Then the system save screen
@@ -98,7 +100,9 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
 - A photo from Photos is kind `image` with an empty body, content type
   `image/jpeg` or `image/png`. A file from File is kind `file`, its body the
   file's name, content type from the name's extension through a fixed map
-  (else `application/octet-stream`). The web sends the same.
+  (else `application/octet-stream`). The web sends the same kinds and
+  bodies, but takes the content type from the browser and sends a photo as
+  it was picked, without re-encoding it.
 - A name is cleaned exactly as the web's `sanitizeFilename` cleans it
   (control, bidi and isolate characters removed, trimmed, at most 120
   characters keeping its extension, `file` when nothing is left) and travels
@@ -124,7 +128,7 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
   are deleted.
 - Decrypted bytes: in memory only, keyed by conversation id, attachment id
   and digest, and cleared on lock, sign-out and wipe.
-- Plaintext files exist only to open or save a file, in
+- Plaintext files exist only to open a file or to save a photo or a file, in
   `veil_open/<random>/<name>` under the temporary folder. A copy goes when
   Quick Look closes (iOS), when the save screen returns and on lock (a Save
   copy), when its message expires, by a sweep every 60 seconds and on resume
@@ -198,7 +202,7 @@ has the details.
 - both clients ask for `application/octet-stream`, and the server stores every blob as that type
 - max attachment size is controlled by relay configuration
 - filenames are not sent to the backend or object storage metadata
-- the phone only uploads to and downloads from the hosts in `VEIL_OBJECT_STORAGE_HOSTS`, and a release build only over TLS
+- when `VEIL_OBJECT_STORAGE_HOSTS` is set, the phone only uploads to and downloads from the hosts it lists (empty, it allows any host); a release build uploads and downloads only over TLS
 
 ## Limitations
 

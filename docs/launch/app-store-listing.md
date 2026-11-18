@@ -142,7 +142,8 @@ on the phone.
 
 To send messages, use two devices or simulators, each with its own handle,
 and start a chat from one to the other's handle. Messages show only on
-those two devices.
+those two devices. To send a photo or a file, tap + in a chat and choose
+Photos or File.
 
 Messages are end-to-end encrypted, so we cannot show their content to the
 review team.

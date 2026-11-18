@@ -65,7 +65,8 @@ table: the conversation order of the newest message read on this phone and
 whether the chat was marked unread. The count itself is never stored, and the
 server learns nothing from it. A read receipt goes out only when receipts are
 on, and never from a chat that waits on a safety number change or an account
-hold, or from a 1:1 with a blocked account. A new database holds one reserved
+hold, from a 1:1 whose account has a safety number change waiting in another
+chat, or from a 1:1 with a blocked account. A new database holds one reserved
 row, `~baseline` (no relay id can take that form), which the first chat list
 after it spends: every listed chat is marked read through its last message,
 so a phone that was just set up or moved to shows no badges for what its
@@ -83,8 +84,11 @@ uploaded or downloaded and checked against their digest, in one flat folder
 which message (conversation id, attachment id, digest, size, expiry, last use)
 is kept only in the `media_blobs` table inside the encrypted database, and the
 blob's key stays in the encrypted content store. Recency is that table's
-column, never the file's own times. Someone who can read the app's sandbox
-still sees how many blobs there are and their padded sizes, nothing more.
+column: the app never reads or sets the files' own times. So someone who can
+read the app's sandbox still sees how many blobs there are, their padded
+sizes and the file system's times on each file, which show roughly when each
+photo or file was sent or arrived (photos up to 10 MB are fetched as their
+message arrives).
 
 The folder is capped at 1 GiB, least recently used first, and never loses a
 blob whose upload is still pending. A blob goes when its message expires, when
@@ -97,13 +101,14 @@ A photo is decrypted in memory when it is shown, into a cache of at most 48 MB
 keyed by conversation id, attachment id and digest (so a reused attachment id
 never returns another message's bytes), and Flutter's image cache. Both are
 emptied when the app locks, on sign-out and on wipe, and an entry goes when
-its blob does. No decrypted photo is written to disk.
+its blob does. Showing a photo writes nothing decrypted to disk; opening a
+file and saving a photo or a file do (below).
 
-### Plaintext copies to open or save a file
+### Plaintext copies to open a file or save a photo or a file
 
-Opening a file in another app or saving it needs a plaintext file. It is
-written to `veil_open/<random>/<name>` under the app's temporary folder, and
-deleted:
+Opening a file (in another app, in Quick Look or in the in-app viewer), and
+saving a photo or a file, needs a plaintext file. It is written to
+`veil_open/<random>/<name>` under the app's temporary folder, and deleted:
 
 - on iOS, when Quick Look closes, whether the user or the lock closed it;
 - for a Save copy, when the save screen returns, and on lock;
@@ -156,8 +161,12 @@ When VEIL leaves the foreground:
 - Android sets a secure window flag to block screenshots and recent-app thumbnails
 - iOS installs a native privacy shield over the scene before app-switcher snapshots
 - the Flutter UI is also obscured for app-switcher privacy
-- the app lock is re-armed, except while a system screen the user opened from
-  Veil is up (below)
+- the app lock is re-armed. Only on Android does a system screen the user
+  opened from Veil hold it off: while a photo picker, the file picker or the
+  save screen is up, Veil is not locked, and the return locks only if that
+  screen opened more than 3 minutes before. On iOS those screens and Quick
+  Look are inside the app, so opening one is not leaving it, and leaving with
+  one up locks at once (below)
 - the privacy shield remains long enough to reduce resume-time content flashes
 
 This protects preview surfaces without claiming universal screenshot blocking across all platforms. iOS public APIs still do not offer full screenshot blocking.

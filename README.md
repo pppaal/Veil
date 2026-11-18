@@ -235,7 +235,8 @@ Mobile `--dart-define` runtime flags:
   for the API and the realtime socket. Empty means no pinning; a release
   build refuses to run without it.
 - `VEIL_OBJECT_STORAGE_HOSTS`: comma-separated hosts that presigned upload
-  and download URLs may point at; a ticket naming another host is refused.
+  and download URLs may point at; when it is set, a ticket naming another
+  host is refused (empty allows any host).
 - `VEIL_OBJECT_STORAGE_PINS`: TLS pins for the object store, same format as
   `VEIL_TLS_PINS`; empty falls back to the platform trust store.
 

@@ -27,10 +27,11 @@
 
 ## Attachment Flow
 - Tap + in a chat, choose Photos, pick a photo and send it; confirm the photo shows in the bubble at once, with a ring while it uploads, and on the other phone after its download.
-- Choose File, pick a PDF, confirm the dialog names the file and the chat, and send it; on the other phone, confirm a tap downloads it and opens it in another app.
+- Choose File, pick a PDF, confirm the dialog names the file and the chat, and send it; on the other phone, confirm a tap downloads it and opens it (in another app on Android, in Quick Look on iOS).
 - Pick a JPEG or an MP4 as a file and confirm the dialog adds "A photo or video sent as a file keeps any location saved in it."
 - Cancel an upload with the cross and confirm the message is removed and nothing is sent.
-- Let an upload fail (go offline), confirm "Not sent. Tap to retry." under the bubble, then retry and confirm it sends.
+- Go offline during an upload and confirm the ring stays and the photo sends by itself once the phone is back online: a send that gets no answer keeps retrying and does not turn into "Not sent".
+- "Not sent. Tap to retry." shows only when the relay or the object store refuses the upload, or keeps answering with a server error until the five automatic retries run out. When it shows, confirm the cross is still there, then tap the bubble and confirm the photo sends.
 - Open a received photo full screen, tap Save, and confirm the dialog "Save to your phone?" appears before the system save screen.
 
 ## Lock And Session

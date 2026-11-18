@@ -401,7 +401,33 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSendAction => 'Send';
 
   @override
-  String get chatAttachAction => 'Attach';
+  String get chatAttachAction => 'Add attachment';
+
+  @override
+  String get chatAttachPhotos => 'Photos';
+
+  @override
+  String get chatAttachFile => 'File';
+
+  @override
+  String chatAttachTooBig(String size) {
+    return 'Files can be up to $size';
+  }
+
+  @override
+  String get chatAttachPhotoFailed => 'Couldn\'t attach the photo';
+
+  @override
+  String get chatAttachFileFailed => 'Couldn\'t attach the file';
+
+  @override
+  String chatSendFileTitle(String name, String chat) {
+    return 'Send \"$name\" to $chat?';
+  }
+
+  @override
+  String get chatSendFileKeepsMetadata =>
+      'A photo or video sent as a file keeps any location saved in it.';
 
   @override
   String get chatLoadingTitle => 'Loading messages…';

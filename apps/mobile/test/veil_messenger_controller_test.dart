@@ -10,7 +10,10 @@ import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/util/base64url.dart';
+import 'package:veil_mobile/src/core/storage/media_index.dart';
+import 'package:veil_mobile/src/features/attachments/data/attachment_storage_paths.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_store.dart';
+import 'package:veil_mobile/src/features/attachments/domain/outgoing_attachment.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
@@ -21,6 +24,7 @@ import 'package:veil_mobile/src/core/storage/app_database.dart';
 import 'package:veil_mobile/src/core/storage/cache_handle.dart';
 
 import 'support/async_wait.dart';
+import 'support/media_fixtures.dart';
 import 'support/strict_mock_crypto_adapter.dart';
 
 void main() {
@@ -631,6 +635,7 @@ void main() {
       () async {
     final api = _FakeVeilApiClient(failUploadAttempts: 1);
     final tempStore = _FakeAttachmentTempFileStore();
+    final attachments = _AttachmentFolders.create();
     final crypto = createDefaultCryptoAdapter();
     final controller = VeilMessengerController(
       apiClient: api,
@@ -641,7 +646,10 @@ void main() {
       realtimeService: _FakeRealtimeService(),
       cacheService: _MemoryConversationCache(),
       attachmentTempFileStore: tempStore,
+      attachmentPaths: attachments.paths,
+      mediaIndex: attachments.index,
     );
+    addTearDown(controller.dispose);
 
     await controller.applySession(
       const AppSessionState(
@@ -656,10 +664,17 @@ void main() {
       ),
     );
 
-    await controller.sendAttachmentPlaceholder('conv-1', filename: 'brief.enc');
+    final staged = await attachments.stage(pdfBytes('brief'));
+    expect(
+      await controller.sendAttachment(
+        conversationId: 'conv-1',
+        attachment: OutgoingAttachment.file(path: staged.path, name: 'brief.pdf', contentType: 'application/pdf'),
+      ),
+      isTrue,
+    );
     final clientMessageId = controller.messagesFor('conv-1').single.clientMessageId!;
-    // The first attempt seals the file to disk before uploading; a retry
-    // issued while it is still running would be a no-op.
+    // The file is sealed before it is queued; a retry issued while the
+    // first upload is still running would be a no-op.
     await waitFor(() =>
         controller.attachmentTransferForMessage(clientMessageId)?.phase ==
         AttachmentTransferPhase.failed);
@@ -681,7 +696,10 @@ void main() {
     final sealedId = api.ticketedAttachmentIds.first;
     expect(api.ticketedAttachmentIds, [sealedId, sealedId]);
     expect(api.completedUploads, [sealedId, sealedId]);
-    expect(tempStore.deletedPaths, isNotEmpty);
+    expect(api.uploadStatuses, ['failed', 'uploaded']);
+    // The plaintext was deleted once sealed; the sealed blob stays.
+    expect(staged.existsSync(), isFalse);
+    expect(await attachments.blobCount(), 1);
   });
 
   test('a draft an older build sealed under an empty attachment id fails for good',
@@ -1180,11 +1198,12 @@ void main() {
     expect(controller.messagesFor('conv-1').map((message) => message.id).toList(), ['srv-dedupe-1']);
   });
 
-  test('canceling an attachment upload preserves the draft for retry',
+  test('canceling an attachment upload removes the message, its draft and its blob',
       () async {
     final api =
         _FakeVeilApiClient(uploadDelay: const Duration(milliseconds: 80));
     final tempStore = _FakeAttachmentTempFileStore();
+    final attachments = _AttachmentFolders.create();
     final cache = _MemoryConversationCache();
     final crypto = createDefaultCryptoAdapter();
     final controller = VeilMessengerController(
@@ -1196,7 +1215,10 @@ void main() {
       realtimeService: _FakeRealtimeService(),
       cacheService: cache,
       attachmentTempFileStore: tempStore,
+      attachmentPaths: attachments.paths,
+      mediaIndex: attachments.index,
     );
+    addTearDown(controller.dispose);
 
     await controller.applySession(
       const AppSessionState(
@@ -1211,27 +1233,32 @@ void main() {
       ),
     );
 
-    await controller.sendAttachmentPlaceholder('conv-1', filename: 'brief.enc');
+    final staged = await attachments.stage(pdfBytes('brief'));
+    await controller.sendAttachment(
+      conversationId: 'conv-1',
+      attachment: OutgoingAttachment.file(path: staged.path, name: 'brief.pdf', contentType: 'application/pdf'),
+    );
     final clientMessageId =
         controller.messagesFor('conv-1').single.clientMessageId!;
     await waitFor(() =>
         controller.attachmentTransferForMessage(clientMessageId)?.phase ==
         AttachmentTransferPhase.uploading);
+    expect(await attachments.blobCount(), 1);
 
     await controller.cancelPendingAttachment(clientMessageId);
-    await Future<void>.delayed(const Duration(milliseconds: 40));
+    await controller.retryPendingMessages('conv-1');
+    await controller.flushPendingWrites();
 
-    expect(controller.pendingCountFor('conv-1'), 1);
-    expect(controller.messagesFor('conv-1').single.deliveryState,
-        MessageDeliveryState.failed);
-    expect(controller.attachmentTransferForMessage(clientMessageId)?.phase,
-        AttachmentTransferPhase.canceled);
-    // Sealing replaced the staged plaintext with its ciphertext before the
-    // upload began; that ciphertext is the draft a retry uploads.
-    final draft = (await cache.readPendingMessages()).single.attachmentUploadDraft!;
-    expect(draft.sealedReference, isNotNull);
-    expect(tempStore.deletedPaths, isNot(contains(draft.tempFilePath)));
-    expect(File(draft.tempFilePath!).existsSync(), isTrue);
+    // Nothing of it was sent, so nothing of it is left: no bubble, no
+    // queued record (none for a restart to bring back), no transfer, no
+    // blob, and the relay was told the upload failed.
+    expect(controller.messagesFor('conv-1'), isEmpty);
+    expect(controller.pendingCountFor('conv-1'), 0);
+    expect(await cache.readPendingMessages(), isEmpty);
+    expect(controller.attachmentTransferForMessage(clientMessageId), isNull);
+    expect(await attachments.blobCount(), 0);
+    expect(api.uploadStatuses, ['failed']);
+    expect(api.sentPayloads, isEmpty);
   });
 
   test('archive search returns filtered local results from cached history',
@@ -1432,6 +1459,7 @@ class _FakeVeilApiClient extends VeilApiClient {
   final List<Map<String, dynamic>> sentPayloads = [];
   final List<String> ticketedAttachmentIds = [];
   final List<String> completedUploads = [];
+  final List<String> uploadStatuses = [];
   final List<_PagedQuery> messageFetches = [];
   int conversationFetchCount = 0;
   final Map<_PagedQuery, Map<String, dynamic>> _pagedMessages;
@@ -1658,6 +1686,7 @@ class _FakeVeilApiClient extends VeilApiClient {
     Map<String, dynamic> body,
   ) async {
     completedUploads.add(body['attachmentId'] as String);
+    uploadStatuses.add(body['uploadStatus'] as String);
     return {
       'attachmentId': body['attachmentId'],
       'uploadStatus': body['uploadStatus'],
@@ -2043,5 +2072,36 @@ class _PagedQuery {
   int get hashCode => Object.hash(conversationId, cursor);
 }
 
+/// A device's attachment folders under a temporary folder of the test's,
+/// and its media index, so sealing and the media store run for real.
+class _AttachmentFolders {
+  _AttachmentFolders._(this.root)
+      : paths = AttachmentStoragePaths(
+          temporaryRoot: () async => Directory('${root.path}/tmp')..createSync(recursive: true),
+          supportRoot: () async => Directory('${root.path}/support')..createSync(recursive: true),
+          systemTempRoot: () => Directory('${root.path}/system-tmp')..createSync(recursive: true),
+          sweepSystemTemp: true,
+        );
 
+  factory _AttachmentFolders.create() {
+    final folders = _AttachmentFolders._(Directory.systemTemp.createTempSync('veil-controller-attachments-'));
+    addTearDown(() {
+      if (folders.root.existsSync()) folders.root.deleteSync(recursive: true);
+    });
+    return folders;
+  }
 
+  final Directory root;
+  final AttachmentStoragePaths paths;
+  final MediaIndex index = MemoryMediaIndex();
+
+  /// [bytes] as the attach flow leaves a pick: a file in staging.
+  Future<File> stage(List<int> bytes) async {
+    final staging = await paths.stagingDir();
+    return File('${staging.path}/staged-${DateTime.now().microsecondsSinceEpoch}')..writeAsBytesSync(bytes);
+  }
+
+  /// How many sealed blobs the media folder holds.
+  Future<int> blobCount() async =>
+      (await paths.mediaDir()).listSync().whereType<File>().where((file) => !file.path.endsWith('.part')).length;
+}

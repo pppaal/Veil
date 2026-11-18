@@ -751,8 +751,50 @@ abstract class AppLocalizations {
   /// No description provided for @chatAttachAction.
   ///
   /// In en, this message translates to:
-  /// **'Attach'**
+  /// **'Add attachment'**
   String get chatAttachAction;
+
+  /// No description provided for @chatAttachPhotos.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos'**
+  String get chatAttachPhotos;
+
+  /// No description provided for @chatAttachFile.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get chatAttachFile;
+
+  /// No description provided for @chatAttachTooBig.
+  ///
+  /// In en, this message translates to:
+  /// **'Files can be up to {size}'**
+  String chatAttachTooBig(String size);
+
+  /// No description provided for @chatAttachPhotoFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t attach the photo'**
+  String get chatAttachPhotoFailed;
+
+  /// No description provided for @chatAttachFileFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t attach the file'**
+  String get chatAttachFileFailed;
+
+  /// No description provided for @chatSendFileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send \"{name}\" to {chat}?'**
+  String chatSendFileTitle(String name, String chat);
+
+  /// No description provided for @chatSendFileKeepsMetadata.
+  ///
+  /// In en, this message translates to:
+  /// **'A photo or video sent as a file keeps any location saved in it.'**
+  String get chatSendFileKeepsMetadata;
 
   /// No description provided for @chatLoadingTitle.
   ///

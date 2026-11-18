@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
+import 'package:veil_mobile/src/features/attachments/domain/outgoing_attachment.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/prekey_maintenance.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
@@ -11,6 +13,7 @@ import 'package:veil_mobile/src/features/conversations/data/veil_messenger_contr
 import '../support/async_wait.dart';
 import '../support/fake_relay.dart';
 import '../support/injected_device.dart';
+import '../support/media_fixtures.dart';
 import '../support/messenger_party.dart';
 
 // Two real controllers, each with its own LibCryptoAdapter, identity and
@@ -630,6 +633,15 @@ void main() {
 
   // Opens alice's latest message on bob's side, then the blob the relay
   // stored under the attachment id it names.
+  // A PDF as the attach flow leaves it for [party]: a plaintext in its
+  // staging folder, sent as a file.
+  Future<OutgoingAttachment> stagedPdf(MessengerParty party, {String name = 'brief.pdf'}) async {
+    final staging = await party.attachmentPaths.stagingDir();
+    final file = File('${staging.path}/staged-${DateTime.now().microsecondsSinceEpoch}')
+      ..writeAsBytesSync(pdfBytes(name));
+    return OutgoingAttachment.file(path: file.path, name: name, contentType: 'application/pdf');
+  }
+
   Future<(AttachmentReference, List<int>)> openLatestAttachment() async {
     final received = await bob.controller.decryptMessage(bob.controller.messagesFor(conv).last);
     expect(received.messageKind, MessageKind.file);
@@ -915,7 +927,7 @@ void main() {
   test('attachment upload carries ciphertext the peer can decrypt', () async {
     await deliver(alice, bob, 'file incoming');
 
-    await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
+    await alice.controller.sendAttachment(conversationId: conv, attachment: await stagedPdf(alice));
     await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
     await waitFor(() => bob.controller.messagesFor(conv).length == 2);
     final (reference, plaintext) = await openLatestAttachment();
@@ -924,7 +936,7 @@ void main() {
     // the relay ticketed.
     expect(relay.uploadTickets, [reference.attachmentId]);
     final uploaded = relay.uploadedBlobs[reference.attachmentId]!;
-    expect(plaintext, hasLength(2048));
+    expect(plaintext, pdfBytes('brief.pdf'));
     // What went up is sealed: longer than the file by at least the AEAD tag,
     // and not the file itself. Sizes are compared this loosely because the
     // reference's sizeBytes means ciphertext length in v1, plaintext in v2.
@@ -944,12 +956,12 @@ void main() {
     await settle();
     final fetches = Map<String, int>.of(alice.api.directoryLookups);
 
-    await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
+    await alice.controller.sendAttachment(conversationId: conv, attachment: await stagedPdf(alice));
     await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
     await waitFor(() => bob.controller.messagesFor(conv).length == 2);
 
     final (_, plaintext) = await openLatestAttachment();
-    expect(plaintext, hasLength(2048));
+    expect(plaintext, pdfBytes('brief.pdf'));
     // A lookup would tell the relay whom alice is about to message.
     expect(alice.api.directoryLookups, fetches);
   });
@@ -962,7 +974,7 @@ void main() {
     relay.uploadTicketLifetime = Duration.zero;
     relay.failUploadCompletions = 1;
 
-    await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
+    await alice.controller.sendAttachment(conversationId: conv, attachment: await stagedPdf(alice));
     final clientMessageId = alice.controller.messagesFor(conv).last.clientMessageId!;
     await waitFor(
       () => alice.controller.attachmentTransferForMessage(clientMessageId)?.phase ==
@@ -977,6 +989,6 @@ void main() {
     final (reference, plaintext) = await openLatestAttachment();
     expect(relay.uploadTickets, [reference.attachmentId, reference.attachmentId]);
     expect(relay.attachments[reference.attachmentId]!.uploadStatus, 'uploaded');
-    expect(plaintext, hasLength(2048));
+    expect(plaintext, pdfBytes('brief.pdf'));
   });
 }

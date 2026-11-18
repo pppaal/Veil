@@ -493,6 +493,16 @@ void main() {
       expect(PhotoImageProvider.debugDecodes, 0);
     });
 
+    test('kind image whose bytes are HTML is never saved as a photo', () async {
+      final reference = await phone.seal(notAnImage(), contentType: 'image/jpeg');
+      await phone.receive(attachment: reference);
+      await phone.waitForState(reference, MediaState.ready);
+      final copy = await phone.media
+          .plaintextFileFor(_chat, reference, name: 'photo-20260407-095201', photo: true, purpose: MediaCopyPurpose.save);
+      expect(copy, isNull, reason: 'bytes that are not a photo went to Save under a photo\'s name');
+      expect(await phone.openFiles(), isEmpty);
+    });
+
     test('decode budget: a 7000 x 7000 PNG in a few kilobytes is never decoded', () async {
       final png = solidPng(width: 7000, height: 7000);
       expect(png.length, lessThan(100 * 1024));
@@ -632,6 +642,15 @@ void main() {
       expect(phone.stateOf(rekeyed), MediaState.failed);
       expect(phone.stateOf(first), MediaState.ready, reason: 'the good blob was taken for the bad pointer');
       expect(await phone.mediaFiles(), hasLength(1));
+
+      // A second AES-GCM failure of a blob whose digest matches is gone
+      // (D31); the blob stays for the pointer it opens with.
+      final downloads = phone.relay.blobDownloads.length;
+      expect(await phone.media.photoBytes(_chat, rekeyed, userAsked: true), isNull);
+      expect(phone.stateOf(rekeyed), MediaState.gone);
+      expect(phone.stateOf(first), MediaState.ready);
+      expect(await phone.mediaFiles(), hasLength(1));
+      expect(phone.relay.blobDownloads, hasLength(downloads), reason: 'a key that does not open it fetched it again');
     });
 
     test('a photo shown again comes from the sealed blob, with no request', () async {
@@ -667,6 +686,37 @@ void main() {
       expect(File(save!).existsSync(), isFalse, reason: 'a Save copy outlived the lock');
       expect(File(open!).existsSync(), isTrue, reason: 'the app it was handed to may still read it');
     });
+
+    test('a photo decrypt that finishes after the lock keeps nothing in memory', () async {
+      final reference = await phone.seal(photo);
+      await phone.receive(attachment: reference);
+      await phone.waitForState(reference, MediaState.ready);
+      final opening = phone.media.photoBytes(_chat, reference);
+      // The lock lands while the isolate decrypts.
+      phone.media
+        ..evictDecrypted()
+        ..setInUse(false);
+      expect(await opening, isNull, reason: 'bytes decrypted across the lock were handed out');
+      expect(phone.media.cachedPhotoBytes(_chat, reference), isNull,
+          reason: 'decrypted bytes entered memory after the lock emptied it');
+
+      // Unlocked again, the photo opens as before.
+      phone.media.setInUse(true);
+      expect(await phone.media.photoBytes(_chat, reference), photo);
+    });
+
+    for (final purpose in MediaCopyPurpose.values) {
+      test('a ${purpose.name} copy still being made when the app locks is deleted, and none is handed out',
+          () async {
+        final reference = await phone.seal(pdfBytes('late'), contentType: 'application/pdf');
+        await phone.receive(kind: MessageKind.file, body: 'late.pdf', attachment: reference);
+        final copying = phone.media.plaintextFileFor(_chat, reference, name: 'late.pdf', purpose: purpose);
+        phone.media.evictDecrypted();
+        expect(await copying, isNull);
+        await settle(const Duration(milliseconds: 50));
+        expect(await phone.openFiles(), isEmpty, reason: 'a copy made across the lock was left behind');
+      });
+    }
 
     test('signing out forgets every blob, status and decrypted byte', () async {
       final reference = await phone.seal(photo);
@@ -748,11 +798,31 @@ void main() {
           digest: 'd',
           purpose: MediaCopyPurpose.open,
           createdAt: now));
-      cleanup.setInUse(true);
+      // Nothing says the app is in use: the tick runs while it is locked
+      // or in the background too.
       await settle(const Duration(milliseconds: 120));
       expect(File(path).existsSync(), isTrue);
       now = now.add(const Duration(minutes: 10));
       await waitFor(() => !File(path).existsSync(), reason: 'the tick left it');
+    });
+
+    test('an open copy older than 10 minutes goes on a return to the lock screen', () async {
+      final reference = await phone.seal(pdfBytes('old'), contentType: 'application/pdf');
+      await phone.receive(kind: MessageKind.file, body: 'old.pdf', attachment: reference);
+      final path =
+          await phone.media.plaintextFileFor(_chat, reference, name: 'old.pdf', purpose: MediaCopyPurpose.open);
+      // Handed to another app on Android: Veil is hidden and locks at once,
+      // which leaves an open copy in place.
+      phone.media
+        ..evictDecrypted()
+        ..setInUse(false);
+      await settle(const Duration(milliseconds: 50));
+      expect(File(path!).existsSync(), isTrue);
+
+      phone.relay.deviceClockSkew['atlas'] = const Duration(minutes: 30);
+      // Back in front, on the lock screen: still not in use.
+      phone.media.setInUse(false);
+      await waitFor(() => !File(path).existsSync(), reason: 'a 30-minute-old plaintext copy outlived a resume');
     });
 
     test('a file opened in a chat with a 1-minute timer has no copy once its message is gone', () async {
@@ -797,16 +867,70 @@ void main() {
       expect(File(copy).existsSync(), isFalse);
     });
 
+    test('a disappearing photo whose relay dropped the timer still goes with its message', () async {
+      // The sender sealed a minute in; the relay strips its own copy of it.
+      phone.relay.stripOuterExpiresAt = true;
+      final reference = await phone.seal(photo);
+      final message = await phone.receive(
+        attachment: reference,
+        expiresAt: phone.relay.now().add(const Duration(minutes: 1)),
+      );
+      await phone.waitForState(reference, MediaState.ready);
+      final stored = phone.controller.messagesFor(_chat).firstWhere((m) => m.id == message.id);
+      expect(stored.expiresAt, isNotNull, reason: 'the store keeps the sealed expiry');
+      expect((await phone.index.all()).single.expiresAt, stored.expiresAt,
+          reason: 'the prefetched blob was indexed without its message\'s expiry');
+      await phone.media.photoBytes(_chat, reference);
+
+      phone.relay.deviceClockSkew['atlas'] = const Duration(minutes: 2);
+      await phone.receive(kind: MessageKind.text, body: 'later');
+      await waitFor(() => phone.controller.messagesFor(_chat).every((m) => m.id != message.id),
+          reason: 'the message itself stayed');
+      await waitFor(() async => (await phone.index.all()).isEmpty, reason: 'the blob outlived its message');
+      expect(await phone.mediaFiles(), isEmpty);
+      expect(phone.media.cachedPhotoBytes(_chat, reference), isNull, reason: 'decrypted bytes outlived the message');
+    });
+
+    test('a photo whose message expired is neither fetched again nor decrypted into a copy', () async {
+      final reference = await phone.seal(photo);
+      final message = await phone.receive(
+        attachment: reference,
+        expiresAt: phone.relay.now().add(const Duration(minutes: 1)),
+      );
+      await phone.waitForState(reference, MediaState.ready);
+      phone.relay.deviceClockSkew['atlas'] = const Duration(minutes: 2);
+      await phone.media.cleanup.sweepExpired();
+      expect(await phone.mediaFiles(), isEmpty);
+      final downloads = phone.relay.blobDownloads.length;
+      final tickets = phone.relay.downloadTicketRequests.length;
+
+      for (final purpose in MediaCopyPurpose.values) {
+        expect(
+            await phone.media.plaintextFileFor(_chat, reference,
+                name: 'photo', photo: true, purpose: purpose, expiresAt: message.expiresAt),
+            isNull);
+      }
+      expect(await phone.media.photoBytes(_chat, reference, userAsked: true, expiresAt: message.expiresAt), isNull);
+      await phone.media.download(_chat, reference, expiresAt: message.expiresAt);
+      expect(phone.relay.downloadTicketRequests, hasLength(tickets), reason: 'an expired photo was asked for again');
+      expect(phone.relay.blobDownloads, hasLength(downloads));
+      expect(await phone.openFiles(), isEmpty);
+    });
+
     test('a disappearing photo only in the cache, not loaded, goes too', () async {
       final reference = await phone.seal(photo);
+      // After the start's sweeps (they run one after another), so none of
+      // them races the write below.
+      await phone.media.cleanup.sweepExpired();
       await phone.media.blobs.write(
         conversationId: 'conv-cached-only',
         attachmentId: reference.attachmentId,
         digest: reference.sha256,
         sealedBytes: phone.relay.uploadedBlobs[reference.attachmentId]!,
-        expiresAt: phone.relay.now().subtract(const Duration(seconds: 1)),
+        expiresAt: phone.relay.now().add(const Duration(minutes: 1)),
       );
       expect(await phone.mediaFiles(), hasLength(1));
+      phone.relay.deviceClockSkew['atlas'] = const Duration(minutes: 2);
       await phone.media.cleanup.sweepExpired();
       expect(await phone.mediaFiles(), isEmpty);
       expect(await phone.index.all(), isEmpty);

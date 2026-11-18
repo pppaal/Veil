@@ -22,10 +22,13 @@ import 'save_media.dart';
 /// underneath: a page pushed on the root navigator, not a route of its own.
 /// [title] is who sent it as the chat names them ("You" for the user's
 /// own); [fileName] is set for a photo that came as a file, which Save
-/// keeps.
+/// keeps. The viewer closes by itself when its message [messageId] leaves
+/// the chat or reaches [expiresAt] (a disappearing photo goes with its
+/// message).
 Future<void> showPhotoViewer(
   BuildContext context, {
   required String conversationId,
+  String? messageId,
   required AttachmentReference attachment,
   required Uint8List bytes,
   required String title,
@@ -41,6 +44,7 @@ Future<void> showPhotoViewer(
       opacity: animation,
       child: PhotoViewerScreen(
         conversationId: conversationId,
+        messageId: messageId,
         attachment: attachment,
         bytes: bytes,
         title: title,
@@ -62,6 +66,7 @@ class PhotoViewerScreen extends ConsumerStatefulWidget {
   const PhotoViewerScreen({
     super.key,
     required this.conversationId,
+    this.messageId,
     required this.attachment,
     required this.bytes,
     required this.title,
@@ -71,6 +76,9 @@ class PhotoViewerScreen extends ConsumerStatefulWidget {
   });
 
   final String conversationId;
+
+  /// The message the photo is in: the viewer closes once it is gone.
+  final String? messageId;
   final AttachmentReference attachment;
   final Uint8List bytes;
   final String title;
@@ -103,10 +111,20 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
   bool _atRest = true;
   double _drag = 0;
   Offset? _doubleTapAt;
+  Timer? _expiry;
+  bool _closing = false;
 
   @override
   void initState() {
     super.initState();
+    // A disappearing photo goes with its message (D37): the viewer closes
+    // when the message leaves the chat or its time runs out.
+    ref.listenManual(messengerControllerProvider, (_, __) => scheduleMicrotask(_closeIfGone));
+    final expiresAt = widget.expiresAt;
+    if (expiresAt != null) {
+      final left = expiresAt.difference(ref.read(messengerControllerProvider).expiryNow());
+      _expiry = Timer(left.isNegative ? Duration.zero : left + const Duration(milliseconds: 1), _closeIfGone);
+    }
     _transform.addListener(() {
       final atRest = _transform.value.getMaxScaleOnAxis() <= 1.01;
       if (atRest != _atRest) setState(() => _atRest = atRest);
@@ -119,8 +137,26 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
     });
   }
 
+  // The message is gone or expired: the viewer, and a Save dialog over it,
+  // close.
+  void _closeIfGone() {
+    if (!mounted || _closing) return;
+    final controller = ref.read(messengerControllerProvider);
+    final expiresAt = widget.expiresAt;
+    final messageId = widget.messageId;
+    final expired = expiresAt != null && !expiresAt.isAfter(controller.expiryNow());
+    final left = messageId != null && !controller.messagesFor(widget.conversationId).any((m) => m.id == messageId);
+    final route = ModalRoute.of(context);
+    if ((!expired && !left) || route == null || !route.isActive) return;
+    _closing = true;
+    Navigator.of(context)
+      ..popUntil((candidate) => candidate == route)
+      ..pop();
+  }
+
   @override
   void dispose() {
+    _expiry?.cancel();
     _zoom.dispose();
     _settle.dispose();
     _transform.dispose();
@@ -194,6 +230,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
                   child: InteractiveViewer(
                     key: const ValueKey('photo-viewer-zoom'),
                     transformationController: _transform,
+                    minScale: 1,
                     maxScale: PhotoViewerScreen.maxScale,
                     panEnabled: !_atRest,
                     child: SizedBox.expand(

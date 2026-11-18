@@ -1,9 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/app/app_state.dart';
+import 'package:veil_mobile/src/app/router/app_router.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_opener.dart';
 import 'package:veil_mobile/src/features/attachments/presentation/photo_viewer_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_file_card.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_photo.dart';
@@ -83,7 +90,8 @@ void main() {
     });
   });
 
-  testWidgets('a PDF waits for a tap, then opens in another app as a PDF, byte for byte', (tester) async {
+  testWidgets('a PDF waits for a tap, which fetches it and opens it in another app as a PDF, byte for byte',
+      (tester) async {
     await withChat(
         tester,
         (world) => deliverAttachment(world,
@@ -96,15 +104,116 @@ void main() {
       expect(world.relay.downloadTicketRequests, isEmpty, reason: 'a file never comes by itself');
       expect(find.byIcon(Icons.download_outlined), findsOneWidget);
 
+      // One tap (D28): it is fetched, then opened.
       await tester.tap(find.byType(MessageFileCard));
-      await until(tester, () => find.byIcon(Icons.insert_drive_file_outlined).evaluate().isNotEmpty,
-          reason: 'the file never came');
-      expect(opener.opened, isEmpty, reason: 'fetching it opened it');
-
-      await tester.tap(find.byType(MessageFileCard));
-      await until(tester, () => opener.opened.isNotEmpty, reason: 'it never opened');
+      await until(tester, () => opener.opened.isNotEmpty, reason: 'one tap did not fetch and open it');
+      expect(world.relay.blobDownloads, hasLength(1));
       expect(opener.opened.single.as, 'application/pdf', reason: 'the type comes from its name');
       expect(opener.opened.single.bytes, leasePdf);
+      expect(find.byIcon(Icons.insert_drive_file_outlined), findsOneWidget);
+    });
+  });
+
+  // The real router, so the lock replaces the chat with the lock screen as
+  // it does on a phone.
+  testWidgets('the app locks while a file is decrypted for Open: nothing reaches another app', (tester) async {
+    usePhoneView(tester, phoneSmall);
+    final world = await LayoutWorld.create(
+      identities: identities,
+      account: LayoutAccount.signedIn,
+      locale: 'en',
+      overrides: [attachmentOpenerProvider.overrideWithValue(opener)],
+    );
+    try {
+      final lease = await deliverAttachment(world,
+          plaintext: leasePdf,
+          contentType: 'application/pdf',
+          kind: MessageKind.file,
+          body: leaseFileName,
+          hour: 10,
+          minute: 16);
+      await fetchAndOpen(world, lease, photo: false);
+      final router = world.container.read(appRouterProvider);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: world.container,
+        child: MaterialApp.router(
+          theme: VeilTheme.dark(fontFamily: layoutFontFamily),
+          locale: const Locale('en'),
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
+      ));
+      await pumpFrames(tester);
+      unawaited(router.push(_chat));
+      await pumpFrames(tester);
+      expect(find.byType(ChatRoomScreen), findsOneWidget);
+      await until(tester, () => find.byIcon(Icons.insert_drive_file_outlined).evaluate().isNotEmpty,
+          reason: 'the file is not ready');
+
+      await tester.tap(find.byType(MessageFileCard));
+      await tester.pump();
+      // Home on Android (opening a file gets no grace) while it decrypts.
+      world.container.read(appSessionProvider.notifier).lock();
+      await pumpFrames(tester, frames: 6);
+      for (var i = 0; i < 40; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+      }
+      expect(world.container.read(appSessionProvider).locked, isTrue);
+      expect(opener.opened, isEmpty, reason: 'a decrypted file was handed to another app while Veil is locked');
+      expect(world.messenger.media.cleanup.copies, isEmpty, reason: 'a copy made across the lock was left behind');
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      world.dispose();
+    }
+  });
+
+  testWidgets('the viewer closes when its disappearing photo expires, and nothing of it can be saved after',
+      (tester) async {
+    await withChat(tester, (world) async {
+      world.messenger.media.setInUse(true);
+      await deliverAttachment(world,
+          plaintext: landscapePhoto,
+          contentType: 'image/jpeg',
+          kind: MessageKind.image,
+          hour: 10,
+          minute: 16,
+          expiresAt: world.relay.now().add(const Duration(minutes: 1)));
+    }, (world) async {
+      final inBubble = find.descendant(of: find.byType(MessagePhoto), matching: drawnPhoto);
+      await until(tester, () => inBubble.evaluate().isNotEmpty, reason: 'the photo never showed');
+      await tester.tap(inBubble);
+      await pumpFrames(tester, frames: 4);
+      final inViewer = find.descendant(of: find.byType(PhotoViewerScreen), matching: drawnPhoto);
+      await until(tester, () => inViewer.evaluate().isNotEmpty, reason: 'the viewer never drew the photo');
+      // The Save dialog is up when the minute runs out.
+      await tester.tap(find.byKey(const ValueKey('photo-viewer-save')));
+      await pumpFrames(tester, frames: 4);
+      expect(find.text(l10n.chatSaveTitle), findsOneWidget);
+      final downloads = world.relay.blobDownloads.length;
+
+      world.relay.deviceClockSkew[selfHandle] = const Duration(minutes: 2);
+      // Any change to the chat lets the store notice.
+      await deliverAttachment(world,
+          plaintext: pdfBytes('later'),
+          contentType: 'application/pdf',
+          kind: MessageKind.file,
+          body: 'later.pdf',
+          hour: 10,
+          minute: 30);
+      // Real time for the store to notice, fake time for the viewer to fade.
+      for (var i = 0; i < 150 && find.byType(PhotoViewerScreen).evaluate().isNotEmpty; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byType(PhotoViewerScreen), findsNothing,
+          reason: 'the viewer kept showing a photo whose message disappeared');
+      expect(find.byType(MessagePhoto), findsNothing);
+      expect(find.text(l10n.chatSaveTitle), findsNothing, reason: 'the Save dialog outlived the photo');
+      expect(opener.saved, isEmpty);
+      expect(world.relay.blobDownloads, hasLength(downloads), reason: 'the expired photo was fetched again');
     });
   });
 

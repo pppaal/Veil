@@ -85,7 +85,6 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
   final Map<MediaKey, Future<Uint8List?>> _opening = {};
   final Map<MediaKey, AttachmentUploadCancellationSignal> _cancels = {};
   final Map<MediaKey, int> _integrityFailures = {};
-  final Map<String, Set<String>> _seen = {};
   final Set<String> _scansScheduled = {};
   // Content stored before this is what the cache held, not something that
   // just arrived: only arrivals are fetched by themselves.
@@ -120,15 +119,17 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
   /// use. Null too when it cannot be shown ([statusOf] says why).
   Future<Uint8List?> photoBytes(String conversationId, AttachmentReference reference,
       {bool userAsked = false, DateTime? expiresAt, DateTime? sentAt}) {
-    if (!opens(reference)) return Future.value();
+    if (!opens(reference) || _expired(expiresAt)) return Future.value();
     final key = MediaKey(conversationId, reference);
     final cached = _decrypted.get(key);
     if (cached != null) return Future.value(cached);
     if (!_inUse && !userAsked) return Future.value();
-    return _opening[key] ??= _openPhoto(key, conversationId, reference, userAsked, expiresAt, sentAt)
-        .whenComplete(() {
-      _opening.remove(key);
-    });
+    late final Future<Uint8List?> opening;
+    opening = _opening[key] ??
+        _openPhoto(key, conversationId, reference, userAsked, expiresAt, sentAt, _evictions).whenComplete(() {
+          if (identical(_opening[key], opening)) _opening.remove(key);
+        });
+    return _opening[key] = opening;
   }
 
   /// The decrypted photo when it is in memory now; nothing else is tried.
@@ -155,18 +156,20 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
   /// A decrypted copy of [reference] for Open or Save at
   /// `veil_open/<random>/<name>` (D38), fetched first if its blob is not on
   /// the phone. [name] is made safe here; a [photo] gets the extension its
-  /// bytes call for. Null when it could not be made. Give it back with
+  /// bytes call for. Null when it could not be made, when its message has
+  /// expired, or when the app locked before it was ready. Give it back with
   /// [releaseCopy] as soon as it is not needed.
   Future<String?> plaintextFileFor(String conversationId, AttachmentReference reference,
       {required String name, required MediaCopyPurpose purpose, bool photo = false, DateTime? expiresAt}) async {
-    if (!opens(reference)) return null;
+    if (!opens(reference) || _expired(expiresAt)) return null;
     final key = MediaKey(conversationId, reference);
+    final evictions = _evictions;
     for (var attempt = 0; attempt < 2; attempt++) {
       final blob =
           await _blobPath(conversationId, reference) ?? await _fetch(key, conversationId, reference, expiresAt);
       if (blob == null || _disposed) return null;
       try {
-        return await cleanup.decryptCopy(
+        final path = await cleanup.decryptCopy(
           conversationId: conversationId,
           reference: reference,
           blob: blob,
@@ -174,6 +177,10 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
           purpose: purpose,
           photo: photo,
         );
+        // Locked (or signed out) meanwhile: no copy outlives that.
+        if (evictions == _evictions) return path;
+        await releaseCopy(path);
+        return null;
       } on AttachmentOpenException {
         // Damaged on the phone: fetched once more.
         if (!await _openFailed(key, conversationId, reference, blob)) return null;
@@ -195,6 +202,7 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
   /// every Save copy: the session locked.
   void evictDecrypted() {
     _decrypted.clear();
+    _opening.clear();
     _evictions += 1;
     unawaited(cleanup.deleteSaveCopies().catchError((Object _) {}));
     if (!_disposed) notifyListeners();
@@ -211,7 +219,7 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
     if (_disposed) return;
     if (inUse) _ensureStarted();
     _prefetch.setRunning(inUse);
-    cleanup.setInUse(inUse);
+    cleanup.appStateChanged();
     if (!inUse) unawaited(blobs.flushRecency().catchError((Object _) {}));
     // Photos that waited for the app to come back may open now.
     if (returned) notifyListeners();
@@ -227,7 +235,6 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
     _decrypted.clear();
     _evictions += 1;
     _prefetch..clear()..setRunning(_inUse);
-    _seen.clear();
     cleanup.reset();
     _started = false;
     _arrivalsSince = DateTime.now();
@@ -278,21 +285,15 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
 
   // Queues the photos that just arrived in [conversationId] (D25).
   Future<void> _queueArrivals(String conversationId) async {
-    final seen = _seen.putIfAbsent(conversationId, () => {});
-    final arrived = [
-      for (final message in _store.messagesOf(conversationId))
-        if (!message.isMine && !message.isLocalNotice && seen.add(message.id)) message,
-    ];
-    if (arrived.isEmpty) return;
     final generation = _session.generation;
-    await _prefetch.queueArrivals(conversationId, arrived,
+    final arrived = await _prefetch.queueArrivals(conversationId, _store.messagesOf(conversationId),
         read: _contents.read,
         stored: _contents.storedFor,
         opens: opens,
         since: _arrivalsSince,
         now: _now,
         stillWanted: () => !_disposed && generation == _session.generation);
-    if (!_disposed) notifyListeners();
+    if (arrived && !_disposed) notifyListeners();
   }
 
   Future<void> _prefetchOne(PrefetchItem item) async {
@@ -301,7 +302,7 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
   }
 
   Future<Uint8List?> _openPhoto(MediaKey key, String conversationId, AttachmentReference reference, bool userAsked,
-      DateTime? expiresAt, DateTime? sentAt) async {
+      DateTime? expiresAt, DateTime? sentAt, int evictions) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       var blob = await _blobPath(conversationId, reference);
       if (blob == null && !userAsked) {
@@ -324,11 +325,9 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
       }
       // The bytes decide (D34): a header past the render limits is never
       // decoded.
-      final type = sniffImageType(bytes);
-      final header = await readImageHeader(bytes);
-      if (type == null || header == null || !withinRenderLimits(type, header.width, header.height)) {
-        return _set(key, MediaState.unsupported);
-      }
+      if (!await isDrawablePhoto(bytes)) return _set(key, MediaState.unsupported);
+      // Locked while it decrypted: memory stays as empty as the lock left it.
+      if (evictions != _evictions) return null;
       _decrypted.put(key, bytes);
       _set(key, MediaState.ready);
       return bytes;
@@ -342,8 +341,7 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
       MediaKey key, String conversationId, AttachmentReference reference, DateTime? expiresAt, DateTime? sentAt) {
     final state = _status[key]?.state;
     if (state != null && state != MediaState.idle && state != MediaState.ready) return;
-    if (_prefetch.isQueued(key) || reference.sizeBytes > kMaxPhotoBytes) return;
-    if (expiresAt != null && !expiresAt.isAfter(_now())) return;
+    if (_prefetch.isQueued(key) || reference.sizeBytes > kMaxPhotoBytes || _expired(expiresAt)) return;
     _status.remove(key);
     final item = PrefetchItem(
         key: key, conversationId: conversationId, reference: reference, sentAt: sentAt ?? _now(), expiresAt: expiresAt);
@@ -378,7 +376,8 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
     if (running != null) return running;
     if (!inSlot) _prefetch.remove(key);
     final state = _status[key]?.state;
-    if (state == MediaState.gone || state == MediaState.unsupported) return Future.value();
+    // A message that expired is fetched no more (D37).
+    if (state == MediaState.gone || state == MediaState.unsupported || _expired(expiresAt)) return Future.value();
     _set(key, MediaState.downloading);
     Future<String?> transfer() => _transfer(key, conversationId, reference, expiresAt);
     // A block body: the removed future must not be what whenComplete awaits.
@@ -424,13 +423,14 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
     return null;
   }
 
+  bool _expired(DateTime? expiresAt) => expiresAt != null && !expiresAt.isAfter(_now());
+
   Future<String?> _blobPath(String conversationId, AttachmentReference reference) =>
       blobs.pathOf(conversationId, reference.attachmentId, reference.sha256).catchError((Object _) => null);
 
-  void _cancelTransfers() {
-    _cancels.values.toList().forEach((signal) => signal.cancel());
-    _cancels.clear();
-  }
+  void _cancelTransfers() => _cancels
+    ..values.toList().forEach((signal) => signal.cancel())
+    ..clear();
 
   // An index entry was deleted (expiry, a chat that left, the cap, a
   // damaged file): its decrypted bytes and decoded images go with it.

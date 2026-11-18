@@ -79,6 +79,16 @@ Future<({int width, int height})?> readImageHeader(Uint8List bytes) async {
   }
 }
 
+/// Whether [bytes] are a photo this version draws (D34): they sniff as a
+/// JPEG, PNG or WebP and their header is within the render limits. Nothing
+/// is decoded.
+Future<bool> isDrawablePhoto(Uint8List bytes) async {
+  final type = sniffImageType(bytes);
+  if (type == null) return false;
+  final header = await readImageHeader(bytes);
+  return header != null && withinRenderLimits(type, header.width, header.height);
+}
+
 Future<TransferableTypedData> _openPhoto(AttachmentReference reference, String blobPath) async {
   final plaintext = await _open(reference, blobPath);
   if (sniffImageType(plaintext) == null) {

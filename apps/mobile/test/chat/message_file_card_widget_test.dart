@@ -126,16 +126,30 @@ void main() {
   MiddleEllipsisText nameText(WidgetTester tester) => tester.widget<MiddleEllipsisText>(find.byType(MiddleEllipsisText));
 
   group('where it stands', () {
-    testWidgets('not here yet: the download glyph, the name, the type and size; a tap fetches it', (tester) async {
+    testWidgets('not here yet: the download glyph, the name, the type and size; one tap fetches and opens it',
+        (tester) async {
+      // What the fetch and the decrypt will hand back.
+      media.plaintexts[MediaKey(_chat, _pointer())] = Uint8List.fromList(pdfBytes('lease'));
       await show(tester);
       expect(find.byIcon(Icons.download_outlined), findsOneWidget);
       expect(nameText(tester).text, 'lease.pdf');
       expect(find.text('PDF · 2.3 MB'), findsOneWidget);
-      expect(media.downloads, isEmpty, reason: 'a file never comes by itself');
+      expect(media.copies, isEmpty, reason: 'a file never comes by itself');
 
       await tester.tap(find.byType(MessageFileCard));
-      await tester.pump();
-      expect(media.downloads, [MediaKey(_chat, _pointer())]);
+      await drain(tester);
+      expect(media.copies, [(MediaKey(_chat, _pointer()), MediaCopyPurpose.open)],
+          reason: 'the tap did not fetch it for opening');
+      expect(opener.opened.single.bytes, pdfBytes('lease'), reason: 'a second tap was needed to open it');
+    });
+
+    testWidgets('a fetch that does not finish opens nothing, and the card says why, not a toast', (tester) async {
+      await show(tester);
+      await tester.tap(find.byType(MessageFileCard));
+      await drain(tester);
+      expect(media.copies, hasLength(1));
+      expect(opener.opened, isEmpty);
+      expect(find.text(l10n.chatOpenFileFailed), findsNothing);
     });
 
     testWidgets('on its way: a ring with a cross that stops it', (tester) async {
@@ -151,10 +165,11 @@ void main() {
       media.setStatus(_chat, _pointer(), MediaState.failed);
       await show(tester);
       expect(find.text('Couldn\'t download. Tap to retry.'), findsOneWidget);
-      expect(find.byIcon(Icons.refresh), findsOneWidget, reason: 'the retry glyph');
+      expect(find.byIcon(Icons.download_outlined), findsOneWidget, reason: 'D31: the download glyph');
+      expect(find.byIcon(Icons.refresh), findsNothing);
       await tester.tap(find.byType(MessageFileCard));
-      await tester.pump();
-      expect(media.downloads, hasLength(1));
+      await drain(tester);
+      expect(media.copies, hasLength(1), reason: 'the tap did not try again');
     });
 
     testWidgets('gone from the server: "File not available", and a tap does nothing', (tester) async {
@@ -201,6 +216,21 @@ void main() {
       expect(find.text('SH · 2.3 MB'), findsOneWidget);
     });
 
+    testWidgets('a line separator cannot end the name early and hide its real extension', (tester) async {
+      await show(tester, name: 'invoice.pdf\u2028\u2028\u2029.exe');
+      expect(nameText(tester).text, 'invoice.pdf   .exe');
+      expect(find.text('EXE · 2.3 MB'), findsOneWidget);
+    });
+
+    testWidgets('a name cut in the middle keeps no space after the ellipsis', (tester) async {
+      const name = 'Lease agreement for the flat on Elm Street signed final.pdf';
+      await show(tester, name: name, width: 300);
+      final shown = tester.renderObject<RenderMiddleEllipsisText>(find.byType(MiddleEllipsisText)).shownText;
+      expect(shown, contains('…'));
+      expect(shown, isNot(contains('… ')));
+      expect(shown, endsWith('final.pdf'));
+    });
+
     testWidgets('semantics: the name, then the type and size, and what a tap does', (tester) async {
       await show(tester);
       final semantics = tester.widget<Semantics>(find.byWidgetPredicate(
@@ -208,6 +238,21 @@ void main() {
       expect(semantics.properties.hintOverrides?.onTapHint, l10n.chatDownloadAction);
       expect(semantics.properties.button, isTrue);
     });
+
+    for (final (state, words) in [
+      (MediaState.gone, 'File not available'),
+      (MediaState.failed, 'Couldn\'t download. Tap to retry.'),
+    ]) {
+      testWidgets('semantics when ${state.name}: a screen reader hears "$words" too', (tester) async {
+        final handle = tester.ensureSemantics();
+        media.setStatus(_chat, _pointer(), state);
+        await show(tester);
+        final label = tester.getSemantics(find.byType(MessageFileCard)).label;
+        expect(label, startsWith('lease.pdf, PDF · 2.3 MB'));
+        expect(label, contains(words), reason: 'state is always also text, for a screen reader too');
+        handle.dispose();
+      });
+    }
   });
 
   group('opening it (D28)', () {
@@ -220,6 +265,20 @@ void main() {
       expect(opener.opened.single.as, 'application/pdf');
       expect(opener.opened.single.bytes, pdfBytes('lease'));
       expect(media.copies.single.$2, MediaCopyPurpose.open);
+    });
+
+    testWidgets('the app locks while the copy is read: nothing reaches another app, and the copy goes',
+        (tester) async {
+      ready();
+      await show(tester);
+      await tester.tap(find.byType(MessageFileCard));
+      // The lock lands before the copy is handed on.
+      media.evict();
+      await drain(tester);
+      expect(media.copies, hasLength(1));
+      expect(opener.opened, isEmpty, reason: 'a decrypted file was handed on after the lock');
+      expect(media.released, hasLength(1), reason: 'the copy was left behind');
+      expect(root.listSync(recursive: true).whereType<File>(), isEmpty);
     });
 
     testWidgets('kind file claiming image/png but named .pdf opens as a PDF', (tester) async {

@@ -170,7 +170,9 @@ class _MessagePhotoState extends ConsumerState<MessagePhoto> {
     final own = widget.message.isMine && !widget.highlighted;
     return LayoutBuilder(builder: (context, constraints) {
       final available = constraints.maxWidth.isFinite ? constraints.maxWidth : MediaQuery.sizeOf(context).width;
-      final maxWidth = math.min(240.0, available * VeilBubble.widthShare);
+      // A failed send leaves room for the red glyph beside the bubble.
+      final share = available * VeilBubble.widthShare - (widget.message.hasFailed ? VeilBubble.failedGlyphExtent : 0);
+      final maxWidth = math.min(240.0, share);
       if (_bytes case final bytes?) _resolve(context, media, bytes, maxWidth);
       final photo = _photoSize;
       final size = photo == null
@@ -233,8 +235,9 @@ class _MessagePhotoState extends ConsumerState<MessagePhoto> {
                           : null,
                   child: body,
                 ),
-                SizedBox(
-                  height: MessagePhoto.metaStripHeight,
+                ConstrainedBox(
+                  // Taller at a large text size, never clipped.
+                  constraints: const BoxConstraints(minHeight: MessagePhoto.metaStripHeight),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm),
                     child: Align(alignment: AlignmentDirectional.centerEnd, child: widget.meta),
@@ -323,6 +326,7 @@ class _MessagePhotoState extends ConsumerState<MessagePhoto> {
     unawaited(showPhotoViewer(
       context,
       conversationId: widget.conversationId,
+      messageId: widget.message.id,
       attachment: widget.attachment,
       bytes: bytes,
       title: widget.message.isMine ? l10n.viewerSenderYou : (widget.authorName ?? ''),
@@ -372,7 +376,7 @@ class _Tile extends StatelessWidget {
               size: VeilIconSize.lg, color: own ? palette.outgoingMeta : palette.textSubtle),
           l10n.chatPhotoUnavailable,
         ),
-      MediaState.failed => (_DownloadGlyph(own: own, icon: Icons.refresh), l10n.chatDownloadFailed),
+      MediaState.failed => (_DownloadGlyph(own: own), l10n.chatDownloadFailed),
       _ => (_DownloadGlyph(own: own), formatFileSize(sizeBytes)),
     };
     return Padding(
@@ -389,12 +393,12 @@ class _Tile extends StatelessWidget {
   }
 }
 
-/// The download glyph (or the retry glyph) in its 40 dp circle.
+/// The download glyph in its 40 dp circle: nothing fetched yet, or a fetch
+/// that failed (D31).
 class _DownloadGlyph extends StatelessWidget {
-  const _DownloadGlyph({required this.own, this.icon = Icons.download_outlined});
+  const _DownloadGlyph({required this.own});
 
   final bool own;
-  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -403,7 +407,7 @@ class _DownloadGlyph extends StatelessWidget {
       decoration: BoxDecoration(color: own ? Colors.white24 : palette.surfaceRaised, shape: BoxShape.circle),
       child: SizedBox.square(
         dimension: 40,
-        child: Icon(icon, size: 24, color: own ? Colors.white : palette.text),
+        child: Icon(Icons.download_outlined, size: 24, color: own ? Colors.white : palette.text),
       ),
     );
   }

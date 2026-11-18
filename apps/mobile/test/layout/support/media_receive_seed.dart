@@ -74,6 +74,7 @@ Future<SeededAttachment> deliverAttachment(
   String from = peerHandle,
   String body = '',
   bool uploaded = true,
+  DateTime? expiresAt,
 }) async {
   final relay = world.relay;
   final mine = from == selfHandle;
@@ -99,6 +100,7 @@ Future<SeededAttachment> deliverAttachment(
       signedPrekeyBundle: 'spk',
     ),
     attachment: reference,
+    expiresAt: expiresAt,
   );
   final stored = relay.inject(
     senderHandle: from,

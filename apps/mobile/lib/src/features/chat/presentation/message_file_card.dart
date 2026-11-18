@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,11 +8,8 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
-import '../../attachments/data/attachment_decrypt.dart' show readImageHeader;
-import '../../attachments/data/attachment_opener.dart';
 import '../../attachments/domain/attachment_rules.dart';
-import '../../attachments/presentation/photo_viewer_screen.dart';
-import '../../attachments/presentation/save_media.dart';
+import '../../attachments/presentation/open_file.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/attachment_media_service.dart';
 import '../../conversations/data/messenger_providers.dart';
@@ -26,8 +21,8 @@ import 'chat_room_labels.dart';
 /// file glyph once it is here), the sender's file name on one line, cut in
 /// the middle so its real extension stays, and "PDF · 2.3 MB" under it, the
 /// type from that extension, never from what the sender claims. A tap
-/// fetches it, or opens it (D28): in the viewer when it is a photo this
-/// version draws, else in another app.
+/// fetches it if it is not here yet, then opens it (D28): in the viewer
+/// when it is a photo this version draws, else in another app.
 class MessageFileCard extends ConsumerStatefulWidget {
   const MessageFileCard({
     super.key,
@@ -85,7 +80,10 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
     final palette = context.veilPalette;
     final own = widget.message.isMine;
     final status = media.statusOf(widget.conversationId, widget.attachment);
-    final name = sanitizeFileName(widget.name, fallback: l10n.chatAttachmentKindFile);
+    // A line or paragraph separator would end the one line early and hide
+    // the rest of the name: shown as a space.
+    final name = sanitizeFileName(widget.name, fallback: l10n.chatAttachmentKindFile)
+        .replaceAll(RegExp('[\u2028\u2029]'), ' ');
     final type = fileTypeLabel(name) ?? l10n.chatAttachmentKindFile;
     final typeSize = l10n.chatAttachmentTypeSize(type, formatFileSize(widget.attachment.sizeBytes));
     final sending = _sending;
@@ -137,7 +135,6 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
           : Icon(
               switch (status.state) {
                 _ when ready || status.state == MediaState.gone => Icons.insert_drive_file_outlined,
-                MediaState.failed => Icons.refresh,
                 _ => Icons.download_outlined,
               },
               size: VeilIconSize.md,
@@ -146,17 +143,10 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
                   : (own ? Colors.white : palette.text),
             ),
     );
-    final onTap = ready && !_opening
-        ? () => _open(context)
-        : canFetch
-            ? () {
-                VeilHaptics.light();
-                unawaited(media.download(widget.conversationId, widget.attachment,
-                    expiresAt: widget.message.expiresAt));
-              }
-            : null;
+    final onTap = (ready || canFetch) && !_opening ? () => _open(context) : null;
     return Semantics(
-      label: '$name, $typeSize',
+      // The note is the card's state; it is read out too.
+      label: note == null ? '$name, $typeSize' : '$name, $typeSize. $note',
       button: onTap != null,
       onTapHint: ready ? l10n.chatOpenAction : (canFetch ? l10n.chatDownloadAction : null),
       excludeSemantics: cancel == null,
@@ -192,6 +182,7 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
   }
 
   Future<void> _open(BuildContext context) async {
+    VeilHaptics.light();
     setState(() => _opening = true);
     try {
       await openFileAttachment(
@@ -207,69 +198,6 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
       if (mounted) setState(() => _opening = false);
     }
   }
-}
-
-/// Opens a received or sent file (D28): decrypted into its own folder
-/// under veil_open, then shown in the viewer when its bytes are a JPEG,
-/// PNG or WebP within the render limits; on iOS an image or a video the
-/// viewer cannot show goes to Save instead (Quick Look would offer to save
-/// it to Photos, which the app has no permission for); anything else opens
-/// in another app as the type its extension names.
-Future<void> openFileAttachment(
-  BuildContext context,
-  WidgetRef ref, {
-  required String conversationId,
-  required ChatMessage message,
-  required AttachmentReference attachment,
-  required String name,
-  String? authorName,
-}) async {
-  final l10n = AppLocalizations.of(context);
-  final media = ref.read(messengerControllerProvider).media;
-  final opener = ref.read(attachmentOpenerProvider);
-  final path = await media.plaintextFileFor(conversationId, attachment,
-      name: name, purpose: MediaCopyPurpose.open, expiresAt: message.expiresAt);
-  if (path == null) {
-    final state = media.statusOf(conversationId, attachment).state;
-    // A failed or gone fetch says so on the card itself.
-    if (context.mounted && state != MediaState.failed && state != MediaState.gone) {
-      showVeilToast(context, l10n.chatOpenFileFailed);
-    }
-    return;
-  }
-  final bytes = await File(path).readAsBytes();
-  final head = bytes.length > 64 ? bytes.sublist(0, 64) : bytes;
-  final type = sniffImageType(head);
-  final header = type == null ? null : await readImageHeader(bytes);
-  if (type != null && header != null && withinRenderLimits(type, header.width, header.height)) {
-    await media.releaseCopy(path);
-    if (!context.mounted) return;
-    await showPhotoViewer(
-      context,
-      conversationId: conversationId,
-      attachment: attachment,
-      bytes: bytes,
-      title: message.isMine ? l10n.viewerSenderYou : (authorName ?? ''),
-      sentAt: message.sentAt,
-      expiresAt: message.expiresAt,
-      fileName: name,
-    );
-    return;
-  }
-  if (defaultTargetPlatform == TargetPlatform.iOS && isImageOrVideoForQuickLook(head, name)) {
-    await media.releaseCopy(path);
-    if (!context.mounted) return;
-    await saveAttachment(context, ref,
-        conversationId: conversationId, attachment: attachment, name: name, expiresAt: message.expiresAt);
-    return;
-  }
-  final outcome = await opener.open(path, mimeType: contentTypeForName(name));
-  // On Android the other app may still be reading it: the copy goes with
-  // the sweep, its message's expiry, or the next start.
-  if (outcome != OpenOutcome.opened) await media.releaseCopy(path);
-  if (!context.mounted) return;
-  if (outcome == OpenOutcome.noApp) showVeilToast(context, l10n.chatOpenFileNoApp);
-  if (outcome == OpenOutcome.failed) showVeilToast(context, l10n.chatOpenFileFailed);
 }
 
 class _Circle extends StatelessWidget {
@@ -376,7 +304,8 @@ class RenderMiddleEllipsisText extends RenderBox {
     if (characters.length < 2) return _text;
     final extension = fileExtension(_text);
     final length = (extension.isEmpty ? 6 : extension.length + 7).clamp(1, characters.length - 1);
-    return characters.sublist(characters.length - length).join();
+    // "…final.pdf", not "… final.pdf".
+    return characters.sublist(characters.length - length).join().trimLeft();
   }
 
   Size _measure(String text) {

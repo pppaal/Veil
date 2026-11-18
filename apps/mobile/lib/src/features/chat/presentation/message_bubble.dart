@@ -4,6 +4,7 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../attachments/domain/attachment_rules.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/attachment_media_service.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
@@ -183,7 +184,9 @@ class MessageBubble extends StatelessWidget {
                       else
                         MessageAttachmentCard(
                           attachment: attachment,
-                          name: decrypted!.body,
+                          // Sanitized as the file card's is (D27): no bidi
+                          // override shows as sent.
+                          name: sanitizeFileName(decrypted!.body, fallback: ''),
                           framed: onBrand,
                           voice: decrypted.messageKind == MessageKind.voice,
                         ),

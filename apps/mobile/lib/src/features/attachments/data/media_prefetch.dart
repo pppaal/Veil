@@ -254,6 +254,7 @@ class MediaPrefetch {
   final bool Function(String conversationId) _withheld;
   final Map<String, List<PrefetchItem>> _queued = {};
   final Set<MediaKey> _inFlight = {};
+  final Map<String, Set<String>> _seen = {};
   bool _running = false;
 
   /// Whether queued photos are fetched now.
@@ -279,15 +280,18 @@ class MediaPrefetch {
     return queued;
   }
 
-  /// Queues the photos among [arrived] (messages of [conversationId] seen
-  /// for the first time) that just arrived: opened ([read] answers what
-  /// opened), kind image, a pointer [opens] accepts of at most 10 MiB, not
-  /// expired by [now], and not stored before [since] ([stored] answers
-  /// when): content stored earlier is what the cache held, not an arrival;
-  /// content not stored yet was opened just now.
-  Future<void> queueArrivals(
+  /// Queues the photos that just arrived among [messages] of
+  /// [conversationId]: others' messages seen here for the first time,
+  /// opened ([read] answers what opened), kind image, a pointer [opens]
+  /// accepts of at most 10 MiB, not expired by [now], and not stored before
+  /// [since] ([stored] answers when): content stored earlier is what the
+  /// cache held, not an arrival; content not stored yet was opened just
+  /// now. A photo's expiry is the earlier of the relay's and the one its
+  /// sender sealed in, so a relay that strips the timer cannot keep its
+  /// blob. Returns whether any message was new.
+  Future<bool> queueArrivals(
     String conversationId,
-    List<ChatMessage> arrived, {
+    Iterable<ChatMessage> messages, {
     required Future<DecryptedMessage> Function(ChatMessage message) read,
     required Future<Map<String, MessageContentRecord>> Function(Iterable<ChatMessage> messages) stored,
     required bool Function(AttachmentReference reference) opens,
@@ -295,21 +299,26 @@ class MediaPrefetch {
     required DateTime Function() now,
     required bool Function() stillWanted,
   }) async {
-    final photos = <(ChatMessage, AttachmentReference)>[];
+    final seen = _seen.putIfAbsent(conversationId, () => {});
+    final arrived = [
+      for (final message in messages)
+        if (!message.isMine && !message.isLocalNotice && seen.add(message.id)) message,
+    ];
+    final photos = <(ChatMessage, AttachmentReference, DateTime?)>[];
     for (final message in arrived) {
       final opened = await read(message).then<DecryptedMessage?>((opened) => opened, onError: (_) => null);
       final reference = opened?.attachment;
-      final expiresAt = message.expiresAt;
       if (opened == null || !opened.isOk || opened.messageKind != MessageKind.image || reference == null) continue;
       if (!opens(reference) || reference.sizeBytes > kMaxPhotoBytes) continue;
-      if (expiresAt == null || expiresAt.isAfter(now())) photos.add((message, reference));
+      final expiresAt = _earlierOf(message.expiresAt, opened.expiresAt);
+      if (expiresAt == null || expiresAt.isAfter(now())) photos.add((message, reference, expiresAt));
     }
-    if (photos.isEmpty || !stillWanted()) return;
+    if (photos.isEmpty || !stillWanted()) return arrived.isNotEmpty;
     final records = await stored(photos.map((photo) => photo.$1));
     // The store keeps whole seconds: content stored in [since]'s second
     // counts as just arrived.
     final floor = since.subtract(Duration(microseconds: since.microsecondsSinceEpoch % Duration.microsecondsPerSecond));
-    for (final (message, reference) in photos) {
+    for (final (message, reference, expiresAt) in photos) {
       final record = records[message.id];
       if ((record != null && record.createdAt.isBefore(floor)) || !stillWanted()) continue;
       enqueue(PrefetchItem(
@@ -317,10 +326,14 @@ class MediaPrefetch {
         conversationId: conversationId,
         reference: reference,
         sentAt: message.sentAt,
-        expiresAt: message.expiresAt,
+        expiresAt: expiresAt,
       ));
     }
+    return true;
   }
+
+  static DateTime? _earlierOf(DateTime? left, DateTime? right) =>
+      left == null || (right != null && right.isBefore(left)) ? right : left;
 
   void setRunning(bool running) {
     _running = running;
@@ -340,6 +353,7 @@ class MediaPrefetch {
   void clear() {
     _queued.clear();
     _inFlight.clear();
+    _seen.clear();
     _running = false;
   }
 

@@ -53,9 +53,10 @@ class MediaCopy {
 /// - the folder is held to [maxBytes] by `lastUsedAt`, least recent first,
 ///   never taking the blob of an upload still pending;
 /// - a decrypted copy lives at most [copyLifetime] (swept every
-///   [copySweepInterval] while the app is in use, and on every return to
-///   it), a Save copy only until the save screen returns or the app locks,
-///   and every copy goes at start.
+///   [copySweepInterval] while any copy is left, whether or not the app is
+///   in front or unlocked, and on every change of the app's state, such as
+///   a return to the lock screen), a Save copy only until the save screen
+///   returns or the app locks, and every copy goes at start.
 class MediaCleanup {
   MediaCleanup({
     required MediaBlobStore blobs,
@@ -225,16 +226,24 @@ class MediaCleanup {
       'image/webp' => 'webp',
       _ => null,
     };
-    if (extension == null || path.toLowerCase().endsWith('.$extension')) return path;
+    // Saved as a photo only when it is one (D34): never a file of other
+    // bytes under a photo's name.
+    if (extension == null) throw const FormatException('Not a JPEG, PNG or WebP.');
+    if (path.toLowerCase().endsWith('.$extension')) return path;
     return (await file.rename('$path.$extension')).path;
   }
 
-  void registerCopy(MediaCopy copy) => _copies[copy.folder] = copy;
+  void registerCopy(MediaCopy copy) {
+    _copies[copy.folder] = copy;
+    if (_disposed) return;
+    _copyTimer ??= Timer.periodic(copySweepInterval, (_) => unawaited(sweepCopies()));
+  }
 
   /// Deletes the copy at [path] and its folder.
   Future<void> deleteCopy(String path) async {
     final folder = p.dirname(path);
     _copies.remove(folder);
+    if (_copies.isEmpty) _stopCopyTimer();
     final root = await _paths.openDir();
     if (p.isWithin(root.path, folder)) await _delete(Directory(folder));
     _made.remove(folder);
@@ -260,18 +269,16 @@ class MediaCleanup {
     }
   }
 
-  /// In use (in front and unlocked): copies are swept on every return and
-  /// every [copySweepInterval] while it lasts.
-  void setInUse(bool inUse) {
-    if (_disposed) return;
-    if (inUse) {
-      if (_copyTimer != null) return;
-      unawaited(sweepCopies());
-      _copyTimer = Timer.periodic(copySweepInterval, (_) => unawaited(sweepCopies()));
-    } else {
-      _copyTimer?.cancel();
-      _copyTimer = null;
-    }
+  /// The app's state changed (in front or not, locked or not): old copies
+  /// go now. An Android Open copy outlives the lock that follows handing it
+  /// over, so this runs on a return to the lock screen too.
+  void appStateChanged() {
+    if (!_disposed) unawaited(sweepCopies());
+  }
+
+  void _stopCopyTimer() {
+    _copyTimer?.cancel();
+    _copyTimer = null;
   }
 
   /// Forgets what it tracked for the identity that left; its folders are
@@ -279,6 +286,7 @@ class MediaCleanup {
   void reset() {
     _listed = null;
     _copies.clear();
+    _stopCopyTimer();
     _made.clear();
     _lastExpirySweep = null;
     _expiryTimer?.cancel();

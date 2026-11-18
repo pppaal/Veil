@@ -29,13 +29,13 @@ claims:
       - file: site/index.html
         quote: "End-to-end encrypted message payloads that the server cannot decrypt."
       - file: docs/privacy-policy-en.md
-        quote: "Photos and files you send, encrypted on your device so the server cannot open them, and their size."
+        quote: "Photos, files and voice messages you send, encrypted on your device so the server cannot open them, with their size and a checksum of the encrypted data."
       - file: site/index.html
-        quote: "Photos and files you send, encrypted on your device so the server cannot open them, and their size."
+        quote: "Photos, files and voice messages you send, encrypted on your device so the server cannot open them, with their size and a checksum of the encrypted data."
       - file: docs/privacy-policy-ko.md
-        quote: "이용자가 보낸 사진과 파일(기기에서 암호화되어 서버는 열 수 없습니다)과 그 크기."
+        quote: "이용자가 보낸 사진, 파일, 음성 메시지(기기에서 암호화되어 서버는 열 수 없습니다)와 그 크기, 암호화된 데이터의 체크섬."
       - file: site/index.html
-        quote: "이용자가 보낸 사진과 파일(기기에서 암호화되어 서버는 열 수 없습니다)과 그 크기."
+        quote: "이용자가 보낸 사진, 파일, 음성 메시지(기기에서 암호화되어 서버는 열 수 없습니다)와 그 크기, 암호화된 데이터의 체크섬."
       - file: store/appstore/app-privacy-answers.md
         quote: "Messages, media, photos, and audio are encrypted end-to-end."
       - file: store/appstore/app-review-notes.md
@@ -97,6 +97,14 @@ claims:
         name: "reaction envelope accepted and no push sent"
       - test: apps/mobile/test/integration/hostile_relay_test.dart
         name: "is announced in the chat once, across refreshes and a restart, and so is its removal"
+      - test: apps/mobile/test/integration/attachment_round_trip_test.dart
+        name: "a photo and a file reach the other phone and the relay holds only ciphertext"
+  - id: photo-metadata-dropped
+    text: "A photo sent from the phone's Photos is re-encoded on the phone from its pixels alone, at a long edge of at most 1600 px, so its location, camera details and other metadata do not leave the phone. A file sent with File goes as it is, and the confirm dialog warns that a photo or video sent that way keeps any location saved in it."
+    sources:
+      - file: README.md
+        quote: "Photos come from the system photo picker and are re-encoded on the phone at up to 1600 px, which drops their location and camera details; files up to 25 MB come from the system file picker and go as they are."
+    evidence:
       - test: apps/mobile/test/integration/attachment_round_trip_test.dart
         name: "a photo and a file reach the other phone and the relay holds only ciphertext"
   - id: no-plaintext-on-server

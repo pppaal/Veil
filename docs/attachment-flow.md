@@ -5,8 +5,12 @@ Status: the mobile app sends and opens photos and files, and the web client
 the same sealed blob (`encryptAttachmentV2`, pointer v2) and the same message
 content, so either opens what the other sent. The phone does not play voice
 messages: one from the web shows its kind and size with a line saying this
-version can't open it. Paths below are under `apps/mobile/lib/src` unless
-they say otherwise.
+version can't open it. File, Save and opening a received file are on Android
+and iOS only: the plugin behind File and Save (`flutter_file_dialog`) and the
+`veil/file_open` channel exist only there, so a Windows, macOS or Linux build
+of the app offers Photos only under the plus, shows no Save, and does not open
+a received file. Photos send, show and open full screen there as on a phone.
+Paths below are under `apps/mobile/lib/src` unless they say otherwise.
 
 ## Send path (mobile)
 
@@ -18,7 +22,7 @@ they say otherwise.
    lock" below).
 2. The picked copy is moved into the staging folder under an opaque name and
    the plugin's own copy is deleted at once; on iOS the system temporary
-   folder the plugins write to is emptied too.
+   folder the plugins write to (`tmp/`) is emptied too.
 3. A photo is prepared on the phone (`image_preparer.dart`): the engine
    decodes it at a long edge of at most 1600 px (never upscaled, EXIF
    orientation applied, first frame only), and the `image` package encodes
@@ -37,8 +41,9 @@ they say otherwise.
    and writes the ciphertext straight into the media folder; only the sealed
    reference comes back. The plaintext copy is deleted.
 6. The message is stored at once with its kind, body and sealed pointer, so
-   the sender's bubble shows the photo or file from the first frame. The
-   queued record carries a placeholder that is never sent.
+   the sender's bubble shows at once (an own photo shows its tile until it has
+   been decrypted from its sealed blob). The queued record carries a
+   placeholder that is never sent.
 7. The outbox asks the API for an upload ticket (content type
    `application/octet-stream`, the ciphertext's size and SHA-256), uploads
    the sealed blob to the presigned URL, and marks the upload complete. The
@@ -130,19 +135,22 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
 - Decrypted bytes: in memory only, keyed by conversation id, attachment id,
   digest and the pointer's key, and cleared on lock, sign-out and wipe.
 - Decrypted files exist only to open a file or to save a photo or a file, in
-  `veil_open/<random>/<name>` under the temporary folder; on iOS the save
-  screen also gets its own copy under the file's name in the system
-  temporary folder, deleted when the save screen returns. A copy goes when
+  `veil_open/<random>/<name>` under the app's cache folder (what
+  `getTemporaryDirectory()` returns: `cacheDir` on Android,
+  `Library/Caches` on iOS); on iOS the save screen also gets its own copy
+  under the file's name in the system temporary folder (`tmp/`), deleted
+  when the save screen returns. A copy goes when
   Quick Look closes (iOS), when the save screen returns and on lock (a Save
   copy), when its message expires, by a sweep every 60 seconds and on resume
   for copies older than 10 minutes, and at start and wipe. An Android copy
   opened in another app is not deleted on lock, since that app may still be
   reading it, and that app may keep a copy of its own.
-- The staging folder (`veil_attachment_cache` under the temporary folder)
+- The staging folder (`veil_attachment_cache` in the same cache folder)
   holds a pick, in plaintext, until it is sealed or cancelled, or for up to 10
   minutes while a lock holds it for its chat. Plugin copies are moved into
   staging or deleted at once, and on iOS the system temporary folder is
-  emptied after each pick, after each save and on wipe. At every start,
+  emptied after each pick, after each save and on wipe (`tmp/` is not the
+  cache folder above: on iOS that is `Library/Caches`). At every start,
   before the lock screen is passed, staging, Android's picker folders
   (`<uuid>/` and `file_dialog-<uuid>/` in the cache folder) and, on iOS, the
   system temporary folder are emptied, so no pick or save copy a crash left
@@ -171,7 +179,9 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
 
 - The outbox drains each chat on its own, oldest first. A text sent after a
   file in the same chat waits for that file's upload; a text to any other
-  chat goes at once.
+  chat goes at once. In a disappearing chat, a text that waited starts its
+  timer when it is sent, as the file does, so it cannot expire before it
+  leaves the phone.
 - The cross on an uploading or failed photo or file cancels it and removes
   the message: the upload stops, the API is told the upload failed if a
   ticket was issued (an upload it completed too, which deletes the blob
@@ -182,14 +192,16 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
 - The cross on a downloading file stops the fetch, also while the tap still
   waits for a transfer slot; nothing is kept or opened for it. A photo's
   download has no cross: its tile shows a ring and the size. A blob that
-  finishes downloading after its chat left the list is not kept.
+  finishes downloading after its chat left the list, or after its message
+  expired, is not kept, and nothing of it is decrypted or opened.
 
 ## App lock
 
 A picker, the save screen and, on iOS, Quick Look run inside
 `SystemSheetGrace` (`app/system_sheet_grace.dart`). On iOS they are presented
 inside the app, so only the scene really going to the background locks it,
-and the lock closes them. On Android they are other apps' screens: the app
+or, once a sheet has been up for 3 minutes, any step away from the app, and
+the lock closes them. On Android they are other apps' screens: the app
 stays unlocked while one is up, and the next return locks when the sheet
 opened more than 3 minutes before. Opening a file in another app on Android
 gets no grace, so Veil locks as soon as it is hidden, and the file opens in

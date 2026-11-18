@@ -72,7 +72,7 @@
       <li>가입 시 서버가 부여하는 무작위 계정 ID와 기기 ID(핸들과 연결됩니다)</li>
       <li>이용자가 선택한 핸들(Handle)</li>
       <li>종단간 암호화된 메시지 페이로드(서버는 평문을 복호화할 수 없습니다)</li>
-      <li>이용자가 보낸 사진과 파일(기기에서 암호화되어 서버는 열 수 없습니다)과 그 크기. 해당 메시지와 함께 삭제됩니다.</li>
+      <li>이용자가 보낸 사진, 파일, 음성 메시지(기기에서 암호화되어 서버는 열 수 없습니다)와 그 크기, 암호화된 데이터의 체크섬. 해당 메시지와 함께 삭제됩니다.</li>
       <li>전달에 필요한 메타데이터(대화 참여자, 메시지 도착 시각, 수신·읽음 확인, 기기의 마지막 접속일)</li>
       <li>앱 안의 연락처 목록: 이용자가 추가한 계정(연락처에 붙인 이름은 기기에만 저장됩니다)</li>
       <li>통화 기록: 대화, 통화를 시작한 기기, 음성·영상 여부, 통화 상태(연결 중·통화 중·종료·부재중·거절), 시작·종료 시각, 통화 시간(30일 후 삭제)</li>
@@ -158,7 +158,7 @@
       <li>A random account ID and device ID that the server assigns when you register, linked to your handle.</li>
       <li>A user-chosen handle.</li>
       <li>End-to-end encrypted message payloads that the server cannot decrypt.</li>
-      <li>Photos and files you send, encrypted on your device so the server cannot open them, and their size. They are deleted with the message they belong to.</li>
+      <li>Photos, files and voice messages you send, encrypted on your device so the server cannot open them, with their size and a checksum of the encrypted data. They are deleted with the message they belong to.</li>
       <li>The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).</li>
       <li>Your in-app contact list: which accounts you added. The names you give them stay on your device.</li>
       <li>Call records: the conversation, the device that started the call, voice or video, its status (ringing, in progress, ended, missed or declined), when it started and ended, and its duration. They are deleted after 30 days.</li>

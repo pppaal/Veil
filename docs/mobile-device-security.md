@@ -87,9 +87,10 @@ blob's key stays in the encrypted content store. Recency is that table's
 column: the app never reads or sets the files' own times. So someone who can
 read the app's sandbox still sees how many blobs there are, their padded
 sizes and the file system's times on each file, which show roughly when each
-was written: when you sent it, when a photo of up to 10 MB arrived (or first
-came on screen, if it arrived while the app was closed or locked), or when you
-first opened a file or another photo with a tap.
+was written: when you sent it, when a photo of up to 10 MB arrived (for one
+that arrived while the app was closed or locked, at the next unlock; for a
+photo that missed that, such as one past the 50 queued in a chat, when it first
+came on screen), or when you first opened a file or another photo with a tap.
 
 The folder is capped at 1 GiB, least recently used first, and never loses a
 blob whose upload is still pending. A blob goes when its message expires, when
@@ -112,7 +113,9 @@ nothing decrypted to disk; opening a file and saving a photo or a file do
 
 Opening a file (in another app, in Quick Look or in the in-app viewer), and
 saving a photo or a file, needs a plaintext file. It is written to
-`veil_open/<random>/<name>` under the app's temporary folder, and deleted:
+`veil_open/<random>/<name>` under the app's cache folder (what
+`getTemporaryDirectory()` returns: `cacheDir` on Android, `Library/Caches` on
+iOS, not `tmp/`), and deleted:
 
 - on iOS, when Quick Look closes, whether the user or the lock closed it;
 - for a Save copy, when the save screen returns, and on lock;
@@ -139,7 +142,7 @@ the picked file under its original name, the copy handed to the save screen
 and the document picker's `-Inbox/` folder. Veil empties that folder after
 each pick has been copied into staging, after each save returns, and on
 sign-out and wipe. A picked photo or file is a plaintext copy in staging
-(`veil_attachment_cache` under the temporary folder, under an opaque name)
+(`veil_attachment_cache` in the same cache folder, under an opaque name)
 until it is sealed, the pick is cancelled, or 10 minutes after a lock held it
 for its chat.
 
@@ -158,7 +161,8 @@ opens a file. On Android it starts the viewer with `ACTION_VIEW` in a new task
 (`FLAG_ACTIVITY_NEW_TASK`, `FLAG_ACTIVITY_MULTIPLE_TASK`, a read grant only),
 through the app's own FileProvider, which serves `veil_open/` and nothing else.
 On iOS it presents Quick Look over the app. On iOS a photo or video that the
-in-app viewer cannot show goes to the Save flow instead of Quick Look.
+in-app viewer cannot show goes to the Save flow instead of Quick Look. A
+Windows, macOS or Linux build has no File, no Save and no opening a file.
 
 ## App lock and privacy posture
 

@@ -185,8 +185,11 @@ those checks fails the build:
 - Photos come from the system photo picker and are re-encoded on the
   phone at up to 1600 px, which drops their location and camera details;
   files up to 25 MB come from the system file picker and go as they are.
-  Received photos show in the chat and open full screen; files open in
-  another app or save to the phone
+  Received photos show in the chat and open full screen; files open with a
+  tap (in another app on Android, in Quick Look on iOS, in the in-app viewer
+  when they are a JPEG, PNG or WebP) or save to the phone. The Windows
+  desktop build sends and shows photos only: File, Save and opening a file
+  are on Android and iOS
   ([apps/mobile/README.md](apps/mobile/README.md)).
 - The app has no calls, voice messages, stories, stickers or assistant
 - English only, one design system:

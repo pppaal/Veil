@@ -189,6 +189,20 @@ void main() {
     final prepared = (await EngineImagePreparer().prepare(cameraPath)).bytes;
     File(cameraPath).deleteSync();
     expect(img.decodeJpg(prepared)!.height, 1600);
+    // The camera's location, make, model and other metadata were in the
+    // picked photo and are not in what is sent (and what bob opens).
+    for (final marker in [
+      'Exif\u0000\u0000',
+      'GPS fixture fix',
+      fixtureMake,
+      fixtureModel,
+      fixtureMakerNote,
+      fixtureXmpNamespace,
+      fixtureXmpMarker,
+    ]) {
+      expect(_contains(camera, latin1.encode(marker)), isTrue, reason: 'the camera photo lacks $marker');
+      expect(_contains(prepared, latin1.encode(marker)), isFalse, reason: 'the photo sent says $marker');
+    }
     final pdf = pdfBytes('lease for the flat on Elm Street');
     const pdfName = 'Lease agreement Elm Street.pdf';
 

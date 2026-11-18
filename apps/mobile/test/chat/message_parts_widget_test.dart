@@ -6,6 +6,7 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_file_card.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_read_glyph.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_time.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
@@ -45,8 +46,10 @@ void main() {
       )));
 
       expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
-      // One card says it all, as WhatsApp's file card does.
-      expect(find.text('lease-signed.pdf'), findsOneWidget);
+      // One card says it all, as WhatsApp's file card does; the name on one
+      // line, cut in the middle as the file card's is.
+      expect(find.byWidgetPredicate((widget) => widget is MiddleEllipsisText && widget.text == 'lease-signed.pdf'),
+          findsOneWidget);
       expect(find.text('PDF · 3 MB'), findsOneWidget);
       expect(find.text(l10n.chatAttachmentCannotOpen), findsOneWidget);
       expect(find.byType(TextButton), findsNothing);
@@ -80,24 +83,29 @@ void main() {
       expect(find.byType(TextButton), findsNothing);
     });
 
-    testWidgets('a flat tile: grey only on the brand fill of an own bubble, never a border', (tester) async {
-      Future<BoxDecoration?> tile({required bool framed}) async {
+    testWidgets('drawn as the file card is: a 40 dp circle, white at 20% on the brand fill, and no tile or border',
+        (tester) async {
+      Future<BoxDecoration> circle({required bool onBrand}) async {
         await tester.pumpWidget(_app(MessageAttachmentCard(
           attachment: _reference('image/png', 512),
-          framed: framed,
+          onBrand: onBrand,
         )));
-        final boxes = tester.widgetList<DecoratedBox>(
-          find.descendant(of: find.byType(MessageAttachmentCard), matching: find.byType(DecoratedBox)),
-        );
-        return boxes.isEmpty ? null : boxes.first.decoration as BoxDecoration;
+        final boxes = find.descendant(of: find.byType(MessageAttachmentCard), matching: find.byType(DecoratedBox));
+        expect(boxes, findsOneWidget, reason: 'one circle, no tile around the card');
+        expect(tester.getSize(boxes), const Size(40, 40));
+        return tester.widget<DecoratedBox>(boxes).decoration as BoxDecoration;
       }
 
-      expect(await tile(framed: false), isNull, reason: 'in a grey bubble the bubble is the tile');
-      final framed = await tile(framed: true);
+      final grey = await circle(onBrand: false);
       final palette = tester.element(find.byType(MessageAttachmentCard)).veilPalette;
-      expect(framed?.color, palette.surfaceAlt);
-      expect(framed?.border, isNull);
-      expect(framed?.borderRadius, BorderRadius.circular(VeilRadius.md));
+      // Dark: strokeStrong, as the file card's circle on a grey bubble.
+      expect(grey.color, palette.strokeStrong);
+      expect(grey.shape, BoxShape.circle);
+      expect(grey.border, isNull);
+      final brand = await circle(onBrand: true);
+      expect(brand.color, Colors.white.withValues(alpha: 0.2));
+      expect(brand.border, isNull);
+      expect(tester.widget<Text>(find.text(l10n.chatAttachmentCannotOpen)).style?.color, palette.outgoingMeta);
     });
   });
 

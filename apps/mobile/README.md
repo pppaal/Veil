@@ -56,7 +56,7 @@ Send seals the photo or file at once, in an isolate, with the web's scheme
 is uploaded. The message itself is encrypted once, after the upload, and a
 disappearing timer is stamped then, as the web stamps it. A chat sends in
 order, so a text sent after a file waits for its upload, while other chats
-do not wait. The cross on a photo or file that is uploading or failed cancels
+do not wait; such a text's timer also starts when it is sent. The cross on a photo or file that is uploading or failed cancels
 it and removes the message.
 
 A received photo of up to 10 MB is fetched when its message arrives, while
@@ -70,6 +70,11 @@ with a tap, where Save keeps a copy on the phone. A file opens with a tap: in
 another app on Android, in Quick Look on iOS, and in the in-app viewer when it
 is a JPEG, PNG or WebP. The long-press menu can save either. On iOS a photo or
 video that the in-app viewer cannot show goes to Save, never to Quick Look.
+File, Save and opening a file exist only on Android and iOS, where
+`flutter_file_dialog` and the `veil/file_open` channel run: a Windows, macOS
+or Linux build offers Photos only under the plus, shows no Save, and opens a
+received file only when it is a photo, in the in-app viewer (any other file
+says "Can't open in this version").
 
 Downloaded and sent blobs stay sealed, in one flat folder (`veil_media/` in
 app support) under random names of 64 hex characters. Which blob belongs to
@@ -78,14 +83,15 @@ database. The folder is capped at 1 GiB, least recently used first, never
 touching a blob that is still uploading, and a blob goes when its message
 expires, or when its chat leaves the list. Decrypted bytes live only in
 memory and are dropped on lock. Decrypted files are made only to open a file
-or to save a photo or a file: a copy in `veil_open/` under the temporary
-folder, and on iOS, while the save screen is up, the save screen's own copy
-under the file's name in the system temporary folder, deleted when it
-returns. The `veil_open/` copies go when Quick Look closes or the save screen
+or to save a photo or a file: a copy in `veil_open/` under the app's cache
+folder (`getTemporaryDirectory()`: `cacheDir` on Android, `Library/Caches` on
+iOS), and on iOS, while the save screen is up, the save screen's own copy
+under the file's name in the system temporary folder (`tmp/`), deleted when
+it returns. The `veil_open/` copies go when Quick Look closes or the save screen
 returns (a Save copy also on lock), when their message expires, after 10
 minutes (a sweep runs every 60 seconds) and at start. On the sending side, a
 picked photo or file is a plaintext copy in the staging folder
-(`veil_attachment_cache` under the temporary folder) until it is sealed, the
+(`veil_attachment_cache` in the same cache folder) until it is sealed, the
 pick is cancelled, or 10 minutes after a lock held it for its chat; the
 picker's own copy is moved there at once. On iOS the system temporary folder
 the plugins write to is emptied after each pick and each save. Staging, the
@@ -101,8 +107,9 @@ else; on iOS Quick Look, presented over the app.
 
 A picker, the save screen and, on iOS, Quick Look run inside
 `SystemSheetGrace` (`lib/src/app/system_sheet_grace.dart`). On iOS they are
-part of the app, so only a real move to the background locks it, and the
-lock closes them. On Android they are other apps' screens, and going Home
+part of the app, so only a real move to the background locks it, or, once a
+sheet has been up for 3 minutes, any step away from the app, and the lock
+closes them. On Android they are other apps' screens, and going Home
 from one leaves Veil unlocked for up to 3 minutes. Opening a file in another
 app on Android gets no grace: Veil locks as soon as it is hidden.
 [`docs/mobile-device-security.md`](../../docs/mobile-device-security.md) has
@@ -347,7 +354,7 @@ Current mobile wiring includes:
 - register -> challenge -> verify -> session persistence
 - direct conversation create/list and encrypted envelope send/list
 - photo and file sending: system pickers, re-encoding, sealing, upload tickets, retry
-- photo and file opening: prefetch, download tickets, size caps, digest check, the viewer, open with another app, save
+- photo and file opening: prefetch, download tickets, size caps, digest check, the viewer, open a file (another app on Android, Quick Look on iOS), save
 - websocket conversation sync
 - local PIN/biometric app lock hooks
 - device transfer init/approve/complete scaffold

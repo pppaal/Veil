@@ -13,6 +13,32 @@ class LocalNotificationService {
   bool _initialized = false;
   void Function(String? conversationId)? onNotificationTapped;
 
+  /// How a message notification shows. Nothing counts on the app icon or
+  /// the launcher (design system section 8): the Android channel asks for
+  /// no badge, so launchers that count notifications (Samsung's, Pixel's
+  /// dot) leave Veil's icon alone, and no badge number is ever set.
+  /// Android fixes a channel's settings when it is first created, so this
+  /// holds for installs that create the channel from here on.
+  static const messageDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'veil_messages',
+      'Messages',
+      channelDescription: 'New message notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+      showWhen: true,
+      channelShowBadge: false,
+    ),
+    iOS: _darwinDetails,
+    macOS: _darwinDetails,
+  );
+
+  static const _darwinDetails = DarwinNotificationDetails(
+    presentAlert: true,
+    presentBadge: true,
+    presentSound: true,
+  );
+
   Future<void> initialize() async {
     if (_initialized) return;
 
@@ -63,30 +89,11 @@ class LocalNotificationService {
   }) async {
     if (!_initialized) return;
 
-    const androidDetails = AndroidNotificationDetails(
-      'veil_messages',
-      'Messages',
-      channelDescription: 'New message notifications',
-      importance: Importance.high,
-      priority: Priority.high,
-      showWhen: true,
-    );
-    const darwinDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-    );
-    const details = NotificationDetails(
-      android: androidDetails,
-      iOS: darwinDetails,
-      macOS: darwinDetails,
-    );
-
     await _plugin.show(
       id: conversationId.hashCode,
       title: title,
       body: body,
-      notificationDetails: details,
+      notificationDetails: messageDetails,
       payload: conversationId,
     );
   }

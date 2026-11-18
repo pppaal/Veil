@@ -12,7 +12,7 @@ The service collects only:
 - A random account ID and device ID that the server assigns when you register, linked to your handle.
 - A user-chosen handle.
 - End-to-end encrypted message payloads that the server cannot decrypt.
-- Photos and files you send, encrypted on your device so the server cannot open them, and their size. They are deleted with the message they belong to.
+- Photos, files and voice messages you send, encrypted on your device so the server cannot open them, with their size and a checksum of the encrypted data. They are deleted with the message they belong to.
 - The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).
 - Your in-app contact list: which accounts you added. The names you give them stay on your device.
 - Call records: the conversation, the device that started the call, voice or video, its status (ringing, in progress, ended, missed or declined), when it started and ended, and its duration. They are deleted after 30 days.

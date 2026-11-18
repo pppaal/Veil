@@ -11,12 +11,15 @@ import 'package:go_router/go_router.dart';
 import 'package:image/image.dart' as img;
 import 'package:veil_mobile/src/app/router/app_router.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_photo.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
 import 'package:veil_mobile/src/features/chat/presentation/typing_indicator.dart';
+import 'package:veil_mobile/src/features/attachments/data/media_prefetch.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
@@ -27,8 +30,11 @@ import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../test/layout/support/layout_seed.dart';
 import '../test/layout/support/layout_world.dart';
+import '../test/layout/support/media_receive_seed.dart';
 import '../test/layout/support/phone_layout_probe.dart';
+import '../test/layout/support/unread_seed.dart';
 import '../test/support/fake_relay.dart';
+import '../test/support/media_fixtures.dart';
 
 // Draws the Google Play listing art from the app's real screens:
 // - store/play/screenshots/NN-<screen>.png, the phone screenshots, each
@@ -85,8 +91,9 @@ const _emojiFamily = 'NotoColorEmoji';
 
 /// One screenshot: where the router opens (and the screen it is pushed
 /// from, if the app pushes it), the account it opens with, what to change in
-/// the seeded relay before the session loads it, what to do once the screen
-/// is open, and the screen that must then be on it.
+/// the seeded relay before the session loads it, what happens after the
+/// session's first list and before the screen opens, what to do once the
+/// screen is open, and the screen that must then be on it.
 class _Shot {
   const _Shot(
     this.name, {
@@ -97,6 +104,7 @@ class _Shot {
     this.attention = const ChatAttention(),
     this.withGroup = false,
     this.prepare,
+    this.afterSession,
     this.settle,
   });
 
@@ -112,6 +120,7 @@ class _Shot {
   final ChatAttention attention;
   final bool withGroup;
   final void Function(FakeRelay relay)? prepare;
+  final Future<void> Function(LayoutWorld world)? afterSession;
   final Future<void> Function(WidgetTester tester)? settle;
 }
 
@@ -128,13 +137,15 @@ const _shots = <_Shot>[
       location: '/conversations',
       withGroup: true,
       prepare: _leaveOutChats,
-      settle: _expectChatsLeftOut),
+      afterSession: _jonasWritesAgain,
+      settle: _expectChatsAsShown),
   _Shot('03-chat',
       screen: ChatRoomScreen,
       location: '/chat/$chatConversationId',
       attention: ChatAttention(peerTyping: true),
-      prepare: _leaveOutChatLines,
-      settle: _reactWhileTyping),
+      prepare: _chatAsShown,
+      afterSession: _openSamsPhoto,
+      settle: _photoInThenReact),
   // The old phone before it asks for a code: how a move goes, and the
   // button that starts it. Once asked, the screen shows the code itself, a
   // long string of two ids (the session and its token), which is no
@@ -159,6 +170,7 @@ void main() {
     await (FontLoader(_emojiFamily)..addFont(Future.value(ByteData.sublistView(emoji)))).load();
     identities = await LayoutIdentities.generate();
     screenshots.createSync(recursive: true);
+    _samsPhoto = await _sealSamsPhoto();
   });
 
   // A shot that was renamed or dropped must not stay behind. Only a run
@@ -189,6 +201,8 @@ void main() {
         withGroup: shot.withGroup,
         beforeSession: shot.prepare,
       );
+      // What happens after the first list and before the screen opens.
+      await shot.afterSession?.call(world);
       final from = shot.from;
       final router = GoRouter(
         initialLocation: from ?? shot.location,
@@ -399,10 +413,11 @@ Future<void> _typeHandle(WidgetTester tester) async {
   await pumpFrames(tester, frames: 4);
 }
 
-// Three chats of the seed are there for the gate's sake and stay out of the
-// listing: the last messages of two are a voice message and a photo, which
-// the app cannot send, and the third has no message yet.
-const _chatsLeftOut = {'alexandra', 'omar_h', emptyChatPeerHandle};
+// Two chats of the seed stay out of the listing, so one screen holds the
+// rest: the last message of one is a voice message, which the app cannot
+// play, and the other has no message yet. Omar's, whose last message is a
+// photo, stays in.
+const _chatsLeftOut = {'alexandra', emptyChatPeerHandle};
 
 void _leaveOutChats(FakeRelay relay) {
   for (final handle in _chatsLeftOut) {
@@ -410,36 +425,53 @@ void _leaveOutChats(FakeRelay relay) {
   }
 }
 
-Future<void> _expectChatsLeftOut(WidgetTester tester) async {
+// Jonas's two new lines, which come after the first list and so stay
+// unread: his row moves up under the group with a count, and the Chats tab
+// counts one unread chat. (Jonas's purple then sits between the group's
+// grey and Sam's ochre, and Omar's purple between Priya's slate blue and
+// Mia's rose: no two neighbours alike.)
+const _jonasNewLines = jonasUnreadLines;
+
+Future<void> _jonasWritesAgain(LayoutWorld world) =>
+    deliverLines(world, timerChatPeerHandle, _jonasNewLines, firstAt: DateTime.utc(2026, 4, 7, 10, 2));
+
+Future<void> _expectChatsAsShown(WidgetTester tester) async {
   expect(find.byType(ConversationRow), findsNWidgets(peerNames.length + 1 - _chatsLeftOut.length),
       reason: 'the group and every chat but the ones left out');
   for (final handle in _chatsLeftOut) {
     expect(find.text(peerNames[handle]!), findsNothing, reason: 'the chat with $handle is still listed');
   }
+  final jonas = find.ancestor(of: find.text(peerNames[timerChatPeerHandle]!), matching: find.byType(ConversationRow));
+  expect(find.descendant(of: jonas, matching: find.byType(UnreadBadge)), findsOneWidget,
+      reason: "Jonas's row shows no unread count");
+  expect(find.descendant(of: jonas, matching: find.text(_jonasNewLines.last)), findsOneWidget);
+  final omar = find.ancestor(of: find.text(peerNames['omar_h']!), matching: find.byType(ConversationRow));
+  expect(find.descendant(of: omar, matching: find.byIcon(Icons.photo_outlined)), findsOneWidget,
+      reason: "Omar's row does not show its photo by its glyph");
 }
 
-// The seed's chat holds more than one screen does. The listing keeps the
-// morning: Sam asking about the lease and the user's answer, his two short
-// messages, the user's two answers (the second disappearing) and Sam's last
-// word. It leaves out the days before (Thursday's long message and long
-// link, which the gate's history case shows, and last night's lines)
-// and the PDF the user sent, which the app cannot send. What is left fits on the screen whole, which
-// _expectNothingCut holds it to.
-void _leaveOutChatLines(FakeRelay relay) {
-  final history = relay.conversations[chatConversationId]!.messages;
-  DateTime dayOf(Map<String, dynamic> message) {
-    final at = DateTime.parse(message['serverReceivedAt'] as String);
-    return DateTime.utc(at.year, at.month, at.day);
-  }
+// The seed's chat holds more than one screen does. The listing keeps four
+// of the morning's lines: the signed lease the user sent (a PDF, drawn as
+// the file card), Sam's news, the user's disappearing answer and Sam's last
+// word, and then a photo of the beach he sends after it. It leaves out the
+// days before (Thursday's long message and long link, which the gate's
+// history case shows, and last night's lines) and the morning's other four
+// lines. What is left fits on the screen whole, which _expectNothingCut
+// holds it to.
+const _chatShotTimes = {(8, 52), (9, 10), (9, 38), (9, 45)};
 
-  final morning = dayOf(history.last);
+void _chatAsShown(FakeRelay relay) {
+  final history = relay.conversations[chatConversationId]!.messages;
+  final today = DateTime.parse(history.last['serverReceivedAt'] as String);
   final kept = [
     for (final message in history)
-      if (dayOf(message) == morning && message['attachment'] == null) message,
+      if (DateTime.parse(message['serverReceivedAt'] as String) case final at
+          when at.day == today.day && _chatShotTimes.contains((at.hour, at.minute)))
+        message,
   ];
-  expect(kept, hasLength(history.length - 16),
-      reason: 'the seed chat no longer holds three lines on Thursday, twelve last night and one file');
-  expect(kept.first['senderDeviceId'], 'dev-$peerHandle', reason: "the morning no longer opens with Sam's question");
+  expect(kept, hasLength(_chatShotTimes.length), reason: 'the seed chat no longer has a line at each kept time');
+  expect(kept.first['attachment'], isNotNull, reason: 'the kept lines no longer open with the lease');
+  expect(kept.first['senderDeviceId'], 'dev-$selfHandle', reason: 'the lease is no longer the user\'s');
   expect(kept.where((message) => message['expiresAt'] != null), hasLength(1),
       reason: 'the kept lines no longer hold the disappearing message');
   expect(kept.where((message) => message['messageType'] == MessageKind.system.name), isEmpty,
@@ -447,6 +479,72 @@ void _leaveOutChatLines(FakeRelay relay) {
   history
     ..clear()
     ..addAll(kept);
+
+  // Sam's photo, after his last word: part of the history the phone loads,
+  // so it is no new arrival and the chat opens without an unread divider.
+  final photo = _samsPhoto;
+  relay.putUploadedBlob(photo.reference.attachmentId, photo.blob, uploaderDeviceId: 'dev-$peerHandle');
+  final stored = relay.inject(senderHandle: peerHandle, conversationId: chatConversationId, envelope: photo.envelope);
+  stored['serverReceivedAt'] = DateTime.utc(2026, 4, 7, 9, 46).toIso8601String();
+  stored['conversationOrder'] = (kept.last['conversationOrder'] as int) + 1;
+}
+
+/// Sam's photo of the beach: sealed as a phone seals one (pointer v2), and
+/// the message that points at it, sealed for alex. Made once, before the
+/// shots.
+late ({AttachmentReference reference, Uint8List blob, Map<String, dynamic> envelope}) _samsPhoto;
+
+Future<({AttachmentReference reference, Uint8List blob, Map<String, dynamic> envelope})> _sealSamsPhoto() async {
+  final sealed =
+      await sealV2(landscapePhoto, attachmentId: '5d2e8a14-6b3c-4f7d-9a1e-0c4b7f2d8e61', contentType: 'image/jpeg', seed: 14);
+  final sealer = createDefaultCryptoAdapter();
+  final envelope = await sealer.messaging.encryptMessage(
+    conversationId: chatConversationId,
+    senderDeviceId: 'dev-$peerHandle',
+    recipientUserId: 'user-$selfHandle',
+    body: '',
+    messageKind: MessageKind.image,
+    recipientBundle: const KeyBundle(
+      userId: 'user-$selfHandle',
+      deviceId: 'dev-$selfHandle',
+      handle: selfHandle,
+      identityPublicKey: 'ik',
+      signedPrekeyBundle: 'spk',
+    ),
+    attachment: sealed.reference,
+  );
+  return (reference: sealed.reference, blob: sealed.blob, envelope: sealer.envelopeCodec.encodeApiEnvelope(envelope));
+}
+
+// Sam's photo fetched and decrypted, as a tap or the prefetch does, so the
+// bubble shows the photo and not its tile.
+Future<void> _openSamsPhoto(LayoutWorld world) async {
+  final media = world.messenger.media;
+  final reference = _samsPhoto.reference;
+  unawaited(media.download(chatConversationId, reference));
+  await untilReal(() => media.statusOf(chatConversationId, reference).state == MediaState.ready);
+  expect(media.statusOf(chatConversationId, reference).state, MediaState.ready, reason: "Sam's photo did not download");
+  var opened = false;
+  unawaited(media.photoBytes(chatConversationId, reference, userAsked: true).whenComplete(() => opened = true));
+  await untilReal(() => opened);
+  expect(media.cachedPhotoBytes(chatConversationId, reference), isNotNull, reason: "Sam's photo did not open");
+}
+
+// Sam's photo drawn in its bubble (photos decode on the engine's own
+// threads, which only real time moves), then the reaction.
+Future<void> _photoInThenReact(WidgetTester tester) async {
+  final drawn = find.descendant(
+    of: find.byType(MessagePhoto),
+    matching: find.byWidgetPredicate((widget) => widget is RawImage && widget.image != null),
+  );
+  for (var i = 0; i < 300 && drawn.evaluate().isEmpty; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  }
+  expect(drawn, findsOneWidget, reason: "Sam's photo is not drawn in its bubble");
+  // The tile grows into the photo.
+  await pumpFrames(tester, frames: 4);
+  await _reactWhileTyping(tester);
 }
 
 // The message of Sam's the user reacts to: the news of the morning.

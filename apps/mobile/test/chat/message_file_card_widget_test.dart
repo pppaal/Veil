@@ -205,6 +205,26 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // The test font draws each character 15 wide; the circle and the gap
+    // take 52. Each width leaves half a character spare.
+    String shown(WidgetTester tester) =>
+        tester.renderObject<RenderMiddleEllipsisText>(find.byType(MiddleEllipsisText)).shownText;
+
+    testWidgets('on a short line the start stays readable: the cut then keeps only the extension', (tester) async {
+      await show(tester, name: 'Lease agreement 2026.pdf', width: 52 + 15 * 14.5);
+      final line = shown(tester);
+      expect(line, endsWith('….pdf'), reason: line);
+      expect(line.split('…').first.length, greaterThanOrEqualTo(RenderMiddleEllipsisText.readableStart),
+          reason: 'the start shrank to a stub: $line');
+    });
+
+    testWidgets('with room for a readable start, a few characters before the extension stay too', (tester) async {
+      await show(tester, name: 'Lease agreement 2026.pdf', width: 52 + 15 * 20.5);
+      final line = shown(tester);
+      expect(line, endsWith('…t 2026.pdf'), reason: line);
+      expect(line.split('…').first.length, greaterThanOrEqualTo(RenderMiddleEllipsisText.readableStart));
+    });
+
     testWidgets('the type comes from the extension, never from what the sender claims', (tester) async {
       await show(tester, name: 'notes.txt', attachment: _pointer(contentType: 'image/png', sizeBytes: 900));
       expect(find.text('TXT · 900 B'), findsOneWidget);
@@ -225,7 +245,8 @@ void main() {
 
     testWidgets('a name cut in the middle keeps no space after the ellipsis', (tester) async {
       const name = 'Lease agreement for the flat on Elm Street signed final.pdf';
-      await show(tester, name: name, width: 300);
+      // Room for a readable start and the characters before the extension.
+      await show(tester, name: name, width: 52 + 15 * 18.5);
       final shown = tester.renderObject<RenderMiddleEllipsisText>(find.byType(MiddleEllipsisText)).shownText;
       expect(shown, contains('…'));
       expect(shown, isNot(contains('… ')));

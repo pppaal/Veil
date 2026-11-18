@@ -127,9 +127,9 @@ ConversationPreview _conversation(ConversationType type) => ConversationPreview(
       type: type,
     );
 
-Widget _app(Widget child, {VeilMessengerController? messenger}) {
+Widget _app(Widget child, {VeilMessengerController? messenger, bool light = false}) {
   final app = MaterialApp(
-    theme: VeilTheme.dark(),
+    theme: light ? VeilTheme.light() : VeilTheme.dark(),
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(body: SingleChildScrollView(child: child)),
@@ -430,8 +430,9 @@ void main() {
   });
 
   group('dialogs', () {
-    Widget opener(Future<void> Function(BuildContext context) open) =>
-        _app(Builder(builder: (context) => TextButton(onPressed: () => open(context), child: const Text('open'))));
+    Widget opener(Future<void> Function(BuildContext context) open, {bool light = false}) => _app(
+        Builder(builder: (context) => TextButton(onPressed: () => open(context), child: const Text('open'))),
+        light: light);
 
     testWidgets('the reaction bar closes on a pick and hands the emoji on', (tester) async {
       final picked = <String>[];
@@ -457,19 +458,21 @@ void main() {
 
     // A long press on a photo or file from someone else: the bar, and the
     // menu with Save above Report, kept next to the message wherever it is.
-    Future<({Rect bar, Rect menu})> pressAt(WidgetTester tester, Rect anchor) async {
+    Future<({Rect bar, Rect menu})> pressAt(WidgetTester tester, Rect anchor, {bool light = false}) async {
       tester.view
         ..physicalSize = const Size(360, 640)
         ..devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      await tester.pumpWidget(opener((context) => showMessageActions(
-            context,
-            anchor: anchor,
-            isMine: false,
-            onSelected: (_) {},
-            onSave: () {},
-            onReport: () {},
-          )));
+      await tester.pumpWidget(opener(
+          (context) => showMessageActions(
+                context,
+                anchor: anchor,
+                isMine: false,
+                onSelected: (_) {},
+                onSave: () {},
+                onReport: () {},
+              ),
+          light: light));
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
       final save = tester.getRect(find.byKey(const ValueKey('message-save')));
@@ -482,11 +485,20 @@ void main() {
       await pressAt(tester, anchor);
       final dim = tester.widget<CustomPaint>(find.byKey(const ValueKey('message-actions-dim'))).painter;
       expect(dim, isA<MessageActionsDim>().having((dim) => dim.clear, 'clear', anchor));
-      expect(MessageActionsDim.color, const Color(0x33000000));
+      // In dark, half black, so the pressed row stands out from the black
+      // page and the dark bubbles.
+      expect((dim! as MessageActionsDim).color, const Color(0x80000000));
       // A tap on the dim still closes the menu.
       await tester.tapAt(const Offset(180, 60));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('message-save')), findsNothing);
+    });
+
+    testWidgets('in light the dim is 20% black', (tester) async {
+      const anchor = Rect.fromLTWH(0, 300, 360, 60);
+      await pressAt(tester, anchor, light: true);
+      final dim = tester.widget<CustomPaint>(find.byKey(const ValueKey('message-actions-dim'))).painter;
+      expect(dim, isA<MessageActionsDim>().having((dim) => dim.color, 'color', const Color(0x33000000)));
     });
 
     testWidgets('with room around the message, the bar is above it and the menu under it', (tester) async {

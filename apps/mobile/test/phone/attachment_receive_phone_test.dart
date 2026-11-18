@@ -34,6 +34,10 @@ import 'phone_app.dart';
 final AppLocalizations l10n = AppLocalizationsEn();
 const _chat = '/chat/$chatConversationId';
 
+// The file Sam sends in each test: the seeded chat also holds the lease the
+// user sent this morning, drawn as a file card too.
+final Finder _receivedFile = find.byWidgetPredicate((widget) => widget is MessageFileCard && !widget.message.isMine);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late LayoutIdentities identities;
@@ -106,15 +110,15 @@ void main() {
             hour: 10,
             minute: 16), (world) async {
       expect(world.relay.downloadTicketRequests, isEmpty, reason: 'a file never comes by itself');
-      expect(find.byIcon(Icons.download_outlined), findsOneWidget);
+      expect(find.descendant(of: _receivedFile, matching: find.byIcon(Icons.download_outlined)), findsOneWidget);
 
       // One tap (D28): it is fetched, then opened.
-      await tester.tap(find.byType(MessageFileCard));
+      await tester.tap(_receivedFile);
       await until(tester, () => opener.opened.isNotEmpty, reason: 'one tap did not fetch and open it');
       expect(world.relay.blobDownloads, hasLength(1));
       expect(opener.opened.single.as, 'application/pdf', reason: 'the type comes from its name');
       expect(opener.opened.single.bytes, leasePdf);
-      expect(find.byIcon(Icons.insert_drive_file_outlined), findsOneWidget);
+      expect(find.descendant(of: _receivedFile, matching: find.byIcon(Icons.insert_drive_file_outlined)), findsOneWidget);
     });
   });
 
@@ -152,10 +156,15 @@ void main() {
       unawaited(router.push(_chat));
       await pumpFrames(tester);
       expect(find.byType(ChatRoomScreen), findsOneWidget);
-      await until(tester, () => find.byIcon(Icons.insert_drive_file_outlined).evaluate().isNotEmpty,
+      await until(
+          tester,
+          () => find
+              .descendant(of: _receivedFile, matching: find.byIcon(Icons.insert_drive_file_outlined))
+              .evaluate()
+              .isNotEmpty,
           reason: 'the file is not ready');
 
-      await tester.tap(find.byType(MessageFileCard));
+      await tester.tap(_receivedFile);
       await tester.pump();
       // Home on Android (opening a file gets no grace) while it decrypts.
       world.container.read(appSessionProvider.notifier).lock();
@@ -290,7 +299,7 @@ void main() {
           minute: 16);
       await fetchAndOpen(world, lease, photo: false);
     }, (world) async {
-      await tester.tap(find.byType(MessageFileCard));
+      await tester.tap(_receivedFile);
       await until(tester, () => find.text('No app found to open this file').evaluate().isNotEmpty,
           reason: 'no toast');
     });
@@ -309,7 +318,7 @@ void main() {
           minute: 16);
       await fetchAndOpen(world, lease, photo: false);
     }, (world) async {
-      await tester.longPress(find.byType(MessageFileCard));
+      await tester.longPress(_receivedFile);
       await pumpFrames(tester, frames: 4);
       final save = find.byKey(const ValueKey('message-save'));
       final report = find.byKey(const ValueKey('message-report'));
@@ -406,7 +415,7 @@ void main() {
         (world) async {
       expect(find.text(l10n.chatAttachmentCannotOpen), findsWidgets);
       expect(find.byType(MessageAttachmentCard), findsWidgets);
-      expect(find.byType(MessageFileCard), findsNothing);
+      expect(_receivedFile, findsNothing);
       expect(world.relay.downloadTicketRequests, isEmpty);
     });
   });
@@ -427,7 +436,7 @@ void main() {
                 hour: 10, minute: 16);
             await fetchAndOpen(world, file, photo: false);
           }, (world) async {
-            await tester.tap(find.byType(MessageFileCard));
+            await tester.tap(_receivedFile);
             await until(tester, () => find.text(l10n.chatSaveTitle).evaluate().isNotEmpty,
                 reason: 'the Save dialog never showed');
             expect(opener.opened, isEmpty);
@@ -454,7 +463,7 @@ void main() {
               minute: 16);
           await fetchAndOpen(world, file, photo: false);
         }, (world) async {
-          await tester.tap(find.byType(MessageFileCard));
+          await tester.tap(_receivedFile);
           await until(tester, () => find.byType(PhotoViewerScreen).evaluate().isNotEmpty,
               reason: 'the viewer never opened');
           expect(opener.opened, isEmpty);

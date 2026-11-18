@@ -882,6 +882,33 @@ void main() {
     });
   });
 
+  // A toast over a chat's composer covers the whole field: its sides are
+  // 12 from the screen's edges, as the field's are, so no end of the field
+  // peeks out beside it.
+  testWidgets('a toast keeps 12 from each side of the screen, as the composer field does', (tester) async {
+    await _pump(
+      tester,
+      _App(
+        child: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showVeilToast(context, 'Files can be up to 25 MB'),
+              child: const Text('Attach'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Attach'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    // The toast's own surface; the SnackBar's box takes its inset too.
+    final toast = tester.getRect(find.descendant(of: find.byType(SnackBar), matching: find.byType(Material)).first);
+    final screen = tester.getRect(find.byType(Scaffold));
+    expect(toast.left - screen.left, VeilSpace.sm);
+    expect(screen.right - toast.right, VeilSpace.sm);
+  });
+
   group('MainTabShell', () {
     testWidgets('is a NavigationBar with no indicator and no ripple', (tester) async {
       final router = GoRouter(

@@ -97,6 +97,8 @@ claims:
         name: "reaction envelope accepted and no push sent"
       - test: apps/mobile/test/integration/hostile_relay_test.dart
         name: "is announced in the chat once, across refreshes and a restart, and so is its removal"
+      - test: apps/mobile/test/integration/attachment_round_trip_test.dart
+        name: "a photo and a file reach the other phone and the relay holds only ciphertext"
   - id: no-plaintext-on-server
     text: "The server stores no plaintext message content: messages, reactions and stories are ciphertext, and display names, profile text, contact names and report notes are not stored. Group and channel names and descriptions and device labels are still stored in readable form; the schema privacy gate allowlists exactly these, and the privacy policy lists them."
     sources:

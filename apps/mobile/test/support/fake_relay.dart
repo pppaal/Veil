@@ -141,6 +141,11 @@ class FakeRelay {
   /// The attachment id of every blob GET that reached storage, in order.
   final List<String> blobDownloads = [];
 
+  /// [downloadTicketRequests] and [blobDownloads] by the handle that made
+  /// them, so a test can tell whose phone asked.
+  final Map<String, List<String>> downloadTicketRequestsBy = {};
+  final Map<String, List<String>> blobDownloadsBy = {};
+
   /// How long a download ticket's URL lives (the API's presign: 90 s).
   Duration downloadTicketLifetime = const Duration(seconds: 90);
 
@@ -193,6 +198,7 @@ class FakeRelay {
   Map<String, dynamic> _downloadTicket(RelayParty caller, String attachmentId) {
     final id = attachmentId.toLowerCase();
     downloadTicketRequests.add(id);
+    downloadTicketRequestsBy.putIfAbsent(caller.handle, () => []).add(id);
     final attachment = attachments[id];
     if (attachment == null) {
       throw VeilApiException('Attachment not found', statusCode: 404, code: 'attachment_not_found');
@@ -929,6 +935,7 @@ class FakeRelayClient extends VeilApiClient {
     final uri = storagePolicy.checkDownloadUrl(downloadUrl);
     final id = uri.pathSegments.last;
     relay.blobDownloads.add(id);
+    relay.blobDownloadsBy.putIfAbsent(me.handle, () => []).add(id);
     await _wait(relay.downloadGate, cancellationSignal, AttachmentTransfer.download);
     if (relay.failDownloads > 0) {
       relay.failDownloads -= 1;

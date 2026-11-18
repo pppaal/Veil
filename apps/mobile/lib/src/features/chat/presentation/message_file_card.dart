@@ -135,7 +135,12 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
                 ),
             ])
           : Icon(
-              ready || status.state == MediaState.gone ? Icons.insert_drive_file_outlined : Icons.download_outlined,
+              switch (status.state) {
+                _ when ready => Icons.insert_drive_file_outlined,
+                MediaState.gone => Icons.insert_drive_file_outlined,
+                MediaState.failed => Icons.refresh,
+                _ => Icons.download_outlined,
+              },
               size: VeilIconSize.md,
               color: status.state == MediaState.gone && !ready
                   ? palette.textSubtle
@@ -276,16 +281,22 @@ class _Circle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The circle is 40 dp; what it holds may take all 44, so a cross in it
+    // is a whole tap target.
     return SizedBox.square(
       dimension: 44,
-      child: Center(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: own ? Colors.white.withValues(alpha: 0.2) : context.veilPalette.surfaceRaised,
-            shape: BoxShape.circle,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: own ? Colors.white.withValues(alpha: 0.2) : context.veilPalette.surfaceRaised,
+              shape: BoxShape.circle,
+            ),
+            child: const SizedBox.square(dimension: 40),
           ),
-          child: SizedBox.square(dimension: 40, child: Center(child: child)),
-        ),
+          child,
+        ],
       ),
     );
   }

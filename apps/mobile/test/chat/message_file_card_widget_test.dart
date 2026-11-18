@@ -151,6 +151,7 @@ void main() {
       media.setStatus(_chat, _pointer(), MediaState.failed);
       await show(tester);
       expect(find.text('Couldn\'t download. Tap to retry.'), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsOneWidget, reason: 'the retry glyph');
       await tester.tap(find.byType(MessageFileCard));
       await tester.pump();
       expect(media.downloads, hasLength(1));

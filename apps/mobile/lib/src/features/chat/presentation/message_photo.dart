@@ -372,7 +372,7 @@ class _Tile extends StatelessWidget {
               size: VeilIconSize.lg, color: own ? palette.outgoingMeta : palette.textSubtle),
           l10n.chatPhotoUnavailable,
         ),
-      MediaState.failed => (_DownloadGlyph(own: own), l10n.chatDownloadFailed),
+      MediaState.failed => (_DownloadGlyph(own: own, icon: Icons.refresh), l10n.chatDownloadFailed),
       _ => (_DownloadGlyph(own: own), formatFileSize(sizeBytes)),
     };
     return Padding(
@@ -389,11 +389,12 @@ class _Tile extends StatelessWidget {
   }
 }
 
-/// The download glyph in its 40 dp circle.
+/// The download glyph (or the retry glyph) in its 40 dp circle.
 class _DownloadGlyph extends StatelessWidget {
-  const _DownloadGlyph({required this.own});
+  const _DownloadGlyph({required this.own, this.icon = Icons.download_outlined});
 
   final bool own;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -402,7 +403,7 @@ class _DownloadGlyph extends StatelessWidget {
       decoration: BoxDecoration(color: own ? Colors.white24 : palette.surfaceRaised, shape: BoxShape.circle),
       child: SizedBox.square(
         dimension: 40,
-        child: Icon(Icons.download_outlined, size: 24, color: own ? Colors.white : palette.text),
+        child: Icon(icon, size: 24, color: own ? Colors.white : palette.text),
       ),
     );
   }

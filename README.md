@@ -189,8 +189,8 @@ those checks fails the build:
   tap (in another app on Android, in Quick Look on iOS, in the in-app viewer
   when they are a JPEG, PNG or WebP) or save to the phone. On the
   Windows desktop build the plus offers Photos only and there is no Save,
-  and a received file opens only if it is a photo: File, Save and opening a
-  file in another app exist only on Android and iOS
+  and a received file opens only if it is a photo: File, Save and opening
+  other files exist only on Android and iOS
   ([apps/mobile/README.md](apps/mobile/README.md)).
 - The app has no calls, voice messages, stories, stickers or assistant
 - English only, one design system:

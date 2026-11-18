@@ -104,9 +104,9 @@ Future<void> openFileAttachment(
         conversationId: conversationId, attachment: attachment, name: name, expiresAt: message.expiresAt);
     return;
   }
-  // Checked with nothing awaited before the hand-over: a decrypted file
-  // never reaches another app over the lock screen, nor after its message
-  // expired.
+  // Last checks before the hand-over. The channel checks the lock once more
+  // right before the platform call; expiry is not checked again there, but
+  // an expired message's sweep deletes the copy, so it is no longer there.
   if (!context.mounted || locked() || media.isExpired(message.expiresAt)) return media.releaseCopy(path);
   final outcome = await opener.open(path, mimeType: contentTypeForName(name));
   // On Android the other app may still be reading it: the copy goes with

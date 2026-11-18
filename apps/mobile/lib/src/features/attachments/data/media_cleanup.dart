@@ -72,7 +72,9 @@ class MediaCleanup {
         _paths = paths,
         _now = now,
         _pendingAttachmentIds = pendingAttachmentIds,
-        _onEntryDeleted = onEntryDeleted;
+        _onEntryDeleted = onEntryDeleted {
+    blobs.onEntryRemoved = _entryRemoved;
+  }
 
   final int maxBytes;
   final Duration copyLifetime;
@@ -90,6 +92,9 @@ class MediaCleanup {
   // written, or tracked in _copies. A purge of leftovers keeps them.
   final Set<String> _made = {};
   Set<String>? _listed;
+  // Listed once and gone since: nothing fetched for them is kept.
+  final Set<String> _left = {};
+  Future<void> _copyDeletes = Future<void>.value();
   Timer? _expiryTimer;
   Timer? _copyTimer;
   Timer? _trailingSweep;
@@ -145,15 +150,22 @@ class MediaCleanup {
     final now = {for (final id in conversationIds) id.toLowerCase()};
     final before = _listed;
     _listed = now;
+    _left.removeAll(now);
     if (before == null) return Future<void>.value();
     final left = before.difference(now);
     if (left.isEmpty) return Future<void>.value();
+    _left.addAll(left);
     return _serial(() async {
       for (final entry in await _blobs.entries()) {
         if (left.contains(entry.conversationId)) await _deleteEntry(entry);
       }
     });
   }
+
+  /// Whether [conversationId] was listed and is gone (D37): a blob fetched
+  /// for it now is not kept. Asked inside [serial], right before a commit,
+  /// so the sweep that took the chat's blobs never misses one.
+  bool hasLeft(String conversationId) => _left.contains(conversationId.toLowerCase());
 
   Future<void> enforceCap() => _serial(_enforceCap);
 
@@ -285,6 +297,7 @@ class MediaCleanup {
   /// the session's purge to delete.
   void reset() {
     _listed = null;
+    _left.clear();
     _copies.clear();
     _stopCopyTimer();
     _made.clear();
@@ -297,6 +310,7 @@ class MediaCleanup {
 
   void dispose() {
     _disposed = true;
+    if (_blobs.onEntryRemoved == _entryRemoved) _blobs.onEntryRemoved = null;
     _expiryTimer?.cancel();
     _copyTimer?.cancel();
     _trailingSweep?.cancel();
@@ -342,14 +356,22 @@ class MediaCleanup {
     }
   }
 
+  // The store tells _entryRemoved, which drops the rest.
   Future<void> _deleteEntry(MediaIndexEntry entry) async {
     await _blobs.deleteEntry(entry);
+    await _copyDeletes;
+  }
+
+  // Every entry the store removes, a sweep's or anyone else's (a cancelled
+  // send, a sealer that failed, a file found gone): its decrypted bytes,
+  // decoded images and copies go with it (D36, D38).
+  void _entryRemoved(MediaIndexEntry entry) {
     _onEntryDeleted(entry);
     for (final copy in _copies.values.toList()) {
       if (copy.conversationId.toLowerCase() == entry.conversationId &&
           copy.attachmentId.toLowerCase() == entry.attachmentId &&
           copy.digest == entry.digest) {
-        await deleteCopy(copy.path);
+        _copyDeletes = _copyDeletes.then((_) => deleteCopy(copy.path)).catchError((Object _) {});
       }
     }
   }

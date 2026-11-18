@@ -253,21 +253,26 @@ class AttachmentTransferService {
   }
 
   /// Deletes what is left of the cancelled attachment [clientMessageId]
-  /// once its send settled (D19): the relay is told its upload failed, and
-  /// its queued record, its stored content, its sealed blob and its bubble
-  /// go. Nothing, when the send was acknowledged meanwhile.
+  /// once its send settled (D19): the relay is told its upload failed (an
+  /// upload it completed too, which deletes the blob there), and its queued
+  /// record, its stored content, its sealed blob and its bubble go.
+  /// Nothing, when the send was acknowledged meanwhile.
   Future<void> discard(String clientMessageId) async {
     final latest = _pending[clientMessageId];
     if (latest == null) {
       forget(clientMessageId);
       return;
     }
-    if (latest.attachmentUploadDraft case final draft? when draft.attachmentId != null) await _resetTicket(draft);
+    if (latest.attachmentUploadDraft case final draft? when draft.attachmentId != null) {
+      await _resetTicket(draft);
+    } else if (latest.attachmentUploadDraft == null && latest.envelope.ciphertext.isNotEmpty) {
+      if (latest.envelope.attachment?.attachmentId case final id? when id.isNotEmpty) await _releaseUpload(id);
+    }
     // The record first, so a crash in between never leaves a record without
     // its blob. Its content and blob go even when the cache refuses that
     // write (or the record never reached it: OutboxService.sendAttachment):
-    // a record left behind that still has to upload then fails for good
-    // without its blob, rather than send what was cancelled.
+    // withoutDiscarded drops a record left behind at the next start, rather
+    // than send what was cancelled.
     try {
       await _pending.remove(clientMessageId);
     } finally {
@@ -284,6 +289,32 @@ class AttachmentTransferService {
       forget(clientMessageId);
       _store.changed();
     }
+  }
+
+  /// [records], the queue the cache held, less every attachment the user
+  /// cancelled whose record the cache would not drop: discard deleted its
+  /// stored content (and its blob). It is neither sent nor shown again, and
+  /// its row goes now. One whose blob alone is gone fails for good if sent.
+  Future<List<PendingMessageRecord>> withoutDiscarded(List<PendingMessageRecord> records) async {
+    bool checked(PendingMessageRecord record) => isAttachmentRecord(record) && !isOldFormatDraft(record);
+    ChatMessage echoOf(PendingMessageRecord record) => ChatMessage(
+        id: 'local-${record.clientMessageId}',
+        clientMessageId: record.clientMessageId,
+        senderDeviceId: record.senderDeviceId,
+        sentAt: record.createdAt,
+        envelope: record.envelope);
+    final stored = await _contents.storedFor([for (final record in records) if (checked(record)) echoOf(record)]);
+    final kept = <PendingMessageRecord>[];
+    for (final record in records) {
+      if (!checked(record) || stored.containsKey('local-${record.clientMessageId}')) {
+        kept.add(record);
+      } else {
+        await _pending.drop(record.clientMessageId).catchError((Object _) {});
+        final id = blobIdOf(record);
+        if (id != null && id.isNotEmpty) await _blobsOrNull?.delete(record.conversationId, id).catchError((Object _) {});
+      }
+    }
+    return kept;
   }
 
   void cancelUploads() {
@@ -377,19 +408,9 @@ class AttachmentTransferService {
   }
 
   // Drops [draft]'s ticket, telling the relay the upload failed when
-  // [releaseRemoteObject] (best effort: a relay sweep fails stale uploads).
+  // [releaseRemoteObject].
   Future<AttachmentUploadDraft> _resetTicket(AttachmentUploadDraft draft, {bool releaseRemoteObject = true}) async {
-    final session = _session.authed;
-    if (releaseRemoteObject && draft.attachmentId != null && session != null) {
-      try {
-        await _apiClient.completeUpload(session.accessToken, {
-          'attachmentId': draft.attachmentId,
-          'uploadStatus': 'failed',
-        });
-      } catch (_) {
-        // Cleanup is best-effort. A later backend sweep still marks stale pending uploads failed.
-      }
-    }
+    if (releaseRemoteObject && draft.attachmentId != null) await _releaseUpload(draft.attachmentId!);
     return draft.copyWith(
       attachmentId: null,
       storageKey: null,
@@ -399,6 +420,18 @@ class AttachmentTransferService {
       bytesUploaded: 0,
       lastUpdatedAt: DateTime.now(),
     );
+  }
+
+  // Tells the relay [attachmentId]'s upload failed, which deletes its blob
+  // there. Best effort: a relay sweep fails stale pending uploads.
+  Future<void> _releaseUpload(String attachmentId) async {
+    final session = _session.authed;
+    if (session == null) return;
+    try {
+      await _apiClient.completeUpload(session.accessToken, {'attachmentId': attachmentId, 'uploadStatus': 'failed'});
+    } catch (_) {
+      // Best effort.
+    }
   }
 
   MediaBlobStore get _blobs => _blobsOrNull ?? (throw StateError('Sealed attachments have no folder here.'));

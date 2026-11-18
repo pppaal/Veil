@@ -323,6 +323,52 @@ void main() {
       expect(phone.relay.blobDownloads, hasLength(4));
     });
 
+    // Two photos hold both transfer slots, then a file is tapped (what
+    // openFileAttachment does): its card shows the ring and the cross.
+    Future<(AttachmentReference, Future<String?>)> tapFileBehindTwoPhotos() async {
+      phone.relay.downloadGate = Completer<void>();
+      for (var seed = 1; seed <= 2; seed++) {
+        await phone.receive(attachment: await phone.seal(photo, seed: seed));
+      }
+      await waitFor(() => phone.relay.blobDownloads.length == 2);
+      final fileRef = await phone.seal(pdfBytes('queued'), contentType: 'application/pdf');
+      await phone.receive(kind: MessageKind.file, body: 'queued.pdf', attachment: fileRef);
+      final opening = phone.media.plaintextFileFor(_chat, fileRef, name: 'queued.pdf', purpose: MediaCopyPurpose.open);
+      await settle();
+      expect(phone.stateOf(fileRef), MediaState.downloading, reason: 'the card shows the ring and the cross');
+      return (fileRef, opening);
+    }
+
+    test('the cross on a file whose tap waits for a transfer slot stops it: nothing is fetched or opened', () async {
+      final (fileRef, opening) = await tapFileBehindTwoPhotos();
+      phone.media.cancel(_chat, fileRef);
+      expect(phone.stateOf(fileRef), MediaState.idle, reason: 'the card stayed on downloading after the cross');
+
+      phone.relay.downloadGate!.complete();
+      expect(await opening, isNull, reason: 'a cancelled tap still opened the file in another app');
+      await settle();
+      expect(phone.relay.blobDownloads, isNot(contains(fileRef.attachmentId)), reason: 'cancelled, yet fetched');
+      expect(await phone.openFiles(), isEmpty, reason: 'a decrypted copy was made for a cancelled tap');
+      expect(phone.stateOf(fileRef), MediaState.idle);
+
+      // A tap afterwards fetches it as usual.
+      await phone.media.download(_chat, fileRef);
+      expect(phone.stateOf(fileRef), MediaState.ready);
+    });
+
+    test('a tap again right after the cross, while the slots are still busy, fetches it once one frees', () async {
+      final (fileRef, opening) = await tapFileBehindTwoPhotos();
+      phone.media.cancel(_chat, fileRef);
+      final again = phone.media.download(_chat, fileRef);
+      expect(phone.stateOf(fileRef), MediaState.downloading);
+
+      phone.relay.downloadGate!.complete();
+      await again;
+      expect(await opening, isNull, reason: 'the cancelled tap opened the file');
+      expect(phone.stateOf(fileRef), MediaState.ready, reason: 'the second tap did not fetch it');
+      expect(phone.relay.blobDownloads.where((id) => id == fileRef.attachmentId), hasLength(1));
+    });
+
     test('newest first, and at most 50 waiting per chat', () async {
       final slots = TransferSlots(capacity: 1);
       final fetched = <DateTime>[];
@@ -718,6 +764,38 @@ void main() {
       });
     }
 
+    test('a blob removed outside the sweeps (a cancelled send, a sealer that failed) takes its bytes and copies along',
+        () async {
+      final reference = await phone.seal(photo);
+      await phone.receive(attachment: reference);
+      await phone.waitForState(reference, MediaState.ready);
+      expect(await phone.media.photoBytes(_chat, reference), photo);
+      final copy = await phone.media
+          .plaintextFileFor(_chat, reference, name: 'p.jpg', purpose: MediaCopyPurpose.open, photo: true);
+      expect(File(copy!).existsSync(), isTrue);
+
+      await phone.media.blobs.delete(_chat, reference.attachmentId);
+      await settle();
+      expect(phone.media.cachedPhotoBytes(_chat, reference), isNull,
+          reason: 'the decrypted photo stayed in memory after its blob went');
+      expect(phone.stateOf(reference), isNot(MediaState.ready));
+      expect(File(copy).existsSync(), isFalse, reason: 'its decrypted copy outlived the blob');
+    });
+
+    test('a blob whose file is found gone takes its decrypted bytes along', () async {
+      final reference = await phone.seal(photo);
+      await phone.receive(attachment: reference);
+      await phone.waitForState(reference, MediaState.ready);
+      expect(await phone.media.photoBytes(_chat, reference), photo);
+
+      for (final entity in (await phone.paths.mediaDir()).listSync()) {
+        entity.deleteSync();
+      }
+      expect(await phone.media.blobs.pathOf(_chat, reference.attachmentId, reference.sha256), isNull);
+      expect(phone.media.cachedPhotoBytes(_chat, reference), isNull);
+      expect(phone.stateOf(reference), isNot(MediaState.ready));
+    });
+
     test('signing out forgets every blob, status and decrypted byte', () async {
       final reference = await phone.seal(photo);
       await phone.receive(attachment: reference);
@@ -946,6 +1024,45 @@ void main() {
       await phone.controller.refreshConversations();
       await waitFor(() async => (await phone.index.all()).isEmpty, reason: 'the chat that left kept its blob');
       expect(await phone.mediaFiles(), isEmpty);
+    });
+
+    test('a photo still downloading when its chat leaves the list is not kept, then or at the next start', () async {
+      phone.relay.downloadGate = Completer<void>();
+      final reference = await phone.seal(photo);
+      await phone.receive(conversationId: _group, attachment: reference);
+      await waitFor(() => phone.relay.blobDownloads.contains(reference.attachmentId));
+
+      phone.relay.conversations.remove(_group);
+      await phone.controller.refreshConversations();
+      await settle();
+      phone.relay.downloadGate!.complete();
+      await phone.waitForState(reference, MediaState.idle, _group);
+      expect(await phone.index.all(), isEmpty, reason: 'the blob of a chat that left was kept');
+      expect(await phone.mediaFiles(), isEmpty);
+
+      // A start's sweeps, as the next launch runs them, find nothing either.
+      await phone.media.cleanup.start();
+      expect(await phone.index.all(), isEmpty);
+      expect(await phone.mediaFiles(), isEmpty);
+    });
+
+    test('a chat listed again after it left keeps what it fetches', () async {
+      final paths = _ownPaths();
+      final cleanup = MediaCleanup(
+        blobs: MediaBlobStore(paths: paths, index: MemoryMediaIndex()),
+        paths: paths,
+        now: () => _clock,
+        pendingAttachmentIds: () => {},
+        onEntryDeleted: (_) {},
+      );
+      addTearDown(cleanup.dispose);
+      await cleanup.conversationsListed(['conv-a', 'Conv-B']);
+      expect(cleanup.hasLeft('conv-b'), isFalse);
+      await cleanup.conversationsListed(['conv-a']);
+      expect(cleanup.hasLeft('CONV-B'), isTrue);
+      expect(cleanup.hasLeft('conv-new'), isFalse, reason: 'a chat never listed is not one that left');
+      await cleanup.conversationsListed(['conv-a', 'conv-b']);
+      expect(cleanup.hasLeft('conv-b'), isFalse);
     });
 
     test('a start deletes files without a row, and every decrypted copy left behind', () async {

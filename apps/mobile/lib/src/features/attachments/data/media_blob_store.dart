@@ -46,6 +46,11 @@ class MediaBlobStore {
   final Map<String, DateTime> _usedAt = {};
   final Map<String, DateTime> _writtenAt = {};
 
+  /// Told of every index entry removed here, whoever removed it and why (a
+  /// sweep, a cancelled send, a file found gone): whatever is held
+  /// decrypted for it goes too (D36). Set by the media service's cleanup.
+  void Function(MediaIndexEntry entry)? onEntryRemoved;
+
   /// A fresh `<media>/<random 64 hex>.part` path for a blob to be written
   /// to and then [commit]ted.
   Future<String> reservePartPath() async {
@@ -142,7 +147,7 @@ class MediaBlobStore {
     final path = _blobName.hasMatch(entry.fileName) ? p.join((await _paths.mediaDir()).path, entry.fileName) : null;
     if (path == null || !await File(path).exists()) {
       await _index.remove(entry.fileName);
-      _forget(entry.fileName);
+      _removed(entry);
       return null;
     }
     _usedAt[entry.fileName] = _now();
@@ -183,6 +188,7 @@ class MediaBlobStore {
   Future<void> deleteEntry(MediaIndexEntry entry) async {
     await _deleteFile(entry.fileName);
     await _index.remove(entry.fileName);
+    _removed(entry);
   }
 
   /// Deletes every file of the folder without a row (a part file reserved
@@ -206,10 +212,10 @@ class MediaBlobStore {
           ((_blobName.hasMatch(name) && (rows.containsKey(name) || committing)) || _reserved.contains(name));
       if (!kept) await _deleteEntity(entity);
     }
-    for (final fileName in rows.keys) {
+    for (final MapEntry(key: fileName, value: entry) in rows.entries) {
       if (!_blobName.hasMatch(fileName) || !await File(p.join(folder.path, fileName)).exists()) {
         await _index.remove(fileName);
-        _forget(fileName);
+        _removed(entry);
       }
     }
   }
@@ -252,6 +258,11 @@ class MediaBlobStore {
   void _forget(String fileName) {
     _usedAt.remove(fileName);
     _writtenAt.remove(fileName);
+  }
+
+  void _removed(MediaIndexEntry entry) {
+    _forget(entry.fileName);
+    onEntryRemoved?.call(entry);
   }
 
   String _randomName() {

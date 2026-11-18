@@ -52,6 +52,13 @@ class PendingMessages {
     await _persistence.removePending(clientMessageId);
   }
 
+  /// Drops [clientMessageId] and deletes its cache row, with nothing to
+  /// write first: a record that nothing takes the place of.
+  Future<void> drop(String clientMessageId) {
+    _records.remove(clientMessageId);
+    return _persistence.removePending(clientMessageId);
+  }
+
   /// Replaces everything with the records the cache held.
   void restore(Iterable<PendingMessageRecord> records) {
     _records

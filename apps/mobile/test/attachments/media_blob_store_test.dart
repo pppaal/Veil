@@ -226,6 +226,29 @@ void main() {
     expect(await index.all(), isEmpty);
   });
 
+  test('every entry removed is told, however it went (D36): delete, deleteEntry, a file found gone, an orphan row',
+      () async {
+    const thirdId = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
+    const fourthId = '6ba7b811-9dad-41d1-80b4-00c04fd430c8';
+    final removed = <String>[];
+    store.onEntryRemoved = (entry) => removed.add(entry.attachmentId);
+    Future<String> put(String id) =>
+        store.write(conversationId: 'conv-sam', attachmentId: id, digest: 'd', sealedBytes: const [1, 2]);
+    await put(_photoId);
+    await put(_fileId);
+    final third = await put(thirdId);
+    final fourth = await put(fourthId);
+
+    await store.delete('conv-sam', _photoId);
+    await store.deleteEntry((await store.entries()).firstWhere((entry) => entry.attachmentId == _fileId));
+    File(third).deleteSync();
+    expect(await store.pathOf('conv-sam', thirdId, 'd'), isNull);
+    File(fourth).deleteSync();
+    await store.removeOrphans();
+    expect(removed, [_photoId, _fileId, thirdId, fourthId]);
+    expect(await index.all(), isEmpty);
+  });
+
   test('clear empties the index and the folder', () async {
     await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sealedBytes: const [1]);
     File(p.join((await media()).path, '${'a' * 64}.part')).writeAsBytesSync(const [1]);

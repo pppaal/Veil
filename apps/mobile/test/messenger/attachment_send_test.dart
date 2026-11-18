@@ -13,6 +13,7 @@ import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/attachments/domain/attachment_rules.dart';
 import 'package:veil_mobile/src/features/attachments/domain/outgoing_attachment.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/attachment_media_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
 import '../support/async_wait.dart';
@@ -339,8 +340,8 @@ void main() {
       expect(blobsIn(await mediaOf(alice)), isEmpty);
       expect(await alice.cache.readPendingMessages(), hasLength(1), reason: 'the refused delete left its record');
 
-      // What the record still holds cannot be sent without its blob: it
-      // fails for good, and nothing of it reaches bob.
+      // The record left behind is dropped at the next start: nothing of it
+      // reaches bob, and it does not come back on alice's phone.
       relay.uploadGate = null;
       await alice.restart();
       await alice.controller.retryPendingMessages(conv);
@@ -348,6 +349,66 @@ void main() {
       expect(relay.uploadedBlobs, isEmpty);
       expect(relay.conversations[conv]!.messages, hasLength(relayedBefore));
       expect(blobsIn(await mediaOf(alice)), isEmpty);
+      expect(alice.controller.messagesFor(conv).where((message) => message.clientMessageId == id), isEmpty);
+      expect(await alice.cache.readPendingMessages(), isEmpty, reason: 'the record left behind was not dropped');
+    });
+
+    test('of a photo whose post failed after its upload, while the cache refuses to drop its record: '
+        'the relay deletes the blob, and a restart neither sends nor shows it', () async {
+      await deliver(alice, bob, 'posted later');
+      final relayedBefore = relay.conversations[conv]!.messages.length;
+      final gate = holdUploads();
+      await alice.controller.sendAttachment(conversationId: conv, attachment: await photo(alice, _preparedJpeg()));
+      final queued = queuedOf(alice)!;
+      final id = queued.clientMessageId!;
+      final reference = (await alice.controller.decryptMessage(queued)).attachment!;
+      await uploading(alice, id);
+      // The post after the upload is refused for good: bob blocked alice meanwhile.
+      relay.blocks.putIfAbsent('user-bob', () => {})['user-alice'] = relay.now();
+      gate.complete();
+      relay.uploadGate = null;
+      await waitFor(() => alice.controller.messagesFor(conv).any((m) => m.clientMessageId == id && m.hasFailed),
+          reason: 'the post did not fail');
+      expect(alice.controller.attachmentTransferForMessage(id)?.canCancel, isTrue, reason: 'no cross on it');
+      expect(relay.uploadedBlobs, contains(reference.attachmentId));
+      relay.blocks['user-bob']!.remove('user-alice');
+
+      alice.cache.failPendingRemovals = 1;
+      await expectLater(alice.controller.cancelPendingAttachment(id), throwsStateError);
+      expect(alice.controller.messagesFor(conv).where((message) => message.clientMessageId == id), isEmpty);
+      expect(relay.attachments[reference.attachmentId]!.uploadStatus, 'failed');
+      expect(relay.uploadedBlobs, isNot(contains(reference.attachmentId)), reason: 'bob could still download it');
+      expect(await alice.cache.readPendingMessages(), hasLength(1), reason: 'the refused delete left its record');
+
+      await alice.restart();
+      await alice.controller.retryPendingMessages(conv);
+      await settle(const Duration(seconds: 1));
+      expect(relay.conversations[conv]!.messages, hasLength(relayedBefore), reason: 'the removed photo was sent');
+      expect(alice.controller.messagesFor(conv).where((message) => message.clientMessageId == id), isEmpty,
+          reason: 'the removed photo came back after a restart');
+      expect(await alice.cache.readPendingMessages(), isEmpty);
+    });
+
+    test('of an own photo shown while it uploads: its decrypted bytes leave memory with its blob (D36)', () async {
+      alice.controller.media.setInUse(true);
+      await deliver(alice, bob, 'shown next');
+      holdUploads();
+      final prepared = _preparedJpeg();
+      await alice.controller.sendAttachment(conversationId: conv, attachment: await photo(alice, prepared));
+      final queued = queuedOf(alice)!;
+      final id = queued.clientMessageId!;
+      final reference = (await alice.controller.decryptMessage(queued)).attachment!;
+      await uploading(alice, id);
+      // The bubble shows the own photo under the scrim, decrypted from its blob.
+      expect(await alice.controller.media.photoBytes(conv, reference), prepared);
+      expect(alice.controller.media.cachedPhotoBytes(conv, reference), isNotNull);
+
+      await alice.controller.cancelPendingAttachment(id);
+      await settle();
+      expect(blobsIn(await mediaOf(alice)), isEmpty);
+      expect(alice.controller.media.cachedPhotoBytes(conv, reference), isNull,
+          reason: 'the decrypted photo of a cancelled message stayed in memory after its blob went');
+      expect(alice.controller.media.statusOf(conv, reference).state, isNot(MediaState.ready));
     });
 
     test('of a failed attachment', () async {

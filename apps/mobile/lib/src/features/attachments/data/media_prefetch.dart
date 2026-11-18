@@ -73,23 +73,25 @@ enum FetchFailure {
 /// fresh ticket. The bytes are kept only once their digest matches, as a
 /// part file renamed into the media store. Nothing is decrypted. The
 /// rename runs through [serial] (MediaCleanup.serial), so a sweep listing
-/// the folder never takes a blob committed meanwhile for an orphan.
+/// the folder never takes a blob committed meanwhile for an orphan, and a
+/// sweep that took a chat's blobs never misses one committed after it.
 class SealedBlobFetcher {
   SealedBlobFetcher({
     required VeilApiClient api,
     required MediaBlobStore blobs,
-    required Future<String> Function(Future<String> Function() step) serial,
+    required Future<String?> Function(Future<String?> Function() step) serial,
   })  : _api = api,
         _blobs = blobs,
         _serial = serial;
 
   final VeilApiClient _api;
   final MediaBlobStore _blobs;
-  final Future<String> Function(Future<String> Function() step) _serial;
+  final Future<String?> Function(Future<String?> Function() step) _serial;
 
   /// The kept blob's path, or the [FetchFailure] with what caused it.
-  /// [stillWanted] is asked before anything is kept: false drops it (the
-  /// identity that asked is gone).
+  /// [stillWanted] is asked before anything is kept, the last time in the
+  /// same serial step as the commit: false drops it (the identity that
+  /// asked is gone, the user stopped it, its chat left the list).
   Future<({String? path, FetchFailure? failure, Object? error})> fetch({
     required String accessToken,
     required String conversationId,
@@ -141,14 +143,17 @@ class SealedBlobFetcher {
       }
       if (!stillWanted()) return (path: null, failure: FetchFailure.canceled, error: null);
       final partPath = part;
-      final path = await _serial(() => _blobs.commit(
-            partPath: partPath,
-            conversationId: conversationId,
-            attachmentId: reference.attachmentId,
-            digest: reference.sha256,
-            sizeBytes: sealed.length,
-            expiresAt: expiresAt,
-          ));
+      final path = await _serial(() async => !stillWanted()
+          ? null
+          : _blobs.commit(
+              partPath: partPath,
+              conversationId: conversationId,
+              attachmentId: reference.attachmentId,
+              digest: reference.sha256,
+              sizeBytes: sealed.length,
+              expiresAt: expiresAt,
+            ));
+      if (path == null) return (path: null, failure: FetchFailure.canceled, error: null);
       part = null;
       return (path: path, failure: null, error: null);
     } catch (error) {

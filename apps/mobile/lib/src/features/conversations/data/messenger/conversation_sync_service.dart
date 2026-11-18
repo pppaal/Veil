@@ -150,7 +150,7 @@ class ConversationSyncService {
       if (contents[message.id]?.status.isFinal ?? false) _markHeld(message);
     }
 
-    final keepTempPaths = _outbox.restore(cached.pending);
+    final keepTempPaths = _outbox.restore(await _attachments.withoutDiscarded(cached.pending));
     await _tempStore?.cleanupOrphanedFiles(keepPaths: keepTempPaths);
     for (final conversationId in _store.loadedConversationIds.toList()) {
       unawaited(_latest.refresh(conversationId));

@@ -7,11 +7,15 @@ content, so either opens what the other sent. The phone does not play voice
 messages: one from the web shows its kind and size with a line saying this
 version can't open it. File, Save and opening a received file are on Android
 and iOS only: the plugin behind File and Save (`flutter_file_dialog`) and the
-`veil/file_open` channel exist only there, so a Windows, macOS or Linux build
-of the app offers Photos only under the plus, shows no Save, and opens a
-received file only when it is a photo, in the in-app viewer; any other file
-says "Can't open in this version". Photos send, show and open full screen
-there as on a phone.
+`veil/file_open` channel exist only there, so the Windows desktop build
+offers Photos only under the plus, shows no Save, and opens a received file
+only when it is a photo (its name says it is an image and its bytes are a
+JPEG, PNG or WebP), in the in-app viewer; any other file says "Can't open in
+this version", before it is downloaded when its name says it is no image.
+Photos send, show and open full screen there as on a phone. On Windows,
+`getTemporaryDirectory()`, which holds staging and `veil_open/` (below), is
+the user's shared `%TEMP%`, and a sign-out or wipe deletes only those two
+folders in it.
 Paths below are under `apps/mobile/lib/src` unless they say otherwise.
 
 ## Send path (mobile)
@@ -182,9 +186,9 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
 
 - The outbox drains each chat on its own, oldest first. A text sent after a
   file in the same chat waits for that file's upload; a text to any other
-  chat goes at once. In a disappearing chat, a text that waited starts its
-  timer when it is sent, as the file does, so it cannot expire before it
-  leaves the phone.
+  chat goes at once. In a disappearing chat, a text that waits behind
+  another message starts its timer when it is sent, as the file does, so
+  the wait does not use up its timer.
 - The cross on an uploading or failed photo or file cancels it and removes
   the message: the upload stops, the API is told the upload failed if a
   ticket was issued (an upload it completed too, which deletes the blob

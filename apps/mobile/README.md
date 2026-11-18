@@ -71,8 +71,8 @@ another app on Android, in Quick Look on iOS, and in the in-app viewer when it
 is a JPEG, PNG or WebP. The long-press menu can save either. On iOS a photo or
 video that the in-app viewer cannot show goes to Save, never to Quick Look.
 File, Save and opening a file exist only on Android and iOS, where
-`flutter_file_dialog` and the `veil/file_open` channel run: a Windows, macOS
-or Linux build offers Photos only under the plus, shows no Save, and opens a
+`flutter_file_dialog` and the `veil/file_open` channel run: the Windows
+desktop build offers Photos only under the plus, shows no Save, and opens a
 received file only when it is a photo, in the in-app viewer (any other file
 says "Can't open in this version").
 

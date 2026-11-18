@@ -162,10 +162,13 @@ opens a file. On Android it starts the viewer with `ACTION_VIEW` in a new task
 (`FLAG_ACTIVITY_NEW_TASK`, `FLAG_ACTIVITY_MULTIPLE_TASK`, a read grant only),
 through the app's own FileProvider, which serves `veil_open/` and nothing else.
 On iOS it presents Quick Look over the app. On iOS a photo or video that the
-in-app viewer cannot show goes to the Save flow instead of Quick Look. A
-Windows, macOS or Linux build has no File and no Save and hands no file to
-another app: it opens a received file only when it is a photo, in the in-app
-viewer.
+in-app viewer cannot show goes to the Save flow instead of Quick Look. The
+Windows desktop build has no File and no Save and hands no file to another
+app: it opens a received file only when it is a photo, in the in-app viewer.
+Its temporary folder is the user's shared `%TEMP%`, not a sandbox: a picked
+photo in staging and a copy in `veil_open/` sit there while they last, where
+other programs running as the same Windows user can read them, and a sign-out
+or wipe deletes only those two folders in it.
 
 ## App lock and privacy posture
 

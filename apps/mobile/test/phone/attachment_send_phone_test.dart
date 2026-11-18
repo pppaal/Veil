@@ -70,7 +70,11 @@ void main() {
       await pumpFrames(tester, frames: 4);
       expect(find.text(en.chatAttachPhotos), findsOneWidget);
       expect(find.text(en.chatAttachFile), findsNothing);
-      expect(find.byIcon(Icons.insert_drive_file_outlined), findsNothing);
+      // In the sheet: the chat behind it holds the lease the user sent.
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.byIcon(Icons.insert_drive_file_outlined)),
+          findsNothing);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.byIcon(Icons.photo_library_outlined)),
+          findsOneWidget);
     });
   });
 

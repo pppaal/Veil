@@ -369,7 +369,7 @@ void main() {
       await withDesktopChat(tester, (world) async {
         await lease(world);
       }, (world) async {
-        await tester.longPress(find.byType(MessageFileCard));
+        await tester.longPress(_receivedFile);
         await pumpFrames(tester, frames: 4);
         expect(find.byKey(const ValueKey('message-report')), findsOneWidget);
         expect(find.byKey(const ValueKey('message-save')), findsNothing);
@@ -379,7 +379,7 @@ void main() {
     testWidgets('a tap on a PDF says this version cannot open it, and nothing is fetched or handed over',
         (tester) async {
       await withDesktopChat(tester, lease, (world) async {
-        await tester.tap(find.byType(MessageFileCard));
+        await tester.tap(_receivedFile);
         await until(tester, () => find.text(l10n.chatAttachmentCannotOpen).evaluate().isNotEmpty,
             reason: 'nothing said why it does not open');
         expect(world.relay.downloadTicketRequests, isEmpty, reason: 'a file that cannot open was fetched');
@@ -398,7 +398,7 @@ void main() {
               body: 'diagram.png',
               hour: 10,
               minute: 16), (world) async {
-        await tester.tap(find.byType(MessageFileCard));
+        await tester.tap(_receivedFile);
         await until(tester, () => find.byType(PhotoViewerScreen).evaluate().isNotEmpty,
             reason: 'a photo sent as a file did not open in the viewer');
         expect(find.byKey(const ValueKey('photo-viewer-save')), findsNothing);

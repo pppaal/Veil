@@ -343,6 +343,7 @@ void main() {
 
       expect(alice.controller.messagesFor(conv).where((message) => message.clientMessageId == id), isEmpty);
       expect(alice.controller.messagesFor(conv).where((message) => message.hasFailed), isEmpty);
+      expect(alice.controller.errorMessage, isNull, reason: 'the failure was shown for a cancelled message');
       expect(await alice.cache.readPendingMessages(), isEmpty);
       expect(blobsIn(await mediaOf(alice)), isEmpty);
     });
@@ -473,6 +474,8 @@ void main() {
       final record = (await alice.cache.readPendingMessages()).single;
       expect(record.state, MessageDeliveryState.failed);
       expect(record.errorMessage, UserFacingErrorCode.attachmentRejected.sentence);
+      // Failed as it was restored: no attempt was made to send it.
+      expect(record.retryCount, 0);
       expect(staged.existsSync(), isFalse);
       expect((await stagingOf(alice)).listSync(), isEmpty);
       expect(relay.uploadTickets, isEmpty);

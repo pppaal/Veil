@@ -190,7 +190,6 @@ class OutboxService {
         if (_draining.add(id))
           _drainConversation(id, markFailuresAsRetrying: markFailuresAsRetrying, ignoreRetrySchedule: ignoreRetrySchedule),
     ];
-    if (drains.isEmpty) return;
     try {
       await Future.wait(drains);
     } finally {

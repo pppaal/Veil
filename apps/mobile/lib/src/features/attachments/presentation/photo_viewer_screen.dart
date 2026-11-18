@@ -136,7 +136,8 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
           ..translateByDouble(-at.dx * (scale - 1), -at.dy * (scale - 1), 0, 1)
           ..scaleByDouble(scale, scale, 1, 1))
         : Matrix4.identity();
-    _zoomTo = Matrix4Tween(begin: _transform.value, end: target).animate(CurvedAnimation(parent: _zoom, curve: VeilMotion.emphasize));
+    _zoomTo = Matrix4Tween(begin: _transform.value, end: target)
+        .animate(CurvedAnimation(parent: _zoom, curve: VeilMotion.emphasize));
     _zoom.forward(from: 0);
   }
 
@@ -145,7 +146,8 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
       Navigator.of(context).pop();
       return;
     }
-    _dragBack = Tween<double>(begin: _drag, end: 0).animate(CurvedAnimation(parent: _settle, curve: VeilMotion.emphasize));
+    _dragBack =
+        Tween<double>(begin: _drag, end: 0).animate(CurvedAnimation(parent: _settle, curve: VeilMotion.emphasize));
     _settle.forward(from: 0);
   }
 

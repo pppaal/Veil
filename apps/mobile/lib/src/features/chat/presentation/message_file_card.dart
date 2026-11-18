@@ -341,7 +341,10 @@ class RenderMiddleEllipsisText extends RenderBox {
     required TextDirection textDirection,
     required TextScaler textScaler,
   }) {
-    if (text == _text && style == _style && textDirection == _painter.textDirection && textScaler == _painter.textScaler) {
+    if (text == _text &&
+        style == _style &&
+        textDirection == _painter.textDirection &&
+        textScaler == _painter.textScaler) {
       return;
     }
     _text = text;

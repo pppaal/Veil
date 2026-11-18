@@ -47,15 +47,10 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
         _session = session,
         _ops = ops,
         _contents = contents,
-        _now = now,
-        _fetcher = SealedBlobFetcher(api: apiClient, blobs: blobs) {
+        _now = now {
     cleanup = MediaCleanup(
-      blobs: blobs,
-      paths: paths,
-      now: now,
-      pendingAttachmentIds: pendingAttachmentIds,
-      onEntryDeleted: _forgetEntry,
-    );
+        blobs: blobs, paths: paths, now: now, pendingAttachmentIds: pendingAttachmentIds, onEntryDeleted: _forgetEntry);
+    _fetcher = SealedBlobFetcher(api: apiClient, blobs: blobs, serial: cleanup.serial);
     _prefetch = MediaPrefetch(slots: _slots, fetch: _prefetchOne, withheld: autoDownloadWithheld);
     // No decrypted copy outlives the process that made it.
     unawaited(cleanup.purgeCopies());
@@ -81,7 +76,7 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
   final MessengerOperationRunner _ops;
   final MessageContentService _contents;
   final DateTime Function() _now;
-  final SealedBlobFetcher _fetcher;
+  late final SealedBlobFetcher _fetcher;
   final DecryptedMediaCache _decrypted = DecryptedMediaCache();
   final TransferSlots _slots = TransferSlots();
   late final MediaPrefetch _prefetch;
@@ -131,7 +126,9 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
     if (cached != null) return Future.value(cached);
     if (!_inUse && !userAsked) return Future.value();
     return _opening[key] ??= _openPhoto(key, conversationId, reference, userAsked, expiresAt, sentAt)
-        .whenComplete(() => _opening.remove(key));
+        .whenComplete(() {
+      _opening.remove(key);
+    });
   }
 
   /// The decrypted photo when it is in memory now; nothing else is tried.
@@ -165,7 +162,8 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
     if (!opens(reference)) return null;
     final key = MediaKey(conversationId, reference);
     for (var attempt = 0; attempt < 2; attempt++) {
-      final blob = await _blobPath(conversationId, reference) ?? await _fetch(key, conversationId, reference, expiresAt);
+      final blob =
+          await _blobPath(conversationId, reference) ?? await _fetch(key, conversationId, reference, expiresAt);
       if (blob == null || _disposed) return null;
       try {
         return await cleanup.decryptCopy(
@@ -228,9 +226,7 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
     _integrityFailures.clear();
     _decrypted.clear();
     _evictions += 1;
-    _prefetch
-      ..clear()
-      ..setRunning(_inUse);
+    _prefetch..clear()..setRunning(_inUse);
     _seen.clear();
     cleanup.reset();
     _started = false;
@@ -346,7 +342,8 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
       MediaKey key, String conversationId, AttachmentReference reference, DateTime? expiresAt, DateTime? sentAt) {
     final state = _status[key]?.state;
     if (state != null && state != MediaState.idle && state != MediaState.ready) return;
-    if (_prefetch.isQueued(key) || reference.sizeBytes > kMaxPhotoBytes || (expiresAt != null && !expiresAt.isAfter(_now()))) return;
+    if (_prefetch.isQueued(key) || reference.sizeBytes > kMaxPhotoBytes) return;
+    if (expiresAt != null && !expiresAt.isAfter(_now())) return;
     _status.remove(key);
     final item = PrefetchItem(
         key: key, conversationId: conversationId, reference: reference, sentAt: sentAt ?? _now(), expiresAt: expiresAt);
@@ -384,10 +381,14 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
     if (state == MediaState.gone || state == MediaState.unsupported) return Future.value();
     _set(key, MediaState.downloading);
     Future<String?> transfer() => _transfer(key, conversationId, reference, expiresAt);
-    return _fetches[key] = (inSlot ? transfer() : _slots.run(transfer)).whenComplete(() => _fetches.remove(key));
+    // A block body: the removed future must not be what whenComplete awaits.
+    return _fetches[key] = (inSlot ? transfer() : _slots.run(transfer)).whenComplete(() {
+      _fetches.remove(key);
+    });
   }
 
-  Future<String?> _transfer(MediaKey key, String conversationId, AttachmentReference reference, DateTime? expiresAt) async {
+  Future<String?> _transfer(
+      MediaKey key, String conversationId, AttachmentReference reference, DateTime? expiresAt) async {
     final session = _session.authed;
     if (session == null || _disposed) return _set(key, MediaState.failed);
     final generation = _session.generation;

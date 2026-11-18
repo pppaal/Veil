@@ -71,14 +71,21 @@ enum FetchFailure {
 /// Fetches one sealed blob (D33): a download ticket, then at once the GET,
 /// capped at what the pointer can hold; a GET refused (403 or 404) gets one
 /// fresh ticket. The bytes are kept only once their digest matches, as a
-/// part file renamed into the media store. Nothing is decrypted.
+/// part file renamed into the media store. Nothing is decrypted. The
+/// rename runs through [serial] (MediaCleanup.serial), so a sweep listing
+/// the folder never takes a blob committed meanwhile for an orphan.
 class SealedBlobFetcher {
-  SealedBlobFetcher({required VeilApiClient api, required MediaBlobStore blobs})
-      : _api = api,
-        _blobs = blobs;
+  SealedBlobFetcher({
+    required VeilApiClient api,
+    required MediaBlobStore blobs,
+    required Future<String> Function(Future<String> Function() step) serial,
+  })  : _api = api,
+        _blobs = blobs,
+        _serial = serial;
 
   final VeilApiClient _api;
   final MediaBlobStore _blobs;
+  final Future<String> Function(Future<String> Function() step) _serial;
 
   /// The kept blob's path, or the [FetchFailure] with what caused it.
   /// [stillWanted] is asked before anything is kept: false drops it (the
@@ -133,14 +140,15 @@ class SealedBlobFetcher {
         return (path: null, failure: FetchFailure.integrity, error: null);
       }
       if (!stillWanted()) return (path: null, failure: FetchFailure.canceled, error: null);
-      final path = await _blobs.commit(
-        partPath: part,
-        conversationId: conversationId,
-        attachmentId: reference.attachmentId,
-        digest: reference.sha256,
-        sizeBytes: sealed.length,
-        expiresAt: expiresAt,
-      );
+      final partPath = part;
+      final path = await _serial(() => _blobs.commit(
+            partPath: partPath,
+            conversationId: conversationId,
+            attachmentId: reference.attachmentId,
+            digest: reference.sha256,
+            sizeBytes: sealed.length,
+            expiresAt: expiresAt,
+          ));
       part = null;
       return (path: path, failure: null, error: null);
     } catch (error) {
@@ -337,7 +345,9 @@ class MediaPrefetch {
       final next = _takeNewest();
       if (next == null) return;
       _inFlight.add(next.key);
-      unawaited(slots.run(() => _fetch(next)).catchError((Object _) {}).whenComplete(() => _inFlight.remove(next.key)));
+      unawaited(slots.run(() => _fetch(next)).catchError((Object _) {}).whenComplete(() {
+        _inFlight.remove(next.key);
+      }));
     }
   }
 

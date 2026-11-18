@@ -85,6 +85,9 @@ class MediaCleanup {
   final Random _random = Random.secure();
 
   final Map<String, MediaCopy> _copies = {};
+  // The copy folders made by this process and not deleted yet: being
+  // written, or tracked in _copies. A purge of leftovers keeps them.
+  final Set<String> _made = {};
   Set<String>? _listed;
   Timer? _expiryTimer;
   Timer? _copyTimer;
@@ -95,22 +98,26 @@ class MediaCleanup {
 
   Iterable<MediaCopy> get copies => _copies.values;
 
-  /// Everything a start does: no copy survives one, orphans go, then the
-  /// expiry sweep and the cap.
+  /// Everything a start does: no copy left from before survives one,
+  /// orphans go, then the expiry sweep and the cap.
   Future<void> start() => _serial(() async {
-        await _deleteEntriesOf(await _paths.openDir());
-        _copies.clear();
+        await _purgeLeftovers();
         await _blobs.removeOrphans();
         await _sweepExpired();
         await _enforceCap();
       });
 
-  /// Deletes only the decrypted copies left from before (the folder's
-  /// entries), as soon as the service exists.
-  Future<void> purgeCopies() => _serial(() async {
-        await _deleteEntriesOf(await _paths.openDir());
-        _copies.clear();
-      });
+  /// Deletes only the decrypted copies left from before (every entry of
+  /// veil_open but the folders made here), as soon as the service exists.
+  Future<void> purgeCopies() => _serial(_purgeLeftovers);
+
+  Future<void> _purgeLeftovers() async {
+    final root = await _paths.openDir();
+    if (!await root.exists()) return;
+    await for (final entity in root.list(followLinks: false)) {
+      if (!_made.contains(entity.path)) await _delete(entity);
+    }
+  }
 
   /// Messages changed: the expiry sweep runs now, or once
   /// [expiryCheckInterval] after the last one.
@@ -168,10 +175,12 @@ class MediaCleanup {
   Future<String> newCopyPath(String safeName) async {
     final root = await _paths.openDir();
     final folder = Directory(p.join(root.path, _randomFolderName()));
+    _made.add(folder.path);
     await folder.create(recursive: true);
     final path = p.join(folder.path, safeName);
     if (!p.isWithin(root.path, path) || !p.equals(p.dirname(path), folder.path)) {
       await _delete(folder);
+      _made.remove(folder.path);
       throw ArgumentError('A copy is kept only inside its own folder of veil_open.');
     }
     return path;
@@ -228,6 +237,7 @@ class MediaCleanup {
     _copies.remove(folder);
     final root = await _paths.openDir();
     if (p.isWithin(root.path, folder)) await _delete(Directory(folder));
+    _made.remove(folder);
   }
 
   /// The app locked: every Save copy goes (an Android Open copy stays, the
@@ -269,6 +279,7 @@ class MediaCleanup {
   void reset() {
     _listed = null;
     _copies.clear();
+    _made.clear();
     _lastExpirySweep = null;
     _expiryTimer?.cancel();
     _expiryTimer = null;
@@ -335,25 +346,25 @@ class MediaCleanup {
     }
   }
 
+  /// Runs [step] after every step queued before it and before any queued
+  /// after it, with its outcome: a blob committed through here is never
+  /// taken by a sweep listing the folder meanwhile.
+  Future<T> serial<T>(Future<T> Function() step) {
+    final result = _tail.then((_) => step());
+    _tail = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
+  }
+
   // Sweeps run one after another, so a sweep never races another over the
   // same rows. A failing one (an unreachable folder) is dropped: the next
   // sweep tries again, and nothing waits on a sweep's outcome.
-  Future<void> _serial(Future<void> Function() step) {
-    return _tail = _tail.then<void>((_) async {
-      if (!_disposed) await step();
-    }).catchError((Object _) {});
-  }
+  Future<void> _serial(Future<void> Function() step) => serial(() async {
+        if (!_disposed) await step();
+      }).catchError((Object _) {});
 
   String _randomFolderName() {
     const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
     return String.fromCharCodes(List.generate(24, (_) => alphabet.codeUnitAt(_random.nextInt(alphabet.length))));
-  }
-
-  static Future<void> _deleteEntriesOf(Directory directory) async {
-    if (!await directory.exists()) return;
-    await for (final entity in directory.list(followLinks: false)) {
-      await _delete(entity);
-    }
   }
 
   static Future<void> _delete(FileSystemEntity entity) async {

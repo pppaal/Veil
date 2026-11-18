@@ -368,7 +368,8 @@ class _Tile extends StatelessWidget {
           formatFileSize(sizeBytes),
         ),
       MediaState.gone => (
-          Icon(Icons.hide_image_outlined, size: VeilIconSize.lg, color: own ? palette.outgoingMeta : palette.textSubtle),
+          Icon(Icons.hide_image_outlined,
+              size: VeilIconSize.lg, color: own ? palette.outgoingMeta : palette.textSubtle),
           l10n.chatPhotoUnavailable,
         ),
       MediaState.failed => (_DownloadGlyph(own: own), l10n.chatDownloadFailed),

@@ -882,6 +882,48 @@ void main() {
     });
   });
 
+  // A chat's composer reports its strip's height, and a toast floats 8 dp
+  // above it instead of covering the field.
+  testWidgets('a toast floats above what the screen keeps at its bottom, and nowhere else', (tester) async {
+    final owner = Object();
+    addTearDown(() => VeilToastClearance.clear(owner));
+    Future<Rect> toast() async {
+      await _pump(
+        tester,
+        _App(
+          child: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showVeilToast(context, 'Files can be up to 25 MB'),
+                child: const Text('Attach'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Attach'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      // The toast's own surface; the SnackBar's box takes its margin too.
+      return tester.getRect(find.descendant(of: find.byType(SnackBar), matching: find.byType(Material)).first);
+    }
+
+    final usual = await toast();
+    expect(tester.widget<SnackBar>(find.byType(SnackBar)).margin, isNull);
+
+    VeilToastClearance.set(owner, () => 60);
+    final raised = await toast();
+    expect((tester.widget<SnackBar>(find.byType(SnackBar)).margin! as EdgeInsets).bottom, 60 + VeilSpace.sm);
+    final bottom = tester.getRect(find.byType(Scaffold)).bottom;
+    expect(bottom - raised.bottom, greaterThanOrEqualTo(60 + VeilSpace.sm), reason: 'the toast covers the composer');
+    expect(raised.bottom, lessThan(usual.bottom));
+
+    // A page in front of the chat (the source says 0) gets the usual place.
+    VeilToastClearance.set(owner, () => 0);
+    await toast();
+    expect(tester.widget<SnackBar>(find.byType(SnackBar)).margin, isNull);
+  });
+
   group('MainTabShell', () {
     testWidgets('is a NavigationBar with no indicator and no ripple', (tester) async {
       final router = GoRouter(

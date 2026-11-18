@@ -329,6 +329,75 @@ void main() {
     });
   });
 
+  // Design rule 18 on the desktop alpha, where nothing can be handed to
+  // another app or the save screen: no Save anywhere, and a file that is no
+  // photo says this version cannot open it, with nothing fetched.
+  group('where nothing can be handed over', () {
+    Future<void> withDesktopChat(WidgetTester tester, Future<void> Function(LayoutWorld world) seed,
+        Future<void> Function(LayoutWorld world) body) {
+      return withPhoneApp(
+        tester,
+        identities,
+        location: _chat,
+        overrides: [
+          attachmentOpenerProvider.overrideWithValue(opener),
+          fileHandOverAvailableProvider.overrideWithValue(false),
+        ],
+        afterSession: seed,
+        body: body,
+      );
+    }
+
+    Future<void> lease(LayoutWorld world) => deliverAttachment(world,
+        plaintext: leasePdf,
+        contentType: 'application/pdf',
+        kind: MessageKind.file,
+        body: leaseFileName,
+        hour: 10,
+        minute: 16);
+
+    testWidgets('a long press on a file offers no Save', (tester) async {
+      await withDesktopChat(tester, (world) async {
+        await lease(world);
+      }, (world) async {
+        await tester.longPress(find.byType(MessageFileCard));
+        await pumpFrames(tester, frames: 4);
+        expect(find.byKey(const ValueKey('message-report')), findsOneWidget);
+        expect(find.byKey(const ValueKey('message-save')), findsNothing);
+      });
+    });
+
+    testWidgets('a tap on a PDF says this version cannot open it, and nothing is fetched or handed over',
+        (tester) async {
+      await withDesktopChat(tester, lease, (world) async {
+        await tester.tap(find.byType(MessageFileCard));
+        await until(tester, () => find.text(l10n.chatAttachmentCannotOpen).evaluate().isNotEmpty,
+            reason: 'nothing said why it does not open');
+        expect(world.relay.downloadTicketRequests, isEmpty, reason: 'a file that cannot open was fetched');
+        expect(opener.opened, isEmpty);
+        expect(world.messenger.media.cleanup.copies, isEmpty);
+      });
+    });
+
+    testWidgets('a PNG sent as a file still opens in the viewer, which offers no Save', (tester) async {
+      await withDesktopChat(
+          tester,
+          (world) => deliverAttachment(world,
+              plaintext: solidPng(width: 300, height: 200),
+              contentType: 'image/png',
+              kind: MessageKind.file,
+              body: 'diagram.png',
+              hour: 10,
+              minute: 16), (world) async {
+        await tester.tap(find.byType(MessageFileCard));
+        await until(tester, () => find.byType(PhotoViewerScreen).evaluate().isNotEmpty,
+            reason: 'a photo sent as a file did not open in the viewer');
+        expect(find.byKey(const ValueKey('photo-viewer-save')), findsNothing);
+        expect(opener.opened, isEmpty);
+      });
+    });
+  });
+
   testWidgets('a voice message still says this version cannot open it', (tester) async {
     await withChat(
         tester,

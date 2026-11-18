@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -91,6 +92,16 @@ class PluginAttachmentOpener implements AttachmentOpener {
     }
   }
 }
+
+/// Whether this platform can hand a file over, the one place that decides
+/// it: pick one with the system's file picker, open a decrypted one in
+/// another app (or Quick Look), and save one through the system save
+/// screen. flutter_file_dialog and the app's veil/file_open channel exist
+/// only on Android and iOS; elsewhere (the desktop alpha) the attach sheet
+/// offers no File row, nothing offers Save, and only a photo opens, in the
+/// viewer.
+final fileHandOverAvailableProvider = Provider<bool>(
+    (ref) => defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
 
 final attachmentOpenerProvider = Provider<AttachmentOpener>((ref) => PluginAttachmentOpener(
       channel: ref.read(fileOpenChannelProvider),

@@ -7,11 +7,12 @@ import '../../../shared/presentation/veil_ui.dart';
 /// Where an attachment comes from.
 enum AttachSource { photos, file }
 
-/// What the composer's plus offers: Photos (the system photo picker) and
-/// File (the system document picker), each a row with its outlined icon.
+/// What the composer's plus offers: Photos (the system photo picker) and,
+/// where the platform has a document picker ([offerFile],
+/// fileHandOverAvailableProvider), File, each a row with its outlined icon.
 /// No title and no Cancel row: the handle and a tap outside close it.
 /// Completes with the choice, or null when the sheet was closed.
-Future<AttachSource?> showAttachSheet(BuildContext context) {
+Future<AttachSource?> showAttachSheet(BuildContext context, {bool offerFile = true}) {
   return showModalBottomSheet<AttachSource>(
     context: context,
     showDragHandle: true,
@@ -25,7 +26,7 @@ Future<AttachSource?> showAttachSheet(BuildContext context) {
             trailing: const SizedBox.shrink(),
             onTap: () => Navigator.of(sheetContext).pop(source),
           );
-      // As tall as its two rows, no taller.
+      // As tall as its rows, no taller.
       return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -37,7 +38,7 @@ Future<AttachSource?> showAttachSheet(BuildContext context) {
               inset: 50,
               children: [
                 row(AttachSource.photos, Icons.photo_library_outlined, l10n.chatAttachPhotos),
-                row(AttachSource.file, Icons.insert_drive_file_outlined, l10n.chatAttachFile),
+                if (offerFile) row(AttachSource.file, Icons.insert_drive_file_outlined, l10n.chatAttachFile),
               ],
             ),
             const SizedBox(height: VeilSpace.xs),

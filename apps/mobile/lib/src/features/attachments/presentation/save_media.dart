@@ -92,7 +92,8 @@ String photoFileName(DateTime sentAt) {
 
 /// The long-press menu's Save for [message] (D30), or null when there is
 /// nothing to save: no photo or file that opened, a pointer this version
-/// does not open, or one the server no longer has.
+/// does not open, one the server no longer has, or a platform with no save
+/// screen (fileHandOverAvailableProvider).
 VoidCallback? mediaSaveAction(
   BuildContext context,
   WidgetRef ref, {
@@ -100,6 +101,7 @@ VoidCallback? mediaSaveAction(
   required ChatMessage message,
   required DecryptedMessage decrypted,
 }) {
+  if (!ref.read(fileHandOverAvailableProvider)) return null;
   final attachment = decrypted.attachment;
   final kind = decrypted.messageKind;
   if (!decrypted.isOk || attachment == null || (kind != MessageKind.image && kind != MessageKind.file)) return null;

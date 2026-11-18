@@ -15,6 +15,7 @@ import '../../chat/presentation/message_time.dart';
 import '../../chat/presentation/photo_image_provider.dart';
 import '../../conversations/data/messenger/attachment_media_service.dart';
 import '../../conversations/data/messenger_providers.dart';
+import '../data/attachment_opener.dart';
 import '../domain/attachment_rules.dart';
 import 'save_media.dart';
 
@@ -287,7 +288,8 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
               title: widget.title,
               subtitle: _when(context),
               onClose: () => Navigator.of(context).pop(),
-              onSave: _save,
+              // No save screen on this platform: no Save.
+              onSave: ref.read(fileHandOverAvailableProvider) ? _save : null,
             ),
           ],
         ),
@@ -334,7 +336,7 @@ class _Bar extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onClose;
-  final VoidCallback onSave;
+  final VoidCallback? onSave;
 
   @override
   Widget build(BuildContext context) {
@@ -384,12 +386,13 @@ class _Bar extends StatelessWidget {
                         ],
                       ),
                     ),
-                    IconButton(
-                      key: const ValueKey('photo-viewer-save'),
-                      onPressed: onSave,
-                      tooltip: l10n.chatSaveAction,
-                      icon: Icon(Icons.download_outlined, color: _ink.text),
-                    ),
+                    if (onSave != null)
+                      IconButton(
+                        key: const ValueKey('photo-viewer-save'),
+                        onPressed: onSave,
+                        tooltip: l10n.chatSaveAction,
+                        icon: Icon(Icons.download_outlined, color: _ink.text),
+                      ),
                   ],
                 ),
               ),

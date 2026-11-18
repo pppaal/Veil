@@ -7,6 +7,7 @@ import '../../../app/app_state.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../attachments/data/attach_flow.dart';
+import '../../attachments/data/attachment_opener.dart';
 import '../../attachments/domain/attachment_rules.dart';
 import '../../attachments/domain/outgoing_attachment.dart';
 import '../../attachments/presentation/attach_file_dialog.dart';
@@ -146,7 +147,7 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
     if (_attaching) return;
     _attaching = true;
     try {
-      final source = await showAttachSheet(context);
+      final source = await showAttachSheet(context, offerFile: ref.read(fileHandOverAvailableProvider));
       if (source == null || !mounted) return;
       final outcome = source == AttachSource.photos ? await _flow.pickPhoto() : await _flow.pickFile();
       if (!mounted) {

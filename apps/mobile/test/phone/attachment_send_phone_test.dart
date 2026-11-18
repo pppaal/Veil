@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +13,7 @@ import 'package:veil_mobile/src/core/notifications/local_notification_service.da
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/attachments/data/attach_flow.dart';
+import 'package:veil_mobile/src/features/attachments/data/attachment_opener.dart';
 import 'package:veil_mobile/src/features/attachments/data/image_preparer.dart';
 import 'package:veil_mobile/src/features/attachments/presentation/photo_send_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
@@ -55,6 +57,32 @@ void main() {
     await withPhoneApp(tester, identities, location: '/chat/$emptyChatConversationId', body: (world) async {
       expect(plus(), findsOneWidget);
     });
+  });
+
+  // Design rule 18: where the platform has no file picker (the desktop
+  // alpha), the sheet offers no File row that could only end in a failure.
+  testWidgets('where files cannot be picked, the plus offers Photos alone', (tester) async {
+    await withPhoneApp(tester, identities,
+        location: _chat, overrides: [fileHandOverAvailableProvider.overrideWithValue(false)], body: (world) async {
+      await tester.tap(plus());
+      await pumpFrames(tester, frames: 4);
+      expect(find.text(en.chatAttachPhotos), findsOneWidget);
+      expect(find.text(en.chatAttachFile), findsNothing);
+      expect(find.byIcon(Icons.insert_drive_file_outlined), findsNothing);
+    });
+  });
+
+  test('files can be picked, opened elsewhere and saved on Android and iOS only', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    for (final platform in TargetPlatform.values) {
+      debugDefaultTargetPlatformOverride = platform;
+      container.invalidate(fileHandOverAvailableProvider);
+      expect(container.read(fileHandOverAvailableProvider),
+          platform == TargetPlatform.android || platform == TargetPlatform.iOS,
+          reason: platform.name);
+    }
   });
 
   testWidgets('a blocked chat has no composer, so no plus', (tester) async {

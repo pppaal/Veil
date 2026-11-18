@@ -23,8 +23,12 @@ import 'save_media.dart';
 /// limits; on iOS an image or a video the viewer cannot show goes to Save
 /// instead (Quick Look would offer to save it to Photos, which the app has
 /// no permission for); anything else opens in another app as the type its
-/// extension names. Nothing is handed on when the app locked, or the chat
-/// that asked went away, while the file was being fetched or decrypted.
+/// extension names. Where nothing can be handed to another app (the
+/// desktop alpha, fileHandOverAvailableProvider) only a photo opens, in the
+/// viewer, and anything else says this version cannot open it, before any
+/// download when its name says it is no photo. Nothing is handed on when the
+/// app locked, or the chat that asked went away, while the file was being
+/// fetched or decrypted.
 Future<void> openFileAttachment(
   BuildContext context,
   WidgetRef ref, {
@@ -37,6 +41,11 @@ Future<void> openFileAttachment(
   final l10n = AppLocalizations.of(context);
   final media = ref.read(messengerControllerProvider).media;
   final opener = ref.read(attachmentOpenerProvider);
+  final handOver = ref.read(fileHandOverAvailableProvider);
+  if (!handOver && !contentTypeForName(name).startsWith('image/')) {
+    showVeilToast(context, l10n.chatAttachmentCannotOpen);
+    return;
+  }
   // Every lock (and sign-out) bumps evictions.
   final evictions = media.evictions;
   bool locked() => media.evictions != evictions;
@@ -82,6 +91,11 @@ Future<void> openFileAttachment(
       );
       return;
     }
+  }
+  if (!handOver) {
+    await media.releaseCopy(path);
+    if (context.mounted && !locked()) showVeilToast(context, l10n.chatAttachmentCannotOpen);
+    return;
   }
   if (defaultTargetPlatform == TargetPlatform.iOS && isImageOrVideoForQuickLook(head, name)) {
     await media.releaseCopy(path);

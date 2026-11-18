@@ -263,19 +263,27 @@ class AttachmentTransferService {
       return;
     }
     if (latest.attachmentUploadDraft case final draft? when draft.attachmentId != null) await _resetTicket(draft);
-    await _pending.remove(clientMessageId);
-    await _contents.discardOutbound(clientMessageId);
-    final conversationId = latest.conversationId;
-    if (blobIdOf(latest) case final attachmentId? when attachmentId.isNotEmpty) {
-      await _blobs.delete(conversationId, attachmentId);
+    // The record first, so a crash in between never leaves a record without
+    // its blob. Its content and blob go even when the cache refuses that
+    // write (or the record never reached it: OutboxService.sendAttachment):
+    // a record left behind that still has to upload then fails for good
+    // without its blob, rather than send what was cancelled.
+    try {
+      await _pending.remove(clientMessageId);
+    } finally {
+      await _contents.discardOutbound(clientMessageId);
+      final conversationId = latest.conversationId;
+      if (blobIdOf(latest) case final attachmentId? when attachmentId.isNotEmpty) {
+        await _blobs.delete(conversationId, attachmentId);
+      }
+      _store.setMessages(conversationId, [
+        for (final message in _store.messagesOf(conversationId))
+          if (message.clientMessageId != clientMessageId) message,
+      ]);
+      _store.syncPreviewFromMessages(conversationId);
+      forget(clientMessageId);
+      _store.changed();
     }
-    _store.setMessages(conversationId, [
-      for (final message in _store.messagesOf(conversationId))
-        if (message.clientMessageId != clientMessageId) message,
-    ]);
-    _store.syncPreviewFromMessages(conversationId);
-    forget(clientMessageId);
-    _store.changed();
   }
 
   void cancelUploads() {

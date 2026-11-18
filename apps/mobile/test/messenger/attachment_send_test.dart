@@ -324,6 +324,32 @@ void main() {
       expect(relay.conversations[conv]!.messages, hasLength(relayedBefore));
     });
 
+    test('while the cache refuses to drop its record: blob and content still go, and a restart sends nothing', () async {
+      await deliver(alice, bob, 'cancel, refused next');
+      final relayedBefore = relay.conversations[conv]!.messages.length;
+      holdUploads();
+      await alice.controller.sendAttachment(conversationId: conv, attachment: await photo(alice, _preparedJpeg()));
+      final id = queuedOf(alice)!.clientMessageId!;
+      await uploading(alice, id);
+
+      alice.cache.failPendingRemovals = 1;
+      await expectLater(alice.controller.cancelPendingAttachment(id), throwsStateError);
+      expect(alice.controller.messagesFor(conv).where((message) => message.clientMessageId == id), isEmpty);
+      expect(await alice.cache.get(localMessageContentKey(id)), isNull);
+      expect(blobsIn(await mediaOf(alice)), isEmpty);
+      expect(await alice.cache.readPendingMessages(), hasLength(1), reason: 'the refused delete left its record');
+
+      // What the record still holds cannot be sent without its blob: it
+      // fails for good, and nothing of it reaches bob.
+      relay.uploadGate = null;
+      await alice.restart();
+      await alice.controller.retryPendingMessages(conv);
+      await settle(const Duration(seconds: 1));
+      expect(relay.uploadedBlobs, isEmpty);
+      expect(relay.conversations[conv]!.messages, hasLength(relayedBefore));
+      expect(blobsIn(await mediaOf(alice)), isEmpty);
+    });
+
     test('of a failed attachment', () async {
       await deliver(alice, bob, 'failure next');
       relay.failUploads = 1;
@@ -578,6 +604,41 @@ void main() {
       expect(relay.uploadedBlobs, hasLength(1), reason: 'the second was uploaded in a held chat');
       expect((await alice.cache.readPendingMessages()).map((record) => record.clientMessageId), contains(second));
       expect(blobsIn(await mediaOf(alice)), hasLength(2));
+    });
+
+    // No sweep can tell this blob from one whose message was sent (both have
+    // a row and a file, no expiry, a listed chat): the send undoes itself.
+    test('whose queued record the cache refuses leaves nothing: no blob, no content, no bubble, nothing sent', () async {
+      await deliver(alice, bob, 'refused next');
+      final relayedBefore = relay.conversations[conv]!.messages.length;
+      alice.cache.failPendingWrites = 1;
+      final attachment = await photo(alice, _preparedJpeg());
+
+      expect(await alice.controller.sendAttachment(conversationId: conv, attachment: attachment), isFalse);
+      final id = alice.cache.refusedPending.single.clientMessageId;
+      expect(alice.cache.refusedPending.single.attachmentUploadDraft, isNotNull);
+      expect(File(attachment.path).existsSync(), isFalse, reason: 'the staged plaintext stayed');
+      void expectNothing() {
+        expect(alice.controller.messagesFor(conv).where((message) => message.clientMessageId == id), isEmpty);
+        expect(alice.controller.pendingCountFor(conv), 0);
+        expect(alice.controller.attachmentTransferForMessage(id), isNull);
+      }
+
+      expectNothing();
+      expect(await alice.cache.get(localMessageContentKey(id)), isNull, reason: 'its content stayed');
+      expect(blobsIn(await mediaOf(alice)), isEmpty, reason: 'its sealed blob stayed');
+      expect(await alice.controller.media.blobs.entries(), isEmpty);
+
+      // The retry sweep and a manual retry find nothing of it to send.
+      await alice.controller.retryPendingMessages(conv);
+      await settle(const Duration(seconds: 4));
+      expect(relay.uploadTickets, isEmpty);
+      expect(relay.conversations[conv]!.messages, hasLength(relayedBefore));
+
+      await alice.restart();
+      await settle();
+      expectNothing();
+      expect(blobsIn(await mediaOf(alice)), isEmpty);
     });
   });
 }

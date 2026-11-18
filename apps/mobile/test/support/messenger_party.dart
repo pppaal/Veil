@@ -60,6 +60,23 @@ class FlakyContentCache extends DriftConversationCacheService {
 
   int failContentPuts = 0;
 
+  /// How many queued-message writes to refuse next; each refused record is
+  /// kept in [refusedPending].
+  int failPendingWrites = 0;
+  final List<PendingMessageRecord> refusedPending = [];
+
+  /// How many queued-message deletes to refuse next.
+  int failPendingRemovals = 0;
+
+  @override
+  Future<void> removePendingMessage(String clientMessageId) {
+    if (failPendingRemovals > 0) {
+      failPendingRemovals -= 1;
+      throw StateError('queued message delete failed');
+    }
+    return super.removePendingMessage(clientMessageId);
+  }
+
   @override
   Future<void> put(MessageContentRecord record) {
     if (failContentPuts > 0) {
@@ -67,6 +84,16 @@ class FlakyContentCache extends DriftConversationCacheService {
       throw StateError('content write failed');
     }
     return super.put(record);
+  }
+
+  @override
+  Future<void> upsertPendingMessage(PendingMessageRecord pending) {
+    if (failPendingWrites > 0) {
+      failPendingWrites -= 1;
+      refusedPending.add(pending);
+      throw StateError('queued message write failed');
+    }
+    return super.upsertPendingMessage(pending);
   }
 }
 

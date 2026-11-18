@@ -162,7 +162,11 @@ class OutboxService {
           attachmentId: sealed.reference.attachmentId,
         ),
         draft: sealedDraft(attachment, sealed, disappearAfter: disappearAfter),
-      );
+      ).catchError((Object error, StackTrace stack) async {
+        // Its record never reached the cache, so no sweep finds its blob and content: undone as a cancel is.
+        await cancelAttachment(clientMessageId).catchError((Object _) {});
+        Error.throwWithStackTrace(error, stack);
+      });
       queued = true;
       unawaited(drain(conversationId: conversationId));
     });

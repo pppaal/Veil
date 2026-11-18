@@ -15,7 +15,8 @@ enum VeilBubblePosition { first, middle, last, single }
 /// [highlighted] (a search hit) is a `surfaceRaised` fill with a 1.5dp
 /// `primaryStrong` border. [failed] keeps its fill, with a red glyph beside
 /// it and [failedText] ("Not sent. Tap to retry.") in the danger colour
-/// under it.
+/// under it. A [flush] bubble has no padding and clips its child to its own
+/// corners: a photo is the bubble.
 class VeilBubble extends StatelessWidget {
   const VeilBubble({
     super.key,
@@ -25,6 +26,7 @@ class VeilBubble extends StatelessWidget {
     this.position = VeilBubblePosition.single,
     this.failed = false,
     this.failedText,
+    this.flush = false,
   });
 
   final Widget child;
@@ -33,6 +35,9 @@ class VeilBubble extends StatelessWidget {
   final VeilBubblePosition position;
   final bool failed;
   final String? failedText;
+
+  /// No padding, and the child clipped to the bubble's corners (a photo).
+  final bool flush;
 
   /// The share of the available width a bubble may take.
   static const double widthShare = 0.78;
@@ -70,29 +75,35 @@ class VeilBubble extends StatelessWidget {
         final available = constraints.maxWidth.isFinite ? constraints.maxWidth : MediaQuery.sizeOf(context).width;
         // A failed send keeps room for the glyph beside it.
         final maxWidth = available * widthShare - (failed ? failedGlyphExtent : 0);
+        final corners = BorderRadius.only(
+          topLeft: main,
+          topRight: main,
+          bottomLeft: isMine ? main : tail,
+          bottomRight: isMine ? tail : main,
+        );
+        final border = highlighted ? Border.all(color: palette.primaryStrong, width: 1.5) : null;
+        final styled = DefaultTextStyle.merge(
+          style: TextStyle(color: textColor),
+          child: IconTheme.merge(
+            data: IconThemeData(color: own ? Colors.white : palette.textMuted),
+            child: child,
+          ),
+        );
         final box = ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
           child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: BorderRadius.only(
-                topLeft: main,
-                topRight: main,
-                bottomLeft: isMine ? main : tail,
-                bottomRight: isMine ? tail : main,
-              ),
-              border: highlighted ? Border.all(color: palette.primaryStrong, width: 1.5) : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.xs),
-              child: DefaultTextStyle.merge(
-                style: TextStyle(color: textColor),
-                child: IconTheme.merge(
-                  data: IconThemeData(color: own ? Colors.white : palette.textMuted),
-                  child: child,
-                ),
-              ),
-            ),
+            decoration: BoxDecoration(color: fill, borderRadius: corners, border: flush ? null : border),
+            child: flush
+                // Drawn over the photo, which would cover a border under it.
+                ? DecoratedBox(
+                    position: DecorationPosition.foreground,
+                    decoration: BoxDecoration(borderRadius: corners, border: border),
+                    child: ClipRRect(borderRadius: corners, child: styled),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.xs),
+                    child: styled,
+                  ),
           ),
         );
         if (!failed) return box;

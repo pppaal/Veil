@@ -122,6 +122,10 @@ class ScriptedMedia extends ChangeNotifier implements AttachmentMediaService {
   @override
   void noteImageKey(MediaKey key, Object imageKey) {}
 
+  /// Expired by the wall clock, as the real service asks the expiry clock.
+  @override
+  bool isExpired(DateTime? expiresAt) => expiresAt != null && !expiresAt.isAfter(DateTime.now());
+
   @override
   void evictDecrypted() => evict();
 

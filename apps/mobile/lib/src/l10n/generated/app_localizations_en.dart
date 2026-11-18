@@ -518,9 +518,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtlDisabledLabel => 'Off';
 
   @override
-  String get chatAttachmentStateBanner => 'Attachment';
-
-  @override
   String get chatAttachmentCannotOpen => 'Can\'t open in this version';
 
   @override
@@ -542,6 +539,52 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatAttachmentKindVoice => 'Voice message';
+
+  @override
+  String get chatPhotoUnavailable => 'Photo not available';
+
+  @override
+  String get chatFileUnavailable => 'File not available';
+
+  @override
+  String get chatDownloadFailed => 'Couldn\'t download. Tap to retry.';
+
+  @override
+  String get chatDownloadAction => 'Download';
+
+  @override
+  String get chatDownloading => 'Downloading';
+
+  @override
+  String get chatCancelDownload => 'Cancel download';
+
+  @override
+  String get chatOpenAction => 'Open';
+
+  @override
+  String get chatOpenFileNoApp => 'No app found to open this file';
+
+  @override
+  String get chatOpenFileFailed => 'Couldn\'t open the file';
+
+  @override
+  String get chatSaveAction => 'Save';
+
+  @override
+  String get chatSaveTitle => 'Save to your phone?';
+
+  @override
+  String get chatSaveBody =>
+      'Other apps, and any cloud you save it to, can open it.';
+
+  @override
+  String get chatSaved => 'Saved';
+
+  @override
+  String get chatSaveFailed => 'Couldn\'t save. Try again.';
+
+  @override
+  String get viewerSenderYou => 'You';
 
   @override
   String get reactionsMoreTooltip => 'More reactions';
@@ -692,9 +735,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatRetrySend => 'Retry';
 
   @override
-  String get chatRetryUpload => 'Retry upload';
-
-  @override
   String get chatCancelAction => 'Cancel';
 
   @override
@@ -714,49 +754,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatDeliveryRead => 'Read';
-
-  @override
-  String get chatPhaseStaged => 'Ready';
-
-  @override
-  String get chatPhasePreparing => 'Preparing';
-
-  @override
-  String get chatPhaseUploading => 'Uploading';
-
-  @override
-  String get chatPhaseFinalizing => 'Finishing';
-
-  @override
-  String get chatPhaseFailed => 'Not sent';
-
-  @override
-  String get chatPhaseCanceled => 'Canceled';
-
-  @override
-  String chatPhaseDescStaged(String sizeLabel) {
-    return 'Encrypted and ready.$sizeLabel It uploads when you\'re online.';
-  }
-
-  @override
-  String get chatPhaseDescPreparing => 'Preparing the upload.';
-
-  @override
-  String get chatPhaseDescUploading => 'Uploading the encrypted file.';
-
-  @override
-  String get chatPhaseDescFinalizing => 'Attaching the file to the message.';
-
-  @override
-  String get chatPhaseDescFailed => 'The upload failed.';
-
-  @override
-  String get chatPhaseDescCanceled => 'The upload was canceled.';
-
-  @override
-  String chatAttachmentSizeBytes(int count) {
-    return ' $count bytes.';
-  }
 
   @override
   String chatTypingSuffix(String name) {

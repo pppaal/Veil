@@ -33,8 +33,9 @@ Future<bool> confirmOwnHandleHold(BuildContext context, String handle) async {
 
 /// What a long press on a message offers, over the chat where the message
 /// is ([anchor], its row on screen): the quick reactions in a floating bar
-/// above it and, with [onReport] (a message someone else wrote), a small
-/// menu under it with Report, as WhatsApp and the web app place them.
+/// above it and a small menu under it, as WhatsApp and the web app place
+/// them, with Save for a photo or file ([onSave]) above Report for a
+/// message someone else wrote ([onReport]).
 /// Without [onSelected] (a message that did not open, or a 1:1 with someone
 /// blocked, where the server refuses a reaction) only the menu shows: under
 /// the message, or above it when there is no room under it inside
@@ -47,6 +48,7 @@ Future<void> showMessageActions(
   required bool isMine,
   ValueChanged<String>? onSelected,
   VoidCallback? onReport,
+  VoidCallback? onSave,
   Rect? messages,
 }) async {
   final l10n = AppLocalizations.of(context);
@@ -78,7 +80,11 @@ Future<void> showMessageActions(
                 ),
               ),
             );
-      final menu = onReport == null
+      final rows = [
+        if (onSave != null) (const ValueKey('message-save'), l10n.chatSaveAction, onSave),
+        if (onReport != null) (const ValueKey('message-report'), l10n.reportAction, onReport),
+      ];
+      final menu = rows.isEmpty
           ? null
           : DecoratedBox(
               decoration: decoration.copyWith(borderRadius: BorderRadius.circular(VeilRadius.md)),
@@ -88,20 +94,27 @@ Future<void> showMessageActions(
                   type: MaterialType.transparency,
                   child: SizedBox(
                     width: 200,
-                    child: VeilRow(
-                      key: const ValueKey('message-report'),
-                      title: l10n.reportAction,
-                      trailing: const SizedBox.shrink(),
-                      onTap: () {
-                        Navigator.of(dialogContext).pop();
-                        onReport();
-                      },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final (key, title, action) in rows)
+                          VeilRow(
+                            key: key,
+                            title: title,
+                            trailing: const SizedBox.shrink(),
+                            onTap: () {
+                              Navigator.of(dialogContext).pop();
+                              action();
+                            },
+                          ),
+                      ],
                     ),
                   ),
                 ),
               ),
             );
-      return _MessageActionsLayout(anchor: anchor, isMine: isMine, bar: bar, menu: menu, messages: messages);
+      return _MessageActionsLayout(
+          anchor: anchor, isMine: isMine, bar: bar, menu: menu, menuRows: rows.length, messages: messages);
     },
   );
 }
@@ -109,13 +122,23 @@ Future<void> showMessageActions(
 /// Places the reaction bar above [anchor] (below it when there is no room)
 /// and the menu under it, on the message's side, inside the safe area.
 class _MessageActionsLayout extends StatelessWidget {
-  const _MessageActionsLayout({required this.anchor, required this.isMine, this.bar, this.menu, this.messages});
+  const _MessageActionsLayout({
+    required this.anchor,
+    required this.isMine,
+    this.bar,
+    this.menu,
+    this.menuRows = 1,
+    this.messages,
+  });
 
   final Rect anchor;
   final bool isMine;
   final Widget? bar;
   final Widget? menu;
+  final int menuRows;
   final Rect? messages;
+
+  double get _menuHeight => _menuRowHeight * menuRows;
 
   // A menu alone: under the message when it fits above [bottom], else above
   // the message.
@@ -126,7 +149,7 @@ class _MessageActionsLayout extends StatelessWidget {
   }
 
   static const double _barHeight = 52;
-  static const double _menuHeight = 52;
+  static const double _menuRowHeight = 52;
   static const double _gap = VeilSpace.xs;
 
   @override

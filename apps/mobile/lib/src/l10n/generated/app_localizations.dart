@@ -946,12 +946,6 @@ abstract class AppLocalizations {
   /// **'Off'**
   String get chatTtlDisabledLabel;
 
-  /// No description provided for @chatAttachmentStateBanner.
-  ///
-  /// In en, this message translates to:
-  /// **'Attachment'**
-  String get chatAttachmentStateBanner;
-
   /// No description provided for @chatAttachmentCannotOpen.
   ///
   /// In en, this message translates to:
@@ -993,6 +987,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Voice message'**
   String get chatAttachmentKindVoice;
+
+  /// No description provided for @chatPhotoUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo not available'**
+  String get chatPhotoUnavailable;
+
+  /// No description provided for @chatFileUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'File not available'**
+  String get chatFileUnavailable;
+
+  /// No description provided for @chatDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t download. Tap to retry.'**
+  String get chatDownloadFailed;
+
+  /// No description provided for @chatDownloadAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get chatDownloadAction;
+
+  /// No description provided for @chatDownloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading'**
+  String get chatDownloading;
+
+  /// No description provided for @chatCancelDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel download'**
+  String get chatCancelDownload;
+
+  /// No description provided for @chatOpenAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get chatOpenAction;
+
+  /// No description provided for @chatOpenFileNoApp.
+  ///
+  /// In en, this message translates to:
+  /// **'No app found to open this file'**
+  String get chatOpenFileNoApp;
+
+  /// No description provided for @chatOpenFileFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open the file'**
+  String get chatOpenFileFailed;
+
+  /// No description provided for @chatSaveAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get chatSaveAction;
+
+  /// No description provided for @chatSaveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Save to your phone?'**
+  String get chatSaveTitle;
+
+  /// No description provided for @chatSaveBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Other apps, and any cloud you save it to, can open it.'**
+  String get chatSaveBody;
+
+  /// No description provided for @chatSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get chatSaved;
+
+  /// No description provided for @chatSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save. Try again.'**
+  String get chatSaveFailed;
+
+  /// No description provided for @viewerSenderYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You'**
+  String get viewerSenderYou;
 
   /// No description provided for @reactionsMoreTooltip.
   ///
@@ -1246,12 +1330,6 @@ abstract class AppLocalizations {
   /// **'Retry'**
   String get chatRetrySend;
 
-  /// No description provided for @chatRetryUpload.
-  ///
-  /// In en, this message translates to:
-  /// **'Retry upload'**
-  String get chatRetryUpload;
-
   /// No description provided for @chatCancelAction.
   ///
   /// In en, this message translates to:
@@ -1293,84 +1371,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Read'**
   String get chatDeliveryRead;
-
-  /// No description provided for @chatPhaseStaged.
-  ///
-  /// In en, this message translates to:
-  /// **'Ready'**
-  String get chatPhaseStaged;
-
-  /// No description provided for @chatPhasePreparing.
-  ///
-  /// In en, this message translates to:
-  /// **'Preparing'**
-  String get chatPhasePreparing;
-
-  /// No description provided for @chatPhaseUploading.
-  ///
-  /// In en, this message translates to:
-  /// **'Uploading'**
-  String get chatPhaseUploading;
-
-  /// No description provided for @chatPhaseFinalizing.
-  ///
-  /// In en, this message translates to:
-  /// **'Finishing'**
-  String get chatPhaseFinalizing;
-
-  /// No description provided for @chatPhaseFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Not sent'**
-  String get chatPhaseFailed;
-
-  /// No description provided for @chatPhaseCanceled.
-  ///
-  /// In en, this message translates to:
-  /// **'Canceled'**
-  String get chatPhaseCanceled;
-
-  /// No description provided for @chatPhaseDescStaged.
-  ///
-  /// In en, this message translates to:
-  /// **'Encrypted and ready.{sizeLabel} It uploads when you\'re online.'**
-  String chatPhaseDescStaged(String sizeLabel);
-
-  /// No description provided for @chatPhaseDescPreparing.
-  ///
-  /// In en, this message translates to:
-  /// **'Preparing the upload.'**
-  String get chatPhaseDescPreparing;
-
-  /// No description provided for @chatPhaseDescUploading.
-  ///
-  /// In en, this message translates to:
-  /// **'Uploading the encrypted file.'**
-  String get chatPhaseDescUploading;
-
-  /// No description provided for @chatPhaseDescFinalizing.
-  ///
-  /// In en, this message translates to:
-  /// **'Attaching the file to the message.'**
-  String get chatPhaseDescFinalizing;
-
-  /// No description provided for @chatPhaseDescFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'The upload failed.'**
-  String get chatPhaseDescFailed;
-
-  /// No description provided for @chatPhaseDescCanceled.
-  ///
-  /// In en, this message translates to:
-  /// **'The upload was canceled.'**
-  String get chatPhaseDescCanceled;
-
-  /// No description provided for @chatAttachmentSizeBytes.
-  ///
-  /// In en, this message translates to:
-  /// **' {count} bytes.'**
-  String chatAttachmentSizeBytes(int count);
 
   /// No description provided for @chatTypingSuffix.
   ///

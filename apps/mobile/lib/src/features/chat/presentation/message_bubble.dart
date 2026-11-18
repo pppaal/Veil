@@ -4,13 +4,17 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../attachments/domain/attachment_rules.dart';
 import '../../conversations/data/conversation_models.dart';
+import '../../conversations/data/messenger/attachment_media_service.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import '../../conversations/presentation/conversation_list_logic.dart';
 import 'chat_room_labels.dart';
 import 'decrypt_status_view.dart';
 import 'message_attachment_views.dart';
 import 'message_expiration.dart';
+import 'message_file_card.dart';
+import 'message_photo.dart';
 import 'message_time.dart';
 import 'message_read_glyph.dart';
 
@@ -108,8 +112,14 @@ class MessageBubble extends StatelessWidget {
         final decrypted = snapshot.data;
         final status = decrypted?.status;
         // Attachment metadata comes only from the authenticated payload;
-        // the envelope carries a bare pointer.
+        // the envelope carries a bare pointer. The kind the payload names
+        // decides photo or file, and only a pointer this version opens is
+        // shown as one (D31, D34); any other is the card that says so.
         final attachment = decrypted?.attachment;
+        final opened = status == DecryptStatus.ok || status == DecryptStatus.legacyUnauthenticated;
+        final opens = opened && attachment != null && AttachmentMediaService.opens(attachment);
+        final photo = opens && decrypted!.messageKind == MessageKind.image;
+        final file = opens && decrypted!.messageKind == MessageKind.file;
         final query = searchQuery?.trim() ?? '';
         final body = switch (status) {
           null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle?.copyWith(color: metaColor)),
@@ -128,64 +138,81 @@ class MessageBubble extends StatelessWidget {
           DecryptStatus.ok || DecryptStatus.legacyUnauthenticated => Text(decrypted!.body, style: bodyStyle),
           _ => DecryptFailureLine(status: status, heldAccount: heldAccount, color: metaColor),
         };
-        final bubble = VeilBubble(
-          isMine: message.isMine,
-          highlighted: highlighted,
-          position: position,
-          failed: failed,
-          failedText: failed ? l10n.chatNotSentTapToRetry : null,
-          // As wide as its widest line, so the meta can sit at the end.
-          child: IntrinsicWidth(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (senderName != null) ...[
-                  Text(
-                    senderName!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: VeilAvatar.nameTint(context, senderSeed ?? senderName!),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                ],
-                if (body != null) body,
-                if (transferSnapshot != null) ...[
-                  const SizedBox(height: VeilSpace.xs),
-                  AttachmentTransferPanel(
-                    snapshot: transferSnapshot!,
-                    color: textColor,
-                    mutedColor: metaColor,
-                    onRetry: onRetryMessage,
-                    onCancel: transferSnapshot!.canCancel ? onCancelAttachment : null,
-                  ),
-                ],
-                if (attachment != null) ...[
-                  if (body != null) const SizedBox(height: VeilSpace.xs),
-                  MessageAttachmentCard(
-                    attachment: attachment,
-                    name: decrypted!.body,
-                    framed: onBrand,
-                    voice: decrypted.messageKind == MessageKind.voice,
-                  ),
-                ],
-                const SizedBox(height: VeilSpace.xxs),
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: _Meta(
-                    message: message,
-                    sentAtFormat: sentAtFormat,
-                    expiryNow: expiryNow,
-                    style: metaStyle,
-                    bubbleFill: VeilBubble.fillOf(palette, isMine: message.isMine, highlighted: highlighted),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        final meta = _Meta(
+          message: message,
+          sentAtFormat: sentAtFormat,
+          expiryNow: expiryNow,
+          style: metaStyle,
+          bubbleFill: VeilBubble.fillOf(palette, isMine: message.isMine, highlighted: highlighted),
         );
+        Widget padded({required bool asCard}) => VeilBubble(
+              isMine: message.isMine,
+              highlighted: highlighted,
+              position: position,
+              failed: failed,
+              failedText: failed ? l10n.chatNotSentTapToRetry : null,
+              // As wide as its widest line, so the meta can sit at the end.
+              child: IntrinsicWidth(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (senderName != null) ...[
+                      Text(
+                        senderName!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: VeilAvatar.nameTint(context, senderSeed ?? senderName!),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
+                    if (body != null) body,
+                    if (attachment != null) ...[
+                      if (body != null) const SizedBox(height: VeilSpace.xs),
+                      if (file && !asCard)
+                        MessageFileCard(
+                          conversationId: conversationId,
+                          message: message,
+                          attachment: attachment,
+                          name: decrypted.body,
+                          authorName: authorName,
+                          transferSnapshot: transferSnapshot,
+                          onCancelAttachment: onCancelAttachment,
+                        )
+                      else
+                        MessageAttachmentCard(
+                          attachment: attachment,
+                          // Sanitized as the file card's is (D27): no bidi
+                          // override shows as sent.
+                          name: sanitizeFileName(decrypted!.body, fallback: ''),
+                          framed: onBrand,
+                          voice: decrypted.messageKind == MessageKind.voice,
+                        ),
+                    ],
+                    const SizedBox(height: VeilSpace.xxs),
+                    Align(alignment: AlignmentDirectional.centerEnd, child: meta),
+                  ],
+                ),
+              ),
+            );
+        final bubble = photo
+            ? MessagePhoto(
+                conversationId: conversationId,
+                message: message,
+                attachment: attachment,
+                meta: meta,
+                unsupported: padded(asCard: true),
+                position: position,
+                highlighted: highlighted,
+                senderName: senderName,
+                senderSeed: senderSeed,
+                authorName: authorName,
+                transferSnapshot: transferSnapshot,
+                onCancelAttachment: onCancelAttachment,
+              )
+            : padded(asCard: false);
         final reactions = this.reactions;
         // The chips' 44 px tap row moves up so the chip drawn in its middle
         // overlaps the bubble by 6, as WhatsApp's do, on the side away from

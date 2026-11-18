@@ -87,8 +87,9 @@ blob's key stays in the encrypted content store. Recency is that table's
 column: the app never reads or sets the files' own times. So someone who can
 read the app's sandbox still sees how many blobs there are, their padded
 sizes and the file system's times on each file, which show roughly when each
-photo or file was sent or arrived (photos up to 10 MB are fetched as their
-message arrives).
+was written: when you sent it, when a photo of up to 10 MB arrived (or first
+came on screen, if it arrived while the app was closed or locked), or when you
+first opened a file or another photo with a tap.
 
 The folder is capped at 1 GiB, least recently used first, and never loses a
 blob whose upload is still pending. A blob goes when its message expires, when

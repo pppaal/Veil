@@ -17,6 +17,8 @@ const scratch = mkdtempSync(join(tmpdir(), 'veil-doc-facts-test-'));
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
 const CURRENT = 'lib-x3dh-x25519-aes256gcm-v4';
+const READ_STATE_SOURCE =
+  'apps/mobile/lib/src/features/conversations/data/messenger/read_state_service.dart';
 const RETIRED = 'lib-x25519-aes256gcm-v3';
 
 // A tree every rule accepts: the code each STALE_STATEMENTS entry relies on,
@@ -34,6 +36,8 @@ const CLEAN = {
   'apps/api/src/common/client-address.ts': 'switch (source) {\n}\n',
   'apps/web-demo/src/crypto/frame.js': "export const ENVELOPE_VERSION_V2 = 'veil-envelope-v2';\n",
   'apps/mobile/ios/Runner.xcodeproj/project.pbxproj': '\t\t\t\tTARGETED_DEVICE_FAMILY = "1,2";\n',
+  'apps/mobile/pubspec.yaml': 'dependencies:\n  image_picker: 1.2.4\n',
+  [READ_STATE_SOURCE]: 'class ReadStateService extends ChangeNotifier {}\n',
   'apps/api/src/modules/auth/auth.module.ts': '',
   'apps/api/src/modules/users/users.module.ts': '',
   'README.md': [
@@ -189,6 +193,8 @@ test('each stale statement fails while its code stands', () => {
       '- Web demo: its protocol status is tracked in `docs/envelope-v3-unified-spec.md`.',
     'ipad-build-absent':
       'Six shots, iPhone only (there is no iPad build), captured on the Simulator.',
+    'mobile-text-only':
+      '- Sending attachments is switched off: `kAttachmentsEnabled` is false because the app has no file picker.',
   };
   assert.deepEqual(Object.keys(statements).sort(), STALE_STATEMENTS.map(({ id }) => id).sort());
   for (const [id, statement] of Object.entries(statements)) {
@@ -261,6 +267,60 @@ test('while the Xcode project builds for iPad, no document says there is no iPad
         'update STALE_STATEMENTS in scripts/doc-facts.mjs',
     ],
   );
+});
+
+test('while the phone sends photos and files and keeps unread counts, no document says otherwise', () => {
+  // What the docs, the mobile README and the store notes said of the
+  // text-only build, and of the file opener the feature did not use.
+  const said = [
+    'This build sends text only: it has no attachments, voice messages or calls.',
+    'This is a text-only build: it sends and receives text messages, reactions and the notices around them.',
+    '(The mobile app cannot send an attachment yet: no screen leads to it.)',
+    'It leaves out the PDF the user sent this morning (the app cannot send attachments).',
+    'The composer has no attach button because the app has no file picker.',
+    'The Chats list shows no unread count (the app does not keep an unread count).',
+    'One constant is left: `kAttachmentsEnabled`, false while the app has no picker.',
+    'A received file opens in another app through `open_filex`.',
+  ];
+  for (const sentence of said) {
+    const failures = failuresOf(RULES.staleStatement, { 'docs/mobile.md': `${sentence}\n` });
+    assert.ok(
+      failures.some((failure) => failure.startsWith(`[${RULES.staleStatement}] mobile-text-only:`)),
+      sentence,
+    );
+  }
+  // The mobile app's README is read too.
+  assert.equal(
+    failuresOf(RULES.staleStatement, {
+      'apps/mobile/README.md': 'This is a text-only build.\n',
+    }).length,
+    1,
+  );
+  // What the documents say instead passes, and so does a text-only search snippet.
+  assert.deepEqual(
+    failuresOf(RULES.staleStatement, {
+      'docs/mobile.md': [
+        '- Text messages, photos and files in 1:1 and group conversations, unread counts.',
+        '- Photos come from the system photo picker and are re-encoded on the phone at up to 1600 px.',
+        "- A received file opens through the app's own channel, `veil/file_open`.",
+        '- Search snippets are text-only.',
+        '',
+      ].join('\n'),
+    }),
+    [],
+  );
+  // Without the picker dependency or the read state the entry guards nothing, and fails.
+  for (const gone of [
+    { 'apps/mobile/pubspec.yaml': 'dependencies:\n  flutter:\n' },
+    { [READ_STATE_SOURCE]: null },
+  ]) {
+    const failures = failuresOf(RULES.staleStatement, gone);
+    assert.equal(failures.length, 1, failures.join('\n'));
+    assert.match(
+      failures[0],
+      /mobile-text-only: .* no longer shows that the phone sends and opens photos/,
+    );
+  }
 });
 
 test('hard-coded test and migration counts fail, and a module count must match the tree', () => {

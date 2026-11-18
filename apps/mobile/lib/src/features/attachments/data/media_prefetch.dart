@@ -282,8 +282,9 @@ class MediaPrefetch {
   /// Queues the photos among [arrived] (messages of [conversationId] seen
   /// for the first time) that just arrived: opened ([read] answers what
   /// opened), kind image, a pointer [opens] accepts of at most 10 MiB, not
-  /// expired by [now], and stored ([stored] answers when) at or after
-  /// [since]: content stored earlier is what the cache held, not an arrival.
+  /// expired by [now], and not stored before [since] ([stored] answers
+  /// when): content stored earlier is what the cache held, not an arrival;
+  /// content not stored yet was opened just now.
   Future<void> queueArrivals(
     String conversationId,
     List<ChatMessage> arrived, {
@@ -305,9 +306,12 @@ class MediaPrefetch {
     }
     if (photos.isEmpty || !stillWanted()) return;
     final records = await stored(photos.map((photo) => photo.$1));
+    // The store keeps whole seconds: content stored in [since]'s second
+    // counts as just arrived.
+    final floor = since.subtract(Duration(microseconds: since.microsecondsSinceEpoch % Duration.microsecondsPerSecond));
     for (final (message, reference) in photos) {
       final record = records[message.id];
-      if (record == null || record.createdAt.isBefore(since) || !stillWanted()) continue;
+      if ((record != null && record.createdAt.isBefore(floor)) || !stillWanted()) continue;
       enqueue(PrefetchItem(
         key: MediaKey(conversationId, reference),
         conversationId: conversationId,

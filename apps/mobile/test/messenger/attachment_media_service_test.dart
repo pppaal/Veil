@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/identity/identity_key_value_backend.dart';
 import 'package:veil_mobile/src/core/identity/trusted_identity_resolver.dart';
 import 'package:veil_mobile/src/core/identity/trusted_identity_store.dart';
+import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/storage/media_index.dart';
 import 'package:veil_mobile/src/core/util/base64url.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_decrypt.dart';
@@ -367,6 +368,69 @@ void main() {
       hold.complete();
       await waitFor(() => fetched.length == 50);
       expect(fetched.last, DateTime.utc(2026, 4, 7, 9, 10), reason: 'the 10 oldest wait for their bubbles');
+    });
+
+    // The encrypted cache keeps whole seconds: content stored in the second
+    // the service started is an arrival, content from an earlier second is
+    // what the cache held, and content not stored yet was opened just now.
+    test('only arrivals are fetched by themselves, never what the cache held', () async {
+      final prefetch = MediaPrefetch(slots: TransferSlots(), withheld: (_) => false, fetch: (_) async {});
+      final since = DateTime.utc(2026, 4, 7, 9, 0, 30, 400);
+      final references = <String, AttachmentReference>{};
+      ChatMessage message(String id) {
+        references[id] = AttachmentReference(
+          attachmentId: _uuid(),
+          storageKey: '',
+          contentType: 'image/jpeg',
+          sizeBytes: 1000,
+          sha256: 'd-$id',
+          encryptedKey: 'k',
+          nonce: 'n',
+          algorithmHint: 'aes256gcm-v2',
+        );
+        return ChatMessage(
+          id: id,
+          senderDeviceId: 'dev-selene',
+          sentAt: since,
+          envelope: const CryptoEnvelope(
+            version: 'v2',
+            conversationId: _chat,
+            senderDeviceId: 'dev-selene',
+            recipientUserId: 'user-atlas',
+            ciphertext: 'c',
+            nonce: 'n',
+            messageKind: MessageKind.image,
+          ),
+        );
+      }
+
+      MessageContentRecord stored(String id, DateTime at) => MessageContentRecord(
+            messageKey: id,
+            conversationId: _chat,
+            body: '',
+            kind: MessageKind.image,
+            status: MessageContentStatus.ok,
+            createdAt: at,
+            updatedAt: at,
+          );
+      final messages = [message('cached'), message('same-second'), message('unstored')];
+      await prefetch.queueArrivals(
+        _chat,
+        messages,
+        read: (message) async => DecryptedMessage(
+            body: '', messageKind: MessageKind.image, attachment: references[message.id]),
+        stored: (_) async => {
+          'cached': stored('cached', DateTime.utc(2026, 4, 7, 9, 0, 29)),
+          'same-second': stored('same-second', DateTime.utc(2026, 4, 7, 9, 0, 30)),
+        },
+        opens: AttachmentMediaService.opens,
+        since: since,
+        now: () => since,
+        stillWanted: () => true,
+      );
+      expect(prefetch.isQueued(MediaKey(_chat, references['cached']!)), isFalse);
+      expect(prefetch.isQueued(MediaKey(_chat, references['same-second']!)), isTrue);
+      expect(prefetch.isQueued(MediaKey(_chat, references['unstored']!)), isTrue);
     });
   });
 

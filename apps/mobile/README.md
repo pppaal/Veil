@@ -17,25 +17,133 @@ flutter run \
   --dart-define=VEIL_REALTIME_URL=http://10.0.2.2:3000
 ```
 
-## Switched-off features
+## What the app leaves out
 
-This is a text-only build: it sends and receives text messages, reactions
-and the notices around them, and has no screen for anything it cannot do
-end to end (no calls, media picker, voice messages, sticker picker, stories
-or assistant, and no screen that sends an attachment). The composer has no
-attach button yet, and an attachment a web client sent is shown as what it is
-(its kind and size) with a line saying this version cannot open it. What
-photos and files will use is in place but not wired to a screen: the system
-photo and file pickers (`image_picker`, `flutter_file_dialog`), a media
-folder that holds only sealed blobs under random names (which blob belongs
-to which message is kept only in the encrypted database), size-capped
-downloads, an app lock that lets a system picker stay up for a bounded time,
-and a channel that opens a file in another app. The transfer code (sealing,
-upload tickets, retry) is tested. The route table
+The app has no screen for anything it cannot do end to end: no calls, voice
+messages (one a web client sent shows as what it is, with a line saying this
+version can't open it), sticker picker, stories or assistant. The route table
 (`lib/src/app/router/app_router.dart`) has no route for anything the build
 cannot do, and a location no route has (an old link, a mistyped one) opens
 the conversation list instead of the router's "Page Not Found". The bottom
 bar is Chats, Contacts, Settings.
+
+## Photos and files
+
+The plus at the start of a chat's composer opens a sheet with two rows,
+Photos and File. It is there whenever the chat can be written to and has no
+safety number change or account hold waiting. Photos opens the system photo
+picker (`image_picker`: the Android Photo Picker, PHPicker on iOS) and File
+the system document picker (`flutter_file_dialog`). Neither asks for a
+permission. The Android manifest declares no camera, microphone,
+`READ_MEDIA_*` or storage permission, and iOS has one usage string for it,
+`NSPhotoLibraryUsageDescription`, which `image_picker` requires and the
+system picker never shows. One photo per pick, with no caption.
+
+A picked photo is decoded by the engine at a long edge of at most 1600 px
+(never larger than it was) and encoded again on the phone: JPEG at quality
+80, or PNG when it has transparency. Only its pixels go out, so its location,
+camera details and every other kind of metadata stay behind. A JPEG may be up
+to 200 megapixels and any other format up to 40, since the engine decodes
+those at full size first; a larger photo, or one the phone cannot decode, is
+not attached. The photo shows full screen with Send before it goes. A file
+goes as it is, up to 25 MB, the web's limit. Its confirm dialog names the
+file and the chat, and for a photo or video picked as a file adds "A photo or
+video sent as a file keeps any location saved in it." Its name is cleaned as
+the web cleans it and travels only inside the encrypted message.
+
+Send seals the photo or file at once, in an isolate, with the web's scheme
+(`encryptAttachmentV2`) and deletes the plaintext copy; only the sealed blob
+is uploaded. The message itself is encrypted once, after the upload, and a
+disappearing timer is stamped then, as the web stamps it. A chat sends in
+order, so a text sent after a file waits for its upload, while other chats
+do not wait. The cross on a photo or file that is uploading or failed cancels
+it and removes the message.
+
+A received photo of up to 10 MB is fetched when its message arrives, while
+the app is open and unlocked, unless the chat waits on a safety number change
+or an account hold or is a 1:1 with a blocked account; files and larger
+photos download on a tap. A download is refused above 50 MiB or for an id
+that is not a UUID, cut off at the size the pointer allows, and checked
+against its digest before anything is decrypted. A photo shows only when its
+bytes are JPEG, PNG or WebP within the decode limits, and opens full screen
+with a tap, where Save keeps a copy on the phone. A file opens with a tap: in
+another app on Android, in Quick Look on iOS, and in the in-app viewer when it
+is a JPEG, PNG or WebP. The long-press menu can save either. On iOS a photo or
+video that the in-app viewer cannot show goes to Save, never to Quick Look.
+
+Downloaded and sent blobs stay sealed, in one flat folder (`veil_media/` in
+app support) under random names of 64 hex characters. Which blob belongs to
+which message is kept only in the `media_blobs` table of the encrypted
+database. The folder is capped at 1 GiB, least recently used first, never
+touching a blob that is still uploading, and a blob goes when its message
+expires. Decrypted bytes live only in memory and are dropped on lock. The
+only plaintext files are the copies made to open a file or to save a photo
+or a file, in `veil_open/` under the temporary folder. They go when Quick
+Look closes or the save screen returns (a Save copy also on lock), when their
+message expires, after 10 minutes (a sweep runs every 60 seconds) and at
+start. A picker's copy is moved into the staging folder at once and stays
+there only until it is sealed or the pick is cancelled; nothing in staging
+survives a restart. On iOS the system temporary folder the plugins write to
+is emptied after each pick and each save.
+
+A file opens through the app's own channel, `veil/file_open`
+(`lib/src/core/platform/file_open_channel.dart`, `FileOpenChannel.kt`, the
+`FileOpenPlugin` in `AppDelegate.swift`): on Android a viewer in its own task,
+reading through the app's FileProvider, which serves `veil_open/` and nothing
+else; on iOS Quick Look, presented over the app.
+
+A picker, the save screen and, on iOS, Quick Look run inside
+`SystemSheetGrace` (`lib/src/app/system_sheet_grace.dart`). On iOS they are
+part of the app, so only a real move to the background locks it, and the
+lock closes them. On Android they are other apps' screens, and going Home
+from one leaves Veil unlocked for up to 3 minutes. Opening a file in another
+app on Android gets no grace: Veil locks as soon as it is hidden.
+[`docs/mobile-device-security.md`](../../docs/mobile-device-security.md) has
+the details, and [`docs/attachment-flow.md`](../../docs/attachment-flow.md)
+the whole path.
+
+No plugin or native channel runs under `flutter test`. Each sits behind a
+provider (`attachmentPickerProvider`, `imagePreparerProvider`,
+`attachmentOpenerProvider`, `systemSheetGraceProvider`,
+`attachmentStoragePathsProvider`), with fakes in `test/support`
+(`FakeAttachmentPicker`, `FakeAttachmentOpener`, `RecordingPlatformSecurity`).
+Tests root the storage folders, the system temporary folder included, in
+temp folders and use a `MemoryMediaIndex`, so purges and sweeps really run.
+The fake relay issues upload and download tickets by the API's rules and has
+knobs for failures, tampering, oversize and holding a transfer.
+
+## Unread counts
+
+Each chat has one read mark on the phone, in the `conversation_read_marks`
+table of the encrypted database: the order of the newest message read here,
+and whether the chat was marked unread. The count is worked out from the
+mark and the messages, never stored, and the server learns nothing new. It
+counts other people's messages above the mark, leaving out reactions, system
+lines, the app's own notices and expired messages. Muted chats and 1:1s with
+a blocked account count too, in grey.
+
+The mark moves to the newest message whenever a chat is on screen: when it
+opens, when the app comes back to it from the background, the lock screen, a
+sheet or a page, and with each batch of messages that arrives while it is
+open. Each move clears the chat's notification and sends at most one read
+receipt, for the newest message from someone else that opened (none with read
+receipts off). A chat that waits on a safety number change or an account
+hold, a 1:1 whose account has a safety number change waiting in another
+chat, and a 1:1 with a blocked account send no receipt at all: the mark
+still moves, and what was read then is never receipted later.
+
+An unread row in Chats has its name in bold and a count, or a dot when the
+chat was only marked unread. A long press offers Mark as read or Mark as
+unread, and muting. The Chats tab shows how many chats are unread, leaving
+out muted chats and blocked 1:1s. A chat opens with an "unread messages" line
+above the first new one, and a button takes the list back to the newest
+message.
+
+A new database holds a marker row (`~baseline`). The first chat list after
+it marks every listed chat read, so an account that was just created or
+moved to this phone starts without badges for messages it already had.
+`clearAll` (sign-out and wipe) and the upgrade to schema 12 write the marker
+again.
 
 ## Layout gate
 
@@ -152,7 +260,8 @@ sections 1 and 11). `test/phone` holds the behaviour of both layouts
 (search, timer, safety number, back, the panes).
 
 A row of the list quotes its conversation's last message when that is a
-text this device decrypted, read from the device's own content store; every
+text this device decrypted, read from the device's own content store; a
+photo is a small glyph and "Photo", a file a glyph and its name, and every
 other kind is named by what it is. After the list is fetched, the messenger
 loads the history of each conversation it names and never loaded
 (`DecryptedMessageCache.loadUnheld`), so a message that arrived while the
@@ -230,8 +339,8 @@ Current mobile wiring includes:
 
 - register -> challenge -> verify -> session persistence
 - direct conversation create/list and encrypted envelope send/list
-- upload-ticket/complete attachment send scaffold
-- download-ticket resolution scaffold for encrypted attachments
+- photo and file sending: system pickers, re-encoding, sealing, upload tickets, retry
+- photo and file opening: prefetch, download tickets, size caps, digest check, the viewer, open with another app, save
 - websocket conversation sync
 - local PIN/biometric app lock hooks
 - device transfer init/approve/complete scaffold

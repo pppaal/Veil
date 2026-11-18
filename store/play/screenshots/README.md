@@ -60,12 +60,12 @@ What the test does:
   font on every machine; the package's version varies with the system.
 - No list may cut through a line of text or a bubble at the screen's top or
   bottom edge; the tool fails if one does.
-- The Chats shot leaves out three of the seeded chats: two whose last
-  messages are a voice message and a photo, which the app cannot send, and
-  one with no messages yet.
+- The Chats shot leaves out three of the seeded chats so one screen holds
+  the rest: the voice message (which the app cannot play), the photo and the
+  chat with no messages yet.
 - The chat shot keeps this morning's messages but one. It leaves out the
   days before, where the gate keeps a long message and a long link, and the
-  PDF the user sent this morning (the app cannot send attachments).
+  PDF the user sent this morning.
 - The Settings shot is not scrolled. Should a line sit across the bottom
   edge, the list moves up just far enough for it to be whole.
 - The PNGs are 8-bit RGB without alpha, as Play asks.

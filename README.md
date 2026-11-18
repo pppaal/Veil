@@ -176,15 +176,19 @@ those checks fails the build:
 ### Mobile (`apps/mobile`)
 - Riverpod state, GoRouter navigation, Drift cache
 - Full ratchet with session persistence
-- Text messages in 1:1 and group conversations, reactions, disappearing
-  timers, on-device message search, safety numbers, device transfer
+- Text messages, photos and files in 1:1 and group conversations,
+  reactions, disappearing timers, unread counts, on-device message search,
+  safety numbers, device transfer
 - Block, report and mute: from a chat's menu, a message's long-press sheet
   and a contact's sheet, with Settings > Privacy > Blocked accounts; a muted
   chat raises no notification on the phone
-- Sending attachments is not in the app yet: the system photo and file
-  pickers and the sealed storage behind them are in place, but no button
-  leads to them ([apps/mobile/README.md](apps/mobile/README.md)). The app has
-  no calls, voice messages, stories, stickers or assistant
+- Photos come from the system photo picker and are re-encoded on the
+  phone at up to 1600 px, which drops their location and camera details;
+  files up to 25 MB come from the system file picker and go as they are.
+  Received photos show in the chat and open full screen; files open in
+  another app or save to the phone
+  ([apps/mobile/README.md](apps/mobile/README.md)).
+- The app has no calls, voice messages, stories, stickers or assistant
 - English only, one design system:
   [docs/mobile-design-system.md](docs/mobile-design-system.md)
 - Refresh on 401 in the API client
@@ -231,7 +235,8 @@ Mobile `--dart-define` runtime flags:
   for the API and the realtime socket. Empty means no pinning; a release
   build refuses to run without it.
 - `VEIL_OBJECT_STORAGE_HOSTS`: comma-separated hosts that presigned upload
-  URLs may point at; an upload ticket naming another host is refused.
+  and download URLs may point at; when it is set, a ticket naming another
+  host is refused (empty allows any host).
 - `VEIL_OBJECT_STORAGE_PINS`: TLS pins for the object store, same format as
   `VEIL_TLS_PINS`; empty falls back to the platform trust store.
 

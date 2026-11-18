@@ -3,6 +3,7 @@ Veil is a messenger you sign up for with a handle. No phone number, no email, no
 Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
 • One-to-one and group chats
+• Photos and files
 • Disappearing messages
 • Read receipts and typing indicators you can turn off
 • Safety numbers to check who you're talking to

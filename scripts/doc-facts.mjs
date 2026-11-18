@@ -32,8 +32,16 @@ import { sentencesOf } from './claims-check.mjs';
 export const ADAPTER_SOURCE = 'apps/mobile/lib/src/core/crypto/lib_crypto_adapter.dart';
 export const API_MODULES = 'apps/api/src/modules';
 
-// Documents, walked recursively for text files.
-export const DOC_SOURCES = ['README.md', 'SECURITY.md', 'docs', 'site', 'store'];
+// Documents, walked recursively for text files. The mobile app's README is
+// the one under apps/ that states what the phone does.
+export const DOC_SOURCES = [
+  'README.md',
+  'SECURITY.md',
+  'apps/mobile/README.md',
+  'docs',
+  'site',
+  'store',
+];
 // The release, evidence and audit scripts at the top of scripts/ (not its
 // tests, whose fixtures name retired ids on purpose).
 export const SCRIPTS_DIR = 'scripts';
@@ -188,6 +196,32 @@ export const STALE_STATEMENTS = [
       /\b(?:do not|don't|must not|never) declare iPad\b/i,
       /\biPad (?:device )?support is not declared\b/i,
       /\biPad screenshots (?:are|is) not (?:required|requested|needed)\b/i,
+    ],
+  },
+  {
+    // The mobile docs and store notes once described a text-only build: no
+    // picker, attachment sending switched off by a kAttachmentsEnabled flag,
+    // no unread count. A plan to open received files with open_filex was
+    // dropped for the app's own veil/file_open channel, because that plugin
+    // left the document above Veil's task with no lock.
+    id: 'mobile-text-only',
+    fact: 'the phone sends and opens photos and files and keeps unread counts',
+    code: [
+      { file: 'apps/mobile/pubspec.yaml', pattern: /^\s+image_picker:/m },
+      {
+        file: 'apps/mobile/lib/src/features/conversations/data/messenger/read_state_service.dart',
+        pattern: /class ReadStateService/,
+      },
+    ],
+    statements: [
+      /\bsends text only\b/i,
+      /\btext-only build\b/i,
+      /\bcannot send (?:an )?attachments?\b/i,
+      /\battachments? (?:is|are) (?:switched off|not in the app)\b/i,
+      /\bhas no (?:file|media|photo) picker\b/i,
+      /\bdoes not keep (?:an )?unread\b/i,
+      /\bkAttachmentsEnabled\b/,
+      /\bopen_filex\b/,
     ],
   },
 ];

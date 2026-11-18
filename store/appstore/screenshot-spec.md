@@ -114,13 +114,12 @@ Notes:
 
 - The shots come from the iOS Flutter app (`apps/mobile`), not the web
   demo.
-- Shot 2: the Chats list shows no unread count (the app does not keep
-  one), so the shot has none. Leave out the chats whose last message is a
-  voice message or a photo (the app cannot send either) and the chat with
-  no messages yet.
-- Shot 3: text messages only. Sending attachments is switched off in the
-  mobile app, and it has no voice messages or calls, so the shot shows none
-  of them.
+- Shot 2: the Chats list as a fresh install shows it, with no unread
+  chats. Leave out the chat whose last message is a voice message (the app
+  cannot play one), the chat whose last message is a photo, and the chat
+  with no messages yet, so one screen holds the rest.
+- Shot 3: this morning's text messages. The app has no voice messages or
+  calls, so the shot shows none.
 - Shot 4 (Move to a new phone): show the move as something done with the
   old phone in hand. **Do not** imply backup or recovery: Veil has
   neither. Misleading "restore/backup" framing risks App Review rejection

@@ -25,6 +25,7 @@ Veil is a messenger you sign up for with a handle. No phone number, no email, no
 Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
 - One-to-one and group chats
+- Photos and files
 - Disappearing messages
 - Read receipts and typing indicators you can turn off
 - Safety numbers to check who you're talking to
@@ -42,9 +43,9 @@ No ads, no tracking and no third-party analytics. The code is open source.
 Privacy policy: https://pppaal.github.io/Veil/
 Contact: privacy@veil.app
 
-Not in the mobile build, so not in this listing: view-once messages, calls,
-attachments and voice messages, and an online status (no one else ever
-sees whether you are online). Add a bullet only when its screen ships.
+Not in the mobile build, so not in this listing: view-once messages, calls
+and voice messages, and an online status (no one else ever sees whether you
+are online). Add a bullet only when its screen ships.
 
 ## Category
 
@@ -107,14 +108,15 @@ Declared in the app's `AndroidManifest.xml` and surfaced in Play Console:
 | WAKE_LOCK                | push wake-ups, once push is wired | no                |
 | USE_BIOMETRIC            | app lock                          | no (per-use)      |
 
-The plugins' own manifests add no permission to this: `flutter_local_notifications`
-declares `VIBRATE` and `POST_NOTIFICATIONS`, `local_auth_android`
-`USE_BIOMETRIC`, `image_picker_android` a file provider and a disabled Photo
-Picker backport service, and the rest none. The app's own manifest adds one
-file provider, limited to the one cache folder a received file is opened
-from. Libraries they depend on add two more,
-which the merged manifest of a debug build shows (CI's `android-build` job
-prints the list on every run):
+The plugins' own manifests add nothing to this list:
+`flutter_local_notifications` declares `VIBRATE` and `POST_NOTIFICATIONS`,
+`local_auth_android` `USE_BIOMETRIC`, `image_picker_android` a file provider
+and a disabled Photo Picker backport service, and the rest none. The app's
+own manifest adds one file provider, limited to the one cache folder a file
+is opened from. `test/platform/native_permissions_test.dart` reads every
+plugin's manifest and fails on any other permission. Libraries the plugins
+depend on add two more, which the merged manifest of a debug build shows
+(CI's `android-build` job prints the list on every run):
 
 - `USE_FINGERPRINT`, from `androidx.biometric` (which `local_auth_android`
   uses): a normal permission for the fingerprint API of Android 9 and older,
@@ -128,11 +130,9 @@ Before submission, also read the release bundle's merged manifest
 the permissions Play Console lists for the bundle, and add any other it shows
 here.
 
-No `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_*` or `READ_EXTERNAL_STORAGE`: the
-app sends text only for now (no screen sends an attachment yet, and there are
-no voice messages or calls), the system photo picker and document picker it
-will use for photos and files need none of them, and none of its plugins
-declares them. No
+No `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_*` or `READ_EXTERNAL_STORAGE`:
+photos come from the system photo picker and files from the system document
+picker, which need none, and none of its plugins declares them. No
 `READ_CONTACTS`, no `ACCESS_FINE_LOCATION`, no `QUERY_ALL_PACKAGES`. A feature
 that needs one of these declares it in the change that makes the feature
 work, together with the matching usage string in `ios/Runner/Info.plist`

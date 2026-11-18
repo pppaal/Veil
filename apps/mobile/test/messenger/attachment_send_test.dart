@@ -697,6 +697,54 @@ void main() {
       expect(alice.controller.attachmentTransferForMessage('client-old-draft')!.canCancel, isTrue);
     });
 
+    test('sealed while the app stopped before its record was written: the next start drops its blob and content',
+        () async {
+      await deliver(alice, bob, 'crash next');
+      holdUploads();
+      await alice.controller.sendAttachment(conversationId: conv, attachment: await file(alice, 'k.pdf', pdfBytes('k')));
+      final orphan = queuedOf(alice)!.clientMessageId!;
+      await uploading(alice, orphan);
+      // A photo queued behind it, whose record did reach the cache, stays.
+      await alice.controller.sendAttachment(conversationId: conv, attachment: await photo(alice, _preparedJpeg()));
+      final queued = queuedOf(alice)!.clientMessageId!;
+      expect(blobsIn(await mediaOf(alice)), hasLength(2));
+
+      await alice.restart(whileClosed: () async {
+        relay.uploadGate = null;
+        // The stopped app's last writes land, in an earlier second than the
+        // start that follows.
+        await Future<void>.delayed(const Duration(milliseconds: 1100));
+        // What a stop between the blob's commit and the record's write
+        // leaves: the sealed blob and its stored content (the key), no record.
+        await alice.cache.removePendingMessage(orphan);
+        expect((await alice.cache.readPendingMessages()).map((record) => record.clientMessageId), [queued]);
+      });
+      await sent(alice);
+
+      expect(blobsIn(await mediaOf(alice)), hasLength(1), reason: 'the blob no record named was kept');
+      expect(alice.controller.messagesFor(conv).where((message) => message.clientMessageId == orphan), isEmpty,
+          reason: 'its bubble waits for a send that never comes');
+      final echo = ChatMessage(
+        id: 'local-$orphan',
+        clientMessageId: orphan,
+        senderDeviceId: 'dev-alice',
+        sentAt: DateTime.now(),
+        envelope: CryptoEnvelope(
+            version: '',
+            conversationId: conv,
+            senderDeviceId: 'dev-alice',
+            recipientUserId: 'user-bob',
+            ciphertext: '',
+            nonce: '',
+            messageKind: MessageKind.file),
+      );
+      expect(await alice.cache.getMany([echo].map((message) => 'local:${message.clientMessageId}')), isEmpty,
+          reason: 'its stored content, the key with it, was kept');
+      expect(relay.uploadTickets, hasLength(2), reason: 'only the queued photo was uploaded after the restart');
+      await waitFor(() => bob.controller.messagesFor(conv).length == 2);
+      expect((await latestAt(bob)).messageKind, MessageKind.image);
+    });
+
     test('of a held 1:1 is never sealed nor uploaded', () async {
       await deliver(alice, bob, 'hello bob');
       await deliver(bob, alice, 'hi alice');

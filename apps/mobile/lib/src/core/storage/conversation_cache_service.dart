@@ -513,6 +513,13 @@ abstract class MessageContentStore {
   Future<Set<String>> retiredAmong(Iterable<String> messageKeys);
 }
 
+/// A cache that can list what this device stored for messages of its own
+/// under their local keys (localMessageContentKey) and holds no queued
+/// record for: content and records read together, from one database.
+abstract interface class UnqueuedOutboundContents {
+  Future<List<MessageContentRecord>> unqueuedOutbound();
+}
+
 /// How long retired message ids are remembered: longer than the relay may
 /// hold any ciphertext (30 days), so it can never serve one back afterwards.
 const retiredMessageRetention = Duration(days: 31);
@@ -680,7 +687,7 @@ abstract interface class IncrementalConversationCache {
 }
 
 class DriftConversationCacheService
-    implements ConversationCacheService, MessageContentStore, IncrementalConversationCache {
+    implements ConversationCacheService, MessageContentStore, IncrementalConversationCache, UnqueuedOutboundContents {
   DriftConversationCacheService(
     this._db, {
     required CryptoEnvelopeCodec envelopeCodec,
@@ -1460,6 +1467,19 @@ class DriftConversationCacheService
         .getSingleOrNull();
     return row == null ? null : _decodeContent(row);
   }
+
+  @override
+  Future<List<MessageContentRecord>> unqueuedOutbound() => _db.transaction(() async {
+        final queued = {for (final row in await _db.select(_db.pendingMessages).get()) row.clientMessageId};
+        final rows = await (_db.select(_db.messageContents)
+              ..where((table) => table.messageKey.like('$_localMessageContentKeyPrefix%')))
+            .get();
+        return [
+          for (final row in rows)
+            if (!queued.contains(row.clientMessageId))
+              if (await _decodeContent(row) case final record?) record,
+        ];
+      });
 
   @override
   Future<Map<String, MessageContentRecord>> getMany(

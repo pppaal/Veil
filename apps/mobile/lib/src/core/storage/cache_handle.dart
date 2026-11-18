@@ -25,7 +25,8 @@ import 'in_memory_message_content_store.dart';
 /// The session controller wipes the cache through the same handle the
 /// messenger writes through, so a wipe waits for every write already under
 /// way: one that began before the wipe lands before it, never after.
-class CacheHandle implements ConversationCacheService, MessageContentStore, IncrementalConversationCache {
+class CacheHandle
+    implements ConversationCacheService, MessageContentStore, IncrementalConversationCache, UnqueuedOutboundContents {
   CacheHandle(this._resolve);
 
   /// Returns the cache that is current at the time of the call; throws when
@@ -164,6 +165,12 @@ class CacheHandle implements ConversationCacheService, MessageContentStore, Incr
 
   @override
   Future<MessageContentRecord?> get(String messageKey) async => (await _contents()).get(messageKey);
+
+  // Nothing without the database: content kept for this process alone has
+  // no queue to be compared with.
+  @override
+  Future<List<MessageContentRecord>> unqueuedOutbound() async =>
+      await (await _cache())?.unqueuedOutbound() ?? const <MessageContentRecord>[];
 
   @override
   Future<Map<String, MessageContentRecord>> getMany(Iterable<String> messageKeys) async =>

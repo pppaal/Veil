@@ -27,6 +27,55 @@ void main() {
     await database.close();
   });
 
+  PendingMessageRecord queuedText(String clientMessageId, {int? disappearAfterSeconds}) => PendingMessageRecord(
+        clientMessageId: clientMessageId,
+        conversationId: 'conv-1',
+        senderDeviceId: 'device-local',
+        recipientUserId: 'user-selene',
+        envelope: const CryptoEnvelope(
+          version: '',
+          conversationId: 'conv-1',
+          senderDeviceId: 'device-local',
+          recipientUserId: 'user-selene',
+          ciphertext: '',
+          nonce: '',
+          messageKind: MessageKind.text,
+        ),
+        createdAt: DateTime.utc(2026, 3, 30, 10, 6, 0),
+        disappearAfterSeconds: disappearAfterSeconds,
+      );
+
+  MessageContentRecord outbound(String messageKey, {String? clientMessageId}) => MessageContentRecord(
+        messageKey: messageKey,
+        conversationId: 'conv-1',
+        clientMessageId: clientMessageId,
+        senderDeviceId: 'device-local',
+        body: 'hello',
+        kind: MessageKind.text,
+        status: MessageContentStatus.ok,
+        createdAt: DateTime.utc(2026, 3, 30, 10, 6, 0),
+        updatedAt: DateTime.utc(2026, 3, 30, 10, 6, 0),
+      );
+
+  test('a queued text waiting for its stamp keeps its timer, and no expiry, across a restart', () async {
+    await cache.upsertPendingMessage(queuedText('client-timed', disappearAfterSeconds: 10));
+    await cache.upsertPendingMessage(queuedText('client-plain'));
+    final restored = {for (final record in await cache.readPendingMessages()) record.clientMessageId: record};
+    expect(restored['client-timed']!.disappearAfterSeconds, 10);
+    expect(restored['client-timed']!.envelope.expiresAt, isNull);
+    expect(restored['client-timed']!.envelope.attachment, isNull);
+    expect(restored['client-timed']!.attachmentUploadDraft, isNull);
+    expect(restored['client-plain']!.disappearAfterSeconds, isNull);
+  });
+
+  test('lists the content stored under a local key that no queued record names, and nothing else', () async {
+    await cache.upsertPendingMessage(queuedText('client-queued'));
+    await cache.put(outbound(localMessageContentKey('client-queued'), clientMessageId: 'client-queued'));
+    await cache.put(outbound(localMessageContentKey('client-orphan'), clientMessageId: 'client-orphan'));
+    await cache.put(outbound('server-msg-1', clientMessageId: 'client-acked'));
+    expect([for (final record in await cache.unqueuedOutbound()) record.clientMessageId], ['client-orphan']);
+  });
+
   test('persists pending outbox items and restores paging state', () async {
     final conversation = ConversationPreview(
       id: 'conv-1',

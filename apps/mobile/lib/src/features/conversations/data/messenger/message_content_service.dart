@@ -233,6 +233,10 @@ class MessageContentService {
     await _store.deleteExpired(_now(), messageKeys: [key]);
   }
 
+  /// What this device stored for its own messages that the cache holds no queued record for.
+  Future<List<MessageContentRecord>> unqueuedOutbound() async =>
+      switch (_store) { final UnqueuedOutboundContents store => store.unqueuedOutbound(), _ => const [] };
+
   /// Moves an outbound message's content to the id the relay acked it under
   /// and returns it, so the caller can apply its authenticated expiry.
   Future<MessageContentRecord?> acknowledge({
@@ -275,10 +279,7 @@ class MessageContentService {
   /// gone and their keys are spent, so they must not come back.
   Future<List<ChatMessage>> withoutRetired(List<ChatMessage> messages) async {
     final retired = await _store.retiredAmong(messages.map(_keyOf));
-    return [
-      for (final message in messages)
-        if (!retired.contains(_keyOf(message))) message,
-    ];
+    return [for (final message in messages) if (!retired.contains(_keyOf(message))) message];
   }
 
   /// Authenticated inner expiries of [messages] that have one, by message id.
@@ -292,8 +293,7 @@ class MessageContentService {
   }
 
   Future<void> deleteExpired(DateTime now, Iterable<ChatMessage> expired) async {
-    final keys = expired.map(_keyOf).toList(growable: false);
-    keys.forEach(_memo.remove);
+    final keys = expired.map(_keyOf).toList(growable: false)..forEach(_memo.remove);
     await _store.deleteExpired(now, messageKeys: keys);
   }
 

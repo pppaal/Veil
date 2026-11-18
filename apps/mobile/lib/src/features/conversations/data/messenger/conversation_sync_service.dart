@@ -110,6 +110,7 @@ class ConversationSyncService {
   /// Replaces the local state with what the cache holds: conversations and
   /// messages in one read, the content lookups for all of them batched.
   Future<void> hydrate() async {
+    final startedAt = DateTime.now();
     _heldThrough.clear();
     final cached = await _persistence.hydrate();
     if (cached == null) return;
@@ -150,7 +151,7 @@ class ConversationSyncService {
       if (contents[message.id]?.status.isFinal ?? false) _markHeld(message);
     }
 
-    final keepTempPaths = _outbox.restore(await _attachments.withoutDiscarded(cached.pending));
+    final keepTempPaths = _outbox.restore(await _attachments.withoutDiscarded(cached.pending, startedAt: startedAt));
     await _tempStore?.cleanupOrphanedFiles(keepPaths: keepTempPaths);
     for (final conversationId in _store.loadedConversationIds.toList()) {
       unawaited(_latest.refresh(conversationId));

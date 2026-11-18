@@ -14,6 +14,7 @@ import 'messenger_operation_runner.dart';
 import 'messenger_session_context.dart';
 import 'messenger_state_store.dart';
 import 'pending_messages.dart';
+import 'unqueued_sends.dart';
 
 enum AttachmentTransferPhase {
   staged,
@@ -291,30 +292,20 @@ class AttachmentTransferService {
     }
   }
 
-  /// [records], the queue the cache held, less every attachment the user
-  /// cancelled whose record the cache would not drop: discard deleted its
-  /// stored content (and its blob). It is neither sent nor shown again, and
-  /// its row goes now. One whose blob alone is gone fails for good if sent.
-  Future<List<PendingMessageRecord>> withoutDiscarded(List<PendingMessageRecord> records) async {
-    bool checked(PendingMessageRecord record) => isAttachmentRecord(record) && !isOldFormatDraft(record);
-    ChatMessage echoOf(PendingMessageRecord record) => ChatMessage(
-        id: 'local-${record.clientMessageId}',
-        clientMessageId: record.clientMessageId,
-        senderDeviceId: record.senderDeviceId,
-        sentAt: record.createdAt,
-        envelope: record.envelope);
-    final stored = await _contents.storedFor([for (final record in records) if (checked(record)) echoOf(record)]);
-    final kept = <PendingMessageRecord>[];
-    for (final record in records) {
-      if (!checked(record) || stored.containsKey('local-${record.clientMessageId}')) {
-        kept.add(record);
-      } else {
-        await _pending.drop(record.clientMessageId).catchError((Object _) {});
-        final id = blobIdOf(record);
-        if (id != null && id.isNotEmpty) await _blobsOrNull?.delete(record.conversationId, id).catchError((Object _) {});
-      }
-    }
-    return kept;
+  /// [records] as hydrate keeps them, and this device's unsent leftovers
+  /// dropped (see keptOnRestore).
+  Future<List<PendingMessageRecord>> withoutDiscarded(List<PendingMessageRecord> records, {DateTime? startedAt}) =>
+      keptOnRestore(records,
+          contents: _contents, pending: _pending, blobs: _blobsOrNull, dropBubble: _dropBubble, startedAt: startedAt);
+
+  void _dropBubble(String conversationId, String clientMessageId) {
+    final messages = _store.messagesOf(conversationId);
+    if (!messages.any((message) => message.clientMessageId == clientMessageId)) return;
+    _store.setMessages(conversationId, [
+      for (final message in messages)
+        if (message.clientMessageId != clientMessageId) message,
+    ]);
+    _store.syncPreviewFromMessages(conversationId);
   }
 
   void cancelUploads() {

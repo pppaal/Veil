@@ -136,8 +136,7 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
             ])
           : Icon(
               switch (status.state) {
-                _ when ready => Icons.insert_drive_file_outlined,
-                MediaState.gone => Icons.insert_drive_file_outlined,
+                _ when ready || status.state == MediaState.gone => Icons.insert_drive_file_outlined,
                 MediaState.failed => Icons.refresh,
                 _ => Icons.download_outlined,
               },

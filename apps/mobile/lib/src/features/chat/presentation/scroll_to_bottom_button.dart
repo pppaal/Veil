@@ -111,6 +111,9 @@ class _ScrollToBottomButtonState extends State<ScrollToBottomButton> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
+    // A raised circle on the dark chat; on the white one, a white circle all
+    // but vanishes, so it takes the incoming bubbles' grey instead.
+    final light = Theme.of(context).brightness == Brightness.light;
     final arrived = _arrived;
     final button = Semantics(
       button: true,
@@ -129,9 +132,9 @@ class _ScrollToBottomButtonState extends State<ScrollToBottomButton> {
                 width: ScrollToBottomButton.size,
                 height: ScrollToBottomButton.size,
                 decoration: BoxDecoration(
-                  color: palette.surfaceRaised,
+                  color: light ? palette.surfaceAlt : palette.surfaceRaised,
                   shape: BoxShape.circle,
-                  border: Border.all(color: palette.stroke, width: 0.5),
+                  border: light ? null : Border.all(color: palette.stroke, width: 0.5),
                 ),
                 child: Icon(Icons.keyboard_arrow_down, size: 24, color: palette.textMuted),
               ),

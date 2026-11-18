@@ -112,8 +112,12 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
     // A send that failed, for good or not, can still be taken back.
     final VoidCallback? remove =
         own && widget.message.hasFailed && snapshot != null && snapshot.canCancel ? widget.onCancelAttachment : null;
+    // Spinning until the first bytes go, so a slow start never reads as
+    // stalled.
     final ringValue = sending
-        ? (snapshot!.phase == AttachmentTransferPhase.uploading ? snapshot.progress.clamp(0.0, 1.0) : null)
+        ? (snapshot!.phase == AttachmentTransferPhase.uploading && snapshot.progress > 0
+            ? snapshot.progress.clamp(0.0, 1.0)
+            : null)
         : status.progress;
     final circle = _Circle(
       own: own,

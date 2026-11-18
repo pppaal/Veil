@@ -308,6 +308,19 @@ void main() {
       expect(find.byType(PhotoViewerScreen), findsNothing);
     });
 
+    testWidgets('before the first bytes go, the ring spins rather than sit empty', (tester) async {
+      media
+        ..photos[MediaKey(_chat, _pointer())] = solidPng(width: 640, height: 480)
+        ..setStatus(_chat, _pointer(), MediaState.ready);
+      await show(tester,
+          message: _message(mine: true, state: MessageDeliveryState.uploading),
+          snapshot: _snapshot(AttachmentTransferPhase.uploading),
+          onCancel: () {});
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.widget<CircularProgressIndicator>(find.byType(CircularProgressIndicator)).value, isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
     testWidgets('a send that failed: no scrim, the cross stays, and it says it was not sent', (tester) async {
       var canceled = 0;
       media

@@ -35,6 +35,10 @@ class ScriptedMedia extends ChangeNotifier implements AttachmentMediaService {
   final List<(MediaKey, MediaCopyPurpose)> copies = [];
   final List<String> released = [];
 
+  /// Deletes each copy [plaintextFileFor] made before it returns, as its
+  /// message expiring at that moment would.
+  bool copyGoneOnReturn = false;
+
   int _evictions = 0;
   bool _inUse = true;
 
@@ -104,6 +108,7 @@ class ScriptedMedia extends ChangeNotifier implements AttachmentMediaService {
     final folder = Directory(p.join(root.path, AttachmentStoragePaths.openFolder, 'copy${copies.length}'))
       ..createSync(recursive: true);
     final file = File(p.join(folder.path, photo ? '$name.jpg' : name))..writeAsBytesSync(bytes);
+    if (copyGoneOnReturn) folder.deleteSync(recursive: true);
     return file.path;
   }
 

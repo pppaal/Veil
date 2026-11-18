@@ -127,7 +127,7 @@ void main() {
     await withPhoneApp(tester, identities, location: _chat, overrides: pickingOverrides(picker), body: (world) async {
       await attachFrom(tester, 'file');
       await pumpUntil(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty);
-      expect(find.text(en.chatSendFileTitle(photoAsFileName, peerNames[peerHandle]!)), findsOneWidget);
+      expect(find.text(en.chatSendFileTitle(photoAsFileName, peerNames[peerHandle]!.replaceAll(' ', '\u00A0'))), findsOneWidget);
       expect(find.descendant(of: find.byType(AlertDialog), matching: find.textContaining('JPG · ')), findsOneWidget);
       expect(find.text(en.chatSendFileKeepsMetadata), findsOneWidget);
 
@@ -146,7 +146,7 @@ void main() {
     await withPhoneApp(tester, identities, location: _chat, overrides: pickingOverrides(picker), body: (world) async {
       await attachFrom(tester, 'file');
       await pumpUntil(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty);
-      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!)), findsOneWidget);
+      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!.replaceAll(' ', '\u00A0'))), findsOneWidget);
       expect(find.descendant(of: find.byType(AlertDialog), matching: find.textContaining('PDF · ')), findsOneWidget);
       expect(find.text(en.chatSendFileKeepsMetadata), findsNothing);
     });
@@ -220,7 +220,7 @@ void main() {
       expect(find.byType(ChatRoomScreen), findsOneWidget);
       expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'the lease is attached');
       await pumpUntil(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty, reason: 'the held pick was not offered');
-      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!)), findsOneWidget);
+      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!.replaceAll(' ', '\u00A0'))), findsOneWidget);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
@@ -319,7 +319,7 @@ void main() {
       session.unlock();
       await pumpUntil(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty,
           reason: 'the held file was not offered again');
-      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!)), findsOneWidget);
+      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!.replaceAll(' ', '\u00A0'))), findsOneWidget);
       expect(staging.listSync(), hasLength(1));
     } finally {
       await closeApp(tester, world);
@@ -352,7 +352,7 @@ void main() {
       Navigator.of(tester.element(find.text(en.chatAttachFile))).pop();
       await pumpUntil(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty,
           reason: 'the held pick was left to expire');
-      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!)), findsOneWidget);
+      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!.replaceAll(' ', '\u00A0'))), findsOneWidget);
     } finally {
       await closeApp(tester, world);
     }

@@ -287,7 +287,9 @@ class _MessagePhotoState extends ConsumerState<MessagePhoto> {
                 child: SizedBox.square(
                   dimension: 40,
                   child: CircularProgressIndicator(
-                    value: uploading ? snapshot!.progress.clamp(0.0, 1.0) : null,
+                    // Spinning until the first bytes go, so a slow start
+                    // never reads as stalled.
+                    value: uploading && snapshot!.progress > 0 ? snapshot.progress.clamp(0.0, 1.0) : null,
                     strokeWidth: 3,
                     color: Colors.white,
                     backgroundColor: Colors.white24,
@@ -374,9 +376,10 @@ class _Tile extends StatelessWidget {
           ),
           formatFileSize(sizeBytes),
         ),
+      // textMuted, as the line under it: textSubtle on the tile's
+      // surfaceAlt is under 3:1 in light.
       MediaState.gone => (
-          Icon(Icons.hide_image_outlined,
-              size: VeilIconSize.lg, color: own ? palette.outgoingMeta : palette.textSubtle),
+          Icon(Icons.hide_image_outlined, size: VeilIconSize.lg, color: muted),
           l10n.chatPhotoUnavailable,
         ),
       // One sentence a line, so no word is left alone under the rest.

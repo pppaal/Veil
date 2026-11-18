@@ -477,6 +477,18 @@ void main() {
       return (bar: tester.getRect(find.byType(ReactionPickerWidget)), menu: save.expandToInclude(report));
     }
 
+    testWidgets('the chat dims around the pressed message, which stays as it is', (tester) async {
+      const anchor = Rect.fromLTWH(0, 300, 360, 60);
+      await pressAt(tester, anchor);
+      final dim = tester.widget<CustomPaint>(find.byKey(const ValueKey('message-actions-dim'))).painter;
+      expect(dim, isA<MessageActionsDim>().having((dim) => dim.clear, 'clear', anchor));
+      expect(MessageActionsDim.color, const Color(0x33000000));
+      // A tap on the dim still closes the menu.
+      await tester.tapAt(const Offset(180, 60));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('message-save')), findsNothing);
+    });
+
     testWidgets('with room around the message, the bar is above it and the menu under it', (tester) async {
       const anchor = Rect.fromLTWH(12, 300, 220, 60);
       final placed = await pressAt(tester, anchor);

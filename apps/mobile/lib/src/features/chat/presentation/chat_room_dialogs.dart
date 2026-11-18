@@ -40,7 +40,8 @@ Future<bool> confirmOwnHandleHold(BuildContext context, String handle) async {
 /// blocked, where the server refuses a reaction) only the menu shows: under
 /// the message, or above it when there is no room under it inside
 /// [messages] (the message list on screen; what is under the list, such as
-/// a blocked chat's "You blocked @sam." line, stays visible). A tap outside
+/// a blocked chat's "You blocked @sam." line, stays visible). Everything but
+/// the pressed message dims, so the menu reads as its own. A tap outside
 /// closes both.
 Future<void> showMessageActions(
   BuildContext context, {
@@ -56,7 +57,8 @@ Future<void> showMessageActions(
     context: context,
     barrierDismissible: true,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: const Color(0x33000000),
+    // The dim is drawn by the page, around the message (MessageActionsDim).
+    barrierColor: Colors.transparent,
     transitionDuration: VeilMotion.fast,
     pageBuilder: (dialogContext, _, __) {
       final palette = dialogContext.veilPalette;
@@ -113,9 +115,36 @@ Future<void> showMessageActions(
                 ),
               ),
             );
-      return _MessageActionsLayout(anchor: anchor, isMine: isMine, bar: bar, menu: menu, messages: messages);
+      return Stack(fit: StackFit.expand, children: [
+        IgnorePointer(
+          child: CustomPaint(key: const ValueKey('message-actions-dim'), painter: MessageActionsDim(anchor)),
+        ),
+        _MessageActionsLayout(anchor: anchor, isMine: isMine, bar: bar, menu: menu, messages: messages),
+      ]);
     },
   );
+}
+
+/// The dim behind a message's actions: 20% black over the chat, except over
+/// the pressed message's row ([clear]), which stays as it is.
+class MessageActionsDim extends CustomPainter {
+  const MessageActionsDim(this.clear);
+
+  final Rect clear;
+
+  static const Color color = Color(0x33000000);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final around = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Offset.zero & size)
+      ..addRect(clear);
+    canvas.drawPath(around, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(MessageActionsDim oldDelegate) => oldDelegate.clear != clear;
 }
 
 /// Places the reaction bar above [anchor] and the menu under it, on the

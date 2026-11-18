@@ -51,10 +51,21 @@ Future<void> openFileAttachment(
     return;
   }
   final file = File(path);
-  // Only the head is read to tell what it is; all of it only for the viewer.
-  final head = await file.openRead(0, 64).fold<List<int>>([], (bytes, chunk) => bytes..addAll(chunk));
-  if (sniffImageType(head) != null) {
-    final bytes = await file.readAsBytes();
+  final List<int> head;
+  Uint8List? bytes;
+  try {
+    // Only the head is read to tell what it is; all of it only for the viewer.
+    head = await file.openRead(0, 64).fold<List<int>>([], (bytes, chunk) => bytes..addAll(chunk));
+    if (sniffImageType(head) != null) bytes = await file.readAsBytes();
+  } on FileSystemException {
+    // The copy went while it was read (its message expired, or its blob was
+    // taken): nothing to open. Caught here, so its path, which holds the
+    // file's name, never reaches the crash log (D14).
+    await media.releaseCopy(path);
+    if (context.mounted && !locked()) showVeilToast(context, l10n.chatOpenFileFailed);
+    return;
+  }
+  if (bytes != null) {
     if (await isDrawablePhoto(bytes)) {
       await media.releaseCopy(path);
       if (!context.mounted || locked()) return;

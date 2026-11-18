@@ -25,8 +25,9 @@ Future<bool> confirmSendFile(
       final palette = dialogContext.veilPalette;
       return AlertDialog(
         // The name and the chat's title are drawn as their owners wrote
-        // them; a long name keeps its real extension in sight.
-        title: Text(l10n.chatSendFileTitle(shortFileName(name), chat)),
+        // them; a long name keeps its real extension in sight, and the
+        // chat's name wraps as one ("Sam Rivera", never "Sam / Rivera").
+        title: Text(l10n.chatSendFileTitle(shortFileName(name), chat.replaceAll(' ', '\u00A0'))),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

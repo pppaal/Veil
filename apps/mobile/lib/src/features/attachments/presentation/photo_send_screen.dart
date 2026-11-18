@@ -30,6 +30,9 @@ class PhotoSendScreen extends StatefulWidget {
   /// The bars above and below the photo.
   static const double barHeight = 52;
 
+  /// The strip under the photo that holds the 48dp send circle.
+  static const double sendBarHeight = 72;
+
   @override
   State<PhotoSendScreen> createState() => _PhotoSendScreenState();
 }
@@ -108,15 +111,16 @@ class _PhotoSendScreenState extends State<PhotoSendScreen> {
                 ),
               ),
               SizedBox(
-                height: PhotoSendScreen.barHeight,
+                height: PhotoSendScreen.sendBarHeight,
                 child: Padding(
-                  padding: const EdgeInsetsDirectional.only(end: VeilSpace.xs),
+                  padding: const EdgeInsetsDirectional.only(end: VeilSpace.md),
                   child: Align(
                     alignment: AlignmentDirectional.centerEnd,
                     child: SendButton(
                       key: const ValueKey('photo-send-send'),
                       onPressed: _sendWhenReady ? () {} : _send,
                       semanticLabel: l10n.chatSendAction,
+                      large: true,
                     ),
                   ),
                 ),

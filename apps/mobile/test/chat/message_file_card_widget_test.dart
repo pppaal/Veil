@@ -282,6 +282,24 @@ void main() {
       expect(root.listSync(recursive: true).whereType<File>(), isEmpty);
     });
 
+    // D14: a copy that goes between being made and being read (its message
+    // expired) opens nothing and throws nothing, so no path, which holds
+    // the file's name, reaches the crash log.
+    for (final (label, plaintext) in [('a PDF', pdfBytes('lease')), ('a photo', solidPng(width: 40, height: 30))]) {
+      testWidgets('$label whose copy goes before it is read: a toast, and no error escapes', (tester) async {
+        ready(plaintext: plaintext);
+        media.copyGoneOnReturn = true;
+        await show(tester);
+        await tester.tap(find.byType(MessageFileCard));
+        await drain(tester);
+        expect(tester.takeException(), isNull);
+        expect(opener.opened, isEmpty);
+        expect(find.byType(PhotoViewerScreen), findsNothing);
+        expect(find.text('Couldn\'t open the file'), findsOneWidget);
+        expect(media.released, hasLength(1));
+      });
+    }
+
     testWidgets('kind file claiming image/png but named .pdf opens as a PDF', (tester) async {
       media
         ..plaintexts[MediaKey(_chat, _pointer(contentType: 'image/png'))] = pdfBytes('x')
@@ -427,6 +445,18 @@ void main() {
       expect(cross.tooltip, l10n.chatCancelAction);
       expect(cross.hasAction(SemanticsAction.tap), isTrue);
       handle.dispose();
+    });
+
+    testWidgets('before the first bytes go, the ring spins rather than sit empty', (tester) async {
+      await show(
+        tester,
+        message: _message(mine: true, state: MessageDeliveryState.uploading),
+        snapshot: const AttachmentTransferSnapshot(
+            clientMessageId: 'c', phase: AttachmentTransferPhase.uploading, progress: 0, canRetry: false, canCancel: true),
+        onCancel: () {},
+      );
+      expect(tester.widget<CircularProgressIndicator>(find.byType(CircularProgressIndicator)).value, isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
     });
 
     testWidgets('sent: ready to open from this phone, with no fetch', (tester) async {

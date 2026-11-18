@@ -15,13 +15,17 @@ void main() {
   late Directory systemTemp;
   late List<String> prepared;
 
-  AttachmentStoragePaths paths({required bool sweepSystemTemp, bool sweepPickerCopies = false}) =>
+  // A phone's folders unless [temporaryFolderIsPrivate] says otherwise: the
+  // temporary folder is the app's own on Android and iOS.
+  AttachmentStoragePaths paths(
+          {required bool sweepSystemTemp, bool sweepPickerCopies = false, bool temporaryFolderIsPrivate = true}) =>
       AttachmentStoragePaths(
         temporaryRoot: () async => temporary,
         supportRoot: () async => support,
         systemTempRoot: () => systemTemp,
         sweepSystemTemp: sweepSystemTemp,
         sweepPickerCopies: sweepPickerCopies,
+        temporaryFolderIsPrivate: temporaryFolderIsPrivate,
         onDirectoryPrepared: (path) async => prepared.add(path),
       );
 
@@ -83,6 +87,32 @@ void main() {
     expect(entriesOf(systemTemp), isEmpty);
     expect(systemTemp.existsSync(), isTrue, reason: 'the folder itself belongs to the system');
     expect(database.existsSync(), isTrue);
+  });
+
+  test('where the temporary folder is shared (Windows, Linux, macOS), purgeAll deletes only Veil\'s folders in it',
+      () async {
+    final storage = paths(sweepSystemTemp: false, temporaryFolderIsPrivate: false);
+    write(await storage.stagingDir(), 'picked.jpg');
+    write(await storage.mediaDir(), 'b' * 64);
+    write(await storage.openDir(), 'abc/report.pdf');
+    // Other apps' files in %TEMP% or /tmp, a uuid-named folder among them.
+    write(temporary, 'someone-elses.tmp');
+    write(temporary, '3f2504e0-4f89-41d3-9a0c-0305e82c3301/build.log');
+    write(temporary, 'file_dialog-9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/other.pdf');
+
+    await storage.purgeAll();
+
+    expect(entriesOf(temporary)..sort(), [
+      '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+      'file_dialog-9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d',
+      'someone-elses.tmp',
+    ], reason: 'a sign-out emptied the shared temporary folder');
+    expect(Directory(p.join(support.path, 'veil_media')).existsSync(), isFalse);
+  });
+
+  test('the temporary folder counts as the app\'s own on Android and iOS only', () {
+    expect(AttachmentStoragePaths().temporaryFolderIsPrivate, Platform.isAndroid || Platform.isIOS);
+    expect(AttachmentStoragePaths(temporaryFolderIsPrivate: true).temporaryFolderIsPrivate, isTrue);
   });
 
   test('without the iOS sweep the system temp folder is left alone', () async {
@@ -196,6 +226,7 @@ void main() {
       supportRoot: () async => throw const FileSystemException('no support folder'),
       systemTempRoot: () => systemTemp,
       sweepSystemTemp: true,
+      temporaryFolderIsPrivate: true,
     );
     write(temporary, 'picked.jpg');
     write(systemTemp, 'picked.jpg');

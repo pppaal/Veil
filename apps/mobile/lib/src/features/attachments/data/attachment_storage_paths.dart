@@ -21,6 +21,10 @@ import 'package:path_provider/path_provider.dart';
 ///   not `<tmp>`: that is Library/Caches there): where the iOS pickers and
 ///   save sheet leave copies under their real names. Swept on iOS only.
 ///
+/// `<tmp>` is the app's own on Android (its cache folder) and iOS
+/// (Library/Caches); on Windows, Linux and macOS it is the system's, shared
+/// with other apps, so only Veil's own folders in it are ever deleted there.
+///
 /// Every root can be injected, so tests run every purge for real against
 /// folders of their own.
 class AttachmentStoragePaths {
@@ -30,12 +34,14 @@ class AttachmentStoragePaths {
     Directory Function()? systemTempRoot,
     bool? sweepSystemTemp,
     bool? sweepPickerCopies,
+    bool? temporaryFolderIsPrivate,
     Future<void> Function(String path)? onDirectoryPrepared,
   })  : _temporaryRoot = temporaryRoot ?? getTemporaryDirectory,
         _supportRoot = supportRoot ?? getApplicationSupportDirectory,
         _systemTempRoot = systemTempRoot ?? (() => Directory.systemTemp),
         sweepSystemTemp = sweepSystemTemp ?? Platform.isIOS,
         sweepPickerCopies = sweepPickerCopies ?? Platform.isAndroid,
+        temporaryFolderIsPrivate = temporaryFolderIsPrivate ?? (Platform.isAndroid || Platform.isIOS),
         _onDirectoryPrepared = onDirectoryPrepared;
 
   static const stagingFolder = 'veil_attachment_cache';
@@ -62,6 +68,13 @@ class AttachmentStoragePaths {
   /// temporary folder: on Android, where the pickers make them. Elsewhere
   /// that folder may be the system's own, shared with other apps.
   final bool sweepPickerCopies;
+
+  /// Whether the temporary folder is the app's own, so [purgeAll] may empty
+  /// all of it: on Android and iOS. On Windows and Linux it is the system's
+  /// (%TEMP%, /tmp), and on macOS it is treated so too (a build without the
+  /// sandbox shares it): there [purgeAll] deletes only Veil's own folders,
+  /// never another app's files.
+  final bool temporaryFolderIsPrivate;
 
   // Folders handed out since they were last created, so each is excluded
   // from backup once per creation rather than on every call.
@@ -108,9 +121,11 @@ class AttachmentStoragePaths {
   }
 
   /// Deletes the staging, media and open folders, everything else under
-  /// the temporary folder, and runs [purgeSystemTemp]: what a wipe or a
-  /// sign-out leaves of attachments is nothing. Every step runs even when
-  /// one fails; the first failure is rethrown at the end.
+  /// the temporary folder when it is the app's own
+  /// ([temporaryFolderIsPrivate]; elsewhere only Veil's folders in it), and
+  /// runs [purgeSystemTemp]: what a wipe or a sign-out leaves of attachments
+  /// is nothing. Every step runs even when one fails; the first failure is
+  /// rethrown at the end.
   Future<void> purgeAll() async {
     Object? failure;
     StackTrace? failureTrace;
@@ -124,7 +139,13 @@ class AttachmentStoragePaths {
     }
 
     await step(() async => _delete(Directory(p.join((await _supportRoot()).path, mediaFolder))));
-    await step(() async => _deleteEntriesOf(await _temporaryRoot()));
+    await step(() async {
+      final temporary = await _temporaryRoot();
+      if (temporaryFolderIsPrivate) return _deleteEntriesOf(temporary);
+      for (final name in const [openFolder, stagingFolder]) {
+        await _delete(Directory(p.join(temporary.path, name)));
+      }
+    });
     await step(purgeSystemTemp);
     _prepared.clear();
     if (failure case final error?) Error.throwWithStackTrace(error, failureTrace!);

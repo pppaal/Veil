@@ -419,6 +419,50 @@ void main() {
     // The encrypted cache keeps whole seconds: content stored in the second
     // the service started is an arrival, content from an earlier second is
     // what the cache held, and content not stored yet was opened just now.
+    test('a group photo that opens only once its sender key comes is still fetched by itself then', () async {
+      final fetched = <String>[];
+      final prefetch = MediaPrefetch(
+        slots: TransferSlots(),
+        fetch: (item) async => fetched.add(item.reference.attachmentId),
+        withheld: (_) => false,
+      )..setRunning(true);
+      final reference = await phone.seal(photo, uploaded: false);
+      final message = ChatMessage(
+        id: 'msg-1',
+        senderDeviceId: 'dev-selene',
+        sentAt: DateTime.now(),
+        envelope: CryptoEnvelope(
+          version: 'v2',
+          conversationId: _group,
+          senderDeviceId: 'dev-selene',
+          recipientUserId: '',
+          ciphertext: 'c',
+          nonce: 'n',
+          messageKind: MessageKind.image,
+        ),
+      );
+      var opened = const DecryptedMessage(body: '', messageKind: MessageKind.text, status: DecryptStatus.awaitingKey);
+      Future<bool> arrive() => prefetch.queueArrivals(_group, [message],
+          read: (_) async => opened,
+          stored: (_) async => const {},
+          opens: (_) => true,
+          since: DateTime.now().subtract(const Duration(minutes: 1)),
+          now: DateTime.now,
+          stillWanted: () => true);
+
+      // Ingested before its sender key: nothing to fetch yet.
+      await arrive();
+      await pumpEventQueue();
+      expect(fetched, isEmpty);
+      // The key comes and the message opens: the next change fetches it.
+      opened = DecryptedMessage(body: '', messageKind: MessageKind.image, attachment: reference);
+      expect(await arrive(), isTrue);
+      await pumpEventQueue();
+      expect(fetched, [reference.attachmentId], reason: 'a photo that opened late was never fetched at ingest');
+      // Seen now: a later change does not queue it again.
+      expect(await arrive(), isFalse);
+    });
+
     test('only arrivals are fetched by themselves, never what the cache held', () async {
       final prefetch = MediaPrefetch(slots: TransferSlots(), withheld: (_) => false, fetch: (_) async {});
       final since = DateTime.utc(2026, 4, 7, 9, 0, 30, 400);

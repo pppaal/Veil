@@ -292,9 +292,12 @@ class MediaPrefetch {
   /// accepts of at most 10 MiB, not expired by [now], and not stored before
   /// [since] ([stored] answers when): content stored earlier is what the
   /// cache held, not an arrival; content not stored yet was opened just
-  /// now. A photo's expiry is the earlier of the relay's and the one its
-  /// sender sealed in, so a relay that strips the timer cannot keep its
-  /// blob. Returns whether any message was new.
+  /// now. A message counts as seen only once its content opened, or never
+  /// will: one still waiting for its key (a group photo whose sender key
+  /// comes later) or for its sender's identity to be approved is looked at
+  /// again when it opens, and fetched then. A photo's expiry is the earlier
+  /// of the relay's and the one its sender sealed in, so a relay that strips
+  /// the timer cannot keep its blob. Returns whether any message was new.
   Future<bool> queueArrivals(
     String conversationId,
     Iterable<ChatMessage> messages, {
@@ -306,20 +309,23 @@ class MediaPrefetch {
     required bool Function() stillWanted,
   }) async {
     final seen = _seen.putIfAbsent(conversationId, () => {});
-    final arrived = [
+    final unseen = [
       for (final message in messages)
-        if (!message.isMine && !message.isLocalNotice && seen.add(message.id)) message,
+        if (!message.isMine && !message.isLocalNotice && !seen.contains(message.id)) message,
     ];
+    var arrived = false;
     final photos = <(ChatMessage, AttachmentReference, DateTime?)>[];
-    for (final message in arrived) {
+    for (final message in unseen) {
       final opened = await read(message).then<DecryptedMessage?>((opened) => opened, onError: (_) => null);
+      if (opened != null && !MessageContentStatus.of(opened.status).isFinal) continue;
+      if (seen.add(message.id)) arrived = true;
       final reference = opened?.attachment;
       if (opened == null || !opened.isOk || opened.messageKind != MessageKind.image || reference == null) continue;
       if (!opens(reference) || reference.sizeBytes > kMaxPhotoBytes) continue;
       final expiresAt = _earlierOf(message.expiresAt, opened.expiresAt);
       if (expiresAt == null || expiresAt.isAfter(now())) photos.add((message, reference, expiresAt));
     }
-    if (photos.isEmpty || !stillWanted()) return arrived.isNotEmpty;
+    if (photos.isEmpty || !stillWanted()) return arrived;
     final records = await stored(photos.map((photo) => photo.$1));
     // The store keeps whole seconds: content stored in [since]'s second
     // counts as just arrived.

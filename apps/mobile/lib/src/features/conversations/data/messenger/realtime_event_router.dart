@@ -224,9 +224,11 @@ class RealtimeEventRouter {
       _presence.typingStopped(conversationId);
     }
     unawaited(_contents.ingestAll([message]));
-    if (!message.isMine && conversationId == _store.activeConversationId) {
-      await _receipts.markRead(message.id);
-    } else if (!message.isMine && message.envelope.messageKind != MessageKind.reaction) {
+    // The open chat reads what lands in it, and sends its receipt
+    // (ReadStateService); it raises no notification.
+    if (!message.isMine &&
+        conversationId != _store.activeConversationId &&
+        message.envelope.messageKind != MessageKind.reaction) {
       // A reaction updates a message already seen. Trusting the relay's
       // label costs nothing: it could withhold the message.
       // Names no one and quotes nothing: the app is English only, so the

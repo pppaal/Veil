@@ -241,10 +241,25 @@ process.stdout.write(JSON.stringify(names.map((name) => {
     });
 
     test('iOS keeps every image and video away from Quick Look, GIF and BMP included', () {
-      for (final head in [jpeg, png, webp, tiffLittle, heicHead(), mp4Head(), gif, ascii.encode('GIF87a'), bmp]) {
+      for (final head in [
+        jpeg, png, webp, tiffLittle, heicHead(), mp4Head(), gif, ascii.encode('GIF87a'), bmp, //
+        ftyp('avif'), ftyp('avis'), ftyp('mif1', ['avif']), ftyp('3g2a'),
+        const [0x00, 0x00, 0x00, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a, 0x87, 0x0a], // JPEG 2000
+        const [0xff, 0x4f, 0xff, 0x51], // its codestream
+        const [0x00, 0x00, 0x01, 0x00, 0x01, 0x00], // ICO
+        ascii.encode('8BPS'), // PSD
+        const [0x00, 0x00, 0x01, 0xba], const [0x00, 0x00, 0x01, 0xb3], // MPEG
+        // Camera RAW that is not TIFF underneath: CR3, RAF, RW2, ORF.
+        ftyp('crx '), ascii.encode('FUJIFILMCCD-RAW0201'), const [0x49, 0x49, 0x55, 0x00, 0x18, 0x00],
+        ascii.encode('IIRO\u{0008}\u{0000}'), ascii.encode('IIRS'), ascii.encode('MMOR'),
+      ]) {
         expect(isImageOrVideoForQuickLook(head, 'file.bin'), isTrue, reason: '$head');
       }
-      for (final extension in ['heic', 'heif', 'gif', 'tif', 'tiff', 'bmp', 'dng', 'mp4', 'mov', 'm4v', '3gp']) {
+      for (final extension in [
+        'heic', 'heif', 'gif', 'tif', 'tiff', 'bmp', 'dng', 'mp4', 'mov', 'm4v', '3gp', //
+        'avif', 'jp2', 'j2k', 'jpf', 'jpx', 'ico', 'psd', '3g2', 'mpg', 'mpeg',
+        'cr2', 'cr3', 'CR3', 'nef', 'arw', 'raf', 'rw2', 'orf', 'dng', 'pef', 'srw',
+      ]) {
         expect(isImageOrVideoForQuickLook(const [], 'file.$extension'), isTrue, reason: extension);
       }
       expect(isImageOrVideoForQuickLook(pdfBytes('x'), 'report.pdf'), isFalse);

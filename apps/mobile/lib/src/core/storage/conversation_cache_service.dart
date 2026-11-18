@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import '../crypto/crypto_engine.dart';
 import '../domain/chat_message.dart';
 import '../domain/conversation_preview.dart';
+import '../domain/conversation_read_mark.dart';
 import '../domain/message_search.dart';
 import '../security/local_data_cipher.dart';
 import 'app_database.dart';
@@ -292,6 +293,7 @@ class PendingMessageRecord {
     this.state = MessageDeliveryState.pending,
     this.errorMessage,
     this.attachmentUploadDraft,
+    this.disappearAfterSeconds,
   });
 
   final String clientMessageId;
@@ -307,6 +309,12 @@ class PendingMessageRecord {
   final String? errorMessage;
   final AttachmentUploadDraft? attachmentUploadDraft;
 
+  /// A text's disappearing timer while it waits to be sealed: a text
+  /// queued behind another message of its chat is sealed, and its expiry
+  /// stamped, only when it is posted (D18 for texts). Null once sealed,
+  /// and for every other record (an attachment's is on its draft).
+  final int? disappearAfterSeconds;
+
   PendingMessageRecord copyWith({
     int? retryCount,
     Object? lastAttemptAt = _unset,
@@ -315,6 +323,7 @@ class PendingMessageRecord {
     Object? errorMessage = _unset,
     Object? attachmentUploadDraft = _unset,
     CryptoEnvelope? envelope,
+    Object? disappearAfterSeconds = _unset,
   }) {
     return PendingMessageRecord(
       clientMessageId: clientMessageId,
@@ -337,6 +346,9 @@ class PendingMessageRecord {
       attachmentUploadDraft: identical(attachmentUploadDraft, _unset)
           ? this.attachmentUploadDraft
           : attachmentUploadDraft as AttachmentUploadDraft?,
+      disappearAfterSeconds: identical(disappearAfterSeconds, _unset)
+          ? this.disappearAfterSeconds
+          : disappearAfterSeconds as int?,
     );
   }
 
@@ -501,6 +513,13 @@ abstract class MessageContentStore {
   Future<Set<String>> retiredAmong(Iterable<String> messageKeys);
 }
 
+/// A cache that can list what this device stored for messages of its own
+/// under their local keys (localMessageContentKey) and holds no queued
+/// record for: content and records read together, from one database.
+abstract interface class UnqueuedOutboundContents {
+  Future<List<MessageContentRecord>> unqueuedOutbound();
+}
+
 /// How long retired message ids are remembered: longer than the relay may
 /// hold any ciphertext (30 days), so it can never serve one back afterwards.
 const retiredMessageRetention = Duration(days: 31);
@@ -557,11 +576,21 @@ class ConversationCacheSnapshot {
     this.conversations = const [],
     this.messages = const {},
     this.paging = const {},
+    this.readMarks = const {},
+    this.baselinePending = false,
   });
 
   final List<ConversationPreview> conversations;
   final Map<String, List<ChatMessage>> messages;
   final Map<String, ConversationPagingState> paging;
+
+  /// What has been read of each conversation on this phone.
+  final Map<String, ConversationReadMark> readMarks;
+
+  /// Whether the cache holds the baseline marker (baselineReadMarkId): the
+  /// next successful relay list is this device's first, and everything it
+  /// lists counts as read. A cache that could not be read holds none.
+  final bool baselinePending;
 }
 
 /// Rows a writer changed since its last write, applied together.
@@ -572,6 +601,8 @@ class ConversationCacheChanges {
     this.replacedConversationIds = const {},
     this.deletedMessageIds = const {},
     this.paging = const {},
+    this.readMarks = const {},
+    this.consumeBaselineMarker = false,
   });
 
   /// Inserted or updated; their paging columns are left as they are.
@@ -587,12 +618,39 @@ class ConversationCacheChanges {
   final Set<String> deletedMessageIds;
   final Map<String, ConversationPagingState> paging;
 
+  /// Inserted or updated, whether or not their conversation has a row yet.
+  final Map<String, ConversationReadMark> readMarks;
+
+  /// Deletes the baseline marker in the same write as [readMarks], which
+  /// then hold the marks the first list set.
+  final bool consumeBaselineMarker;
+
   bool get isEmpty =>
       conversations.isEmpty &&
       messages.isEmpty &&
       replacedConversationIds.isEmpty &&
       deletedMessageIds.isEmpty &&
-      paging.isEmpty;
+      paging.isEmpty &&
+      readMarks.isEmpty &&
+      !consumeBaselineMarker;
+}
+
+/// What a cache holds about read marks: the marks, and whether the
+/// baseline marker is there.
+typedef ConversationReadMarkState = ({Map<String, ConversationReadMark> marks, bool baselinePending});
+
+/// Read marks for a cache without row-level writes; an
+/// [IncrementalConversationCache] carries them in its snapshot and changes.
+/// Kept apart from [ConversationCacheService] so its many fakes in tests are
+/// unaffected; callers check for it with `is`. A cache that is neither reads
+/// as holding the baseline marker and no marks, as a fresh install does, and
+/// keeps no marks between launches.
+abstract interface class ConversationReadMarkSource {
+  Future<ConversationReadMarkState> readReadMarks();
+
+  /// Stores [marks]; with [consumeBaselineMarker] the marker goes in the
+  /// same step.
+  Future<void> storeReadMarks(Map<String, ConversationReadMark> marks, {required bool consumeBaselineMarker});
 }
 
 /// Thrown by the row-level calls of [IncrementalConversationCache] when no
@@ -629,7 +687,7 @@ abstract interface class IncrementalConversationCache {
 }
 
 class DriftConversationCacheService
-    implements ConversationCacheService, MessageContentStore, IncrementalConversationCache {
+    implements ConversationCacheService, MessageContentStore, IncrementalConversationCache, UnqueuedOutboundContents {
   DriftConversationCacheService(
     this._db, {
     required CryptoEnvelopeCodec envelopeCodec,
@@ -745,7 +803,30 @@ class DriftConversationCacheService
         conversationMessages.add(message);
       }
     }
-    return ConversationCacheSnapshot(conversations: conversations, messages: messages, paging: paging);
+    final (:marks, :baselinePending) = await _readMarkState();
+    return ConversationCacheSnapshot(
+      conversations: conversations,
+      messages: messages,
+      paging: paging,
+      readMarks: marks,
+      baselinePending: baselinePending,
+    );
+  }
+
+  // The baseline marker's row is no conversation: it reads as
+  // baselinePending, never as a mark.
+  Future<ConversationReadMarkState> _readMarkState() async {
+    final marks = <String, ConversationReadMark>{};
+    var baselinePending = false;
+    for (final row in await _db.select(_db.conversationReadMarks).get()) {
+      if (row.conversationId == baselineReadMarkId) {
+        baselinePending = true;
+      } else {
+        marks[row.conversationId] =
+            ConversationReadMark(readThrough: row.readThroughOrder, markedUnread: row.markedUnread);
+      }
+    }
+    return (marks: marks, baselinePending: baselinePending);
   }
 
   @override
@@ -772,6 +853,18 @@ class DriftConversationCacheService
           ),
           where: (table) => table.id.equals(conversationId),
         );
+      }
+      batch.insertAllOnConflictUpdate(_db.conversationReadMarks, [
+        for (final MapEntry(key: conversationId, value: mark) in changes.readMarks.entries)
+          if (conversationId != baselineReadMarkId)
+            ConversationReadMarksCompanion.insert(
+              conversationId: conversationId,
+              readThroughOrder: Value(mark.readThrough),
+              markedUnread: Value(mark.markedUnread),
+            ),
+      ]);
+      if (changes.consumeBaselineMarker) {
+        batch.deleteWhere(_db.conversationReadMarks, (table) => table.conversationId.equals(baselineReadMarkId));
       }
     });
   }
@@ -1064,6 +1157,7 @@ class DriftConversationCacheService
           state: _deliveryStateFromString(row.state),
           errorMessage: errorMessage,
           attachmentUploadDraft: _decodeAttachmentUploadDraft(attachmentJson),
+          disappearAfterSeconds: _decodeTextTimer(attachmentJson),
         ),
       );
     }
@@ -1375,6 +1469,19 @@ class DriftConversationCacheService
   }
 
   @override
+  Future<List<MessageContentRecord>> unqueuedOutbound() => _db.transaction(() async {
+        final queued = {for (final row in await _db.select(_db.pendingMessages).get()) row.clientMessageId};
+        final rows = await (_db.select(_db.messageContents)
+              ..where((table) => table.messageKey.like('$_localMessageContentKeyPrefix%')))
+            .get();
+        return [
+          for (final row in rows)
+            if (!queued.contains(row.clientMessageId))
+              if (await _decodeContent(row) case final record?) record,
+        ];
+      });
+
+  @override
   Future<Map<String, MessageContentRecord>> getMany(
     Iterable<String> messageKeys,
   ) async {
@@ -1588,7 +1695,7 @@ class DriftConversationCacheService
         decoded['value'] as Map<String, dynamic>,
       );
     }
-    if (decoded['kind'] == 'upload-draft') {
+    if (decoded['kind'] == 'upload-draft' || decoded['kind'] == 'text-timer') {
       return null;
     }
     if (decoded.containsKey('encryption')) {
@@ -1614,8 +1721,19 @@ class DriftConversationCacheService
         'value': pending.attachmentUploadDraft!.toJson(),
       });
     }
+    final seconds = pending.disappearAfterSeconds;
+    if (seconds != null && pending.envelope.attachment == null) {
+      return jsonEncode({'kind': 'text-timer', 'seconds': seconds});
+    }
 
     return _encodeAttachment(pending.envelope.attachment);
+  }
+
+  // The timer a queued text waits with (PendingMessageRecord.disappearAfterSeconds).
+  int? _decodeTextTimer(String? raw) {
+    if (raw == null) return null;
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return decoded['kind'] == 'text-timer' ? decoded['seconds'] as int? : null;
   }
 
   AttachmentUploadDraft? _decodeAttachmentUploadDraft(String? raw) {

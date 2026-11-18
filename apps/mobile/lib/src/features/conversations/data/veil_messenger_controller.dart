@@ -335,9 +335,6 @@ class VeilMessengerController extends ChangeNotifier {
   /// LibCryptoAdapter.setRemoteIdentityVerifier.
   Future<bool> verifyRemoteIdentity(RemoteIdentityClaim claim) => _services.crypto.verifyRemoteIdentity(claim);
 
-  Future<void> sendAttachmentPlaceholder(String conversationId, {String filename = 'dossier.enc'}) =>
-      _services.outbox.sendAttachmentPlaceholder(conversationId, filename: filename);
-
   /// Seals [attachment] here and queues it as a photo or file message; false when that failed.
   Future<bool> sendAttachment(
           {required String conversationId, required OutgoingAttachment attachment, Duration? disappearAfter}) =>

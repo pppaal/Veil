@@ -173,13 +173,33 @@ bool looksLikePhotoOrVideo(List<int> head, String name) =>
 /// Whether a received file is an image or a video that Quick Look must
 /// never show on iOS (its share sheet offers Save Image and Save Video,
 /// which need a permission the app does not ask for): the photo and video
-/// test above, plus GIF and BMP.
+/// test above, plus GIF, BMP, AVIF, JPEG 2000, ICO, PSD, 3G2, MPEG and the
+/// camera RAW formats that are not TIFF underneath (CR3, RAF, RW2, ORF).
 bool isImageOrVideoForQuickLook(List<int> head, String name) =>
     looksLikePhotoOrVideo(head, name) ||
-    _startsWith(head, ascii.encode('GIF87a')) ||
-    _startsWith(head, ascii.encode('GIF89a')) ||
-    _startsWith(head, ascii.encode('BM')) ||
-    const {'gif', 'bmp'}.contains(fileExtension(name));
+    _quickLookImageHeads.any((magic) => _startsWith(head, magic)) ||
+    _ftypBrands(head).any(_moreQuickLookBrands.contains) ||
+    _moreQuickLookExtensions.contains(fileExtension(name));
+
+final _quickLookImageHeads = [
+  ascii.encode('GIF87a'),
+  ascii.encode('GIF89a'),
+  ascii.encode('BM'),
+  const [0x00, 0x00, 0x00, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a, 0x87, 0x0a], // JPEG 2000 (jp2)
+  const [0xff, 0x4f, 0xff, 0x51], // JPEG 2000 codestream
+  const [0x00, 0x00, 0x01, 0x00], // ICO
+  ascii.encode('8BPS'), // PSD
+  const [0x00, 0x00, 0x01, 0xba], // MPEG program stream
+  const [0x00, 0x00, 0x01, 0xb3], // MPEG video
+  ascii.encode('FUJIFILMCCD-RAW'), // RAF
+  const [0x49, 0x49, 0x55, 0x00], // RW2
+  ascii.encode('IIRO'), ascii.encode('IIRS'), ascii.encode('MMOR'), // ORF
+];
+const _moreQuickLookBrands = {'avif', 'avis', '3g2a', 'crx '};
+const _moreQuickLookExtensions = {
+  'gif', 'bmp', 'avif', 'jp2', 'j2k', 'jpf', 'jpx', 'ico', 'psd', '3g2', 'mpg', 'mpeg', //
+  'cr2', 'cr3', 'crw', 'nef', 'nrw', 'arw', 'sr2', 'srf', 'raf', 'rw2', 'orf', 'pef', 'srw', 'raw', //
+};
 
 bool _sniffsAsPhotoOrVideo(List<int> head) {
   if (sniffImageType(head) != null) return true;

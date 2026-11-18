@@ -127,9 +127,9 @@ ConversationPreview _conversation(ConversationType type) => ConversationPreview(
       type: type,
     );
 
-Widget _app(Widget child, {VeilMessengerController? messenger}) {
+Widget _app(Widget child, {VeilMessengerController? messenger, bool light = false}) {
   final app = MaterialApp(
-    theme: VeilTheme.dark(),
+    theme: light ? VeilTheme.light() : VeilTheme.dark(),
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(body: SingleChildScrollView(child: child)),
@@ -297,27 +297,27 @@ void main() {
 
     String draft(WidgetTester tester) => tester.widget<TextField>(find.byType(TextField)).controller!.text;
 
-    testWidgets('shows an attach button only where the screen gives it somewhere to go', (tester) async {
+    testWidgets('offers a plus that opens Photos and File, and none while who the peer is waits', (tester) async {
       await tester.pumpWidget(composer());
-      expect(find.byTooltip(l10n.chatAttachAction), findsNothing);
-      // The composer has no padlock (design system 7.7): nothing before the draft.
+      // The composer has no padlock (design system 7.7): only the plus
+      // before the draft.
       expect(find.byIcon(Icons.lock_outline), findsNothing);
       expect(find.text(l10n.chatComposeHint), findsOneWidget);
+      final plus = find.byTooltip(l10n.chatAttachAction);
+      expect(plus, findsOneWidget);
+      expect(tester.getSize(plus).shortestSide, greaterThanOrEqualTo(44));
 
-      var attached = 0;
-      await tester.pumpWidget(_app(
-        ChatComposerBar(
-          conversationId: 'conv-1',
-          focusNode: focusNode,
-          messageTtl: null,
-          busy: false,
-          onAttach: () => attached++,
-        ),
-        messenger: messenger,
-      ));
-      await tester.tap(find.byTooltip(l10n.chatAttachAction));
-      expect(attached, 1);
-      expect(tester.getSize(find.byTooltip(l10n.chatAttachAction)).shortestSide, greaterThanOrEqualTo(44));
+      await tester.tap(plus);
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.chatAttachPhotos), findsOneWidget);
+      expect(find.text(l10n.chatAttachFile), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      messenger.hold = const PeerAccountHold(PeerAccountHoldReason.ownHandle);
+      messenger.notifyListeners();
+      await tester.pump();
+      expect(find.byTooltip(l10n.chatAttachAction), findsNothing);
     });
     testWidgets('typing tells the peer; a send carries the timer and clears the draft', (tester) async {
       await tester.pumpWidget(composer(messageTtl: const Duration(minutes: 5)));
@@ -430,8 +430,9 @@ void main() {
   });
 
   group('dialogs', () {
-    Widget opener(Future<void> Function(BuildContext context) open) =>
-        _app(Builder(builder: (context) => TextButton(onPressed: () => open(context), child: const Text('open'))));
+    Widget opener(Future<void> Function(BuildContext context) open, {bool light = false}) => _app(
+        Builder(builder: (context) => TextButton(onPressed: () => open(context), child: const Text('open'))),
+        light: light);
 
     testWidgets('the reaction bar closes on a pick and hands the emoji on', (tester) async {
       final picked = <String>[];
@@ -453,6 +454,76 @@ void main() {
       await tester.pumpAndSettle();
       expect(picked, ['\u{1F525}']);
       expect(find.byType(ReactionPickerWidget), findsNothing);
+    });
+
+    // A long press on a photo or file from someone else: the bar, and the
+    // menu with Save above Report, kept next to the message wherever it is.
+    Future<({Rect bar, Rect menu})> pressAt(WidgetTester tester, Rect anchor, {bool light = false}) async {
+      tester.view
+        ..physicalSize = const Size(360, 640)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(opener(
+          (context) => showMessageActions(
+                context,
+                anchor: anchor,
+                isMine: false,
+                onSelected: (_) {},
+                onSave: () {},
+                onReport: () {},
+              ),
+          light: light));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      final save = tester.getRect(find.byKey(const ValueKey('message-save')));
+      final report = tester.getRect(find.byKey(const ValueKey('message-report')));
+      return (bar: tester.getRect(find.byType(ReactionPickerWidget)), menu: save.expandToInclude(report));
+    }
+
+    testWidgets('the chat dims around the pressed message, which stays as it is', (tester) async {
+      const anchor = Rect.fromLTWH(0, 300, 360, 60);
+      await pressAt(tester, anchor);
+      final dim = tester.widget<CustomPaint>(find.byKey(const ValueKey('message-actions-dim'))).painter;
+      expect(dim, isA<MessageActionsDim>().having((dim) => dim.clear, 'clear', anchor));
+      // In dark, half black, so the pressed row stands out from the black
+      // page and the dark bubbles.
+      expect((dim! as MessageActionsDim).color, const Color(0x80000000));
+      // A tap on the dim still closes the menu.
+      await tester.tapAt(const Offset(180, 60));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('message-save')), findsNothing);
+    });
+
+    testWidgets('in light the dim is 20% black', (tester) async {
+      const anchor = Rect.fromLTWH(0, 300, 360, 60);
+      await pressAt(tester, anchor, light: true);
+      final dim = tester.widget<CustomPaint>(find.byKey(const ValueKey('message-actions-dim'))).painter;
+      expect(dim, isA<MessageActionsDim>().having((dim) => dim.color, 'color', const Color(0x33000000)));
+    });
+
+    testWidgets('with room around the message, the bar is above it and the menu under it', (tester) async {
+      const anchor = Rect.fromLTWH(12, 300, 220, 60);
+      final placed = await pressAt(tester, anchor);
+      expect(placed.bar.bottom, lessThanOrEqualTo(anchor.top));
+      expect(placed.menu.top, greaterThanOrEqualTo(anchor.bottom));
+      expect(placed.menu.top - anchor.bottom, lessThanOrEqualTo(VeilSpace.md), reason: 'the menu left its message');
+    });
+
+    testWidgets('under the newest message, the menu sits right above it and the bar above the menu', (tester) async {
+      const anchor = Rect.fromLTWH(12, 540, 220, 60);
+      final placed = await pressAt(tester, anchor);
+      expect(placed.menu.bottom, lessThanOrEqualTo(anchor.top), reason: 'the menu covers its message');
+      expect(anchor.top - placed.menu.bottom, lessThanOrEqualTo(VeilSpace.md),
+          reason: 'the menu floats away from its message, over another one');
+      expect(placed.bar.bottom, lessThanOrEqualTo(placed.menu.top), reason: 'bar, menu, message');
+    });
+
+    testWidgets('with no room above the message, both go under it, the bar first', (tester) async {
+      const anchor = Rect.fromLTWH(12, 20, 220, 60);
+      final placed = await pressAt(tester, anchor);
+      expect(placed.bar.top, greaterThanOrEqualTo(anchor.bottom));
+      expect(placed.menu.top, greaterThanOrEqualTo(placed.bar.bottom));
+      expect(placed.menu.bottom, lessThanOrEqualTo(640));
     });
 
     testWidgets('another account under the user\'s own handle is confirmed only by the confirm button',

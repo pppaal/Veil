@@ -1,5 +1,6 @@
 import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
+import '../../../attachments/domain/attachment_rules.dart';
 import 'message_content_service.dart';
 import 'messenger_state_store.dart';
 
@@ -26,11 +27,16 @@ class DecryptedMessageCache {
     return content?.kind == MessageKind.text ? content!.body : null;
   }
 
-  /// Body of the latest message when it is text or a system line that
-  /// opened; null otherwise.
+  /// Body of the latest message when it is text, a system line or a file
+  /// (its name, sanitized as a file card shows it) that opened; null
+  /// otherwise, and for a file with no name.
   String? bodyFor(String conversationId) {
     final content = _latest[conversationId];
-    return content?.kind == MessageKind.text || content?.kind == MessageKind.system ? content!.body : null;
+    return switch (content?.kind) {
+      MessageKind.text || MessageKind.system => content!.body,
+      MessageKind.file => switch (sanitizeFileName(content!.body, fallback: '')) { '' => null, final name => name },
+      _ => null,
+    };
   }
 
   /// Decrypted kind of the latest message, or null until it opened. Never

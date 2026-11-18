@@ -55,6 +55,9 @@ class ReceiptService {
     ];
   }
 
+  /// Whether read receipts are on now.
+  bool get enabled => _readReceiptsEnabled();
+
   /// Tells the relay [messageId] was read here, when read receipts are on.
   Future<void> markRead(String messageId) async {
     final session = _session.authed;

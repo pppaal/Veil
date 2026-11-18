@@ -45,7 +45,10 @@ enum UserFacingErrorCode {
   attachmentCanceled('attachment_upload_canceled', wire: true),
   attachmentRejected('attachment_upload_invalid', wire: true),
   // A 1:1 send across a block, in either direction.
-  peerUnreachable('peer_unreachable', wire: true);
+  peerUnreachable('peer_unreachable', wire: true),
+  // The server refused what it was sent as invalid. Its own words for why
+  // (an expiry already past, say) are for developers, never shown.
+  requestRejected('validation_failed', wire: true);
 
   const UserFacingErrorCode(this.sentence, {this.wire = false});
 

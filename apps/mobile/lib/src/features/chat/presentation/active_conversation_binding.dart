@@ -2,22 +2,42 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
+import '../../conversations/data/messenger/read_state_service.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 
 /// Keeps a chat's conversation the messenger's active one only while the
-/// user can actually see it: the app in the foreground and the chat's route
-/// the current one. Auto read receipts and notification suppression follow
-/// that flag, so it is handed back as soon as the chat stops being visible,
-/// and when the chat goes away.
+/// user can actually see it: the app in the foreground, the session not
+/// locked and the chat's route the current one. What is active is read
+/// (ReadStateService: the read mark, the read receipt, the notification)
+/// and raises no notification, so the flag is handed back as soon as the
+/// chat stops being visible, and when the chat goes away. A lock can come
+/// while the chat is still built (a resume that locks runs before the frame
+/// that puts the lock screen up): a locked session reads nothing.
+///
+/// The chat's unread divider is taken here too, when the screen begins
+/// showing a conversation and before it first becomes active (initState
+/// runs before the first didChangeDependencies), so it says what was unread
+/// before the chat was read. It stays while this screen shows the chat,
+/// whatever covers it for a while (a sheet, the photo viewer, background);
+/// a lock takes the chat off screen and unlock puts it back, and its
+/// divider comes back with it. The next time the chat opens it is gone.
 mixin ActiveConversationBinding<W extends ConsumerStatefulWidget>
     on ConsumerState<W>, WidgetsBindingObserver {
   // Controller this screen marked its conversation active on, so it can
   // hand the flag back when it stops being visible.
   VeilMessengerController? _activeOn;
   bool _appInForeground = true;
+  // The read state the divider was taken from, and whether the session is
+  // locked: neither can be asked for once the screen is being disposed.
+  late ReadStateService _reads;
+  late bool Function() _sessionLocked;
 
   /// The conversation the chat shows.
   String get conversationId;
+
+  /// Where the unread messages started when this screen began showing the
+  /// chat, if any were.
+  UnreadDivider? get unreadDivider => _reads.dividerFor(conversationId, viewer: this);
 
   @override
   void initState() {
@@ -25,6 +45,17 @@ mixin ActiveConversationBinding<W extends ConsumerStatefulWidget>
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _appInForeground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
+    final container = ProviderScope.containerOf(context, listen: false);
+    // Locked: an account whose lock screen is up (a session that is not
+    // signed in yet starts out "locked" and has no lock screen).
+    bool locked(AppSessionState session) => session.isAuthenticated && session.locked;
+    _sessionLocked = () => container.exists(appSessionProvider) && locked(container.read(appSessionProvider));
+    // The lock hands the flag back at once, and an unlock that keeps this
+    // screen takes it again.
+    if (container.exists(appSessionProvider)) {
+      ref.listenManual<bool>(appSessionProvider.select(locked), (_, __) => syncActiveConversation());
+    }
+    _reads = ref.read(messengerControllerProvider).reads..beginViewing(conversationId, viewer: this);
   }
 
   // Also runs when this route stops or starts being the current one, which
@@ -45,6 +76,7 @@ mixin ActiveConversationBinding<W extends ConsumerStatefulWidget>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     releaseActiveConversation(conversationId);
+    _reads.endViewing(conversationId, viewer: this, keep: _sessionLocked());
     super.dispose();
   }
 
@@ -55,7 +87,7 @@ mixin ActiveConversationBinding<W extends ConsumerStatefulWidget>
       return;
     }
     final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
-    if (!_appInForeground || !routeIsCurrent) {
+    if (!_appInForeground || !routeIsCurrent || _sessionLocked()) {
       releaseActiveConversation(conversationId);
       return;
     }
@@ -72,5 +104,14 @@ mixin ActiveConversationBinding<W extends ConsumerStatefulWidget>
       controller.setActiveConversation(null);
     }
     _activeOn = null;
+  }
+
+  /// The screen now shows [conversationId] in place of [previous]: the flag
+  /// goes back, and the divider of the new one is taken before it is read.
+  void switchConversation(String previous) {
+    releaseActiveConversation(previous);
+    _reads
+      ..endViewing(previous, viewer: this)
+      ..beginViewing(conversationId, viewer: this);
   }
 }

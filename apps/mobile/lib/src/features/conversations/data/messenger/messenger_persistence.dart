@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../../../core/crypto/crypto_engine.dart';
+import '../../../../core/domain/conversation_read_mark.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
 import '../conversation_models.dart';
 import 'messenger_state_store.dart';
@@ -31,7 +32,10 @@ typedef CachedMessengerState = ({ConversationCacheSnapshot snapshot, List<Pendin
 /// A wipe of the cache drops everything this writer still holds, and it
 /// writes nothing more until [reset] starts it over for the next identity:
 /// the state it holds until then belongs to the identity that was wiped.
-class MessengerPersistence implements MessengerStateObserver {
+///
+/// Read marks are written like paging, and the baseline marker is deleted
+/// in the same write as the marks the first relay list set.
+class MessengerPersistence implements MessengerStateObserver, ReadMarkObserver {
   MessengerPersistence({
     required ConversationCacheService? cache,
     required MessengerStateStore store,
@@ -58,6 +62,10 @@ class MessengerPersistence implements MessengerStateObserver {
   bool _conversationsDirty = false;
   final Set<String> _messagesDirty = {};
   final Set<String> _pagingDirty = {};
+  final Set<String> _readMarksDirty = {};
+  // Whether the cache still holds the baseline marker, as far as this
+  // writer knows: read at hydrate, cleared once a write deleted it.
+  bool _markerInCache = false;
   // What this writer knows the cache holds, by conversation and by message.
   // A conversation missing from [_writtenMessages] has rows this writer has
   // not seen, so its first write replaces them all.
@@ -94,6 +102,15 @@ class MessengerPersistence implements MessengerStateObserver {
     _schedule();
   }
 
+  @override
+  void readMarkChanged(String conversationId) {
+    _readMarksDirty.add(conversationId);
+    _schedule();
+  }
+
+  @override
+  void baselineSpent() => _schedule();
+
   /// Reads everything the cache holds, after the writes queued before.
   /// Null without a cache.
   Future<CachedMessengerState?> hydrate() => _serialized(() async {
@@ -101,6 +118,7 @@ class MessengerPersistence implements MessengerStateObserver {
         if (cache == null) return null;
         await cache.purgeExpiredMessages(now: _now());
         final snapshot = await _readSnapshot(cache);
+        _markerInCache = snapshot.baselinePending;
         _writtenConversations
           ..clear()
           ..addAll({for (final conversation in snapshot.conversations) conversation.id: conversation});
@@ -185,6 +203,8 @@ class MessengerPersistence implements MessengerStateObserver {
     _conversationsDirty = false;
     _messagesDirty.clear();
     _pagingDirty.clear();
+    _readMarksDirty.clear();
+    _markerInCache = false;
     _writtenConversations.clear();
     _writtenMessages.clear();
   }
@@ -206,10 +226,15 @@ class MessengerPersistence implements MessengerStateObserver {
     final conversationsDirty = _conversationsDirty;
     final messagesDirty = Set<String>.of(_messagesDirty);
     final pagingDirty = Set<String>.of(_pagingDirty);
+    final readMarksDirty = Set<String>.of(_readMarksDirty);
+    final consumeMarker = _markerInCache && !_store.baselinePending;
     _conversationsDirty = false;
     _messagesDirty.clear();
     _pagingDirty.clear();
-    if (!conversationsDirty && messagesDirty.isEmpty && pagingDirty.isEmpty) return;
+    _readMarksDirty.clear();
+    if (!conversationsDirty && messagesDirty.isEmpty && pagingDirty.isEmpty && readMarksDirty.isEmpty && !consumeMarker) {
+      return;
+    }
 
     final listed = {for (final conversation in _store.conversations) conversation.id: conversation};
     // The cache refuses messages without their conversation; those of one the
@@ -241,6 +266,11 @@ class MessengerPersistence implements MessengerStateObserver {
         for (final id in pagingDirty)
           if (listed.containsKey(id) && _store.hasPagingFor(id)) id: _store.pagingFor(id),
       },
+      readMarks: {
+        for (final id in readMarksDirty)
+          if (_store.readMarkOf(id) case final mark?) id: mark,
+      },
+      consumeBaselineMarker: consumeMarker,
     );
     if (changes.isEmpty) return;
 
@@ -263,8 +293,10 @@ class MessengerPersistence implements MessengerStateObserver {
       _conversationsDirty = true;
       _messagesDirty.addAll(written.keys);
       _pagingDirty.addAll(changes.paging.keys);
+      _readMarksDirty.addAll(changes.readMarks.keys);
       return;
     }
+    if (consumeMarker) _markerInCache = false;
     for (final conversation in changes.conversations) {
       _writtenConversations[conversation.id] = conversation;
     }
@@ -293,6 +325,10 @@ class MessengerPersistence implements MessengerStateObserver {
         lastSyncedAt: state.lastSyncedAt,
       );
     }
+    if (cache is ConversationReadMarkSource && (changes.readMarks.isNotEmpty || changes.consumeBaselineMarker)) {
+      await (cache as ConversationReadMarkSource)
+          .storeReadMarks(changes.readMarks, consumeBaselineMarker: changes.consumeBaselineMarker);
+    }
   }
 
   // A cache whose database cannot be opened yet reads as empty, and
@@ -308,12 +344,19 @@ class MessengerPersistence implements MessengerStateObserver {
     }
   }
 
+  // A cache that keeps no read marks reads as a fresh install's: the
+  // baseline marker and no marks.
   static Future<ConversationCacheSnapshot> _readEachConversation(ConversationCacheService cache) async {
     final conversations = await cache.readConversations();
+    final ConversationReadMarkState readMarks = cache is ConversationReadMarkSource
+        ? await (cache as ConversationReadMarkSource).readReadMarks()
+        : (marks: const <String, ConversationReadMark>{}, baselinePending: true);
     return ConversationCacheSnapshot(
       conversations: conversations,
       messages: {for (final conversation in conversations) conversation.id: await cache.readMessages(conversation.id)},
       paging: {for (final conversation in conversations) conversation.id: await cache.readPagingState(conversation.id)},
+      readMarks: readMarks.marks,
+      baselinePending: readMarks.baselinePending,
     );
   }
 }

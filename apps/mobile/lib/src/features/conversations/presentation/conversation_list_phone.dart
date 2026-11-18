@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,12 +7,14 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../chat/presentation/chat_bar.dart';
 import '../../safety/data/safety_providers.dart';
 import '../data/conversation_models.dart';
 import '../data/veil_messenger_controller.dart';
 import 'conversation_list_labels.dart';
 import 'conversation_list_parts.dart';
 import 'conversation_row.dart';
+import 'conversation_row_menu.dart';
 import 'group_last_sender.dart';
 
 /// The Chats list, content first: the search field, then the chats as
@@ -31,7 +35,9 @@ class ConversationListPhone extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final mutes = ref.watch(conversationMutesProvider);
+    final blocked = ref.watch(blockedAccountsProvider);
     final controller = view.controller;
+    final reads = controller.reads;
     final conversations = view.conversations;
     final hasSearchQuery = view.hasSearchQuery;
     final loadingFirstList = conversations.isEmpty && controller.isBusy && !hasSearchQuery;
@@ -96,32 +102,54 @@ class ConversationListPhone extends ConsumerWidget {
                 inset: ConversationRow.textInset,
                 children: [
                   for (final item in conversations)
-                    RepaintBoundary(
-                      child: ConversationRow(
-                        dense: dense,
-                        selected: item.id == view.selectedConversationId,
-                        title: conversationRowTitle(l10n, item, view.names, localUserId: localUserId),
-                        // What the avatar's colour is drawn from: a group has
-                        // no handle of its own.
-                        seed: item.type == ConversationType.group ? item.id : item.peerHandle,
-                        group: item.type == ConversationType.group,
-                        snippet: conversationPreviewLine(
-                          l10n,
-                          item,
-                          controller,
-                          groupSender: _groupSender(ref, item, controller),
+                    Builder(builder: (rowContext) {
+                      final unreadCount = reads.unreadCount(item.id);
+                      final muted = mutes.isMuted(item.id);
+                      final preview = conversationPreview(
+                        l10n,
+                        item,
+                        controller,
+                        groupSender: _groupSender(ref, item, controller),
+                      );
+                      final actions = conversationRowActions(
+                        rowContext,
+                        controller,
+                        conversationId: item.id,
+                        muted: muted,
+                        open: item.id == view.selectedConversationId,
+                      );
+                      return RepaintBoundary(
+                        child: ConversationRow(
+                          dense: dense,
+                          selected: item.id == view.selectedConversationId,
+                          title: conversationRowTitle(l10n, item, view.names, localUserId: localUserId),
+                          // What the avatar's colour is drawn from: a group has
+                          // no handle of its own.
+                          seed: item.type == ConversationType.group ? item.id : item.peerHandle,
+                          group: item.type == ConversationType.group,
+                          snippet: preview.text,
+                          snippetIcon: preview.icon,
+                          snippetIconAt: preview.iconAt,
+                          // A chat with no message yet has no time to show.
+                          timestamp:
+                              item.lastEnvelope == null ? '' : view.timeFormat.listDate(item.updatedAt, now: view.now),
+                          semanticLabel: conversationRowSemantics(l10n, item, view.names, localUserId: localUserId),
+                          unreadCount: unreadCount,
+                          unreadLabel: unreadCount > 0 ? l10n.conversationsUnreadSemantics(unreadCount) : null,
+                          markedUnread: reads.markedUnread(item.id),
+                          markedUnreadLabel: l10n.conversationsMarkedUnreadSemantics,
+                          timerLabel: conversationTimerLabel(l10n, item, controller),
+                          muted: muted,
+                          mutedLabel: l10n.conversationsMutedSemantics,
+                          // A blocked peer's chat is as quiet as a muted one.
+                          greyBadge: item.type == ConversationType.direct &&
+                              blocked.isBlocked(item.recipientBundle.userId),
+                          onTap: () => view.onSelectConversation(item.id),
+                          onLongPress: () => _openRowMenu(rowContext, actions),
+                          semanticActions: conversationRowSemanticActions(actions),
                         ),
-                        // A chat with no message yet has no time to show.
-                        timestamp: item.lastEnvelope == null ? '' : view.timeFormat.listDate(item.updatedAt, now: view.now),
-                        semanticLabel: conversationRowSemantics(l10n, item, view.names, localUserId: localUserId),
-                        unreadCount: item.unreadCount,
-                        unreadLabel: item.unreadCount > 0 ? l10n.conversationsUnreadSemantics(item.unreadCount) : null,
-                        timerLabel: conversationTimerLabel(l10n, item, controller),
-                        muted: mutes.isMuted(item.id),
-                        mutedLabel: l10n.conversationsMutedSemantics,
-                        onTap: () => view.onSelectConversation(item.id),
-                      ),
-                    ),
+                      );
+                    }),
                 ],
               ),
             if (hasSearchQuery) ...messageSearchResultSection(context, view),
@@ -133,6 +161,12 @@ class ConversationListPhone extends ConsumerWidget {
 
   /// The height of the search field's row above the chats.
   static const double _searchRowExtent = 60;
+
+  static void _openRowMenu(BuildContext rowContext, List<ChatMenuEntry> actions) {
+    final box = rowContext.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    unawaited(showConversationRowMenu(rowContext, anchor: box.localToGlobal(Offset.zero) & box.size, actions: actions));
+  }
 
   // Who wrote a group's last message, when someone else did.
   static String? _groupSender(WidgetRef ref, ConversationPreview item, VeilMessengerController controller) {

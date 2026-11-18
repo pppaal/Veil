@@ -33,6 +33,7 @@ Veil is a messenger you sign up for with a handle. No phone number, no email, no
 Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
 - One-to-one and group chats
+- Photos and files
 - Disappearing messages
 - Read receipts and typing indicators you can turn off
 - Safety numbers to check who you're talking to
@@ -114,9 +115,9 @@ Source is public under AGPL-3.0 for independent verification.
 
 Test walkthrough: launch → agree to the privacy notice → Before you start →
 Choose a handle (any free handle) → New chat with a second device's
-handle → send a text message → long-press it to react. No
-credentials are required to reach full functionality. Calls, attachments and
-voice messages are not part of this build.
+handle → send a text message → long-press it to react → tap + to send a
+photo or a file. No credentials are required to reach full functionality.
+Calls and voice messages are not part of this build.
 ```
 
 ## Support / marketing URLs (fill in)
@@ -133,7 +134,7 @@ voice messages are not part of this build.
   project targets iPhone and iPad today).
 - The six shots are the ones the spec lists, the same six screens as the
   Google Play set, with the demo account of the layout gate. Show nothing
-  the build does not have: no call, voice message or attachment screen.
+  the build does not have: no call or voice message screen.
 - Google Play: the phone screenshots and the 1024×500 feature graphic are in
   `store/play` (`store/play/screenshots/README.md` says how they are made).
   Play does not require tablet screenshots, and none are made.

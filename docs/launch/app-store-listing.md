@@ -29,6 +29,7 @@ Veil is a messenger you sign up for with a handle. No phone number, no email, no
 Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
 - One-to-one and group chats
+- Photos and files
 - Disappearing messages
 - Read receipts and typing indicators you can turn off
 - Safety numbers to check who you're talking to
@@ -46,9 +47,9 @@ No ads, no tracking and no third-party analytics. The code is open source.
 Privacy policy: https://pppaal.github.io/Veil/
 Contact: privacy@veil.app
 
-Not in the mobile build, so not in this listing: view-once messages, calls,
-attachments and voice messages, and an online status (no one else ever
-sees whether you are online). Add a bullet only when its screen ships.
+Not in the mobile build, so not in this listing: view-once messages, calls
+and voice messages, and an online status (no one else ever sees whether you
+are online). Add a bullet only when its screen ships.
 
 ## Keywords (100 chars, comma-separated)
 
@@ -141,7 +142,8 @@ on the phone.
 
 To send messages, use two devices or simulators, each with its own handle,
 and start a chat from one to the other's handle. Messages show only on
-those two devices.
+those two devices. To send a photo or a file, tap + in a chat and choose
+Photos or File.
 
 Messages are end-to-end encrypted, so we cannot show their content to the
 review team.
@@ -189,7 +191,10 @@ English and Korean (`docs/privacy-policy-en.md`, `docs/privacy-policy-ko.md`).
       `NSFaceIDUsageDescription` (app lock) and
       `NSPhotoLibraryUsageDescription`, which the photo picker plugin
       requires even though the system picker never asks for access. No
-      camera, microphone or photo-library-add usage string
+      camera, microphone or photo-library-add usage string. If App Store
+      Connect asks for a camera string on upload (`image_picker_ios` and
+      `flutter_file_dialog` reference camera APIs), do not add one: call
+      PHPicker and the document picker from the app's own code instead
 - [ ] Push entitlement only if push is actually wired to APNs for this
       build (otherwise reject-risk)
 - [ ] App Privacy answers transcribed from `store/appstore/app-privacy-answers.md`

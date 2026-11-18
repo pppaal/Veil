@@ -1,22 +1,219 @@
 # Attachment Flow
 
-Status in the mobile app: not sent or opened yet. The composer has no attach
-button and no screen sends an attachment, so nothing a user chose can be
-sent, and a message that carries an attachment shows its kind and size with a
-line saying this version cannot open it. The transfer code this document
-describes is in the app and tested, and the pickers, the sealed media storage
-and the download size caps it will use are in place but not wired to a
-screen. The web client (`apps/web-demo`) sends and opens attachments today.
+Status: the mobile app sends and opens photos and files, and the web client
+(`apps/web-demo`) sends and opens photos, files and voice messages. Both use
+the same sealed blob (`encryptAttachmentV2`, pointer v2) and the same message
+content, so either opens what the other sent. The phone does not play voice
+messages: one from the web shows its kind and size with a line saying this
+version can't open it. File, Save and opening a received file are on Android
+and iOS only: the plugin behind File and Save (`flutter_file_dialog`) and the
+`veil/file_open` channel exist only there, so the Windows desktop build
+offers Photos only under the plus, shows no Save, and opens a received file
+only when it is a photo (its name says it is an image and its bytes are a
+JPEG, PNG or WebP), in the in-app viewer; any other file says "Can't open in
+this version", before it is downloaded when its name says it is no image.
+Photos send, show and open full screen there as on a phone. On Windows,
+`getTemporaryDirectory()`, which holds staging and `veil_open/` (below), is
+the user's shared `%TEMP%`, and a sign-out or wipe deletes only those two
+folders in it.
+Paths below are under `apps/mobile/lib/src` unless they say otherwise.
 
-## Send path
+## Send path (mobile)
 
-1. Sender stages an opaque local temp blob on the device.
-2. Sender asks the API for an upload ticket.
-3. API creates attachment metadata, validates relay policy, and returns a scoped presigned upload target.
-4. Sender uploads only the encrypted blob to S3-compatible storage.
-5. Sender marks the upload complete. API verifies object metadata, content type, and size before accepting it.
-6. Sender sends a message envelope containing the attachment reference and wrapped key material.
-7. The local temp blob is deleted after the encrypted envelope has been finalized for send.
+1. The plus in the composer opens a sheet with Photos and File. Photos opens
+   the system photo picker (`image_picker`, `pickImage` from the gallery with
+   `requestFullMetadata: false`: the Android Photo Picker, PHPicker on iOS),
+   File the system document picker (`flutter_file_dialog`). Neither needs a
+   runtime permission. Each picker runs inside `SystemSheetGrace` (see "App
+   lock" below).
+2. The picked copy is moved into the staging folder under an opaque name and
+   the plugin's own copy is deleted at once; on iOS the system temporary
+   folder the plugins write to (`tmp/`) is emptied too.
+3. A photo is prepared on the phone (`image_preparer.dart`): the engine
+   decodes it at a long edge of at most 1600 px (never upscaled, EXIF
+   orientation applied, first frame only), and the `image` package encodes
+   the pixels in an isolate as JPEG at quality 80, or PNG when a pixel is not
+   opaque (a PNG over 10 MiB is flattened on white and sent as JPEG). Nothing
+   but pixels goes out: location, camera details, XMP, IPTC, the embedded
+   thumbnail and the colour profile are gone by construction. The photo shows
+   full screen with Send while this runs.
+4. A file is sent as it is, up to 25 MiB. A confirm dialog names it and the
+   chat. When its bytes or its extension say it is a photo or video (JPEG,
+   PNG, WebP, HEIC/HEIF, MP4/MOV/3GP, TIFF, DNG), the dialog adds "A photo or
+   video sent as a file keeps any location saved in it."
+5. On Send, the same check the router makes before sealing runs first (a held
+   1:1 seals and uploads nothing). Then one isolate reads the staged file,
+   seals it with `encryptAttachmentV2` under a fresh UUID v4 attachment id,
+   and writes the ciphertext straight into the media folder; only the sealed
+   reference comes back. The plaintext copy is deleted.
+6. The message is stored at once with its kind, body and sealed pointer, so
+   the sender's bubble shows at once (an own photo shows its tile until it has
+   been decrypted from its sealed blob). The queued record carries a
+   placeholder that is never sent.
+7. The outbox asks the API for an upload ticket (content type
+   `application/octet-stream`, the ciphertext's size and SHA-256), uploads
+   the sealed blob to the presigned URL, and marks the upload complete. The
+   API checks the stored object's size and type before it accepts it.
+8. Only then is the message encrypted, once, with the pointer inside the
+   encrypted payload, and sent. A disappearing timer is stamped at this
+   moment on the relay-corrected clock, as the web stamps it after its
+   upload, so a slow upload cannot outlive a short timer.
+
+## Receive path (mobile)
+
+1. A message whose decrypted kind is `image` and whose pointer is eligible
+   is prefetched when it is ingested (live or by history sync): the sealed
+   blob is downloaded, its SHA-256 checked against the pointer's digest in an
+   isolate, and the blob stored sealed. Nothing is decrypted until the photo
+   is shown. Eligible: a UUID id, `alg` `aes256gcm-v2`, at most 10 MiB, not
+   expired, the app open and unlocked (messages that arrive otherwise wait
+   for the next unlock), and the chat with no safety number change or account
+   hold waiting and not a 1:1 with a blocked account. At most 2 transfers run
+   at once, newest first, and at most 50 wait per chat; the rest download
+   when their bubble is built.
+2. Files never download by themselves; neither do photos over 10 MiB, nor
+   photos in a held or blocked chat. A tap downloads them.
+3. A photo is decrypted with `decryptAttachmentV2` (digest first, in constant
+   time) in an isolate that reads the sealed file itself. It renders only
+   when its bytes are JPEG, PNG or WebP and the header is within the decode
+   limits; it is decoded at the bubble's width, and in the full-screen viewer
+   at a long edge of at most the smaller of 4096 px and twice the screen's
+   long edge.
+4. A tap on a file downloads it if needed, decrypts it into `veil_open/` and
+   opens it. A file whose bytes are a JPEG, PNG or WebP within the limits
+   opens in the in-app viewer.
+   On iOS any other photo or video goes to Save instead, never to Quick Look.
+   Everything else opens through the app's own channel `veil/file_open`, in
+   another app on Android and in Quick Look on iOS, with the MIME type taken
+   from the file's extension.
+5. Save (in the viewer and in a photo or file message's long-press menu)
+   asks first, every time: "Save to your phone?" / "Other apps, and any
+   cloud you save it to, can open it." Then the system save screen
+   (`flutter_file_dialog`) writes the copy where the user picks.
+
+## Limits
+
+| What | Limit |
+|---|---|
+| A photo sent | re-encoded at a long edge of at most 1600 px, JPEG quality 80 (or PNG) |
+| A photo source | JPEG up to 200 megapixels (decoded scaled); any other format up to 40 megapixels (decoded at full size first) |
+| A file sent | 25 MiB (26 214 400 bytes, the web's `FILE_MAX_BYTES`) |
+| Prefetch | photos up to 10 MiB |
+| Any download | refused above 50 MiB, or for an id that is not a UUID, before any request; the body is cut off at the padded size the pointer allows |
+| A photo rendered | JPEG up to 50 megapixels and 16 384 px a side; PNG and WebP up to 16 megapixels and 8 192 px a side; first frame only; at most 2 decodes at once |
+| Media folder | 1 GiB, least recently used first |
+| Decrypted bytes in memory | 48 MB |
+
+The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
+
+## Kinds, names and content types
+
+- A photo from Photos is kind `image` with an empty body, content type
+  `image/jpeg` or `image/png`. A file from File is kind `file`, its body the
+  file's name, content type from the name's extension through a fixed map
+  (else `application/octet-stream`). The web sends the same kinds and
+  bodies, but takes the content type from the browser and sends a photo as
+  it was picked, without re-encoding it.
+- A name is cleaned exactly as the web's `sanitizeFilename` cleans it
+  (control, bidi and isolate characters removed, trimmed, at most 120
+  characters keeping its extension, `file` when nothing is left) and travels
+  only inside the encrypted message: never in a ticket, a header, storage
+  metadata, the media folder or a log.
+- Receivers trust bytes, not claims: the authenticated kind decides photo or
+  file, a photo renders only when its bytes sniff as JPEG, PNG or WebP, and
+  the content type is never used to render or to choose an app. A file card
+  shows the real last extension of the cleaned name next to it, so a name
+  dressed up to look like a PDF still shows what it is.
+
+## Where blobs and plaintext live, and when they go
+
+- Sealed blobs: one flat folder, `veil_media/` under the app support folder,
+  each blob under a random name of 64 hex characters, the ciphertext exactly
+  as uploaded or downloaded. Which blob belongs to which message (conversation
+  id, attachment id, digest, size, expiry, last use) is kept only in the
+  `media_blobs` table of the encrypted database; the key stays in the
+  encrypted content store. The folder is excluded from backup.
+- A blob goes when its message expires, when its chat leaves the list (also
+  while the app was closed: the first list after a start is compared with
+  the cached one), when the 1 GiB cap reaches it (never a blob whose upload is pending), and on
+  sign-out and wipe. At start, files without a row and rows without a file
+  are deleted, and so is a photo or file of the user's whose send the app
+  stopped before queuing it, with its stored content and bubble.
+- Decrypted bytes: in memory only, keyed by conversation id, attachment id,
+  digest and the pointer's key, and cleared on lock, sign-out and wipe.
+- Decrypted files exist only to open a file or to save a photo or a file, in
+  `veil_open/<random>/<name>` under the app's cache folder (what
+  `getTemporaryDirectory()` returns: `cacheDir` on Android,
+  `Library/Caches` on iOS); on iOS the save screen also gets its own copy
+  under the file's name in the system temporary folder (`tmp/`), deleted
+  when the save screen returns. A copy goes when
+  Quick Look closes (iOS), when the save screen returns and on lock (a Save
+  copy), when its message expires, by a sweep every 60 seconds and on resume
+  for copies older than 10 minutes, and at start and wipe. An Android copy
+  opened in another app is not deleted on lock, since that app may still be
+  reading it, and that app may keep a copy of its own.
+- The staging folder (`veil_attachment_cache` in the same cache folder)
+  holds a pick, in plaintext, until it is sealed or cancelled, or for up to 10
+  minutes while a lock holds it for its chat. Plugin copies are moved into
+  staging or deleted at once, and on iOS the system temporary folder is
+  emptied after each pick, after each save and on wipe (`tmp/` is not the
+  cache folder above: on iOS that is `Library/Caches`). At every start,
+  before the lock screen is passed, staging, Android's picker folders
+  (`<uuid>/` and `file_dialog-<uuid>/` in the cache folder) and, on iOS, the
+  system temporary folder are emptied, so no pick or save copy a crash left
+  survives a restart.
+
+## Failure states
+
+- Sending: a failed photo or file keeps its bubble with "Not sent. Tap to
+  retry." under it; a retry reuses the same sealed blob and attachment id and
+  asks for a fresh ticket when needed. A sealed blob that is missing fails the
+  send for good ("This file couldn't be sent. Attach it again."); random
+  bytes are never sent in its place.
+- Receiving: a download that fails (network, server error, or a digest or
+  decryption failure the first time) shows the download glyph and "Couldn't
+  download. Tap to retry." A blob the server no longer has (ticket 403 or
+  404, or the blob refused again after one fresh ticket), or a second digest
+  failure, shows "Photo not available" or "File not available". A blob
+  already on the phone that fails its digest is deleted and fetched again. A
+  voice message, an unknown algorithm, a non-UUID id, a size over 50 MiB or
+  photo bytes that are not JPEG, PNG or WebP within the limits show "Can't
+  open in this version".
+- Opening: "No app found to open this file", "Couldn't open the file";
+  saving: "Saved", "Couldn't save. Try again.", nothing on cancel.
+
+## Order and cancel
+
+- The outbox drains each chat on its own, oldest first. A text sent after a
+  file in the same chat waits for that file's upload; a text to any other
+  chat goes at once. In a disappearing chat, a text that waits behind
+  another message starts its timer when it is sent, as the file does, so
+  the wait does not use up its timer.
+- The cross on an uploading or failed photo or file cancels it and removes
+  the message: the upload stops, the API is told the upload failed if a
+  ticket was issued (an upload it completed too, which deletes the blob
+  there), and the queued record, the stored content and the sealed blob are
+  deleted. There is no dialog: nothing was sent. A cancel wins over a send or
+  a retry already under way, and a record the cache would not delete is
+  dropped at the next start, never sent.
+- The cross on a downloading file stops the fetch, also while the tap still
+  waits for a transfer slot; nothing is kept or opened for it. A photo's
+  download has no cross: its tile shows a ring and the size. A blob that
+  finishes downloading after its chat left the list, or after its message
+  expired, is not kept, and nothing of it is decrypted or opened.
+
+## App lock
+
+A picker, the save screen and, on iOS, Quick Look run inside
+`SystemSheetGrace` (`app/system_sheet_grace.dart`). On iOS they are presented
+inside the app, so only the scene really going to the background locks it,
+or, once a sheet has been up for 3 minutes, any step away from the app, and
+the lock closes them. On Android they are other apps' screens: the app
+stays unlocked while one is up, and the next return locks when the sheet
+opened more than 3 minutes before. Opening a file in another app on Android
+gets no grace, so Veil locks as soon as it is hidden, and the file opens in
+that app's own task. [mobile-device-security.md](mobile-device-security.md)
+has the details.
 
 ## Backend guarantees
 
@@ -35,17 +232,14 @@ screen. The web client (`apps/web-demo`) sends and opens attachments today.
   - `image/webp`
   - `application/pdf`
   - `application/octet-stream`
+- both clients ask for `application/octet-stream`, and the server stores every blob as that type
 - max attachment size is controlled by relay configuration
 - filenames are not sent to the backend or object storage metadata
+- when `VEIL_OBJECT_STORAGE_HOSTS` is set, the phone only uploads to and downloads from the hosts it lists (empty, it allows any host); a release build uploads and downloads only over TLS
 
-## Device-side reliability behavior
+## Limitations
 
-- attachment uploads are resumable at the workflow level, not at the byte-range protocol level
-- the device persists the temp blob path, upload ticket state, and retry metadata in the local queue
-- if the network drops or the ticket expires, retry reuses the local opaque temp blob and requests a fresh ticket
-- cancel stops the active upload, marks the draft failed locally, and preserves the temp blob for retry
-- orphaned temp blobs are evicted locally on startup and on explicit local wipe/revoke/logout
-
-## Current scaffold limitation
-
-The upload/download pipeline in this repository is hardened for private beta, but it is still not production cryptography. Production still needs audited real crypto, storage policy review, encrypted media processing review, and provider-specific hardening.
+The upload and download pipeline is hardened for the private beta, but the
+cryptography has not been audited yet. Production still needs that audit, a
+storage policy review and provider-specific hardening. Uploads run while the
+app is open and resume when it comes back; there is no background upload.

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../../../core/domain/conversation_read_mark.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
 import '../conversation_models.dart';
 import 'conversation_merge.dart';
@@ -13,6 +14,15 @@ abstract interface class MessengerStateObserver {
   void messagesChanged(String conversationId);
 
   void pagingChanged(String conversationId);
+}
+
+/// Told when what has been read changes: an observer that also implements
+/// this hears it (to persist a mark, or to count again).
+abstract interface class ReadMarkObserver {
+  void readMarkChanged(String conversationId);
+
+  /// The baseline marker was spent: the first relay list set its marks.
+  void baselineSpent();
 }
 
 /// Last step of every merge, for derived fields kept on the messages
@@ -42,9 +52,13 @@ class MessengerStateStore {
   List<ConversationPreview> _conversations = [];
   final Map<String, List<ChatMessage>> _messages = {};
   final Map<String, ConversationPagingState> _paging = {};
+  final Map<String, ConversationReadMark> _readMarks = {};
+  bool _baselinePending = true;
+  bool _listedByRelay = false;
+  Set<String> _hydratedIds = const {};
 
-  /// The conversation the user is looking at right now, or null. Incoming
-  /// messages there are marked read and raise no notification.
+  /// The conversation the user is looking at right now, or null. What
+  /// arrives there is read (ReadStateService) and raises no notification.
   String? activeConversationId;
 
   void addObserver(MessengerStateObserver observer) => _observers.add(observer);
@@ -87,8 +101,49 @@ class MessengerStateStore {
     final (listed, overruled) = await pin(mergeConversationPreviews(_conversations, fetched, bound: bound));
     if (stillCurrent != null && !stillCurrent()) return null;
     _conversations = listed..sort(_byRecency);
+    _listedByRelay = true;
     _conversationsChanged();
     return overruled;
+  }
+
+  /// Whether a relay list was applied since the state was last hydrated or
+  /// cleared.
+  bool get listedByRelay => _listedByRelay;
+
+  /// The conversations the cache held when the state was last hydrated:
+  /// what the first relay list after a start is compared with, so a chat
+  /// that left while the app was closed is seen to have left.
+  Set<String> get hydratedIds => _hydratedIds;
+
+  /// Whether the next relay list is this device's first (the cache held the
+  /// baseline marker, or there is no cache to hold anything): what it lists
+  /// is read through its last message.
+  bool get baselinePending => _baselinePending;
+
+  ConversationReadMark? readMarkOf(String conversationId) => _readMarks[conversationId];
+
+  Map<String, ConversationReadMark> get readMarks => Map.unmodifiable(_readMarks);
+
+  /// Sets what has been read of [conversationId]; the same mark again
+  /// changes nothing.
+  void setReadMark(String conversationId, ConversationReadMark mark) {
+    if (_readMarks[conversationId] == mark) return;
+    _readMarks[conversationId] = mark;
+    for (final observer in _observers) {
+      if (observer is ReadMarkObserver) (observer as ReadMarkObserver).readMarkChanged(conversationId);
+    }
+    changed();
+  }
+
+  /// Sets the marks the first relay list gives and spends the baseline, so
+  /// the writer deletes the marker in the same write as these marks.
+  void spendBaseline(Map<String, ConversationReadMark> marks) {
+    marks.forEach(setReadMark);
+    _baselinePending = false;
+    for (final observer in _observers) {
+      if (observer is ReadMarkObserver) (observer as ReadMarkObserver).baselineSpent();
+    }
+    changed();
   }
 
   /// Empties the list; the cache keeps its rows.
@@ -243,11 +298,13 @@ class MessengerStateStore {
     }
   }
 
-  /// Replaces everything with what the cache held.
+  /// Replaces everything with what the cache held: [conversations] with
+  /// their [messages], and from [snapshot] their paging (the default for one
+  /// it has none of), the read marks and the baseline marker.
   void hydrate({
     required List<ConversationPreview> conversations,
     required Map<String, List<ChatMessage>> messages,
-    required Map<String, ConversationPagingState> paging,
+    required ConversationCacheSnapshot snapshot,
   }) {
     _conversations = conversations;
     _messages
@@ -255,14 +312,29 @@ class MessengerStateStore {
       ..addAll(messages);
     _paging
       ..clear()
-      ..addAll(paging);
+      ..addAll({
+        for (final conversation in conversations)
+          conversation.id: snapshot.paging[conversation.id] ?? const ConversationPagingState(),
+      });
+    _readMarks
+      ..clear()
+      ..addAll(snapshot.readMarks);
+    _baselinePending = snapshot.baselinePending;
+    _listedByRelay = false;
+    _hydratedIds = {for (final conversation in conversations) conversation.id};
     changed();
   }
 
+  /// Forgets everything. The next identity is new or moved here, as on a
+  /// first install, so its first list is read through.
   void clear() {
     _conversations = [];
     _messages.clear();
     _paging.clear();
+    _readMarks.clear();
+    _baselinePending = true;
+    _listedByRelay = false;
+    _hydratedIds = const {};
     activeConversationId = null;
     changed();
   }

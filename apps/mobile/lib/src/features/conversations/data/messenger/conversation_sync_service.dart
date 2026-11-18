@@ -110,6 +110,7 @@ class ConversationSyncService {
   /// Replaces the local state with what the cache holds: conversations and
   /// messages in one read, the content lookups for all of them batched.
   Future<void> hydrate() async {
+    final startedAt = DateTime.now();
     _heldThrough.clear();
     final cached = await _persistence.hydrate();
     if (cached == null) return;
@@ -131,14 +132,8 @@ class ConversationSyncService {
       );
     }
     _attachments.clear();
-    _store.hydrate(
-      conversations: conversations,
-      messages: messages,
-      paging: {
-        for (final conversation in conversations)
-          conversation.id: snapshot.paging[conversation.id] ?? const ConversationPagingState(),
-      },
-    );
+    // Paging, read marks and the baseline marker come with the snapshot.
+    _store.hydrate(conversations: conversations, messages: messages, snapshot: snapshot);
 
     // Reactions live only in their encrypted messages; replay the ones
     // already opened and authenticated, as live delivery applies them.
@@ -156,7 +151,7 @@ class ConversationSyncService {
       if (contents[message.id]?.status.isFinal ?? false) _markHeld(message);
     }
 
-    final keepTempPaths = _outbox.restore(cached.pending);
+    final keepTempPaths = _outbox.restore(await _attachments.withoutDiscarded(cached.pending, startedAt: startedAt));
     await _tempStore?.cleanupOrphanedFiles(keepPaths: keepTempPaths);
     for (final conversationId in _store.loadedConversationIds.toList()) {
       unawaited(_latest.refresh(conversationId));

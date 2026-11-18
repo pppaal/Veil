@@ -5,7 +5,7 @@
 1. Sender fetches recipient public key bundle.
 2. Sender encrypts locally through `CryptoEngine`.
 3. The mobile client assigns a `clientMessageId` and stages the outbound item in the local pending queue.
-4. For attachments, the mobile client first stages an opaque local temp blob, uploads it to object storage, finalizes the attachment record, and only then sends the encrypted envelope with the attachment reference. (The mobile app cannot send an attachment yet: no screen leads to it, see [attachment-flow.md](attachment-flow.md); the path is exercised by its tests and by the web client.)
+4. For attachments, the sender seals the file on the device, uploads the ciphertext to object storage, finalizes the attachment record, and only then sends the encrypted message with the attachment pointer (see [attachment-flow.md](attachment-flow.md)).
 5. Mobile sends only the envelope to `POST /v1/messages`.
 6. API authorizes the sender through the conversation policy (see below), checks the envelope version against the conversation, and validates that `recipientUserId` matches the direct conversation peer.
 7. API stores ciphertext, nonce, the envelope version, timestamps, and the outer attachment pointer (`attachmentId` only).
@@ -96,20 +96,20 @@ Every conversation-scoped endpoint and realtime handler authorizes through one d
 
 - Attachment sends move through three device-visible phases:
   - ticket request
-  - opaque blob upload
-  - encrypted envelope send
-- The mobile UI tracks attachment transfer state through explicit phases:
-  - `staged`: local temp blob prepared, upload not started
+  - sealed blob upload
+  - encrypted message send
+- The mobile outbox tracks an attachment's transfer through explicit phases (`AttachmentTransferPhase`):
+  - `staged`: sealed on the device, upload not started
   - `preparing`: ticket requested, upload about to begin
-  - `uploading`: opaque blob transfer in progress with progress tracking
-  - `completing`: upload finished, finalizing attachment record
+  - `uploading`: sealed blob transfer in progress with progress tracking
+  - `finalizing`: upload finished, finalizing the attachment record and encrypting the message
   - `failed`: upload or finalization failed, retry available
-  - `canceled`: user explicitly canceled the upload
+  - `canceled`: the user canceled the upload, and the message is being removed
+- The chat shows these as a ring on the photo or file, with no word for the phase.
 - Failed attachment uploads remain in the local queue and can be retried without changing the ciphertext-only relay model.
-- Attachment retries reuse the device-local opaque temp blob and renew the ticket when necessary.
-- Explicit cancel leaves the staged attachment in a failed local state so the user can retry without regenerating plaintext input.
-- Attachment download resolution is a separate device-local state and should surface a transient `resolving ticket` state without exposing plaintext previews to the backend.
-- Download resolution still uses a scoped download ticket and must not expose plaintext previews to the backend.
+- Attachment retries reuse the same sealed blob and attachment id and renew the ticket when necessary.
+- Cancel removes the message: the upload stops, the relay is told the upload failed if it issued a ticket, and the queued record, the stored content and the sealed blob are deleted. A cancel wins over a send or a retry already under way.
+- A received attachment is fetched with a scoped download ticket and decrypted on the device; the backend never sees a plaintext preview.
 
 ## Receipt consistency
 
@@ -124,7 +124,7 @@ Every conversation-scoped endpoint and realtime handler authorizes through one d
 
 - While the relay is disconnected, queued or failed sends stay visible in the conversation with explicit local state.
 - The conversation view should communicate whether the relay is reconnecting and when the next retry window opens.
-- Attachment uploads remain attached to the same local outbound item across retry and cancel transitions.
+- Attachment uploads remain attached to the same local outbound item across retries.
 
 ## Server-visible fields
 

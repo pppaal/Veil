@@ -104,8 +104,8 @@ matter most: they are what most people see without scrolling.
 | # | Screen | What it shows |
 |---|---|---|
 | 1 | **Choose a handle** | The handle field with "alex" typed, and Create account. |
-| 2 | **Chats** | A group and five one-to-one chats. |
-| 3 | **A chat** | Sam Rivera's chat this morning: his question about the lease and the reply, a thumbs-up on his news, two replies (the second disappearing), Sam typing. |
+| 2 | **Chats** | A group and six one-to-one chats, one with two unread messages and one whose last message is a photo. |
+| 3 | **A chat** | Sam Rivera's chat this morning: the signed lease sent as a PDF, a thumbs-up on his news, a disappearing reply, his last word and a photo he sent, Sam typing. |
 | 4 | **Move to a new phone** | The old phone's start screen: three numbered steps and Get code. |
 | 5 | **App lock** | The lock screen with a PIN typed in. |
 | 6 | **Settings** | The top of Settings as it opens: the profile row, Appearance, Privacy and Security. |
@@ -114,13 +114,14 @@ Notes:
 
 - The shots come from the iOS Flutter app (`apps/mobile`), not the web
   demo.
-- Shot 2: the Chats list shows no unread count (the app does not keep
-  one), so the shot has none. Leave out the chats whose last message is a
-  voice message or a photo (the app cannot send either) and the chat with
-  no messages yet.
-- Shot 3: text messages only. Sending attachments is switched off in the
-  mobile app, and it has no voice messages or calls, so the shot shows none
-  of them.
+- Shot 2: the Chats list with Jonas Weber's two newest messages unread (a
+  count on his row and on the Chats tab) and Omar Haddad's photo as his
+  last message. Leave out the chat whose last message is a voice message
+  (the app cannot play one) and the chat with no messages yet, so one
+  screen holds the rest.
+- Shot 3: four of this morning's messages, with the PDF the user sent drawn
+  as a file card, and Sam's photo after his last word. The app does not
+  play voice messages and has no calls, so the shot shows neither.
 - Shot 4 (Move to a new phone): show the move as something done with the
   old phone in hand. **Do not** imply backup or recovery: Veil has
   neither. Misleading "restore/backup" framing risks App Review rejection

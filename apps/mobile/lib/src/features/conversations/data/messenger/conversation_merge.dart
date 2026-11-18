@@ -16,9 +16,10 @@ import 'conversation_peer_bindings.dart';
 /// names another user, or turns the conversation into a group, would show
 /// one contact while every message goes to another. The peer is [bound]
 /// (see ConversationPeerBindings), or else the one the local preview's
-/// session was opened with. Such a preview only updates the last message,
-/// the updated time and the timer, also when the conversation was left out
-/// of an earlier list and has no local preview any more.
+/// session was opened with. Such a preview only updates the last message
+/// (and its order), the updated time and the timer, also when the
+/// conversation was left out of an earlier list and has no local preview
+/// any more.
 List<ConversationPreview> mergeConversationPreviews(
   List<ConversationPreview> local,
   List<ConversationPreview> server, {
@@ -36,6 +37,7 @@ ConversationPreview _mergePreview(ConversationPreview? local, ConversationPrevie
     final kept = local != null && local.recipientBundle.userId == peer.userId ? local : _boundPreview(incoming, peer);
     return kept.copyWith(
       lastEnvelope: incoming.lastEnvelope,
+      lastMessageOrder: incoming.lastMessageOrder,
       updatedAt: incoming.updatedAt,
       disappearingTimerSeconds: incoming.disappearingTimerSeconds,
     );
@@ -76,6 +78,7 @@ ConversationPreview _boundPreview(ConversationPreview incoming, ConversationPeer
         signedPrekeyBundle: '',
       ),
       lastEnvelope: incoming.lastEnvelope,
+      lastMessageOrder: incoming.lastMessageOrder,
       updatedAt: incoming.updatedAt,
     );
 

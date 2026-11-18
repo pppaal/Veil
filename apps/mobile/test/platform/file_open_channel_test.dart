@@ -55,6 +55,30 @@ void main() {
     expect(calls.first.arguments, {'path': file.resolveSymbolicLinksSync(), 'mimeType': 'application/pdf'});
   });
 
+  test('asks mayHandOver right before the platform, after its own checks: false sends nothing', () async {
+    final file = inOpenFolder('lease.pdf');
+    var allowed = true;
+    var askedAfterChecks = false;
+    final open = MethodChannelFileOpen(temporaryRoot: () async {
+      // The app locks while the temporary directory is looked up.
+      allowed = false;
+      return temporary;
+    }).open(file.path, mimeType: 'application/pdf', mayHandOver: () {
+      askedAfterChecks = true;
+      return allowed;
+    });
+    expect(await open, FileOpenResult.lockedFirst);
+    expect(askedAfterChecks, isTrue);
+    expect(calls, isEmpty, reason: 'the platform was asked after the lock');
+  });
+
+  test('the iOS side refusing because the app locked reads as locked first', () async {
+    final file = inOpenFolder('lease.pdf');
+    reply = 'locked';
+    expect(await opener().open(file.path, mimeType: 'application/pdf', mayHandOver: () => true),
+        FileOpenResult.lockedFirst);
+  });
+
   test('a platform error or a missing plugin reads as failed', () async {
     final file = inOpenFolder('notes.txt');
     reply = PlatformException(code: 'boom');

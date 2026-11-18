@@ -15,11 +15,17 @@ void main() {
   late Directory systemTemp;
   late List<String> prepared;
 
-  AttachmentStoragePaths paths({required bool sweepSystemTemp}) => AttachmentStoragePaths(
+  // A phone's folders unless [temporaryFolderIsPrivate] says otherwise: the
+  // temporary folder is the app's own on Android and iOS.
+  AttachmentStoragePaths paths(
+          {required bool sweepSystemTemp, bool sweepPickerCopies = false, bool temporaryFolderIsPrivate = true}) =>
+      AttachmentStoragePaths(
         temporaryRoot: () async => temporary,
         supportRoot: () async => support,
         systemTempRoot: () => systemTemp,
         sweepSystemTemp: sweepSystemTemp,
+        sweepPickerCopies: sweepPickerCopies,
+        temporaryFolderIsPrivate: temporaryFolderIsPrivate,
         onDirectoryPrepared: (path) async => prepared.add(path),
       );
 
@@ -83,6 +89,32 @@ void main() {
     expect(database.existsSync(), isTrue);
   });
 
+  test('where the temporary folder is shared (Windows, Linux, macOS), purgeAll deletes only Veil\'s folders in it',
+      () async {
+    final storage = paths(sweepSystemTemp: false, temporaryFolderIsPrivate: false);
+    write(await storage.stagingDir(), 'picked.jpg');
+    write(await storage.mediaDir(), 'b' * 64);
+    write(await storage.openDir(), 'abc/report.pdf');
+    // Other apps' files in %TEMP% or /tmp, a uuid-named folder among them.
+    write(temporary, 'someone-elses.tmp');
+    write(temporary, '3f2504e0-4f89-41d3-9a0c-0305e82c3301/build.log');
+    write(temporary, 'file_dialog-9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/other.pdf');
+
+    await storage.purgeAll();
+
+    expect(entriesOf(temporary)..sort(), [
+      '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+      'file_dialog-9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d',
+      'someone-elses.tmp',
+    ], reason: 'a sign-out emptied the shared temporary folder');
+    expect(Directory(p.join(support.path, 'veil_media')).existsSync(), isFalse);
+  });
+
+  test('the temporary folder counts as the app\'s own on Android and iOS only', () {
+    expect(AttachmentStoragePaths().temporaryFolderIsPrivate, Platform.isAndroid || Platform.isIOS);
+    expect(AttachmentStoragePaths(temporaryFolderIsPrivate: true).temporaryFolderIsPrivate, isTrue);
+  });
+
   test('without the iOS sweep the system temp folder is left alone', () async {
     final storage = paths(sweepSystemTemp: false);
     write(systemTemp, 'someone-elses.tmp');
@@ -123,12 +155,78 @@ void main() {
     }
   });
 
+  test('purgeLeftPlaintext, run as the app starts, empties veil_open and staging and keeps the media', () async {
+    final storage = paths(sweepSystemTemp: false);
+    write(await storage.stagingDir(), 'one.jpg');
+    write(await storage.openDir(), 'xyz/open.pdf');
+    final media = write(await storage.mediaDir(), 'b' * 64);
+    final system = write(systemTemp, 'left.tmp');
+
+    await storage.purgeLeftPlaintext();
+
+    expect(entriesOf(await storage.stagingDir()), isEmpty);
+    expect(entriesOf(await storage.openDir()), isEmpty);
+    expect(media.existsSync(), isTrue, reason: 'a sealed blob went');
+    expect(system.existsSync(), isTrue, reason: 'the system temp folder is swept on iOS only');
+  });
+
+  // D39: a crash between a plugin's copy and its move into staging leaves
+  // the pick under its real name. The next start deletes it before the lock
+  // screen is passed, as it does staging.
+  test('purgeLeftPlaintext on iOS also empties tmp/, where the pickers and the save screen copy under real names',
+      () async {
+    final storage = paths(sweepSystemTemp: true);
+    write(systemTemp, 'lease-signed.pdf');
+    write(systemTemp, 'image_picker_ABCD.jpg');
+    write(systemTemp, 'app.veil-Inbox/scan.pdf');
+    final media = write(await storage.mediaDir(), 'b' * 64);
+
+    await storage.purgeLeftPlaintext();
+
+    expect(entriesOf(systemTemp), isEmpty, reason: 'a pick or save copy outlived a crash under its real name');
+    expect(media.existsSync(), isTrue);
+  });
+
+  test('purgeLeftPlaintext on Android also deletes the pickers\' own copy folders, and only those', () async {
+    final storage = paths(sweepSystemTemp: false, sweepPickerCopies: true);
+    write(temporary, 'file_dialog-0f8fad5b-d9cb-469f-a165-70867728950e/tax-return.pdf');
+    write(temporary, '7c9e6679-7425-40de-944b-e07fc1f90ae7/IMG_2041.jpg');
+    final other = write(temporary, 'some_cache/keep.bin');
+    final lookalike = write(temporary, 'file_dialog-notes/keep.txt');
+    final flat = write(temporary, '0f8fad5b-d9cb-469f-a165-70867728950e');
+
+    await storage.purgeLeftPlaintext();
+
+    expect(entriesOf(temporary), unorderedEquals(['some_cache', 'file_dialog-notes', p.basename(flat.path)]));
+    for (final file in [other, lookalike, flat]) {
+      expect(file.existsSync(), isTrue, reason: file.path);
+    }
+  });
+
+  test('purgeLeftPlaintext elsewhere leaves the temporary folder\'s other folders alone', () async {
+    final storage = paths(sweepSystemTemp: false);
+    final copy = write(temporary, 'file_dialog-0f8fad5b-d9cb-469f-a165-70867728950e/tax-return.pdf');
+    await storage.purgeLeftPlaintext();
+    expect(copy.existsSync(), isTrue, reason: 'a desktop temporary folder is shared with other apps');
+  });
+
+  test('the pickers\' copy folders are swept on Android only unless told otherwise', () {
+    expect(AttachmentStoragePaths().sweepPickerCopies, Platform.isAndroid);
+  });
+
+  test('purgeLeftPlaintext with no folders yet does nothing and creates none', () async {
+    final storage = paths(sweepSystemTemp: true);
+    await storage.purgeLeftPlaintext();
+    expect(entriesOf(temporary), isEmpty);
+  });
+
   test('a purge keeps going past a root that cannot be read, then says so', () async {
     final storage = AttachmentStoragePaths(
       temporaryRoot: () async => temporary,
       supportRoot: () async => throw const FileSystemException('no support folder'),
       systemTempRoot: () => systemTemp,
       sweepSystemTemp: true,
+      temporaryFolderIsPrivate: true,
     );
     write(temporary, 'picked.jpg');
     write(systemTemp, 'picked.jpg');
@@ -140,8 +238,11 @@ void main() {
   test('the staging store stages in the staging folder and its purge empties every folder', () async {
     final storage = paths(sweepSystemTemp: true);
     final store = DefaultAttachmentTempFileStore(paths: storage);
-    final blob = await store.createOpaqueBlob(filename: 'brief.pdf', sizeBytes: 64);
+    // A pick is staged as a file of its own; the store only reads it back.
+    final staged = write(await storage.stagingDir(), 'staged-brief');
+    final blob = await store.createOpaqueBlob(filename: 'brief.pdf', sizeBytes: 64, existingPath: staged.path);
     expect(p.dirname(blob.path), (await storage.stagingDir()).path);
+    expect(blob.sizeBytes, staged.lengthSync());
     write(await storage.mediaDir(), 'c' * 64);
     write(systemTemp, 'brief.pdf');
 

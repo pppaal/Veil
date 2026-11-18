@@ -7,8 +7,8 @@ section 4). Upload them in file-name order.
 | File | Screen |
 |---|---|
 | `01-choose-handle.png` | Choose a handle, with "alex" typed in |
-| `02-chats.png` | Chats: a group and five one-to-one chats |
-| `03-chat.png` | Sam Rivera's chat this morning: his question about the lease and the reply, his news with a thumbs-up, two replies (the second disappearing), his last word, Sam typing |
+| `02-chats.png` | Chats: a group and six one-to-one chats; Jonas Weber's has two unread messages (the Chats tab counts one unread chat) and Omar Haddad's last message is a photo |
+| `03-chat.png` | Sam Rivera's chat this morning: the signed lease the user sent as a PDF, his news with a thumbs-up, the user's disappearing reply, his last word and a photo of a beach he sent, Sam typing |
 | `04-move-to-a-new-phone.png` | Move to a new phone, on the old phone, before it asks for a code |
 | `05-app-lock.png` | The lock screen with a PIN typed in |
 | `06-settings.png` | The top of Settings as it opens, from the profile row down |
@@ -60,12 +60,16 @@ What the test does:
   font on every machine; the package's version varies with the system.
 - No list may cut through a line of text or a bubble at the screen's top or
   bottom edge; the tool fails if one does.
-- The Chats shot leaves out three of the seeded chats: two whose last
-  messages are a voice message and a photo, which the app cannot send, and
-  one with no messages yet.
-- The chat shot keeps this morning's messages but one. It leaves out the
-  days before, where the gate keeps a long message and a long link, and the
-  PDF the user sent this morning (the app cannot send attachments).
+- The Chats shot leaves out two of the seeded chats so one screen holds
+  the rest: the voice message (which the app cannot play) and the chat with
+  no messages yet. Two messages from Jonas arrive after the list first
+  loads, so his chat counts them as unread (a fresh install counts nothing
+  it finds at its first list).
+- The chat shot keeps four of this morning's messages, the PDF the user sent
+  among them, and adds a photo from Sam after his last word, sealed and
+  fetched as a real one is. It leaves out the days before, where the gate
+  keeps a long message and a long link, and the morning's other four
+  lines.
 - The Settings shot is not scrolled. Should a line sit across the bottom
   edge, the list moves up just far enough for it to be whole.
 - The PNGs are 8-bit RGB without alpha, as Play asks.

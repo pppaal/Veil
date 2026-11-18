@@ -46,6 +46,15 @@ class MediaBlobStore {
   final Map<String, DateTime> _usedAt = {};
   final Map<String, DateTime> _writtenAt = {};
 
+  /// Told of every index entry removed here, whoever removed it and why (a
+  /// sweep, a cancelled send, a file found gone): whatever is held
+  /// decrypted for it goes too (D36). Set by the media service's cleanup.
+  void Function(MediaIndexEntry entry)? onEntryRemoved;
+
+  /// Told of every expiry written here, a blob committed with one or one
+  /// set later, so the media service's cleanup can arm its timer for it.
+  void Function(DateTime expiresAt)? onExpiryWritten;
+
   /// A fresh `<media>/<random 64 hex>.part` path for a blob to be written
   /// to and then [commit]ted.
   Future<String> reservePartPath() async {
@@ -76,21 +85,32 @@ class MediaBlobStore {
     }
     final fileName = partName.substring(0, 64);
     final path = p.join(folder.path, fileName);
-    await File(partPath).rename(path);
-    _reserved.remove(partName);
-    final previous = await _index.find(conversation, attachment, digest);
+    final MediaIndexEntry? previous;
     final now = _now();
-    await _index.put(MediaIndexEntry(
-      fileName: fileName,
-      conversationId: conversation,
-      attachmentId: attachment,
-      digest: digest,
-      sizeBytes: sizeBytes,
-      expiresAt: expiresAt,
-      lastUsedAt: now,
-    ));
+    // The part stays reserved until the row is written: between the rename
+    // and the row, removeOrphans keeps the blob by its reserved part.
+    try {
+      await File(partPath).rename(path);
+      previous = await _index.find(conversation, attachment, digest);
+      await _index.put(MediaIndexEntry(
+        fileName: fileName,
+        conversationId: conversation,
+        attachmentId: attachment,
+        digest: digest,
+        sizeBytes: sizeBytes,
+        expiresAt: expiresAt,
+        lastUsedAt: now,
+      ));
+    } finally {
+      _reserved.remove(partName);
+    }
     _writtenAt[fileName] = now;
-    if (previous != null && previous.fileName != fileName) await _deleteFile(previous.fileName);
+    if (expiresAt != null) onExpiryWritten?.call(expiresAt);
+    // The entry this one replaced is removed like any other.
+    if (previous != null && previous.fileName != fileName) {
+      await _deleteFile(previous.fileName);
+      _removed(previous);
+    }
     return path;
   }
 
@@ -136,7 +156,7 @@ class MediaBlobStore {
     final path = _blobName.hasMatch(entry.fileName) ? p.join((await _paths.mediaDir()).path, entry.fileName) : null;
     if (path == null || !await File(path).exists()) {
       await _index.remove(entry.fileName);
-      _forget(entry.fileName);
+      _removed(entry);
       return null;
     }
     _usedAt[entry.fileName] = _now();
@@ -159,6 +179,7 @@ class MediaBlobStore {
   Future<void> setExpiry(String conversationId, String attachmentId, DateTime? expiresAt) async {
     final (conversation, attachment) = _checkedIds(conversationId, attachmentId);
     await _index.setExpiry(conversation, attachment, expiresAt);
+    if (expiresAt != null) onExpiryWritten?.call(expiresAt);
   }
 
   /// Deletes every blob of [attachmentId] in [conversationId], whatever
@@ -177,28 +198,34 @@ class MediaBlobStore {
   Future<void> deleteEntry(MediaIndexEntry entry) async {
     await _deleteFile(entry.fileName);
     await _index.remove(entry.fileName);
+    _removed(entry);
   }
 
   /// Deletes every file of the folder without a row (a part file reserved
   /// in this process and not committed yet aside), and every row without
   /// a file.
+  ///
+  /// Safe against a [commit] or [write] running meanwhile, whoever makes
+  /// it: a blob is renamed into place before its row is written, and its
+  /// part stays reserved until then. So the folder is listed before the
+  /// rows are read (a blob listed without a row is one whose commit has not
+  /// written it yet, kept by its reserved part), and a row counts as
+  /// without a file only when its file is not there after the row was read.
   Future<void> removeOrphans() async {
     final folder = await _paths.mediaDir();
+    final listed = await folder.list(followLinks: false).toList();
     final rows = {for (final entry in await _index.all()) entry.fileName: entry};
-    final files = <String>{};
-    await for (final entity in folder.list(followLinks: false)) {
+    for (final entity in listed) {
       final name = p.basename(entity.path);
-      final kept = entity is File && ((_blobName.hasMatch(name) && rows.containsKey(name)) || _reserved.contains(name));
-      if (kept) {
-        files.add(name);
-      } else {
-        await _deleteEntity(entity);
-      }
+      final committing = _reserved.contains('$name.part');
+      final kept = entity is File &&
+          ((_blobName.hasMatch(name) && (rows.containsKey(name) || committing)) || _reserved.contains(name));
+      if (!kept) await _deleteEntity(entity);
     }
-    for (final fileName in rows.keys) {
-      if (!files.contains(fileName)) {
+    for (final MapEntry(key: fileName, value: entry) in rows.entries) {
+      if (!_blobName.hasMatch(fileName) || !await File(p.join(folder.path, fileName)).exists()) {
         await _index.remove(fileName);
-        _forget(fileName);
+        _removed(entry);
       }
     }
   }
@@ -241,6 +268,11 @@ class MediaBlobStore {
   void _forget(String fileName) {
     _usedAt.remove(fileName);
     _writtenAt.remove(fileName);
+  }
+
+  void _removed(MediaIndexEntry entry) {
+    _forget(entry.fileName);
+    onEntryRemoved?.call(entry);
   }
 
   String _randomName() {

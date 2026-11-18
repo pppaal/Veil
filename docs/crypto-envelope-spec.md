@@ -334,6 +334,41 @@ Interop limitation: on a legacy (v1) session the same raw-key pointer travels
 inside the v1 payload. Confidentiality is unchanged (it is still inside the
 ratchet), but apps older than v2 cannot open such attachments.
 
+#### Client conventions (informative)
+
+What both clients do with attachments today. None of it changes the wire
+format above, and a receiver still treats every field a peer sent as
+untrusted.
+
+- Body and kind: a kind `image` message has an empty `b`; a kind `file`
+  message carries the file's sanitized name in `b` (the web's `mediaContent`,
+  `apps/web-demo/src/domain/content.js`; the phone sends the same).
+- Names are sanitized as the web's `sanitizeFilename`
+  (`apps/web-demo/src/domain/sanitize.js`) does: C0 and C1 controls, LRM and
+  RLM, bidi embeddings, overrides and isolates removed, the result trimmed,
+  at most 120 characters keeping an extension of 1 to 10 letters or digits,
+  and `file` when nothing is left. Receivers sanitize again before showing a
+  name and show its real last extension next to it.
+- Receivers accept only attachment ids that are UUIDs. Any other id makes the
+  attachment unsupported, and no request is made for it.
+- An image renders only when its decrypted bytes are JPEG, PNG or WebP; `ct`
+  is never trusted to render or to choose an app, and a kind `file` whose `ct`
+  names an image is still a file. The phone also refuses to decode an image
+  whose header names more pixels than it allows.
+- The phone re-encodes a photo before sealing it: decoded at a long edge of
+  at most 1600 px, then encoded from pixels alone as JPEG (quality 80) or, with
+  transparency, PNG, so no metadata travels; `ct` is `image/jpeg` or
+  `image/png`. The web sends the picked image as it is, metadata included.
+- Both clients stamp `x` when they seal the frame, which happens after the
+  upload completes: the chat's timer added to the relay-corrected clock. An
+  upload slower than a short timer therefore never sends an expiry already
+  past. The outer `expiresAt` carries the same value.
+- Both clients ask for upload tickets with content type
+  `application/octet-stream`, since the blob is ciphertext.
+- The phone opens only pointers with `alg` `aes256gcm-v2`, refuses one whose
+  `sz` is over 50 MiB before any request, and stops reading a download at
+  `padmeLength(sz + 1) + 16` bytes.
+
 ### Session records and glare
 
 A conversation holds a record: the current (sending) state plus up to 5

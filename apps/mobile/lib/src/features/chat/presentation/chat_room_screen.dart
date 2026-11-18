@@ -11,9 +11,9 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../attachments/presentation/save_media.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
-import '../../conversations/data/veil_messenger_controller.dart';
 import '../../conversations/presentation/peer_names.dart';
 import 'active_conversation_binding.dart';
 import 'chat_composer_bar.dart';
@@ -127,7 +127,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   void didUpdateWidget(covariant ChatRoomScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
-      releaseActiveConversation(oldWidget.conversationId);
+      switchConversation(oldWidget.conversationId);
       resetNavigationTarget();
       resetSearch();
       _loadFailed = false;
@@ -225,7 +225,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       onReviewIdentity: _openSafetyNumbers,
       onAcknowledgeHold: _acknowledgePeerAccount,
     );
-    final messageList = ChatMessageList(
+    ChatMessageList messageList(double sideRoom) => ChatMessageList(
       conversationId: widget.conversationId,
       controller: controller,
       messages: messages,
@@ -247,6 +247,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       keyboardUp: MediaQuery.viewInsetsOf(context).bottom > 0,
       onReact: _showReactionPicker,
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
+      sideRoom: sideRoom,
+      unreadDivider: unreadDivider,
     );
     final typing = PresenceSelector<(String?, String?)>(
       presence: controller.presenceTyping,
@@ -262,37 +264,44 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       },
     );
 
-    // The same chat on a phone and in the wide layout's second pane.
-    return ChatPhoneScaffold(
-      pane: widget.embedded,
-      conversation: conversation,
-      title: title,
-      connecting: !controller.realtimeConnected,
-      peerVerified: peerVerified,
-      messageTtl: _messageTtl,
-      searchController: searchController,
-      searching: isSearchingMessages,
-      menu: chatMenuEntries(conversation, onPickTimer: _pickDisappearTtl),
-      onOpenSafetyNumbers: _openSafetyNumbers,
-      banners: banners,
-      messages: messageList,
-      typing: typing,
-      composer: blockedComposer(conversation) ??
-          ChatComposerBar(
-            conversationId: widget.conversationId,
-            focusNode: _composerFocusNode,
-            messageTtl: _messageTtl,
-            busy: controller.isBusy,
-          ),
-      searchBar: ChatSearchBar(
-        hasQuery: hasSearchQuery,
+    // The same chat on a phone and in the wide layout's second pane. The
+    // messages keep to the chat's column; the unread band runs past it to
+    // the edges of a wider screen or pane.
+    final column = widget.embedded ? ChatPhoneScaffold.paneContentWidth : ChatPhoneScaffold.screenContentWidth;
+    return LayoutBuilder(builder: (context, constraints) {
+      final room = constraints.hasBoundedWidth ? (constraints.maxWidth - column) / 2 : 0.0;
+      final sideRoom = room > 0 ? room : 0.0;
+      return ChatPhoneScaffold(
+        pane: widget.embedded,
+        conversation: conversation,
+        title: title,
+        connecting: !controller.realtimeConnected,
+        peerVerified: peerVerified,
+        messageTtl: _messageTtl,
+        searchController: searchController,
         searching: isSearchingMessages,
-        count: searchHitCount,
-        index: searchHitIndex,
-        onOlder: showOlderSearchHit,
-        onNewer: showNewerSearchHit,
-      ),
-    );
+        menu: chatMenuEntries(conversation, onPickTimer: _pickDisappearTtl),
+        onOpenSafetyNumbers: _openSafetyNumbers,
+        banners: banners,
+        messages: messageList(sideRoom),
+        typing: typing,
+        composer: blockedComposer(conversation) ??
+            ChatComposerBar(
+              conversationId: widget.conversationId,
+              focusNode: _composerFocusNode,
+              messageTtl: _messageTtl,
+              busy: controller.isBusy,
+            ),
+        searchBar: ChatSearchBar(
+          hasQuery: hasSearchQuery,
+          searching: isSearchingMessages,
+          count: searchHitCount,
+          index: searchHitIndex,
+          onOlder: showOlderSearchHit,
+          onNewer: showNewerSearchHit,
+        ),
+      );
+    });
   }
 
   // Hidden once expired on the messenger's expiry clock, as the messenger
@@ -313,7 +322,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     if (mounted && conversationId == widget.conversationId && failed != _loadFailed) {
       setState(() => _loadFailed = failed);
     }
-    await _markLatestRemoteMessageRead(controller);
     if (hasSearchQuery) {
       await runSearch();
     }
@@ -331,20 +339,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   Future<void> _openSafetyNumbers() async {
     await context.push('/safety-numbers/${widget.conversationId}');
     if (mounted) await _loadPeerVerified();
-  }
-
-  Future<void> _markLatestRemoteMessageRead(
-      VeilMessengerController controller) async {
-    if (controller.activeConversationId != widget.conversationId) {
-      return;
-    }
-    for (final message
-        in controller.messagesFor(widget.conversationId).reversed) {
-      if (!message.isMine) {
-        await controller.markRead(message.id);
-        break;
-      }
-    }
   }
 
   // Binds the held 1:1 to the account it is listed with. Another account
@@ -372,7 +366,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         groupSenderUserId: groupSenderUserId,
         groupSenderHandle: groupSenderHandle,
         groupSenderTitle: (message) => groupSenderName(message, ref.read(peerNamesProvider)));
-    if (!canReact && report == null) return;
+    // A photo or file that opened is saved from here too (D30).
+    final save =
+        mediaSaveAction(context, ref, conversationId: widget.conversationId, message: message, decrypted: decrypted);
+    if (!canReact && report == null && save == null) return;
     VeilHaptics.selection();
     // The message list on screen, so a menu that shows alone keeps clear of
     // what is under the list.
@@ -384,6 +381,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       isMine: message.isMine,
       onSelected: canReact ? (emoji) => controller.toggleReaction(message, emoji) : null,
       onReport: report,
+      onSave: save,
       messages: box is RenderBox && box.hasSize ? box.localToGlobal(Offset.zero) & box.size : null,
     );
   }

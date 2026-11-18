@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -179,6 +180,28 @@ void main() {
     expect(await store.entries(), hasLength(1));
   });
 
+  test('the entry a commit replaces is told as removed, like every other removal', () async {
+    final removed = <String>[];
+    store.onEntryRemoved = (entry) => removed.add(entry.fileName);
+    final first = await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sealedBytes: const [1]);
+    expect(removed, isEmpty);
+    await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sealedBytes: const [2]);
+    expect(removed, [p.basename(first)], reason: 'the replaced entry went without a word');
+  });
+
+  test('every expiry written is told: a commit with one, and one set later', () async {
+    final written = <DateTime>[];
+    store.onExpiryWritten = written.add;
+    final commitExpiry = DateTime.utc(2026, 4, 7, 10);
+    final stampExpiry = DateTime.utc(2026, 4, 7, 11);
+    await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sealedBytes: const [1]);
+    await store.write(
+        conversationId: 'conv-sam', attachmentId: _fileId, digest: 'd', sealedBytes: const [2], expiresAt: commitExpiry);
+    await store.setExpiry('conv-sam', _photoId, stampExpiry);
+    await store.setExpiry('conv-sam', _photoId, null);
+    expect(written, [commitExpiry, stampExpiry]);
+  });
+
   test('expiry is set per id, delete takes every digest of an id, deleteEntry one entry', () async {
     await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'one', sealedBytes: const [1]);
     await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'two', sealedBytes: const [2]);
@@ -225,6 +248,29 @@ void main() {
     expect(await index.all(), isEmpty);
   });
 
+  test('every entry removed is told, however it went (D36): delete, deleteEntry, a file found gone, an orphan row',
+      () async {
+    const thirdId = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
+    const fourthId = '6ba7b811-9dad-41d1-80b4-00c04fd430c8';
+    final removed = <String>[];
+    store.onEntryRemoved = (entry) => removed.add(entry.attachmentId);
+    Future<String> put(String id) =>
+        store.write(conversationId: 'conv-sam', attachmentId: id, digest: 'd', sealedBytes: const [1, 2]);
+    await put(_photoId);
+    await put(_fileId);
+    final third = await put(thirdId);
+    final fourth = await put(fourthId);
+
+    await store.delete('conv-sam', _photoId);
+    await store.deleteEntry((await store.entries()).firstWhere((entry) => entry.attachmentId == _fileId));
+    File(third).deleteSync();
+    expect(await store.pathOf('conv-sam', thirdId, 'd'), isNull);
+    File(fourth).deleteSync();
+    await store.removeOrphans();
+    expect(removed, [_photoId, _fileId, thirdId, fourthId]);
+    expect(await index.all(), isEmpty);
+  });
+
   test('clear empties the index and the folder', () async {
     await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sealedBytes: const [1]);
     File(p.join((await media()).path, '${'a' * 64}.part')).writeAsBytesSync(const [1]);
@@ -232,4 +278,123 @@ void main() {
     expect(await folderListing(), isEmpty);
     expect(await index.all(), isEmpty);
   });
+
+  // A start sweep runs while a photo or file is sealed (the sealer commits
+  // outside the media service's serial lock): neither order of the two may
+  // lose the blob or its row.
+  group('removeOrphans while a blob is committed', () {
+    late _GatedMediaIndex gated;
+
+    setUp(() {
+      gated = _GatedMediaIndex(index);
+      store = MediaBlobStore(paths: paths, index: gated, now: () => now);
+    });
+
+    Future<String> commitOne() async {
+      final part = await store.reservePartPath();
+      File(part).writeAsBytesSync(const [7, 7, 7]);
+      return store.commit(partPath: part, conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sizeBytes: 3);
+    }
+
+    test('the sweep lists the folder after the rename and before the row is written', () async {
+      final putGate = gated.holdNextPut();
+      final committing = commitOne();
+      await gated.putReached;
+      // The blob is in place under its name, its row not written yet.
+      expect(await folderListing(), hasLength(1));
+      expect(await index.all(), isEmpty);
+
+      await store.removeOrphans();
+      putGate.complete();
+      final path = await committing;
+
+      expect(File(path).existsSync(), isTrue, reason: 'the sweep took a blob being committed');
+      expect(await store.pathOf('conv-sam', _photoId, 'd'), path);
+      expect(await folderListing(), [p.basename(path)]);
+    });
+
+    test('the sweep reads the rows while a whole commit runs', () async {
+      final allGate = gated.holdNextAll();
+      final sweeping = store.removeOrphans();
+      await gated.allReached;
+      final path = await commitOne();
+      allGate.complete();
+      await sweeping;
+
+      expect(File(path).existsSync(), isTrue, reason: 'the sweep took a blob committed while it read the rows');
+      expect(await store.pathOf('conv-sam', _photoId, 'd'), path);
+    });
+
+    test('a part left by a commit that failed is not kept for ever', () async {
+      gated.failNextPut = true;
+      await expectLater(commitOne(), throwsStateError);
+      // Its blob was renamed but never indexed: an orphan the next sweep takes.
+      await store.removeOrphans();
+      expect(await folderListing(), isEmpty);
+      expect(await index.all(), isEmpty);
+    });
+  });
+}
+
+/// A media index whose next `put` or `all` waits until the test lets it go,
+/// or whose next `put` fails.
+class _GatedMediaIndex implements MediaIndex {
+  _GatedMediaIndex(this._inner);
+
+  final MediaIndex _inner;
+  Completer<void>? _putGate;
+  Completer<void>? _allGate;
+  final Completer<void> _putReached = Completer<void>();
+  final Completer<void> _allReached = Completer<void>();
+  bool failNextPut = false;
+
+  Future<void> get putReached => _putReached.future;
+  Future<void> get allReached => _allReached.future;
+
+  Completer<void> holdNextPut() => _putGate = Completer<void>();
+  Completer<void> holdNextAll() => _allGate = Completer<void>();
+
+  @override
+  Future<void> put(MediaIndexEntry entry) async {
+    if (failNextPut) {
+      failNextPut = false;
+      throw StateError('the database refused the row');
+    }
+    final gate = _putGate;
+    _putGate = null;
+    if (gate != null) {
+      _putReached.complete();
+      await gate.future;
+    }
+    await _inner.put(entry);
+  }
+
+  @override
+  Future<List<MediaIndexEntry>> all() async {
+    final gate = _allGate;
+    _allGate = null;
+    final rows = await _inner.all();
+    if (gate != null) {
+      _allReached.complete();
+      await gate.future;
+    }
+    return rows;
+  }
+
+  @override
+  Future<MediaIndexEntry?> find(String conversationId, String attachmentId, String digest) =>
+      _inner.find(conversationId, attachmentId, digest);
+
+  @override
+  Future<void> setExpiry(String conversationId, String attachmentId, DateTime? expiresAt) =>
+      _inner.setExpiry(conversationId, attachmentId, expiresAt);
+
+  @override
+  Future<void> touch(String fileName, DateTime at) => _inner.touch(fileName, at);
+
+  @override
+  Future<void> remove(String fileName) => _inner.remove(fileName);
+
+  @override
+  Future<void> clear() => _inner.clear();
 }

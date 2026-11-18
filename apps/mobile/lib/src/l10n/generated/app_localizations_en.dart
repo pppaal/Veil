@@ -401,7 +401,33 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSendAction => 'Send';
 
   @override
-  String get chatAttachAction => 'Attach';
+  String get chatAttachAction => 'Add attachment';
+
+  @override
+  String get chatAttachPhotos => 'Photos';
+
+  @override
+  String get chatAttachFile => 'File';
+
+  @override
+  String chatAttachTooBig(String size) {
+    return 'Files can be up to $size';
+  }
+
+  @override
+  String get chatAttachPhotoFailed => 'Couldn\'t attach the photo';
+
+  @override
+  String get chatAttachFileFailed => 'Couldn\'t attach the file';
+
+  @override
+  String chatSendFileTitle(String name, String chat) {
+    return 'Send \"$name\" to $chat?';
+  }
+
+  @override
+  String get chatSendFileKeepsMetadata =>
+      'A photo or video sent as a file keeps any location saved in it.';
 
   @override
   String get chatLoadingTitle => 'Loading messages…';
@@ -492,9 +518,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtlDisabledLabel => 'Off';
 
   @override
-  String get chatAttachmentStateBanner => 'Attachment';
-
-  @override
   String get chatAttachmentCannotOpen => 'Can\'t open in this version';
 
   @override
@@ -516,6 +539,52 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatAttachmentKindVoice => 'Voice message';
+
+  @override
+  String get chatPhotoUnavailable => 'Photo not available';
+
+  @override
+  String get chatFileUnavailable => 'File not available';
+
+  @override
+  String get chatDownloadFailed => 'Couldn\'t download. Tap to retry.';
+
+  @override
+  String get chatDownloadAction => 'Download';
+
+  @override
+  String get chatDownloading => 'Downloading';
+
+  @override
+  String get chatCancelDownload => 'Cancel download';
+
+  @override
+  String get chatOpenAction => 'Open';
+
+  @override
+  String get chatOpenFileNoApp => 'No app found to open this file';
+
+  @override
+  String get chatOpenFileFailed => 'Couldn\'t open the file';
+
+  @override
+  String get chatSaveAction => 'Save';
+
+  @override
+  String get chatSaveTitle => 'Save to your phone?';
+
+  @override
+  String get chatSaveBody =>
+      'Other apps, and any cloud you save it to, can open it.';
+
+  @override
+  String get chatSaved => 'Saved';
+
+  @override
+  String get chatSaveFailed => 'Couldn\'t save. Try again.';
+
+  @override
+  String get viewerSenderYou => 'You';
 
   @override
   String get reactionsMoreTooltip => 'More reactions';
@@ -666,9 +735,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatRetrySend => 'Retry';
 
   @override
-  String get chatRetryUpload => 'Retry upload';
-
-  @override
   String get chatCancelAction => 'Cancel';
 
   @override
@@ -688,49 +754,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatDeliveryRead => 'Read';
-
-  @override
-  String get chatPhaseStaged => 'Ready';
-
-  @override
-  String get chatPhasePreparing => 'Preparing';
-
-  @override
-  String get chatPhaseUploading => 'Uploading';
-
-  @override
-  String get chatPhaseFinalizing => 'Finishing';
-
-  @override
-  String get chatPhaseFailed => 'Not sent';
-
-  @override
-  String get chatPhaseCanceled => 'Canceled';
-
-  @override
-  String chatPhaseDescStaged(String sizeLabel) {
-    return 'Encrypted and ready.$sizeLabel It uploads when you\'re online.';
-  }
-
-  @override
-  String get chatPhaseDescPreparing => 'Preparing the upload.';
-
-  @override
-  String get chatPhaseDescUploading => 'Uploading the encrypted file.';
-
-  @override
-  String get chatPhaseDescFinalizing => 'Attaching the file to the message.';
-
-  @override
-  String get chatPhaseDescFailed => 'The upload failed.';
-
-  @override
-  String get chatPhaseDescCanceled => 'The upload was canceled.';
-
-  @override
-  String chatAttachmentSizeBytes(int count) {
-    return ' $count bytes.';
-  }
 
   @override
   String chatTypingSuffix(String name) {
@@ -1006,6 +1029,54 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other: '$count unread messages',
       one: '1 unread message',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get conversationsMarkRead => 'Mark as read';
+
+  @override
+  String get conversationsMarkUnread => 'Mark as unread';
+
+  @override
+  String get conversationsMarkedUnreadSemantics => 'Marked unread';
+
+  @override
+  String navChatsUnreadSemantics(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unread chats',
+      one: '1 unread chat',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatUnreadDivider(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unread messages',
+      one: '1 unread message',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get chatUnreadDividerNoCount => 'Unread messages';
+
+  @override
+  String get chatScrollToBottom => 'Scroll to bottom';
+
+  @override
+  String chatNewBelowSemantics(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count new messages',
+      one: '1 new message',
     );
     return '$_temp0';
   }
@@ -1811,4 +1882,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String safetyAccountNotFound(String handle) {
     return 'Couldn\'t find @$handle';
   }
+
+  @override
+  String get errorRequestRejected => 'The server didn\'t accept that.';
 }

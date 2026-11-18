@@ -28,4 +28,19 @@ void main() {
     await handle.clearAll();
     expect(await handle.get(record.messageKey), isNull);
   });
+
+  test('without the database no content counts as unqueued: there is no queue to compare it with', () async {
+    final handle = CacheHandle(() async => throw StateError('the database cannot be opened'));
+    await handle.put(MessageContentRecord(
+      messageKey: localMessageContentKey('client-1'),
+      conversationId: 'conv-1',
+      clientMessageId: 'client-1',
+      body: 'never queued',
+      kind: MessageKind.text,
+      status: MessageContentStatus.ok,
+      createdAt: DateTime.utc(2026, 11, 1),
+      updatedAt: DateTime.utc(2026, 11, 1),
+    ));
+    expect(await handle.unqueuedOutbound(), isEmpty);
+  });
 }

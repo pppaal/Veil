@@ -45,8 +45,8 @@ Additional hardening in the current branch:
 
 The local conversation cache is protected with an app-layer encrypted-at-rest wrapper and an encrypted SQLite container.
 
-- cache rows store encrypted values only
-- peer handles, display names, and message-type metadata are encrypted before persistence
+- message contents, keys and the fields that name or describe a message (peer handles, display names, message-type metadata, attachment pointers) are encrypted before persistence
+- ids, conversation orders, timestamps and delivery states are plain columns, as are the read marks and the media index below: the database file's own encryption is all that protects them
 - unencrypted legacy payloads are rejected
 - cache schema upgrade clears legacy rows that predate the stricter metadata encryption
 - SQLite opens from app-support storage, not user-facing documents storage
@@ -57,6 +57,118 @@ The local conversation cache is protected with an app-layer encrypted-at-rest wr
 - wiping local device state rotates away the cache key and clears cached rows
 
 This is still a private-beta posture, not an audited secure database design.
+
+### Read marks
+
+Unread counts come from one read mark per chat in the `conversation_read_marks`
+table: the conversation order of the newest message read on this phone and
+whether the chat was marked unread. The count itself is never stored, and the
+server learns nothing from it. A read receipt goes out only when receipts are
+on, and never from a chat that waits on a safety number change or an account
+hold, from a 1:1 whose account has a safety number change waiting in another
+chat, or from a 1:1 with a blocked account. A new database holds one reserved
+row, `~baseline` (no relay id can take that form), which the first chat list
+after it spends: every listed chat is marked read through its last message,
+so a phone that was just set up or moved to shows no badges for what its
+chats held before. Sign-out and wipe (`clearAll`) and the upgrade to schema
+12 write that row again.
+
+## Photos and files
+
+### Sealed media folder
+
+Downloaded and sent attachments are kept sealed, exactly as they were
+uploaded or downloaded and checked against their digest, in one flat folder
+(`veil_media/` under the app support folder). Each blob has a random name of
+64 hex characters that says nothing about its message. Which blob belongs to
+which message (conversation id, attachment id, digest, size, expiry, last use)
+is kept only in the `media_blobs` table inside the encrypted database, and the
+blob's key stays in the encrypted content store. Recency is that table's
+column: the app never reads or sets the files' own times. So someone who can
+read the app's sandbox still sees how many blobs there are, their padded
+sizes and the file system's times on each file, which show roughly when each
+was written: when you sent it, when a photo of up to 10 MB arrived (for one
+that arrived while the app was closed or locked, at the next unlock; for a
+photo that missed that, such as one past the 50 queued in a chat, when it first
+came on screen), or when you first opened a file or another photo with a tap.
+
+The folder is capped at 1 GiB, least recently used first, and never loses a
+blob whose upload is still pending. A blob goes when its message expires, when
+its chat leaves the list (also while the app was closed: the first list after a
+start is compared with the cached one), and on sign-out and wipe; at start,
+files without a row and rows without a file are deleted, and so is the blob of
+a send the app stopped before queuing it. The folder is excluded from backup.
+
+### Decrypted bytes
+
+A photo is decrypted in memory when it is shown, into a cache of at most 48 MB
+keyed by conversation id, attachment id, digest and the pointer's key (so a
+reused attachment id never returns another message's bytes), and Flutter's image cache. Both are
+emptied when the app locks, on sign-out and on wipe, and an entry goes when
+its blob does. A photo open in the viewer leaves the screen at the lock, so
+nothing decodes it again behind the lock screen. Showing a photo writes
+nothing decrypted to disk; opening a file and saving a photo or a file do
+(below).
+
+### Plaintext copies to open a file or save a photo or a file
+
+Opening a file (in another app, in Quick Look or in the in-app viewer), and
+saving a photo or a file, needs a plaintext file. It is written to
+`veil_open/<random>/<name>` under the app's cache folder (what
+`getTemporaryDirectory()` returns: `cacheDir` on Android, `Library/Caches` on
+iOS, not `tmp/`), and deleted:
+
+- on iOS, when Quick Look closes, whether the user or the lock closed it;
+- for a Save copy, when the save screen returns, and on lock;
+- when its message expires;
+- by a sweep every 60 seconds while the app runs, and on resume, for any copy
+  older than 10 minutes;
+- at every start, first thing, while the lock screen still shows (so a copy
+  left by a run that was killed never waits for an unlock), and on sign-out
+  and wipe.
+
+An Android copy opened in another app is not deleted on lock, since that app
+may still be reading it. The app a file is opened with, and wherever the user
+saves it, may keep its own copy, which Veil cannot reach; the Save dialog says
+so ("Other apps, and any cloud you save it to, can open it.").
+
+### Picker and save copies
+
+The pickers and the save screen write copies of their own. On Android,
+`image_picker` writes to `cacheDir/<uuid>/` and `flutter_file_dialog` to
+`cacheDir/file_dialog-<uuid>/`; Veil moves each picked copy into its staging
+folder or deletes it at once. On iOS both plugins write to the system
+temporary folder (`tmp/`, `NSTemporaryDirectory()`): `image_picker_*` files,
+the picked file under its original name, the copy handed to the save screen
+and the document picker's `-Inbox/` folder. Veil empties that folder after
+each pick has been copied into staging, after each save returns, and on
+sign-out and wipe. A picked photo or file is a plaintext copy in staging
+(`veil_attachment_cache` in the same cache folder, under an opaque name)
+until it is sealed, the pick is cancelled, or 10 minutes after a lock held it
+for its chat.
+
+At every start, first thing, while the lock screen still shows, Veil empties
+staging, deletes Android's picker folders (`<uuid>/` and
+`file_dialog-<uuid>/` in the cache folder, which takes Android's lost picks
+too, a pick whose activity died) and empties iOS's `tmp/`. So no plaintext
+pick or save copy that a crash left survives a restart, under its real name or
+any other. The first chat opened after a start checks for lost picks and
+empties iOS's `tmp/` again.
+
+### Opening a file in another app
+
+There is no third-party file opener. The app's own channel, `veil/file_open`,
+opens a file. On Android it starts the viewer with `ACTION_VIEW` in a new task
+(`FLAG_ACTIVITY_NEW_TASK`, `FLAG_ACTIVITY_MULTIPLE_TASK`, a read grant only),
+through the app's own FileProvider, which serves `veil_open/` and nothing else.
+On iOS it presents Quick Look over the app. On iOS a photo or video that the
+in-app viewer cannot show goes to the Save flow instead of Quick Look. The
+Windows desktop build has no File and no Save and hands no file to another
+app: it opens a received file only when it is a photo, in the in-app viewer.
+Its temporary folder is the user's shared `%TEMP%`, not a sandbox: a picked
+photo in staging and a copy in `veil_open/` sit there while they last, where
+other programs running as the same Windows user can read them, and a sign-out
+or wipe deletes only those two folders in it.
 
 ## App lock and privacy posture
 
@@ -73,7 +185,12 @@ When VEIL leaves the foreground:
 - Android sets a secure window flag to block screenshots and recent-app thumbnails
 - iOS installs a native privacy shield over the scene before app-switcher snapshots
 - the Flutter UI is also obscured for app-switcher privacy
-- the app lock is re-armed
+- the app lock is re-armed. Only on Android does a system screen the user
+  opened from Veil hold it off: while a photo picker, the file picker or the
+  save screen is up, Veil is not locked, and the return locks only if that
+  screen opened more than 3 minutes before. On iOS those screens and Quick
+  Look are inside the app, so opening one is not leaving it, and leaving with
+  one up locks at once (below)
 - the privacy shield remains long enough to reduce resume-time content flashes
 
 This protects preview surfaces without claiming universal screenshot blocking across all platforms. iOS public APIs still do not offer full screenshot blocking.
@@ -83,6 +200,38 @@ Biometric platform notes:
 - Android declares biometric usage explicitly and keeps backup disabled at the app manifest level
 - iOS declares Face ID usage text and keeps local unlock device-bound
 - local unlock is blocked when rooted or jailbroken heuristics trigger
+
+### The lock and system screens
+
+A photo picker, the file picker, the save screen and, on iOS, Quick Look are
+screens the user opens from Veil and expects to come back from. They run inside
+`SystemSheetGrace` (`apps/mobile/lib/src/app/system_sheet_grace.dart`):
+
+- On iOS they are presented inside the app, so the lifecycle changes they
+  cause are not the user leaving. The lock follows only a real move to the
+  background (the scene's own background event, as Home without a sheet), and
+  that also closes them. A sheet that has been up for 3 minutes no longer
+  holds the lock off.
+- On Android a picker or the save screen is another app's screen, so Veil is
+  hidden while it is up and is not locked for it. The next return to Veil
+  locks if the screen opened more than 3 minutes before. So going Home from a
+  picker leaves Veil unlocked for up to 3 minutes. Time is counted on the wall
+  clock and on a monotonic clock, whichever says more, and a wall clock set
+  back counts as past the limit. One gap remains: the monotonic clock stops
+  while the phone sleeps, so a phone that sleeps while away and has its date
+  set back to just after the picker opened comes back unlocked.
+- Opening a file in another app on Android gets no grace: Veil locks as soon
+  as it is hidden, and the file opens in that app's own task, so returning to
+  Veil from the launcher or the app switcher shows the lock screen, never the
+  file.
+
+Every lock ends a running picker or save screen as cancelled. A pick the
+plugin still delivers afterwards is staged and held for the chat it was picked
+in; a save that still completes is left where the user saved it (the Save copy
+under `veil_open/` is deleted on lock either way). On iOS the lock also closes Quick Look and every
+presented sheet, without animation, and the native privacy cover stays up
+until the lock screen has been drawn (or the app is unlocked, or 1.5 seconds
+after it became active), so the document never shows between the two.
 
 ## Device lifecycle actions
 
@@ -145,7 +294,7 @@ Native platform backup paths are intentionally constrained:
 
 - Android manifest backup is disabled with `allowBackup="false"`
 - Android data extraction rules exclude cloud backup and device-to-device transfer
-- iOS cache and attachment directories are marked as excluded from backup where the platform allows per-path control
+- iOS cache, media and attachment directories are marked as excluded from backup where the platform allows per-path control
 
 VEIL does not add any recovery export or shadow-copy path on top of these controls.
 

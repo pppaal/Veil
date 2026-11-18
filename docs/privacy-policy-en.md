@@ -1,7 +1,7 @@
 # Veil privacy policy
 
 Effective: 2026-04-20
-Last updated: 2026-11-16
+Last updated: 2026-11-18
 
 Veil ("the service") collects the absolute minimum data required to operate an end-to-end encrypted messenger. This policy describes what we collect, why, how long we keep it, and the rights users hold. It is written to satisfy Korea's Personal Information Protection Act (PIPA) alongside general privacy expectations.
 
@@ -12,6 +12,7 @@ The service collects only:
 - A random account ID and device ID that the server assigns when you register, linked to your handle.
 - A user-chosen handle.
 - End-to-end encrypted message payloads that the server cannot decrypt.
+- Photos, files and voice messages you send, encrypted on your device so the server cannot open them, with their size and a checksum of the encrypted data. They are deleted with the message they belong to.
 - The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).
 - Your in-app contact list: which accounts you added. The names you give them stay on your device.
 - Call records: the conversation, the device that started the call, voice or video, its status (ringing, in progress, ended, missed or declined), when it started and ended, and its duration. They are deleted after 30 days.

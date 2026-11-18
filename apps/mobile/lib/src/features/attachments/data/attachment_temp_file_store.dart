@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../core/network/veil_api_exception.dart';
 import 'attachment_storage_paths.dart';
 
 class AttachmentTempBlob {
@@ -23,6 +23,9 @@ class AttachmentTempBlob {
 }
 
 abstract class AttachmentTempFileStore {
+  /// The staged file at [existingPath], with its size and digest. A file
+  /// that is not there fails with attachment_upload_invalid: nothing is
+  /// ever made up in its place.
   Future<AttachmentTempBlob> createOpaqueBlob({
     required String filename,
     required int sizeBytes,
@@ -31,6 +34,9 @@ abstract class AttachmentTempFileStore {
 
   Future<void> deleteTempFile(String? path);
 
+  /// Deletes every staging entry not in [keepPaths], whatever its age and
+  /// however few there are: nothing in staging is wanted after a restart
+  /// (D39). [maxAge] and [maxFileCount] no longer change that.
   Future<void> cleanupOrphanedFiles({
     Iterable<String> keepPaths,
     Duration maxAge,
@@ -46,7 +52,6 @@ class DefaultAttachmentTempFileStore implements AttachmentTempFileStore {
   DefaultAttachmentTempFileStore({required AttachmentStoragePaths paths}) : _paths = paths;
 
   final AttachmentStoragePaths _paths;
-  final Random _random = Random.secure();
 
   static const defaultMaxAge = Duration(hours: 24);
   static const defaultMaxFileCount = 32;
@@ -57,43 +62,15 @@ class DefaultAttachmentTempFileStore implements AttachmentTempFileStore {
     required int sizeBytes,
     String? existingPath,
   }) async {
-    if (existingPath != null && existingPath.isNotEmpty) {
-      final existingFile = File(existingPath);
-      if (await existingFile.exists()) {
-        return AttachmentTempBlob(
-          path: existingFile.path,
-          filename: filename,
-          sizeBytes: await existingFile.length(),
-          sha256: await _digestFile(existingFile),
-          createdAt: await existingFile.lastModified(),
-        );
-      }
+    final file = existingPath == null || existingPath.isEmpty ? null : File(existingPath);
+    if (file == null || !await file.exists()) {
+      throw VeilApiException('The staged file is gone.', code: 'attachment_upload_invalid');
     }
-
-    final directory = await _resolveDirectory();
-    final opaqueId = _randomToken(24);
-    final file = File(
-      p.join(
-        directory.path,
-        '${DateTime.now().microsecondsSinceEpoch}_$opaqueId.blob',
-      ),
-    );
-
-    final sink = file.openWrite();
-    var remaining = sizeBytes;
-    while (remaining > 0) {
-      final chunkSize = remaining > 8192 ? 8192 : remaining;
-      final chunk = List<int>.generate(chunkSize, (_) => _random.nextInt(256));
-      sink.add(chunk);
-      remaining -= chunkSize;
-    }
-    await sink.close();
-
     return AttachmentTempBlob(
       path: file.path,
       filename: filename,
-      sizeBytes: sizeBytes,
-      sha256: await _digestFile(file),
+      sizeBytes: await file.length(),
+      sha256: (await sha256.bind(file.openRead()).first).toString(),
       createdAt: await file.lastModified(),
     );
   }
@@ -115,61 +92,19 @@ class DefaultAttachmentTempFileStore implements AttachmentTempFileStore {
     Duration maxAge = defaultMaxAge,
     int maxFileCount = defaultMaxFileCount,
   }) async {
-    final directory = await _resolveDirectory();
-    if (!await directory.exists()) {
-      return;
-    }
-
-    final keep = keepPaths.where((value) => value.isNotEmpty).toSet();
-    final entities = await directory
-        .list()
-        .where((entity) => entity is File)
-        .cast<File>()
-        .toList();
-    final now = DateTime.now();
-    final candidates = <File>[];
-    for (final file in entities) {
-      if (keep.contains(file.path)) {
-        continue;
+    final keep = {for (final path in keepPaths) if (path.isNotEmpty) p.normalize(path)};
+    if (keep.isEmpty) return _paths.purgeStaging();
+    final directory = await _paths.stagingDir();
+    await for (final entity in directory.list(followLinks: false)) {
+      if (keep.contains(p.normalize(entity.path))) continue;
+      try {
+        await entity.delete(recursive: true);
+      } on PathNotFoundException {
+        // Gone already.
       }
-      final modifiedAt = await file.lastModified();
-      if (now.difference(modifiedAt) > maxAge) {
-        await file.delete();
-        continue;
-      }
-      candidates.add(file);
-    }
-
-    if (candidates.length <= maxFileCount) {
-      return;
-    }
-
-    candidates.sort((left, right) {
-      final leftStamp = left.statSync().modified;
-      final rightStamp = right.statSync().modified;
-      return leftStamp.compareTo(rightStamp);
-    });
-    final overflow = candidates.length - maxFileCount;
-    for (final file in candidates.take(overflow)) {
-      await file.delete();
     }
   }
 
   @override
   Future<void> purgeAll() => _paths.purgeAll();
-
-  Future<Directory> _resolveDirectory() => _paths.stagingDir();
-
-  Future<String> _digestFile(File file) async {
-    final bytes = await file.readAsBytes();
-    return sha256.convert(bytes).toString();
-  }
-
-  String _randomToken(int length) {
-    const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    return List<String>.generate(
-      length,
-      (_) => alphabet[_random.nextInt(alphabet.length)],
-    ).join();
-  }
 }

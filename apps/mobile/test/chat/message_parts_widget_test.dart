@@ -6,11 +6,11 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_file_card.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_read_glyph.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_time.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
-import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -36,32 +36,9 @@ AttachmentReference _reference(String contentType, int sizeBytes) => AttachmentR
       nonce: 'nonce',
     );
 
-AttachmentTransferSnapshot _transfer(
-  AttachmentTransferPhase phase, {
-  double progress = 0,
-  String? filename,
-  String? contentType,
-  int? sizeBytes,
-  String? errorMessage,
-}) =>
-    AttachmentTransferSnapshot(
-      clientMessageId: 'client-1',
-      phase: phase,
-      progress: progress,
-      filename: filename,
-      contentType: contentType,
-      sizeBytes: sizeBytes,
-      errorMessage: errorMessage,
-      canRetry: false,
-      canCancel: false,
-    );
-
-double? _progressValue(WidgetTester tester) =>
-    tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value;
-
 void main() {
   group('MessageAttachmentCard', () {
-    testWidgets('in a build that cannot open attachments: the name, the type and size, and the line that says so',
+    testWidgets('an attachment this version cannot open: the name, the type and size, and the line that says so',
         (tester) async {
       await tester.pumpWidget(_app(MessageAttachmentCard(
         attachment: _reference('application/pdf', 3 * 1024 * 1024),
@@ -69,8 +46,10 @@ void main() {
       )));
 
       expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
-      // One card says it all, as WhatsApp's file card does.
-      expect(find.text('lease-signed.pdf'), findsOneWidget);
+      // One card says it all, as WhatsApp's file card does; the name on one
+      // line, cut in the middle as the file card's is.
+      expect(find.byWidgetPredicate((widget) => widget is MiddleEllipsisText && widget.text == 'lease-signed.pdf'),
+          findsOneWidget);
       expect(find.text('PDF · 3 MB'), findsOneWidget);
       expect(find.text(l10n.chatAttachmentCannotOpen), findsOneWidget);
       expect(find.byType(TextButton), findsNothing);
@@ -95,8 +74,8 @@ void main() {
       expect(find.text('Audio · 56 KB'), findsOneWidget);
     });
 
-    // The card has no download button and no ticket state any more: every
-    // received attachment says this version can't open it, a photo too.
+    // The card has no download button and no ticket state: a pointer this
+    // version does not open (not v2) says so, a photo's too.
     testWidgets('a photo says so as well, with no button', (tester) async {
       await tester.pumpWidget(_app(MessageAttachmentCard(attachment: _reference('image/png', 512))));
       expect(find.text('Photo · 512 B'), findsOneWidget);
@@ -104,90 +83,29 @@ void main() {
       expect(find.byType(TextButton), findsNothing);
     });
 
-    testWidgets('a flat tile: grey only on the brand fill of an own bubble, never a border', (tester) async {
-      Future<BoxDecoration?> tile({required bool framed}) async {
+    testWidgets('drawn as the file card is: a 40 dp circle, white at 20% on the brand fill, and no tile or border',
+        (tester) async {
+      Future<BoxDecoration> circle({required bool onBrand}) async {
         await tester.pumpWidget(_app(MessageAttachmentCard(
           attachment: _reference('image/png', 512),
-          framed: framed,
+          onBrand: onBrand,
         )));
-        final boxes = tester.widgetList<DecoratedBox>(
-          find.descendant(of: find.byType(MessageAttachmentCard), matching: find.byType(DecoratedBox)),
-        );
-        return boxes.isEmpty ? null : boxes.first.decoration as BoxDecoration;
+        final boxes = find.descendant(of: find.byType(MessageAttachmentCard), matching: find.byType(DecoratedBox));
+        expect(boxes, findsOneWidget, reason: 'one circle, no tile around the card');
+        expect(tester.getSize(boxes), const Size(40, 40));
+        return tester.widget<DecoratedBox>(boxes).decoration as BoxDecoration;
       }
 
-      expect(await tile(framed: false), isNull, reason: 'in a grey bubble the bubble is the tile');
-      final framed = await tile(framed: true);
+      final grey = await circle(onBrand: false);
       final palette = tester.element(find.byType(MessageAttachmentCard)).veilPalette;
-      expect(framed?.color, palette.surfaceAlt);
-      expect(framed?.border, isNull);
-      expect(framed?.borderRadius, BorderRadius.circular(VeilRadius.md));
-    });
-  });
-
-  group('AttachmentTransferPanel', () {
-    Widget panel(AttachmentTransferSnapshot snapshot, {VoidCallback? onRetry, VoidCallback? onCancel}) => _app(
-          AttachmentTransferPanel(
-            snapshot: snapshot,
-            color: Colors.white,
-            mutedColor: Colors.white70,
-            onRetry: onRetry,
-            onCancel: onCancel,
-          ),
-        );
-
-    testWidgets('an upload in flight shows its file, what is happening and its progress, and cancel where offered',
-        (tester) async {
-      var canceled = 0;
-      await tester.pumpWidget(panel(
-        _transfer(AttachmentTransferPhase.uploading, progress: 0.42, filename: 'scan.pdf', contentType: 'application/pdf'),
-        onCancel: () => canceled++,
-      ));
-
-      expect(find.text('scan.pdf'), findsOneWidget);
-      expect(find.text(l10n.chatPhaseDescUploading), findsOneWidget);
-      expect(_progressValue(tester), 0.42);
-      // The phase and the share done are words under the bar, not pills.
-      expect(find.text(l10n.chatPhaseUploading), findsOneWidget);
-      expect(find.text('42%'), findsOneWidget);
-      expect(find.text(l10n.chatRetryUpload), findsNothing);
-      expect(find.text(l10n.chatAttachmentStateBanner), findsNothing);
-
-      await tester.tap(find.text(l10n.chatCancelAction));
-      expect(canceled, 1);
-    });
-
-    testWidgets('a failed upload of an unnamed file says what failed and offers a retry', (tester) async {
-      var retried = 0;
-      await tester.pumpWidget(panel(
-        _transfer(AttachmentTransferPhase.failed, progress: 0.6, contentType: 'image/jpeg', errorMessage: 'upload refused'),
-        onRetry: () => retried++,
-      ));
-
-      expect(find.text('Photo'), findsOneWidget);
-      expect(find.text(l10n.chatPhaseFailed), findsOneWidget);
-      // The error is the description and the notice's message.
-      expect(find.text('upload refused'), findsNWidgets(2));
-      expect(find.widgetWithText(VeilNotice, l10n.chatAttachmentStateBanner), findsOneWidget);
-      expect(_progressValue(tester), 0.6);
-      expect(find.text(l10n.chatCancelAction), findsNothing);
-
-      await tester.tap(find.text(l10n.chatRetryUpload));
-      expect(retried, 1);
-    });
-
-    testWidgets('a staged upload states its size; preparing and finalizing have no fixed progress',
-        (tester) async {
-      await tester.pumpWidget(panel(_transfer(AttachmentTransferPhase.staged, sizeBytes: 512)));
-      expect(find.text(l10n.chatPhaseDescStaged(' 512 bytes.')), findsOneWidget);
-      expect(find.text('File'), findsOneWidget);
-      expect(_progressValue(tester), 0);
-      expect(find.byType(TextButton), findsNothing);
-
-      for (final phase in [AttachmentTransferPhase.preparing, AttachmentTransferPhase.finalizing]) {
-        await tester.pumpWidget(panel(_transfer(phase, progress: 0.5)));
-        expect(_progressValue(tester), isNull, reason: '$phase');
-      }
+      // Dark: strokeStrong, as the file card's circle on a grey bubble.
+      expect(grey.color, palette.strokeStrong);
+      expect(grey.shape, BoxShape.circle);
+      expect(grey.border, isNull);
+      final brand = await circle(onBrand: true);
+      expect(brand.color, Colors.white.withValues(alpha: 0.2));
+      expect(brand.border, isNull);
+      expect(tester.widget<Text>(find.text(l10n.chatAttachmentCannotOpen)).style?.color, palette.outgoingMeta);
     });
   });
 

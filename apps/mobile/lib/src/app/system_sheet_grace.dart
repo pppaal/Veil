@@ -70,8 +70,8 @@ class SystemSheetGrace {
   /// Runs [openSheet], the call that shows [sheet] and completes when it
   /// closes. Completes with its result, or throws [SheetClosedByLock] when
   /// the session locked while it ran; a result that still arrives later is
-  /// handed to [onLateResult] (the attach flow holds it; every other caller
-  /// deletes the file it names). The sheet ends when [run] ends, with a
+  /// handed to [onLateResult] (the attach flow stages and holds a late pick;
+  /// a late save names where the user saved, so the save passes none). The sheet ends when [run] ends, with a
   /// result or an error.
   Future<T> run<T>(SystemSheet sheet, Future<T> Function() openSheet, {void Function(T late)? onLateResult}) {
     if (sheet == SystemSheet.quickLook && !isIOS) {
@@ -108,6 +108,12 @@ class SystemSheetGrace {
 
   /// Whether a sheet is up now.
   bool get sheetRunning => _running.isNotEmpty;
+
+  /// How many times the session has locked ([closeAllForLock]): a caller
+  /// that reads it before handing something over and again right before
+  /// the hand-over knows whether the app locked in between.
+  int get locks => _locks;
+  int _locks = 0;
 
   /// Whether this lifecycle change locks the app now (D40 a).
   bool shouldLockOn(AppLifecycleState state) {
@@ -148,6 +154,7 @@ class SystemSheetGrace {
 
   /// The session locked: every running [run] throws [SheetClosedByLock].
   void closeAllForLock() {
+    _locks += 1;
     final closing = List.of(_running);
     _running.clear();
     _awaySheetOpenedAt = null;

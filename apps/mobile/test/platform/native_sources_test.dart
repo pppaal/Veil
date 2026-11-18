@@ -64,6 +64,9 @@ void main() {
       '"veil_open"',
       'FileOpenPlugin.register(with: registrar)',
       'static func presentationDismissedByLock()',
+      // Once the lock has engaged, nothing is presented over it.
+      '"locked"',
+      'sessionLocked == true',
       // The lock calls reach the scene.
       'case "lockEngaged":',
       'case "lockScreenShown":',
@@ -72,6 +75,9 @@ void main() {
     ]) {
       expect(code, contains(needed), reason: needed);
     }
+    // The lock is checked before anything is presented.
+    final handle = code.substring(code.indexOf('func handle(_ call: FlutterMethodCall'));
+    expect(handle.indexOf('Self.appLocked()'), allOf(isNonNegative, lessThan(handle.indexOf('presenter.present('))));
     // No new Swift file: project.pbxproj names none.
     final project = _read('ios/Runner.xcodeproj/project.pbxproj');
     expect(project, isNot(contains('FileOpen')));

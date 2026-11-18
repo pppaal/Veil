@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter/widgets.dart' show Locale;
+import 'package:flutter_test/flutter_test.dart' show TestWidgetsFlutterBinding;
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
@@ -7,6 +11,7 @@ import 'package:veil_mobile/src/features/conversations/data/conversation_models.
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../../support/fake_relay.dart';
+import '../../support/media_fixtures.dart';
 import 'layout_world.dart';
 
 // What the layout cases show: the chats of an ordinary Tuesday morning,
@@ -268,7 +273,11 @@ Future<void> seedConversations(
     final sender = line.mine ? selfHandle : peer;
     final recipient = line.mine ? peer : selfHandle;
     final body = line.kind == MessageKind.system && line.body.isEmpty ? keyChangeNotice : line.body;
-    final attachment = line.attachment ? _attachmentOf(line.kind) : null;
+    final attachment = !line.attachment
+        ? null
+        : line.kind == MessageKind.file
+            ? await _leaseOnRelay(relay)
+            : _attachmentOf(line.kind);
     final expiry = line.expires ? expiresAt : null;
     final envelope = await sealer.messaging.encryptMessage(
       conversationId: conversationId,
@@ -358,9 +367,42 @@ Future<void> seedConversations(
   }
 }
 
-// What each message with an attachment carries, by its kind: the signed
-// lease (a PDF), Omar's photo and Alexandra's voice message. This build
-// opens none of them, so each draws the "Can't open in this version" card.
+// The signed lease alex sent this morning, a PDF of 2.3 MB, sealed as the
+// phone seals a file (pointer v2, the media receive seed's sealV2), so its
+// bubble is the file card a sent file draws. Sealed once per run, in real
+// time: inside a widget test through runAsync, as the media receive seed
+// seals (a widget test's fake clock never finishes it); a plain test runs
+// in real time already, with or without a widget binding. The seed is the
+// same every time.
+const _leaseAttachmentId = '6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f';
+({AttachmentReference reference, Uint8List blob})? _sealedLease;
+
+Future<({AttachmentReference reference, Uint8List blob})> _sealLease() {
+  final head = pdfBytes('lease, signed by alex');
+  return sealV2(
+    [...head, ...List<int>.filled(2411724 - head.length, 0x20)],
+    attachmentId: _leaseAttachmentId,
+    contentType: 'application/pdf',
+    seed: 52,
+  );
+}
+
+Future<AttachmentReference> _leaseOnRelay(FakeRelay relay) async {
+  TestWidgetsFlutterBinding? binding;
+  try {
+    binding = TestWidgetsFlutterBinding.instance;
+  } on FlutterError {
+    binding = null;
+  }
+  final sealed = _sealedLease ??=
+      binding != null && binding.inTest ? (await binding.runAsync(_sealLease))! : await _sealLease();
+  relay.putUploadedBlob(_leaseAttachmentId, sealed.blob, uploaderDeviceId: 'dev-$selfHandle');
+  return sealed.reference;
+}
+
+// What Omar's photo and Alexandra's voice message carry: pointers of an
+// older kind this build does not open, so a bubble of either draws the
+// "Can't open in this version" card. The Chats rows show them by kind.
 AttachmentReference _attachmentOf(MessageKind kind) => switch (kind) {
       MessageKind.image => const AttachmentReference(
           attachmentId: '2b7e4c1a-9d3f-4e6b-8a5c-1f0e2d3c4b5a',
@@ -380,15 +422,7 @@ AttachmentReference _attachmentOf(MessageKind kind) => switch (kind) {
           encryptedKey: 'key',
           nonce: 'nonce',
         ),
-      _ => const AttachmentReference(
-          attachmentId: '6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f',
-          storageKey: 'attachments/6f1c2d3e/blob',
-          contentType: 'application/pdf',
-          sizeBytes: 2411724,
-          sha256: 'sha',
-          encryptedKey: 'key',
-          nonce: 'nonce',
-        ),
+      _ => throw ArgumentError.value(kind, 'kind', 'no legacy pointer'),
     };
 
 const _transferSessionId = layoutTransferSessionId;

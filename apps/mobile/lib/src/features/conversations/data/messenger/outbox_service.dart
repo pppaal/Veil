@@ -5,9 +5,11 @@ import '../../../../core/errors/user_facing_error.dart';
 import '../../../../core/network/veil_api_client.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
 import '../../../../core/util/uuid_v4.dart';
+import '../../../attachments/data/media_blob_store.dart';
 import '../../../attachments/domain/outgoing_attachment.dart';
 import '../conversation_models.dart';
 import '../group_sender_key_coordinator.dart';
+import 'attachment_sealer.dart';
 import 'attachment_transfer_service.dart';
 import 'conversation_crypto_router.dart';
 import 'conversation_peer_bindings.dart';
@@ -21,9 +23,12 @@ import 'messenger_state_store.dart';
 import 'pending_messages.dart';
 import 'retry_policy.dart';
 
-/// Messages on their way to the relay. A message is encrypted and queued
-/// at once, shown as pending, and sent oldest first; a send that fails is
-/// retried on a schedule (see retry_policy.dart) or left for the user.
+/// Messages on their way to the relay. A message is encrypted (an
+/// attachment sealed) and queued at once, shown as pending, and sent oldest
+/// first within its conversation; conversations drain on their own, so one
+/// chat's upload never holds back another chat's texts (D20). A send that
+/// fails is retried on a schedule (see retry_policy.dart) or left for the
+/// user.
 class OutboxService {
   OutboxService({
     required MessengerStateStore store,
@@ -35,6 +40,7 @@ class OutboxService {
     required PendingMessages pending,
     required AttachmentTransferService attachments,
     required MessengerOperationRunner ops,
+    MediaBlobStore? blobs,
     Duration retrySweepInterval = const Duration(seconds: 3),
     DateTime Function() expiryClock = DateTime.now,
   })  : _store = store,
@@ -45,6 +51,7 @@ class OutboxService {
         _contents = contents,
         _pending = pending,
         _attachments = attachments,
+        _sealer = AttachmentSealer(blobs: blobs, contents: contents),
         _ops = ops,
         _expiryClock = expiryClock {
     _retrySweep = Timer.periodic(retrySweepInterval, (_) => unawaited(drain()));
@@ -58,24 +65,26 @@ class OutboxService {
   final MessageContentService _contents;
   final PendingMessages _pending;
   final AttachmentTransferService _attachments;
+  final AttachmentSealer _sealer;
   final MessengerOperationRunner _ops;
   // The relay-corrected clock disappearing expiries are stamped on: the
   // relay refuses an expiry already past by its clock, and recipients
   // retire messages by theirs.
   final DateTime Function() _expiryClock;
   late final Timer _retrySweep;
-  bool _draining = false;
+  // The conversations draining now, and the send of each message under way.
+  final Set<String> _draining = {};
+  final Map<String, Future<void>> _inFlight = {};
 
   bool get hasPendingWork => !_pending.isEmpty;
 
   Iterable<String> get pendingConversationIds => _pending.all.map((pending) => pending.conversationId);
 
-  /// The attachment id of every queued upload already sealed, lower-cased:
-  /// blobs no cleanup may take.
+  /// The attachment id of every queued attachment, lower-cased: blobs no
+  /// cleanup may take while their message waits to go.
   Set<String> get pendingAttachmentIds => {
         for (final pending in _pending.all)
-          if (pending.attachmentUploadDraft?.sealedReference?.attachmentId case final id? when id.isNotEmpty)
-            id.toLowerCase(),
+          if (blobIdOf(pending) case final id? when id.isNotEmpty) id.toLowerCase(),
       };
 
   DateTime? nextRetryAt(String conversationId) {
@@ -117,138 +126,152 @@ class OutboxService {
     return queued;
   }
 
-  /// Queues a staged placeholder file as an attachment message.
-  Future<void> sendAttachmentPlaceholder(String conversationId, {required String filename}) async {
+  /// Seals [attachment] and queues it as a photo or file message, its staged
+  /// plaintext deleted either way; false when that failed (a held chat says
+  /// why in its banner). Its frame is encrypted after the upload, with the
+  /// timer [disappearAfter] stamped then (D18).
+  Future<bool> sendAttachment({
+    required String conversationId,
+    required OutgoingAttachment attachment,
+    Duration? disappearAfter,
+  }) async {
+    var queued = false;
     await _ops.run(() async {
-      final session = _session.requireAuthed();
-      final conversation = _store.requireConversation(conversationId);
+      late final AuthedSession session;
+      late final ConversationPreview conversation;
       final clientMessageId = _nextClientMessageId();
-      final tempBlob = await _attachments.stage(filename: filename);
-      final envelope = await _encryptOutbound(
-        conversation: conversation,
-        senderDeviceId: session.deviceId,
+      final sealed = await _sealer.sealAndStore(
+        conversationId: conversationId,
         clientMessageId: clientMessageId,
-        body: attachmentMessageBody,
-        messageKind: MessageKind.file,
+        attachment: attachment,
+        senderDeviceId: () => session.deviceId,
+        precheck: () async {
+          session = _session.requireAuthed();
+          conversation = _store.requireConversation(conversationId);
+          await _crypto.checkAttachmentSend(conversation);
+        },
       );
       await _enqueue(
         conversation: conversation,
         senderDeviceId: session.deviceId,
         clientMessageId: clientMessageId,
-        envelope: envelope,
-        draft: AttachmentUploadDraft(
-          filename: filename,
-          contentType: AttachmentTransferService.guessContentType(filename),
-          sizeBytes: tempBlob.sizeBytes,
-          sha256: tempBlob.sha256,
-          tempFilePath: tempBlob.path,
-          lastUpdatedAt: tempBlob.createdAt,
+        envelope: placeholderEnvelope(
+          conversation: conversation,
+          senderDeviceId: session.deviceId,
+          kind: messageKindOf(attachment),
+          attachmentId: sealed.reference.attachmentId,
         ),
+        draft: sealedDraft(attachment, sealed, disappearAfter: disappearAfter),
       );
+      queued = true;
       unawaited(drain(conversationId: conversationId));
     });
+    return queued;
   }
-
-  /// Seals [attachment] and queues it as a photo or file message; false when
-  /// that failed. Not built yet.
-  Future<bool> sendAttachment({
-    required String conversationId,
-    required OutgoingAttachment attachment,
-    Duration? disappearAfter,
-  }) async =>
-      throw UnimplementedError('Sending a photo or a file is not built yet.');
 
   /// Retries queued messages now, failed ones included.
   Future<void> retry([String? conversationId]) =>
       drain(conversationId: conversationId, markFailuresAsRetrying: true, ignoreRetrySchedule: true);
 
-  /// Sends what is due, oldest first. Only one drain runs at a time; a
-  /// failure is recorded on its message and the drain moves on, so one
-  /// stalled send never holds back the ones after it.
+  /// Sends what is due: [conversationId]'s messages, or with none every
+  /// conversation's, each conversation on its own and oldest first. A
+  /// conversation already draining is left to that drain. A failure is
+  /// recorded on its message and the drain moves on, so one stalled send
+  /// never holds back the ones after it.
   Future<void> drain({
     String? conversationId,
     bool markFailuresAsRetrying = false,
     bool ignoreRetrySchedule = false,
   }) async {
-    if (_session.isClosed || _draining || _session.authed == null) return;
-
-    _draining = true;
+    if (_session.isClosed || _session.authed == null) return;
+    final conversationIds = conversationId != null ? {conversationId} : pendingConversationIds.toSet();
+    final drains = [
+      for (final id in conversationIds)
+        if (_draining.add(id))
+          _drainConversation(id, markFailuresAsRetrying: markFailuresAsRetrying, ignoreRetrySchedule: ignoreRetrySchedule),
+    ];
+    if (drains.isEmpty) return;
     try {
-      final now = DateTime.now();
-      final due = _pending.all
-          .where((item) => conversationId == null || item.conversationId == conversationId)
-          .where((item) => markFailuresAsRetrying || item.state != MessageDeliveryState.failed)
-          .where((item) => ignoreRetrySchedule || item.nextRetryAt == null || !item.nextRetryAt!.isAfter(now))
-          .toList()
-        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      for (final pending in due) {
-        await _sendOne(pending, now);
-      }
+      await Future.wait(drains);
     } finally {
-      _draining = false;
       _store.changed();
     }
   }
 
-  /// Stops [clientMessageId]'s attachment upload and fails its message, so
-  /// the user may retry it.
+  // One message at a time, the oldest due first, taking in what is queued
+  // while it drains; each message is tried at most once per drain.
+  Future<void> _drainConversation(
+    String conversationId, {
+    required bool markFailuresAsRetrying,
+    required bool ignoreRetrySchedule,
+  }) async {
+    final tried = <String>{};
+    try {
+      while (!_session.isClosed && _session.authed != null) {
+        final now = DateTime.now();
+        final due = _pending.all
+            .where((item) => item.conversationId == conversationId && !tried.contains(item.clientMessageId))
+            .where((item) => markFailuresAsRetrying || item.state != MessageDeliveryState.failed)
+            .where((item) => ignoreRetrySchedule || item.nextRetryAt == null || !item.nextRetryAt!.isAfter(now))
+            .toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        if (due.isEmpty) return;
+        tried.add(due.first.clientMessageId);
+        await _sendOne(due.first, now);
+      }
+    } finally {
+      _draining.remove(conversationId);
+    }
+  }
+
+  /// Cancels [clientMessageId]'s attachment, which removes the message
+  /// (D19). The cancel wins every race: the send settling meanwhile writes
+  /// nothing back, and only then is anything deleted (see discard).
   Future<void> cancelAttachment(String clientMessageId) async {
     final pending = _pending[clientMessageId];
-    final draft = pending?.attachmentUploadDraft;
-    if (pending == null || draft == null) return;
-
+    if (pending == null || _pending.isCanceled(clientMessageId) || !isAttachmentRecord(pending)) return;
+    _pending.cancel(clientMessageId);
     _attachments.cancelUpload(clientMessageId);
-    final failed = pending.copyWith(
-      state: MessageDeliveryState.failed,
-      errorMessage: 'Attachment upload was canceled on this device.',
-      nextRetryAt: null,
-      lastAttemptAt: DateTime.now(),
-    );
-    await _pending.save(failed);
-    _setLocalState(clientMessageId, MessageDeliveryState.failed, errorMessage: failed.errorMessage);
-    _attachments.trackDraft(
-      clientMessageId,
-      draft,
-      phase: AttachmentTransferPhase.canceled,
-      errorMessage: failed.errorMessage,
-      canRetry: true,
-      canCancel: false,
-    );
-    _store.changed();
+    await _inFlight[clientMessageId];
+    await _attachments.discard(clientMessageId);
   }
 
   /// Takes back the queue the cache held and shows each queued message.
-  /// Returns the staging files still in use.
+  /// Returns the staging files still in use: none (D39), so hydrate's
+  /// cleanup empties staging. A draft an older build queued fails for good.
   Set<String> restore(List<PendingMessageRecord> records) {
-    _pending.restore(records);
-    final keepTempPaths = <String>{};
-    for (final pending in records) {
-      final draft = pending.attachmentUploadDraft;
-      if (draft?.tempFilePath case final path?) keepTempPaths.add(path);
-      if (draft != null) {
-        final failed = pending.state == MessageDeliveryState.failed;
-        _attachments.trackDraft(
-          pending.clientMessageId,
-          draft,
-          phase: failed ? AttachmentTransferPhase.failed : AttachmentTransferPhase.staged,
-          errorMessage: pending.errorMessage,
-          canRetry: failed,
-          canCancel: !failed,
-        );
-      }
+    final restored = [for (final record in records) isOldFormatDraft(record) ? failedOldDraft(record) : withBlobPointer(record)];
+    _pending.restore(restored);
+    for (final pending in restored) {
+      if (isOldFormatDraft(pending) && pending.state == MessageDeliveryState.failed) _pending.save(pending).ignore();
+      _attachments.trackRecord(pending);
       _store.setMessages(
         pending.conversationId,
         mergeMessageCollections(_store.messagesOf(pending.conversationId), [_optimisticMessage(pending)]),
       );
     }
-    return keepTempPaths;
+    return const <String>{};
   }
 
-  void clear() => _pending.clear();
+  void clear() {
+    _pending.clear();
+    _inFlight.clear();
+  }
 
   void dispose() => _retrySweep.cancel();
 
-  Future<void> _sendOne(PendingMessageRecord pending, DateTime now) async {
+  // Keeps its send under way where cancelAttachment can wait for it.
+  Future<void> _sendOne(PendingMessageRecord pending, DateTime now) {
+    final id = pending.clientMessageId;
+    final sending = _send(pending, now);
+    _inFlight[id] = sending;
+    return sending.whenComplete(() {
+      if (identical(_inFlight[id], sending)) _inFlight.remove(id);
+    });
+  }
+
+  Future<void> _send(PendingMessageRecord pending, DateTime now) async {
+    if (_pending.isCanceled(pending.clientMessageId)) return;
     final hasAttachment = pending.attachmentUploadDraft != null;
     var marked = pending.copyWith(
       retryCount: pending.retryCount + 1,
@@ -270,6 +293,12 @@ class OutboxService {
         await _pending.save(marked);
         _setLocalState(marked.clientMessageId, MessageDeliveryState.pending);
         _attachments.forget(marked.clientMessageId);
+      }
+      // A placeholder frame is never posted, and a cancelled message is
+      // not posted once cancelled.
+      if (marked.envelope.ciphertext.isEmpty) throw StateError('A queued attachment was about to go unsealed.');
+      if (_pending.isCanceled(marked.clientMessageId)) {
+        throw VeilApiException('Attachment upload canceled.', code: 'attachment_upload_canceled');
       }
 
       final groupEpoch = GroupSenderKeyCoordinator.epochOf(marked.envelope);
@@ -300,11 +329,13 @@ class OutboxService {
       await _pending.remove(marked.clientMessageId);
       _attachments.forget(marked.clientMessageId);
     } catch (error) {
+      // Stopped by the messenger closing, the record stays as it was saved,
+      // for the next start; cancelled meanwhile, cancelAttachment removes
+      // it, and nothing here may bring it back as "Not sent".
+      if (_session.isClosed || _pending.isCanceled(marked.clientMessageId)) return;
       await _ops.handleSecurityException(error);
-      // prepare() saves each step it completes (the sealed draft, its
-      // ticket). Building on the copy taken before it ran would drop the
-      // sealed reference, and the retry would try to re-seal a staging file
-      // that was deleted once sealed.
+      // prepare() saves each step it completes (its ticket). Building on
+      // the copy taken before it ran would drop it.
       final latest = _pending[marked.clientMessageId] ?? marked;
       final isTransient = shouldRetryAutomatically(error, latest.retryCount);
       final failed = latest.copyWith(
@@ -318,18 +349,7 @@ class OutboxService {
       );
       await _pending.save(failed);
       _setLocalState(marked.clientMessageId, failed.state, errorMessage: failed.errorMessage);
-      if (failed.attachmentUploadDraft case final draft?) {
-        _attachments.trackDraft(
-          failed.clientMessageId,
-          draft,
-          phase: extractVeilApiErrorCode(error) == 'attachment_upload_canceled'
-              ? AttachmentTransferPhase.canceled
-              : AttachmentTransferPhase.failed,
-          errorMessage: failed.errorMessage,
-          canRetry: true,
-          canCancel: false,
-        );
-      }
+      _attachments.trackRecord(failed, afterFailure: true);
       // An identity change or a held account is the conversation's issue,
       // not a global one.
       if (error is! IdentityChangedException && error is! PeerAccountHeldException) {

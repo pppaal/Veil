@@ -2,7 +2,6 @@ import 'dart:async';
 
 import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/realtime/realtime_events.dart';
-import '../../../../core/util/uuid_v4.dart';
 import '../conversation_models.dart';
 import '../group_sender_key_coordinator.dart';
 import 'conversation_peer_bindings.dart';
@@ -114,24 +113,13 @@ class ConversationCryptoRouter {
     }
   }
 
-  /// Seals an attachment under a random id: protocol v2 binds the id into
-  /// the blob's AAD, so it must exist before the relay tickets the upload.
-  /// Its storage key stays empty: recipients download by attachment id.
-  Future<AttachmentCipher> sealAttachment({
-    required ConversationPreview conversation,
-    required String contentType,
-    required List<int> plaintext,
-  }) async {
-    final recipientBundle = conversation.type == ConversationType.group
-        ? conversation.recipientBundle
-        : await _peers.bundleForSend(conversation);
-    return _engine.encryptAttachment(
-      attachmentId: randomUuidV4(),
-      storageKey: '',
-      contentType: contentType,
-      plaintext: plaintext,
-      recipientBundle: recipientBundle,
-    );
+  /// What must hold before an attachment for [conversation] is sealed or
+  /// uploaded: the same check a send makes, so a conversation held for an
+  /// identity change or an account seals and uploads nothing (it throws
+  /// as encrypt would). A group needs no lookup here.
+  Future<void> checkAttachmentSend(ConversationPreview conversation) async {
+    if (conversation.type == ConversationType.group) return;
+    await _peers.bundleForSend(conversation);
   }
 
   /// Opens [envelope]; [beforeCommit] stores its content before the engine

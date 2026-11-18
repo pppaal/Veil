@@ -4,8 +4,9 @@ import 'dart:io';
 import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/network/veil_api_client.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
-import '../../../attachments/data/attachment_temp_file_store.dart';
+import '../../../attachments/data/media_blob_store.dart';
 import '../conversation_models.dart';
+import 'attachment_sealer.dart';
 import 'conversation_crypto_router.dart';
 import 'message_content_service.dart';
 import 'messenger_api_mapper.dart';
@@ -47,12 +48,10 @@ class AttachmentTransferSnapshot {
   final bool canCancel;
 }
 
-/// What an attachment message says in its body; the file is the payload.
-const attachmentMessageBody = 'Encrypted attachment';
-
-/// Attachment uploads. A staged file is sealed on this device and only its
-/// ciphertext is ever uploaded; the message that points at it is encrypted
-/// once the upload completed.
+/// Attachment uploads. A queued attachment was sealed into the media folder
+/// when it was sent (AttachmentSealer); only that ciphertext is uploaded,
+/// and the message that points at it is encrypted once, after the upload
+/// completed, with its disappearing timer stamped then (D18).
 class AttachmentTransferService {
   AttachmentTransferService({
     required MessengerStateStore store,
@@ -62,8 +61,9 @@ class AttachmentTransferService {
     required ConversationCryptoRouter crypto,
     required MessageContentService contents,
     required PendingMessages pending,
-    required AttachmentTempFileStore? tempStore,
     required MessengerOperationRunner ops,
+    MediaBlobStore? blobs,
+    DateTime Function() expiryClock = DateTime.now,
   })  : _store = store,
         _session = session,
         _apiClient = apiClient,
@@ -71,7 +71,8 @@ class AttachmentTransferService {
         _crypto = crypto,
         _contents = contents,
         _pending = pending,
-        _tempStore = tempStore;
+        _blobsOrNull = blobs,
+        _expiryClock = expiryClock;
 
   // Upload progress is kept in memory on every callback but written to the
   // cache only this often: a restart resumes from a ticket, not a byte.
@@ -85,7 +86,9 @@ class AttachmentTransferService {
   final ConversationCryptoRouter _crypto;
   final MessageContentService _contents;
   final PendingMessages _pending;
-  final AttachmentTempFileStore? _tempStore;
+  final MediaBlobStore? _blobsOrNull;
+  // The relay-corrected clock disappearing expiries are stamped on.
+  final DateTime Function() _expiryClock;
   final Map<String, AttachmentTransferSnapshot> _transfers = {};
   final Map<String, AttachmentUploadCancellationSignal> _activeUploads = {};
 
@@ -123,11 +126,12 @@ class AttachmentTransferService {
     String? errorMessage,
     required bool canRetry,
     required bool canCancel,
+    double? progress,
   }) =>
       _track(
         clientMessageId,
         phase: phase,
-        progress: progressOf(draft),
+        progress: progress ?? progressOf(draft),
         errorMessage: errorMessage,
         filename: draft.filename,
         contentType: draft.contentType,
@@ -145,87 +149,127 @@ class AttachmentTransferService {
     return (draft.bytesUploaded / draft.sizeBytes).clamp(0, 1).toDouble();
   }
 
-  Future<AttachmentTempBlob> stage({required String filename, int sizeBytes = 2048}) =>
-      _requireTempStore().createOpaqueBlob(filename: filename, sizeBytes: sizeBytes);
-
-  static String guessContentType(String filename) {
-    final normalized = filename.toLowerCase();
-    if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg';
-    if (normalized.endsWith('.png')) return 'image/png';
-    if (normalized.endsWith('.webp')) return 'image/webp';
-    if (normalized.endsWith('.pdf')) return 'application/pdf';
-    return 'application/octet-stream';
-  }
-
-  /// Seals, tickets and uploads [pending]'s attachment, then encrypts the
-  /// message that points at it. Each completed step is saved on the record,
-  /// so a retry after a failure or a restart resumes from it.
+  /// Tickets and uploads [pending]'s sealed blob, then encrypts the message
+  /// that points at it, stamping its expiry from the chat's timer now. Each
+  /// completed step is saved on the record, so a retry after a failure or a
+  /// restart resumes from it; a message the user cancelled stops at the next
+  /// step. The blob is never deleted here: it stays for the sender's bubble.
   Future<PendingMessageRecord> prepare(PendingMessageRecord pending) async {
     var draft = pending.attachmentUploadDraft;
     if (draft == null) return pending;
-    final tempStore = _requireTempStore();
+    final id = pending.clientMessageId;
     final conversation = _store.conversationById(pending.conversationId) ??
         (throw StateError('The target conversation is no longer available.'));
-
-    if (draft.sealedReference == null) {
-      final (sealedDraft, plaintextPath) = await _seal(draft, conversation, tempStore);
-      draft = sealedDraft;
-      pending = pending.copyWith(attachmentUploadDraft: draft);
-      await _pending.save(pending);
-      await tempStore.deleteTempFile(plaintextPath);
-    } else if (draft.sealedReference!.attachmentId.isEmpty) {
-      // Sealed by an older build under an empty id, which no recipient can
-      // open, and the plaintext was deleted once sealed, so it cannot be
-      // re-sealed either. Failing it for good lets the user attach it again.
-      throw VeilApiException(
-        'This attachment was prepared by an older version of the app. Attach the file again.',
-        code: 'attachment_upload_invalid',
-      );
-    }
+    final reference = draft.sealedReference;
+    // A draft an older build queued (its placeholder frame encrypted, its
+    // file found by a path, or sealed under an empty id no recipient can
+    // open) is never sent as it is: the user attaches the file again.
+    if (reference == null || reference.attachmentId.isEmpty || isOldFormatDraft(pending)) throw _invalid();
+    // Found by the sealed id and digest, never by a stored path: an app
+    // update moves the container. A blob that is gone is never made up.
+    final blobPath =
+        await _blobs.pathOf(conversation.id, reference.attachmentId, reference.sha256) ?? (throw _invalid());
 
     draft = await _ensureUploadTicket(draft);
+    _throwIfCanceled(id);
     pending = pending.copyWith(attachmentUploadDraft: draft);
     await _pending.save(pending);
-    await _upload(pending, draft);
+    await _upload(pending, draft, blobPath);
+    _throwIfCanceled(id);
 
-    final session = _session.requireAuthed();
-    await _apiClient.completeUpload(session.accessToken, {
+    await _apiClient.completeUpload(_session.requireAuthed().accessToken, {
       'attachmentId': draft.attachmentId,
       'uploadStatus': 'uploaded',
     });
-    _activeUploads.remove(pending.clientMessageId);
-    _track(
-      pending.clientMessageId,
-      phase: AttachmentTransferPhase.finalizing,
-      progress: 1,
-      filename: draft.filename,
-      contentType: draft.contentType,
-      sizeBytes: draft.sizeBytes,
-      canRetry: false,
-      canCancel: false,
-    );
+    _activeUploads.remove(id);
+    _throwIfCanceled(id);
+    trackDraft(id, draft, phase: AttachmentTransferPhase.finalizing, progress: 1, canRetry: false, canCancel: false);
 
-    final attachment = draft.sealedReference!;
-    await _contents.storeOutbound(
-      conversationId: conversation.id,
-      clientMessageId: pending.clientMessageId,
-      senderDeviceId: pending.senderDeviceId,
-      body: attachmentMessageBody,
-      kind: MessageKind.file,
-      attachment: attachment,
-      expiresAt: pending.envelope.expiresAt,
-    );
+    // Stamped now, on the relay's clock, as a text is when it is sent: a
+    // stamp taken when the file was picked could pass during a slow upload
+    // and take the message, its content and its blob with it.
+    final seconds = draft.disappearAfterSeconds;
+    final expiresAt = seconds == null ? null : _expiryClock().add(Duration(seconds: seconds));
+    final kind = pending.envelope.messageKind;
+    final body = kind == MessageKind.image ? '' : draft.filename;
     final envelope = await _crypto.encrypt(
       conversation: conversation,
       senderDeviceId: pending.senderDeviceId,
-      body: attachmentMessageBody,
-      messageKind: MessageKind.file,
-      expiresAt: pending.envelope.expiresAt,
-      attachment: attachment,
+      body: body,
+      messageKind: kind,
+      expiresAt: expiresAt,
+      attachment: reference,
     );
-
-    await tempStore.deleteTempFile(draft.tempFilePath);
+    if (expiresAt != null) {
+      // In one step: the stored content, the blob's index entry and the
+      // bubble; the queued record takes the envelope from the caller.
+      await _contents.storeOutbound(
+        conversationId: conversation.id,
+        clientMessageId: id,
+        senderDeviceId: pending.senderDeviceId,
+        body: body,
+        kind: kind,
+        attachment: reference,
+        expiresAt: expiresAt,
+      );
+      await _blobs.setExpiry(conversation.id, reference.attachmentId, expiresAt);
+      _store.updateMessagesWhere(
+        (message) => message.clientMessageId == id,
+        (message) => message.copyWith(expiresAt: expiresAt),
+        inConversation: conversation.id,
+      );
+    }
     return pending.copyWith(envelope: envelope, attachmentUploadDraft: null, state: MessageDeliveryState.pending);
+  }
+
+  /// Shows a queued attachment's transfer as its record stands: waiting, or
+  /// failed (for good, or [afterFailure] until it is retried). The cross
+  /// stays on a failed one, so it can go.
+  void trackRecord(PendingMessageRecord pending, {bool afterFailure = false}) {
+    final id = pending.clientMessageId;
+    final failed = afterFailure || pending.state == MessageDeliveryState.failed;
+    final phase = failed ? AttachmentTransferPhase.failed : AttachmentTransferPhase.staged;
+    if (pending.attachmentUploadDraft case final draft?) {
+      trackDraft(id, draft, phase: phase, errorMessage: pending.errorMessage, canRetry: failed, canCancel: true);
+    } else if (pending.envelope.attachment case final reference?
+        when pending.state == MessageDeliveryState.failed && reference.attachmentId.isNotEmpty) {
+      // Uploaded and sealed, but the post failed: the same frame goes on a
+      // retry, or the message goes on a cancel.
+      _track(id,
+          phase: phase,
+          progress: 1,
+          errorMessage: pending.errorMessage,
+          contentType: reference.contentType,
+          sizeBytes: reference.sizeBytes,
+          canRetry: true,
+          canCancel: true);
+    }
+  }
+
+  /// Deletes what is left of the cancelled attachment [clientMessageId]
+  /// once its send settled (D19): the relay is told its upload failed, and
+  /// its queued record, its stored content, its sealed blob and its bubble
+  /// go. Nothing, when the send was acknowledged meanwhile.
+  Future<void> discard(String clientMessageId) async {
+    final latest = _pending[clientMessageId];
+    if (latest == null) {
+      forget(clientMessageId);
+      return;
+    }
+    if (latest.attachmentUploadDraft case final draft? when draft.attachmentId != null) await _resetTicket(draft);
+    await _pending.remove(clientMessageId);
+    await _contents.discardOutbound(clientMessageId);
+    final conversationId = latest.conversationId;
+    if (blobIdOf(latest) case final attachmentId? when attachmentId.isNotEmpty) {
+      await _blobs.delete(conversationId, attachmentId);
+    }
+    _store.setMessages(conversationId, [
+      for (final message in _store.messagesOf(conversationId))
+        if (message.clientMessageId != clientMessageId) message,
+    ]);
+    _store.syncPreviewFromMessages(conversationId);
+    forget(clientMessageId);
+    _store.changed();
   }
 
   void cancelUploads() {
@@ -238,7 +282,7 @@ class AttachmentTransferService {
   /// Forgets every transfer shown.
   void clear() => _transfers.clear();
 
-  Future<void> _upload(PendingMessageRecord pending, AttachmentUploadDraft draft) async {
+  Future<void> _upload(PendingMessageRecord pending, AttachmentUploadDraft draft, String blobPath) async {
     final clientMessageId = pending.clientMessageId;
     final signal = AttachmentUploadCancellationSignal();
     _activeUploads[clientMessageId] = signal;
@@ -249,7 +293,7 @@ class AttachmentTransferService {
       await _apiClient.uploadEncryptedBlobFile(
         uploadUrl: draft.uploadUrl!,
         headers: draft.uploadHeaders,
-        file: File(draft.tempFilePath!),
+        file: File(blobPath),
         cancellationSignal: signal,
         onProgress: (sentBytes, totalBytes) {
           final current = _pending[clientMessageId];
@@ -281,45 +325,13 @@ class AttachmentTransferService {
       );
     } catch (error) {
       _activeUploads.remove(clientMessageId);
-      final reset = await _resetTicket(draft);
-      await _pending.save(pending.copyWith(attachmentUploadDraft: reset));
+      // A cancelled message releases its ticket once, as it is discarded.
+      if (!_pending.isCanceled(clientMessageId)) {
+        final reset = await _resetTicket(draft);
+        await _pending.save(pending.copyWith(attachmentUploadDraft: reset));
+      }
       rethrow;
     }
-  }
-
-  // Encrypts the staged file and swaps it for the ciphertext. The reference
-  // stays on the draft exactly as sealed, so a retry after a restart
-  // re-tickets the same id for the same bytes.
-  Future<(AttachmentUploadDraft, String)> _seal(
-    AttachmentUploadDraft draft,
-    ConversationPreview conversation,
-    AttachmentTempFileStore tempStore,
-  ) async {
-    final staged = await tempStore.createOpaqueBlob(
-      filename: draft.filename,
-      sizeBytes: draft.sizeBytes,
-      existingPath: draft.tempFilePath,
-    );
-    final cipher = await _crypto.sealAttachment(
-      conversation: conversation,
-      contentType: draft.contentType,
-      plaintext: await File(staged.path).readAsBytes(),
-    );
-    final sealedFile = File('${staged.path}.sealed');
-    await sealedFile.writeAsBytes(cipher.ciphertext, flush: true);
-    final sealed = await tempStore.createOpaqueBlob(
-      filename: draft.filename,
-      sizeBytes: cipher.ciphertext.length,
-      existingPath: sealedFile.path,
-    );
-    final sealedDraft = draft.copyWith(
-      tempFilePath: sealed.path,
-      sizeBytes: sealed.sizeBytes,
-      sha256: sealed.sha256,
-      sealedReference: cipher.reference,
-      lastUpdatedAt: DateTime.now(),
-    );
-    return (sealedDraft, staged.path);
   }
 
   Future<AttachmentUploadDraft> _ensureUploadTicket(AttachmentUploadDraft draft) async {
@@ -375,6 +387,16 @@ class AttachmentTransferService {
     );
   }
 
-  AttachmentTempFileStore _requireTempStore() =>
-      _tempStore ?? (throw StateError('Local attachment staging is unavailable on this device.'));
+  MediaBlobStore get _blobs => _blobsOrNull ?? (throw StateError('Sealed attachments have no folder here.'));
+
+  void _throwIfCanceled(String clientMessageId) {
+    if (_pending.isCanceled(clientMessageId)) {
+      throw VeilApiException('Attachment upload canceled.', code: 'attachment_upload_canceled');
+    }
+  }
+
+  static VeilApiException _invalid() => VeilApiException(
+        "This attachment can't be sent. Attach the file again.",
+        code: 'attachment_upload_invalid',
+      );
 }

@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter/widgets.dart' show Locale;
 import 'package:flutter_test/flutter_test.dart' show TestWidgetsFlutterBinding;
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
@@ -369,21 +370,32 @@ Future<void> seedConversations(
 // The signed lease alex sent this morning, a PDF of 2.3 MB, sealed as the
 // phone seals a file (pointer v2, the media receive seed's sealV2), so its
 // bubble is the file card a sent file draws. Sealed once per run, in real
-// time as the media receive seed seals (a test's fake clock never finishes
-// it): the seed is the same every time.
+// time: inside a widget test through runAsync, as the media receive seed
+// seals (a widget test's fake clock never finishes it); a plain test runs
+// in real time already, with or without a widget binding. The seed is the
+// same every time.
 const _leaseAttachmentId = '6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f';
 ({AttachmentReference reference, Uint8List blob})? _sealedLease;
 
+Future<({AttachmentReference reference, Uint8List blob})> _sealLease() {
+  final head = pdfBytes('lease, signed by alex');
+  return sealV2(
+    [...head, ...List<int>.filled(2411724 - head.length, 0x20)],
+    attachmentId: _leaseAttachmentId,
+    contentType: 'application/pdf',
+    seed: 52,
+  );
+}
+
 Future<AttachmentReference> _leaseOnRelay(FakeRelay relay) async {
-  final sealed = _sealedLease ??= (await TestWidgetsFlutterBinding.instance.runAsync(() {
-    final head = pdfBytes('lease, signed by alex');
-    return sealV2(
-      [...head, ...List<int>.filled(2411724 - head.length, 0x20)],
-      attachmentId: _leaseAttachmentId,
-      contentType: 'application/pdf',
-      seed: 52,
-    );
-  }))!;
+  TestWidgetsFlutterBinding? binding;
+  try {
+    binding = TestWidgetsFlutterBinding.instance;
+  } on FlutterError {
+    binding = null;
+  }
+  final sealed = _sealedLease ??=
+      binding != null && binding.inTest ? (await binding.runAsync(_sealLease))! : await _sealLease();
   relay.putUploadedBlob(_leaseAttachmentId, sealed.blob, uploaderDeviceId: 'dev-$selfHandle');
   return sealed.reference;
 }

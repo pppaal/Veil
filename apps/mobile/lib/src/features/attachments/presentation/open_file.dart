@@ -91,8 +91,9 @@ Future<void> openFileAttachment(
     return;
   }
   // Checked with nothing awaited before the hand-over: a decrypted file
-  // never reaches another app over the lock screen.
-  if (!context.mounted || locked()) return media.releaseCopy(path);
+  // never reaches another app over the lock screen, nor after its message
+  // expired.
+  if (!context.mounted || locked() || media.isExpired(message.expiresAt)) return media.releaseCopy(path);
   final outcome = await opener.open(path, mimeType: contentTypeForName(name));
   // On Android the other app may still be reading it: the copy goes with
   // the sweep, its message's expiry, or the next start.

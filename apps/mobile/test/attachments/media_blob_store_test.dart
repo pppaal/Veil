@@ -180,6 +180,28 @@ void main() {
     expect(await store.entries(), hasLength(1));
   });
 
+  test('the entry a commit replaces is told as removed, like every other removal', () async {
+    final removed = <String>[];
+    store.onEntryRemoved = (entry) => removed.add(entry.fileName);
+    final first = await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sealedBytes: const [1]);
+    expect(removed, isEmpty);
+    await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sealedBytes: const [2]);
+    expect(removed, [p.basename(first)], reason: 'the replaced entry went without a word');
+  });
+
+  test('every expiry written is told: a commit with one, and one set later', () async {
+    final written = <DateTime>[];
+    store.onExpiryWritten = written.add;
+    final commitExpiry = DateTime.utc(2026, 4, 7, 10);
+    final stampExpiry = DateTime.utc(2026, 4, 7, 11);
+    await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'd', sealedBytes: const [1]);
+    await store.write(
+        conversationId: 'conv-sam', attachmentId: _fileId, digest: 'd', sealedBytes: const [2], expiresAt: commitExpiry);
+    await store.setExpiry('conv-sam', _photoId, stampExpiry);
+    await store.setExpiry('conv-sam', _photoId, null);
+    expect(written, [commitExpiry, stampExpiry]);
+  });
+
   test('expiry is set per id, delete takes every digest of an id, deleteEntry one entry', () async {
     await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'one', sealedBytes: const [1]);
     await store.write(conversationId: 'conv-sam', attachmentId: _photoId, digest: 'two', sealedBytes: const [2]);

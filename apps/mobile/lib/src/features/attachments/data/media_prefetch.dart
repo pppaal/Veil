@@ -91,7 +91,8 @@ class SealedBlobFetcher {
   /// The kept blob's path, or the [FetchFailure] with what caused it.
   /// [stillWanted] is asked before anything is kept, the last time in the
   /// same serial step as the commit: false drops it (the identity that
-  /// asked is gone, the user stopped it, its chat left the list).
+  /// asked is gone, the user stopped it, its chat left the list, its
+  /// message expired while it came down).
   Future<({String? path, FetchFailure? failure, Object? error})> fetch({
     required String accessToken,
     required String conversationId,

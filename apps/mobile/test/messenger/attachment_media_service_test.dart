@@ -995,6 +995,89 @@ void main() {
       expect(await phone.openFiles(), isEmpty);
     });
 
+    for (final purpose in MediaCopyPurpose.values) {
+      test('a file whose message expires while its download runs is not kept, and no ${purpose.name} copy is made',
+          () async {
+        final reference = await phone.seal(pdfBytes('brief'), contentType: 'application/pdf');
+        final message = await phone.receive(
+            kind: MessageKind.file,
+            body: 'brief.pdf',
+            attachment: reference,
+            expiresAt: phone.relay.now().add(const Duration(minutes: 1)));
+        phone.relay.downloadGate = Completer<void>();
+        final copying = phone.media
+            .plaintextFileFor(_chat, reference, name: 'brief.pdf', purpose: purpose, expiresAt: message.expiresAt);
+        await waitFor(() => phone.relay.blobDownloads.contains(reference.attachmentId), reason: 'no GET started');
+
+        // The message's minute passes while the GET runs, and the sweeps
+        // that run then find nothing to take.
+        phone.relay.deviceClockSkew['atlas'] = const Duration(minutes: 2);
+        await phone.media.cleanup.sweepExpired();
+        phone.relay.downloadGate!.complete();
+        expect(await copying, isNull, reason: 'a file whose message had gone was decrypted into a copy');
+        await settle();
+        expect(await phone.openFiles(), isEmpty, reason: 'a plaintext copy outlived its message');
+        expect(await phone.index.all(), isEmpty, reason: 'the blob of an expired message was kept');
+        expect(await phone.mediaFiles(), isEmpty);
+      });
+    }
+
+    test('a photo tapped as its message expires keeps no decrypted bytes and no blob', () async {
+      final reference = await phone.seal(photo);
+      // A blocked 1:1: nothing comes by itself, the tap fetches it.
+      phone.blocked.add(_chat);
+      final message =
+          await phone.receive(attachment: reference, expiresAt: phone.relay.now().add(const Duration(minutes: 1)));
+      await settle();
+      expect(phone.relay.blobDownloads, isEmpty);
+      phone.relay.downloadGate = Completer<void>();
+      final opening = phone.media.photoBytes(_chat, reference, userAsked: true, expiresAt: message.expiresAt);
+      await waitFor(() => phone.relay.blobDownloads.contains(reference.attachmentId), reason: 'no GET started');
+
+      phone.relay.deviceClockSkew['atlas'] = const Duration(minutes: 2);
+      await phone.media.cleanup.sweepExpired();
+      phone.relay.downloadGate!.complete();
+      expect(await opening, isNull, reason: 'a photo whose message had gone was decrypted');
+      await settle();
+      expect(phone.media.cachedPhotoBytes(_chat, reference), isNull,
+          reason: 'decrypted bytes of a photo whose message had gone stay in memory');
+      expect(await phone.index.all(), isEmpty, reason: 'the blob of an expired message was kept');
+      expect(await phone.mediaFiles(), isEmpty);
+    });
+
+    test('a blob written with an expiry after the last sweep goes when it expires, with nothing else happening',
+        () async {
+      final paths = _ownPaths();
+      final blobs = MediaBlobStore(paths: paths, index: MemoryMediaIndex());
+      final forgotten = <String>[];
+      final cleanup = MediaCleanup(
+        blobs: blobs,
+        paths: paths,
+        now: DateTime.now,
+        pendingAttachmentIds: () => const {},
+        onEntryDeleted: (entry) => forgotten.add(entry.attachmentId),
+      );
+      addTearDown(cleanup.dispose);
+      // The start's sweep finds nothing, so no timer is armed by it.
+      await cleanup.start();
+      final fetched = _uuid();
+      final sent = _uuid();
+      // A photo fetched with its message's expiry, and an own photo stamped
+      // after its upload (D18).
+      await blobs.write(
+          conversationId: _chat,
+          attachmentId: fetched,
+          digest: 'd1',
+          sealedBytes: [1, 2, 3],
+          expiresAt: DateTime.now().add(const Duration(milliseconds: 300)));
+      await blobs.write(conversationId: _chat, attachmentId: sent, digest: 'd2', sealedBytes: [4, 5, 6]);
+      await blobs.setExpiry(_chat, sent, DateTime.now().add(const Duration(milliseconds: 600)));
+      expect(await blobs.entries(), hasLength(2));
+      await waitFor(() async => (await blobs.entries()).isEmpty,
+          reason: 'a blob written after the last sweep waited for an unrelated one');
+      expect(forgotten, unorderedEquals([fetched, sent]), reason: 'its decrypted bytes were not dropped with it');
+    });
+
     test('a disappearing photo only in the cache, not loaded, goes too', () async {
       final reference = await phone.seal(photo);
       // After the start's sweeps (they run one after another), so none of

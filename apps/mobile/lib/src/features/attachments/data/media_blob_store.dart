@@ -51,6 +51,10 @@ class MediaBlobStore {
   /// decrypted for it goes too (D36). Set by the media service's cleanup.
   void Function(MediaIndexEntry entry)? onEntryRemoved;
 
+  /// Told of every expiry written here, a blob committed with one or one
+  /// set later, so the media service's cleanup can arm its timer for it.
+  void Function(DateTime expiresAt)? onExpiryWritten;
+
   /// A fresh `<media>/<random 64 hex>.part` path for a blob to be written
   /// to and then [commit]ted.
   Future<String> reservePartPath() async {
@@ -101,7 +105,12 @@ class MediaBlobStore {
       _reserved.remove(partName);
     }
     _writtenAt[fileName] = now;
-    if (previous != null && previous.fileName != fileName) await _deleteFile(previous.fileName);
+    if (expiresAt != null) onExpiryWritten?.call(expiresAt);
+    // The entry this one replaced is removed like any other.
+    if (previous != null && previous.fileName != fileName) {
+      await _deleteFile(previous.fileName);
+      _removed(previous);
+    }
     return path;
   }
 
@@ -170,6 +179,7 @@ class MediaBlobStore {
   Future<void> setExpiry(String conversationId, String attachmentId, DateTime? expiresAt) async {
     final (conversation, attachment) = _checkedIds(conversationId, attachmentId);
     await _index.setExpiry(conversation, attachment, expiresAt);
+    if (expiresAt != null) onExpiryWritten?.call(expiresAt);
   }
 
   /// Deletes every blob of [attachmentId] in [conversationId], whatever

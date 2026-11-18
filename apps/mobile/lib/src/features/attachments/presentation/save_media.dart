@@ -44,9 +44,9 @@ Future<bool> confirmSave(BuildContext context) async {
 /// decrypted copy under veil_open handed to the system save screen and
 /// deleted as soon as that returns, then "Saved" or "Couldn't save. Try
 /// again." (nothing when the user backed out). A [photo] is named by when
-/// it was sent, a file by its own [name]. When the app locked, or the
-/// screen that asked went away, while the copy was made, nothing reaches
-/// the save screen and nothing is said.
+/// it was sent, a file by its own [name]. When the app locked, the screen
+/// that asked went away, or the message expired while the copy was made,
+/// nothing reaches the save screen and nothing is said.
 Future<void> saveAttachment(
   BuildContext context,
   WidgetRef ref, {
@@ -65,7 +65,7 @@ Future<void> saveAttachment(
   final path = await media.plaintextFileFor(conversationId, attachment,
       name: name, purpose: MediaCopyPurpose.save, photo: photo, expiresAt: expiresAt);
   // Checked with nothing awaited before the hand-over.
-  if (!context.mounted || media.evictions != evictions) {
+  if (!context.mounted || media.evictions != evictions || media.isExpired(expiresAt)) {
     if (path != null) await media.releaseCopy(path);
     return;
   }

@@ -47,7 +47,8 @@ class MediaCopy {
 /// - an entry whose `expiresAt` is at or before [now] goes (its file, its
 ///   row, its decrypted bytes through [onEntryDeleted], its copies), swept
 ///   at start, after messages change (at most once per
-///   [expiryCheckInterval]) and by a timer armed for the next expiry;
+///   [expiryCheckInterval]) and by a timer armed for the next expiry, an
+///   expiry written since the last sweep (a blob fetched, a stamp) included;
 /// - the entries of a conversation that leaves the list go, also one that
 ///   left while the app was closed (the first list is compared with what
 ///   the cache held);
@@ -76,6 +77,7 @@ class MediaCleanup {
         _pendingAttachmentIds = pendingAttachmentIds,
         _onEntryDeleted = onEntryDeleted {
     blobs.onEntryRemoved = _entryRemoved;
+    blobs.onExpiryWritten = _expiryWritten;
   }
 
   final int maxBytes;
@@ -98,6 +100,10 @@ class MediaCleanup {
   final Set<String> _left = {};
   Future<void> _copyDeletes = Future<void>.value();
   Timer? _expiryTimer;
+  // When the expiry timer fires, and the earliest expiry written since the
+  // last sweep began.
+  DateTime? _timerDue;
+  DateTime? _writtenSinceSweep;
   Timer? _copyTimer;
   Timer? _trailingSweep;
   DateTime? _lastExpirySweep;
@@ -144,6 +150,22 @@ class MediaCleanup {
   }
 
   Future<void> sweepExpired() => _serial(_sweepExpired);
+
+  /// Whether [expiresAt] has passed by the expiry clock.
+  bool expired(DateTime? expiresAt) => expiresAt != null && !expiresAt.isAfter(_now());
+
+  /// Whether [reference]'s blob in [conversationId] is still here for a
+  /// message that expires at [expiresAt], asked once it was fetched or
+  /// decrypted. A message that expired meanwhile keeps nothing of it: its
+  /// entry, decrypted bytes and copies go now, and false comes back.
+  Future<bool> stillHeld(String conversationId, AttachmentReference reference, DateTime? expiresAt) async {
+    if (expired(expiresAt)) {
+      await deleteEntryFor(conversationId, reference.attachmentId, reference.sha256);
+      return false;
+    }
+    final path = await _blobs.pathOf(conversationId, reference.attachmentId, reference.sha256).catchError((Object _) => null);
+    return path != null;
+  }
 
   /// The conversations the store lists now. Those listed before and gone
   /// now (the store drops one only after a successful list) lose their
@@ -307,6 +329,8 @@ class MediaCleanup {
     _lastExpirySweep = null;
     _expiryTimer?.cancel();
     _expiryTimer = null;
+    _timerDue = null;
+    _writtenSinceSweep = null;
     _trailingSweep?.cancel();
     _trailingSweep = null;
   }
@@ -314,6 +338,7 @@ class MediaCleanup {
   void dispose() {
     _disposed = true;
     if (_blobs.onEntryRemoved == _entryRemoved) _blobs.onEntryRemoved = null;
+    if (_blobs.onExpiryWritten == _expiryWritten) _blobs.onExpiryWritten = null;
     _expiryTimer?.cancel();
     _copyTimer?.cancel();
     _trailingSweep?.cancel();
@@ -322,27 +347,43 @@ class MediaCleanup {
   Future<void> _sweepExpired() async {
     final now = _now();
     _lastExpirySweep = now;
+    _writtenSinceSweep = null;
     DateTime? next;
     for (final entry in await _blobs.entries()) {
       final expiresAt = entry.expiresAt;
       if (expiresAt == null) continue;
       if (!expiresAt.isAfter(now)) {
         await _deleteEntry(entry);
-      } else if (next == null || expiresAt.isBefore(next)) {
-        next = expiresAt;
+      } else {
+        next = _earlier(next, expiresAt);
       }
     }
-    _armExpiryTimer(next, now);
+    // An expiry written while the rows were read is not lost.
+    _armExpiryTimer(_earlier(next, _writtenSinceSweep), now);
+  }
+
+  // A blob committed with an expiry, or given one, after the last sweep:
+  // the timer is brought forward to it, so it goes on time without waiting
+  // for an unrelated sweep.
+  void _expiryWritten(DateTime expiresAt) {
+    _writtenSinceSweep = _earlier(_writtenSinceSweep, expiresAt);
+    final due = _timerDue;
+    if (_disposed || (due != null && !expiresAt.isBefore(due))) return;
+    _armExpiryTimer(expiresAt, _now());
   }
 
   void _armExpiryTimer(DateTime? next, DateTime now) {
     _expiryTimer?.cancel();
     _expiryTimer = null;
+    _timerDue = next;
     if (next == null || _disposed) return;
     // The timer runs on the monotonic clock; the sweep checks the expiry
     // clock itself when it fires, and arms the next one.
     _expiryTimer = Timer(next.difference(now) + const Duration(milliseconds: 1), () => unawaited(sweepExpired()));
   }
+
+  static DateTime? _earlier(DateTime? left, DateTime? right) =>
+      left == null || (right != null && right.isBefore(left)) ? right : left;
 
   Future<void> _enforceCap() async {
     await _blobs.flushRecency();

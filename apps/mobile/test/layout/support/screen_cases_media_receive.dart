@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/attachments/presentation/photo_viewer_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_file_card.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_photo.dart';
@@ -30,14 +31,29 @@ const List<ScreenCase> mediaReceiveScreenCases = [
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
   ),
+  // The same chat once the user has gone down to the newest message: the
+  // chat opens at its unread divider (D48), so the newest rows (alex's
+  // photo, the lease, the voice message) are below the first screen there.
+  ScreenCase(
+    'chat-room-photos-newest',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    afterSession: seedChatPhotos,
+    settle: _awaitPhotosAtNewest,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
   // A photo on its way, one whose fetch failed, one the server no longer
-  // has, a file not fetched yet and one on its way.
+  // has, a file not fetched yet and one on its way; shown from the newest
+  // message, since the chat opens at its unread divider above them.
   ScreenCase(
     'chat-room-photo-states',
     screen: ChatRoomScreen,
     file: 'chat_room_screen.dart',
     location: _chat,
     afterSession: seedPhotoStates,
+    settle: _showNewest,
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
   ),
@@ -109,6 +125,20 @@ final Finder _drawnImage = find.byWidgetPredicate((widget) => widget is RawImage
 final Finder _bubblePhotos = find.descendant(of: find.byType(MessagePhoto), matching: _drawnImage);
 
 Future<void> _awaitBubblePhotos(WidgetTester tester) => _awaitPhotos(tester, _bubblePhotos);
+
+// Down to the newest message, as the user does from a chat that opened at
+// its unread divider.
+Future<void> _showNewest(WidgetTester tester) async {
+  final list = find.descendant(of: find.byType(ChatMessageList), matching: find.byType(Scrollable)).first;
+  tester.state<ScrollableState>(list).position.jumpTo(0);
+  await pumpFrames(tester, frames: 4);
+}
+
+Future<void> _awaitPhotosAtNewest(WidgetTester tester) async {
+  await _awaitBubblePhotos(tester);
+  await _showNewest(tester);
+  await _awaitBubblePhotos(tester);
+}
 
 Future<void> _openViewer(WidgetTester tester) async {
   await _awaitBubblePhotos(tester);

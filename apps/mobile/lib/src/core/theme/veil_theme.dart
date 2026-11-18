@@ -320,6 +320,9 @@ class VeilTheme {
         backgroundColor: palette.surfaceRaised,
         contentTextStyle: bodyMedium,
         behavior: SnackBarBehavior.floating,
+        // 12 at the sides, as the composer's field: a toast over a chat's
+        // composer leaves no end of the field peeking out beside it.
+        insetPadding: const EdgeInsets.fromLTRB(VeilSpace.sm, 5, VeilSpace.sm, 10),
         elevation: light ? 8 : 0,
         shape: rounded(VeilRadius.md),
         actionTextColor: palette.primaryStrong,

@@ -93,22 +93,6 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
   bool _searchOpened = false;
   final _searchFocus = FocusNode();
 
-  /// The composer strip, whose height a toast floats above.
-  final _composerStrip = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    VeilToastClearance.set(this, _composerClearance);
-  }
-
-  // The strip's height while this chat's page is the one in front.
-  double _composerClearance() {
-    if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return 0;
-    final box = _composerStrip.currentContext?.findRenderObject();
-    return box is RenderBox && box.hasSize ? box.size.height : 0;
-  }
-
   // A query that arrived with the screen (a jump from the archive search)
   // shows its field too.
   bool get _searchOpen => _searchOpened || widget.searchController.text.trim().isNotEmpty;
@@ -121,7 +105,6 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
 
   @override
   void dispose() {
-    VeilToastClearance.clear(this);
     _searchFocus.dispose();
     super.dispose();
   }
@@ -223,7 +206,6 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
             ),
           ),
           DecoratedBox(
-            key: _composerStrip,
             decoration: BoxDecoration(
               color: palette.canvas,
               border: Border(top: BorderSide(color: palette.stroke, width: 0.5)),

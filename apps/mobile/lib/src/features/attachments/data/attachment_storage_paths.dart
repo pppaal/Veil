@@ -6,12 +6,13 @@ import 'package:path_provider/path_provider.dart';
 /// Where photos and files live on the phone, and how each place is emptied.
 ///
 /// - Staging (`<tmp>/veil_attachment_cache`): a picked plaintext until it is
-///   sealed. Nothing there is wanted after a restart.
+///   sealed or dropped (up to 10 minutes while a lock holds it for its
+///   chat). Nothing there is wanted after a restart.
 /// - Media (`<app support>/veil_media`): sealed blobs under random names,
 ///   flat; which one belongs to which message is only in the encrypted
 ///   database (MediaIndex). Excluded from backup.
-/// - Open (`<tmp>/veil_open`): the only plaintext files, a decrypted copy
-///   while another app opens it or the save screen keeps it.
+/// - Open (`<tmp>/veil_open`): the only decrypted files, a copy while
+///   another app opens it or the save screen keeps it.
 /// - The system temporary folder (`NSTemporaryDirectory()` on iOS, which is
 ///   not `<tmp>`: that is Library/Caches there): where the iOS pickers and
 ///   save sheet leave copies under their real names. Swept on iOS only.

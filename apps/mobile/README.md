@@ -77,12 +77,14 @@ which message is kept only in the `media_blobs` table of the encrypted
 database. The folder is capped at 1 GiB, least recently used first, never
 touching a blob that is still uploading, and a blob goes when its message
 expires. Decrypted bytes live only in memory and are dropped on lock. The
-only plaintext files are the copies made to open a file or to save a photo
+only decrypted files are the copies made to open a file or to save a photo
 or a file, in `veil_open/` under the temporary folder. They go when Quick
 Look closes or the save screen returns (a Save copy also on lock), when their
 message expires, after 10 minutes (a sweep runs every 60 seconds) and at
-start. A picker's copy is moved into the staging folder at once and stays
-there only until it is sealed or the pick is cancelled; nothing in staging
+start. On the sending side, a picked photo or file is a plaintext copy in the
+staging folder (`veil_attachment_cache` under the temporary folder) until it
+is sealed, the pick is cancelled, or 10 minutes after a lock held it for its
+chat; the picker's own copy is moved there at once, and nothing in staging
 survives a restart. On iOS the system temporary folder the plugins write to
 is emptied after each pick and each save.
 

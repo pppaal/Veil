@@ -128,15 +128,17 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
   are deleted.
 - Decrypted bytes: in memory only, keyed by conversation id, attachment id,
   digest and the pointer's key, and cleared on lock, sign-out and wipe.
-- Plaintext files exist only to open a file or to save a photo or a file, in
+- Decrypted files exist only to open a file or to save a photo or a file, in
   `veil_open/<random>/<name>` under the temporary folder. A copy goes when
   Quick Look closes (iOS), when the save screen returns and on lock (a Save
   copy), when its message expires, by a sweep every 60 seconds and on resume
   for copies older than 10 minutes, and at start and wipe. An Android copy
   opened in another app is not deleted on lock, since that app may still be
   reading it, and that app may keep a copy of its own.
-- The staging folder holds a pick until it is sealed or cancelled; nothing in
-  it survives a restart. Plugin copies are moved into staging or deleted at
+- The staging folder (`veil_attachment_cache` under the temporary folder)
+  holds a pick, in plaintext, until it is sealed or cancelled, or for up to 10
+  minutes while a lock holds it for its chat; nothing in it survives a
+  restart. Plugin copies are moved into staging or deleted at
   once, and on iOS the system temporary folder is emptied the first time a
   chat opens after the app starts, after each pick, after each save and on
   wipe.
@@ -167,9 +169,14 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
   chat goes at once.
 - The cross on an uploading or failed photo or file cancels it and removes
   the message: the upload stops, the API is told the upload failed if a
-  ticket was issued, and the queued record, the stored content and the sealed
-  blob are deleted. There is no dialog: nothing was sent. A cancel wins over a
-  send or a retry already under way.
+  ticket was issued (an upload it completed too, which deletes the blob
+  there), and the queued record, the stored content and the sealed blob are
+  deleted. There is no dialog: nothing was sent. A cancel wins over a send or
+  a retry already under way, and a record the cache would not delete is
+  dropped at the next start, never sent.
+- The cross on a downloading photo or file stops the fetch, also while the tap
+  still waits for a transfer slot; nothing is kept or opened for it. A blob
+  that finishes downloading after its chat left the list is not kept.
 
 ## App lock
 

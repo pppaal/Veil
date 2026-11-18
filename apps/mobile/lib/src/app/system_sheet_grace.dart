@@ -70,8 +70,8 @@ class SystemSheetGrace {
   /// Runs [openSheet], the call that shows [sheet] and completes when it
   /// closes. Completes with its result, or throws [SheetClosedByLock] when
   /// the session locked while it ran; a result that still arrives later is
-  /// handed to [onLateResult] (the attach flow holds it; every other caller
-  /// deletes the file it names). The sheet ends when [run] ends, with a
+  /// handed to [onLateResult] (the attach flow stages and holds a late pick;
+  /// a late save names where the user saved, so the save passes none). The sheet ends when [run] ends, with a
   /// result or an error.
   Future<T> run<T>(SystemSheet sheet, Future<T> Function() openSheet, {void Function(T late)? onLateResult}) {
     if (sheet == SystemSheet.quickLook && !isIOS) {

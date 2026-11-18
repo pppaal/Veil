@@ -69,6 +69,10 @@ void main() {
       expect(tabBadgeText(tester, NavigationBar), '3');
       final semantics = tester.ensureSemantics();
       expect(find.bySemanticsLabel(RegExp('3 unread chats')), findsOneWidget);
+      // The count rides on the icon, which the destination reads before its
+      // name (design system, section 16).
+      expect(tester.getSemantics(find.byType(NavigationDestination).first).label,
+          '3 unread chats\nChats\nTab 1 of 3');
       semantics.dispose();
     });
   });

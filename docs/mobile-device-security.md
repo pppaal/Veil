@@ -135,8 +135,10 @@ plugins write to the system temporary folder (`tmp/`,
 original name, the copy handed to the save screen and the document picker's
 `-Inbox/` folder. Veil empties that folder the first time a chat opens after
 the app starts, after each pick has been copied into staging, after each save
-returns, and on sign-out and wipe. A picked file stays in staging only until it is sealed or
-the pick is cancelled, and staging is emptied at every start, so no plaintext
+returns, and on sign-out and wipe. A picked photo or file is a plaintext copy
+in staging (`veil_attachment_cache` under the temporary folder, under an opaque
+name) until it is sealed, the pick is cancelled, or 10 minutes after a lock
+held it for its chat, and staging is emptied at every start, so no plaintext
 pick survives a crash under its real name.
 
 ### Opening a file in another app
@@ -203,9 +205,10 @@ screens the user opens from Veil and expects to come back from. They run inside
   Veil from the launcher or the app switcher shows the lock screen, never the
   file.
 
-Every lock ends a running picker or save screen as cancelled; a result that
-still arrives afterwards is held for the chat it was picked in (a pick) or
-deleted (anything else). On iOS the lock also closes Quick Look and every
+Every lock ends a running picker or save screen as cancelled. A pick the
+plugin still delivers afterwards is staged and held for the chat it was picked
+in; a save that still completes is left where the user saved it (the Save copy
+under `veil_open/` is deleted on lock either way). On iOS the lock also closes Quick Look and every
 presented sheet, without animation, and the native privacy cover stays up
 until the lock screen has been drawn (or the app is unlocked, or 1.5 seconds
 after it became active), so the document never shows between the two.

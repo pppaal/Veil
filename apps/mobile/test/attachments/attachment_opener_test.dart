@@ -23,17 +23,20 @@ class _Channel implements FileOpenChannel {
   final SystemSheetGrace _grace;
   final List<(String, String)> calls = [];
   final List<bool> sheetRunningDuringCall = [];
+  final List<bool Function()> mayHandOver = [];
   Completer<FileOpenResult> answer = Completer();
 
   @override
-  Future<FileOpenResult> open(String path, {required String mimeType}) {
+  Future<FileOpenResult> open(String path, {required String mimeType, bool Function()? mayHandOver}) {
     calls.add((path, mimeType));
+    if (mayHandOver != null) this.mayHandOver.add(mayHandOver);
     sheetRunningDuringCall.add(_grace.sheetRunning);
     return answer.future;
   }
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late Directory root;
   late AttachmentStoragePaths paths;
   late Directory systemTemp;
@@ -147,9 +150,63 @@ void main() {
       expect(await opening, OpenOutcome.opened);
     });
 
+    // open_file checks the lock right before it calls open; the real
+    // channel then still awaits the temporary directory (a platform call),
+    // resolves links and checks the file before the platform is asked. A
+    // lock in there hands nothing over, on either platform.
+    for (final isIOS in [false, true]) {
+      test('${isIOS ? 'iOS' : 'Android'}: a lock while the channel checks the path hands nothing to the platform',
+          () async {
+        final tmp = Directory(p.join(root.path, 'tmp'))..createSync(recursive: true);
+        final copy = File(p.join(tmp.path, 'veil_open', 'abcdefghijklmnopqrstuvwx', 'lease.pdf'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('plaintext');
+        final gate = Completer<void>();
+        const channel = MethodChannel(MethodChannelFileOpen.channelName);
+        final invoked = <String>[];
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+          invoked.add('${call.method} ${(call.arguments as Map)['path']}');
+          return isIOS ? 'closed' : 'opened';
+        });
+        addTearDown(
+            () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+        final grace = SystemSheetGrace(isIOS: isIOS);
+        final opener = PluginAttachmentOpener(
+          channel: MethodChannelFileOpen(temporaryRoot: () async {
+            await gate.future;
+            return tmp;
+          }),
+          grace: grace,
+          paths: paths,
+        );
+
+        final opening = opener.open(copy.path, mimeType: 'application/pdf');
+        await pumpEventQueue();
+        // The app locks now (VeilApp closes every sheet on every lock).
+        grace.closeAllForLock();
+        gate.complete();
+        expect(await opening, OpenOutcome.closed, reason: 'the caller deletes the copy of anything not opened');
+        await pumpEventQueue();
+        expect(invoked, isEmpty, reason: 'the decrypted file reached the platform after the app locked');
+      });
+    }
+
+    test('a lock before any check: the same', () async {
+      final grace = SystemSheetGrace(isIOS: false);
+      final channel = _Channel(grace);
+      final opener = PluginAttachmentOpener(channel: channel, grace: grace, paths: paths);
+      final opening = opener.open('/open/abc/lease.pdf', mimeType: 'application/pdf');
+      grace.closeAllForLock();
+      await Future<void>.delayed(Duration.zero);
+      expect(channel.mayHandOver.single(), isFalse, reason: 'the channel was not told the app locked');
+      channel.answer.complete(FileOpenResult.lockedFirst);
+      expect(await opening, OpenOutcome.closed);
+    });
+
     for (final (result, outcome) in [
       (FileOpenResult.opened, OpenOutcome.opened),
       (FileOpenResult.closed, OpenOutcome.closed),
+      (FileOpenResult.lockedFirst, OpenOutcome.closed),
       (FileOpenResult.noApp, OpenOutcome.noApp),
       (FileOpenResult.failed, OpenOutcome.failed),
     ]) {

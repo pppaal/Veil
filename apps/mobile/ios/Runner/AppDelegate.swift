@@ -84,8 +84,10 @@ final class PlatformSecurityEventBus: NSObject, FlutterStreamHandler {
 /// calls presentationDismissedByLock). It is presented .overFullScreen, so
 /// the Flutter view controller is not told it disappeared. Only a file inside
 /// Library/Caches/veil_open/ is shown, one at a time; "noApp" when Quick Look
-/// cannot show it. Images and videos never come here: their share sheet would
-/// offer Save Image, which needs a permission the app does not ask for.
+/// cannot show it; "locked", presenting nothing, once the app's lock has
+/// engaged (lockEngaged) and not been lifted. Images and videos never come
+/// here: their share sheet would offer Save Image, which needs a permission
+/// the app does not ask for.
 final class FileOpenPlugin: NSObject, FlutterPlugin {
   // The open in progress, whichever registration of the channel took it.
   private static var current: FileOpenPreview?
@@ -106,6 +108,12 @@ final class FileOpenPlugin: NSObject, FlutterPlugin {
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     guard call.method == "open" else {
       result(FlutterMethodNotImplemented)
+      return
+    }
+    // Locked since Flutter last checked: no decrypted file goes over the
+    // lock screen.
+    guard !Self.appLocked() else {
+      result("locked")
       return
     }
     guard
@@ -155,6 +163,10 @@ final class FileOpenPlugin: NSObject, FlutterPlugin {
       return nil
     }
     return file
+  }
+
+  private static func appLocked() -> Bool {
+    UIApplication.shared.connectedScenes.contains { ($0.delegate as? SceneDelegate)?.sessionLocked == true }
   }
 
   private static func topViewController() -> UIViewController? {

@@ -8,8 +8,9 @@ class SceneDelegate: FlutterSceneDelegate {
   private static let lockScreenFallback: TimeInterval = 1.5
   private var screenshotObserver: NSObjectProtocol?
   // The session locked (lockEngaged) and has not been unlocked since: what
-  // is presented over Flutter is closed before the shield goes.
-  private var sessionLocked = false
+  // is presented over Flutter is closed before the shield goes, and
+  // FileOpenPlugin presents nothing.
+  private(set) var sessionLocked = false
   // The lock screen has not been drawn since the lock: the shield stays.
   private var awaitingLockScreen = false
   private var shieldFallback: DispatchWorkItem?

@@ -8,6 +8,7 @@ import 'attachment_providers.dart';
 import 'attachment_storage_paths.dart';
 
 /// How opening a decrypted file in another app (or Quick Look) ended.
+/// [closed] also when the app locked before the file was handed over.
 enum OpenOutcome { opened, closed, noApp, failed }
 
 /// How handing a decrypted file to the system save screen ended.
@@ -29,7 +30,8 @@ abstract interface class AttachmentOpener {
 /// (D40): the save screen always; Quick Look on iOS, which is presented
 /// over the app; never opening a file on Android, which is another app's
 /// task, so Veil locks as soon as it is hidden. A sheet the lock closes
-/// counts as closed or cancelled. After every save the iOS temporary
+/// counts as closed or cancelled, and a lock before a file is handed to
+/// the platform hands nothing over (closed). After every save the iOS temporary
 /// folder, where the save sheet keeps its copy under the file's name, is
 /// emptied (D39).
 class PluginAttachmentOpener implements AttachmentOpener {
@@ -53,9 +55,13 @@ class PluginAttachmentOpener implements AttachmentOpener {
 
   @override
   Future<OpenOutcome> open(String path, {required String mimeType}) async {
-    Future<OpenOutcome> show() async => switch (await _channel.open(path, mimeType: mimeType)) {
+    // Read now, right after the caller's own lock check: the channel asks
+    // again right before the platform call, past its own awaits.
+    final locks = _grace.locks;
+    Future<OpenOutcome> show() async =>
+        switch (await _channel.open(path, mimeType: mimeType, mayHandOver: () => _grace.locks == locks)) {
           FileOpenResult.opened => OpenOutcome.opened,
-          FileOpenResult.closed => OpenOutcome.closed,
+          FileOpenResult.closed || FileOpenResult.lockedFirst => OpenOutcome.closed,
           FileOpenResult.noApp => OpenOutcome.noApp,
           FileOpenResult.failed => OpenOutcome.failed,
         };

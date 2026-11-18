@@ -109,6 +109,12 @@ class SystemSheetGrace {
   /// Whether a sheet is up now.
   bool get sheetRunning => _running.isNotEmpty;
 
+  /// How many times the session has locked ([closeAllForLock]): a caller
+  /// that reads it before handing something over and again right before
+  /// the hand-over knows whether the app locked in between.
+  int get locks => _locks;
+  int _locks = 0;
+
   /// Whether this lifecycle change locks the app now (D40 a).
   bool shouldLockOn(AppLifecycleState state) {
     switch (state) {
@@ -148,6 +154,7 @@ class SystemSheetGrace {
 
   /// The session locked: every running [run] throws [SheetClosedByLock].
   void closeAllForLock() {
+    _locks += 1;
     final closing = List.of(_running);
     _running.clear();
     _awaySheetOpenedAt = null;

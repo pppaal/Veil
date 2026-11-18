@@ -116,7 +116,9 @@ saving a photo or a file, needs a plaintext file. It is written to
 - when its message expires;
 - by a sweep every 60 seconds while the app runs, and on resume, for any copy
   older than 10 minutes;
-- at every start, and on sign-out and wipe.
+- at every start, first thing, while the lock screen still shows (so a copy
+  left by a run that was killed never waits for an unlock), and on sign-out
+  and wipe.
 
 An Android copy opened in another app is not deleted on lock, since that app
 may still be reading it. The app a file is opened with, and wherever the user
@@ -138,8 +140,8 @@ the app starts, after each pick has been copied into staging, after each save
 returns, and on sign-out and wipe. A picked photo or file is a plaintext copy
 in staging (`veil_attachment_cache` under the temporary folder, under an opaque
 name) until it is sealed, the pick is cancelled, or 10 minutes after a lock
-held it for its chat, and staging is emptied at every start, so no plaintext
-pick survives a crash under its real name.
+held it for its chat, and staging is emptied at every start, before the lock
+screen is passed, so no plaintext pick survives a crash under its real name.
 
 ### Opening a file in another app
 

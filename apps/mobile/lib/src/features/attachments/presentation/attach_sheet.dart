@@ -31,8 +31,10 @@ Future<AttachSource?> showAttachSheet(BuildContext context) {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // The hairline starts where the rows' words do: 16, the 22 dp
+            // glyph and the 12 dp gap.
             VeilGroup(
-              inset: 56,
+              inset: 50,
               children: [
                 row(AttachSource.photos, Icons.photo_library_outlined, l10n.chatAttachPhotos),
                 row(AttachSource.file, Icons.insert_drive_file_outlined, l10n.chatAttachFile),

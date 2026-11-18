@@ -123,6 +123,9 @@ class MainTabShell extends ConsumerWidget {
                 child: NavigationRail(
                   selectedIndex: currentIndex,
                   onDestinationSelected: select,
+                  // Room above the first tab, so the Chats badge is not
+                  // pinned to the window's top edge.
+                  leading: const SizedBox(height: VeilSpace.xs),
                   destinations: [
                     for (final tab in _tabs)
                       NavigationRailDestination(

@@ -261,7 +261,9 @@ class _MessagePhotoState extends ConsumerState<MessagePhoto> {
   }
 
   // While the user's own photo sends: a scrim, the white upload ring and a
-  // cross that cancels it. A failed one keeps the cross, with no scrim.
+  // cross that cancels it. A failed one keeps the cross, with no scrim, on a
+  // small disc in the photo's top-end corner: the centre is where a tap
+  // retries, as WhatsApp and Telegram have it.
   List<Widget> _sendState(AppLocalizations l10n) {
     final snapshot = widget.transferSnapshot;
     final cancel = snapshot != null && snapshot.canCancel ? widget.onCancelAttachment : null;
@@ -270,13 +272,14 @@ class _MessagePhotoState extends ConsumerState<MessagePhoto> {
     final uploading = snapshot?.phase == AttachmentTransferPhase.uploading;
     return [
       if (sending) const ColoredBox(color: Color(0x66000000)),
-      Center(
+      Align(
+        alignment: sending ? Alignment.center : AlignmentDirectional.topEnd,
         child: SizedBox.square(
           dimension: 44,
           child: Stack(alignment: Alignment.center, children: [
             if (!sending) const DecoratedBox(
               decoration: BoxDecoration(color: Color(0x66000000), shape: BoxShape.circle),
-              child: SizedBox.square(dimension: 40),
+              child: SizedBox.square(dimension: 28),
             ),
             if (sending)
               Semantics(
@@ -296,7 +299,7 @@ class _MessagePhotoState extends ConsumerState<MessagePhoto> {
                 onPressed: cancel,
                 tooltip: l10n.chatCancelAction,
                 padding: EdgeInsets.zero,
-                icon: const Icon(Icons.close, size: 20, color: Colors.white),
+                icon: Icon(Icons.close, size: sending ? 20 : 18, color: Colors.white),
               ),
           ]),
         ),
@@ -365,7 +368,7 @@ class _Tile extends StatelessWidget {
                 value: status.progress,
                 strokeWidth: 3,
                 color: own ? Colors.white : palette.primaryStrong,
-                backgroundColor: own ? Colors.white24 : palette.stroke,
+                backgroundColor: own ? Colors.white24 : incomingRingTrack(context),
               ),
             ),
           ),
@@ -376,7 +379,8 @@ class _Tile extends StatelessWidget {
               size: VeilIconSize.lg, color: own ? palette.outgoingMeta : palette.textSubtle),
           l10n.chatPhotoUnavailable,
         ),
-      MediaState.failed => (_DownloadGlyph(own: own), l10n.chatDownloadFailed),
+      // One sentence a line, so no word is left alone under the rest.
+      MediaState.failed => (_DownloadGlyph(own: own), l10n.chatDownloadFailed.replaceFirst('. ', '.\n')),
       _ => (_DownloadGlyph(own: own), formatFileSize(sizeBytes)),
     };
     return Padding(
@@ -393,6 +397,21 @@ class _Tile extends StatelessWidget {
   }
 }
 
+/// The fill of a state circle inside an incoming bubble (a photo tile's
+/// download disc, a file card's circle): surfaceRaised in light; in dark,
+/// where surfaceRaised all but matches the bubble's surfaceAlt, strokeStrong.
+Color incomingInset(BuildContext context) {
+  final palette = context.veilPalette;
+  return Theme.of(context).brightness == Brightness.dark ? palette.strokeStrong : palette.surfaceRaised;
+}
+
+/// The track of a progress ring in an incoming bubble: stroke in light; in
+/// dark, textMuted at 35%, which shows on the bubble and on [incomingInset].
+Color incomingRingTrack(BuildContext context) {
+  final palette = context.veilPalette;
+  return Theme.of(context).brightness == Brightness.dark ? palette.textMuted.withValues(alpha: 0.35) : palette.stroke;
+}
+
 /// The download glyph in its 40 dp circle: nothing fetched yet, or a fetch
 /// that failed (D31).
 class _DownloadGlyph extends StatelessWidget {
@@ -404,7 +423,7 @@ class _DownloadGlyph extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
     return DecoratedBox(
-      decoration: BoxDecoration(color: own ? Colors.white24 : palette.surfaceRaised, shape: BoxShape.circle),
+      decoration: BoxDecoration(color: own ? Colors.white24 : incomingInset(context), shape: BoxShape.circle),
       child: SizedBox.square(
         dimension: 40,
         child: Icon(Icons.download_outlined, size: 24, color: own ? Colors.white : palette.text),

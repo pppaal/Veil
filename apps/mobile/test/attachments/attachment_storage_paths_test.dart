@@ -123,6 +123,27 @@ void main() {
     }
   });
 
+  test('purgeLeftPlaintext, run as the app starts, empties veil_open and staging and keeps the media', () async {
+    final storage = paths(sweepSystemTemp: true);
+    write(await storage.stagingDir(), 'one.jpg');
+    write(await storage.openDir(), 'xyz/open.pdf');
+    final media = write(await storage.mediaDir(), 'b' * 64);
+    final system = write(systemTemp, 'left.tmp');
+
+    await storage.purgeLeftPlaintext();
+
+    expect(entriesOf(await storage.stagingDir()), isEmpty);
+    expect(entriesOf(await storage.openDir()), isEmpty);
+    expect(media.existsSync(), isTrue, reason: 'a sealed blob went');
+    expect(system.existsSync(), isTrue);
+  });
+
+  test('purgeLeftPlaintext with no folders yet does nothing and creates none', () async {
+    final storage = paths(sweepSystemTemp: true);
+    await storage.purgeLeftPlaintext();
+    expect(entriesOf(temporary), isEmpty);
+  });
+
   test('a purge keeps going past a root that cannot be read, then says so', () async {
     final storage = AttachmentStoragePaths(
       temporaryRoot: () async => temporary,

@@ -15,6 +15,7 @@ import '../../conversations/data/messenger/attachment_media_service.dart';
 import '../../conversations/data/messenger_providers.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_room_labels.dart';
+import 'message_photo.dart' show incomingInset, incomingRingTrack;
 
 /// A file in a message (D27): a 40 dp circle holding where it stands (the
 /// download glyph, a ring with a cross while it downloads or sends, the
@@ -120,7 +121,7 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
                     value: ringValue,
                     strokeWidth: 2.5,
                     color: own ? Colors.white : palette.primaryStrong,
-                    backgroundColor: own ? Colors.white24 : palette.stroke,
+                    backgroundColor: own ? Colors.white24 : incomingRingTrack(context),
                   ),
                 ),
               ),
@@ -217,7 +218,7 @@ class _Circle extends StatelessWidget {
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
-              color: own ? Colors.white.withValues(alpha: 0.2) : context.veilPalette.surfaceRaised,
+              color: own ? Colors.white.withValues(alpha: 0.2) : incomingInset(context),
               shape: BoxShape.circle,
             ),
             child: const SizedBox.square(dimension: 40),

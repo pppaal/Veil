@@ -64,6 +64,15 @@ class AttachmentStoragePaths {
     await _deleteEntriesOf(staging);
   }
 
+  /// Deletes every decrypted copy and every picked plaintext a previous run
+  /// left: what the app does first, before the lock screen, so none of them
+  /// waits at rest for an unlock (D38, D39). The media folder stays.
+  Future<void> purgeLeftPlaintext() async {
+    final temporary = (await _temporaryRoot()).path;
+    await _deleteEntriesOf(Directory(p.join(temporary, openFolder)));
+    await _deleteEntriesOf(Directory(p.join(temporary, stagingFolder)));
+  }
+
   /// Deletes every entry of the system temporary folder when
   /// [sweepSystemTemp]; does nothing otherwise.
   Future<void> purgeSystemTemp() async {

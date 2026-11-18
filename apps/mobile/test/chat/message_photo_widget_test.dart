@@ -154,10 +154,12 @@ void main() {
     testWidgets('the fetch failed: it says so and a tap tries again', (tester) async {
       media.setStatus(_chat, _pointer(), MediaState.failed);
       await show(tester);
-      expect(find.text(l10n.chatDownloadFailed), findsOneWidget);
+      // One sentence a line in the tile, so "retry." never sits alone.
+      const caption = 'Couldn\'t download.\nTap to retry.';
+      expect(l10n.chatDownloadFailed, 'Couldn\'t download. Tap to retry.');
+      expect(find.text(caption), findsOneWidget);
       expect(find.byIcon(Icons.download_outlined), findsOneWidget, reason: 'D31: the download glyph');
       expect(find.byIcon(Icons.refresh), findsNothing);
-      expect(find.text('Couldn\'t download. Tap to retry.'), findsOneWidget);
       await tester.tap(find.byType(MessagePhoto));
       await tester.pump();
       expect(media.photoRequests.last.$2, isTrue);
@@ -323,6 +325,12 @@ void main() {
       );
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text(l10n.chatNotSentTapToRetry), findsOneWidget);
+      // The cross sits in the photo's top-end corner, leaving its centre to
+      // the tap that retries.
+      final photo = tester.getRect(find.byType(RawImage));
+      final cross = tester.getCenter(find.byIcon(Icons.close));
+      expect(photo.right - cross.dx, lessThanOrEqualTo(24));
+      expect(cross.dy - photo.top, lessThanOrEqualTo(24));
       await tester.tap(find.byIcon(Icons.close));
       expect(canceled, 1);
     });

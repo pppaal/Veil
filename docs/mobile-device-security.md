@@ -96,7 +96,8 @@ The folder is capped at 1 GiB, least recently used first, and never loses a
 blob whose upload is still pending. A blob goes when its message expires, when
 its chat leaves the list (also while the app was closed: the first list after a
 start is compared with the cached one), and on sign-out and wipe; at start,
-files without a row and rows without a file are deleted. The folder is excluded from backup.
+files without a row and rows without a file are deleted, and so is the blob of
+a send the app stopped before queuing it. The folder is excluded from backup.
 
 ### Decrypted bytes
 
@@ -162,7 +163,9 @@ opens a file. On Android it starts the viewer with `ACTION_VIEW` in a new task
 through the app's own FileProvider, which serves `veil_open/` and nothing else.
 On iOS it presents Quick Look over the app. On iOS a photo or video that the
 in-app viewer cannot show goes to the Save flow instead of Quick Look. A
-Windows, macOS or Linux build has no File, no Save and no opening a file.
+Windows, macOS or Linux build has no File and no Save and hands no file to
+another app: it opens a received file only when it is a photo, in the in-app
+viewer.
 
 ## App lock and privacy posture
 

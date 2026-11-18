@@ -117,7 +117,10 @@ Future<void> showMessageActions(
             );
       return Stack(fit: StackFit.expand, children: [
         IgnorePointer(
-          child: CustomPaint(key: const ValueKey('message-actions-dim'), painter: MessageActionsDim(anchor)),
+          child: CustomPaint(
+            key: const ValueKey('message-actions-dim'),
+            painter: MessageActionsDim(anchor, color: light ? MessageActionsDim.lightColor : MessageActionsDim.darkColor),
+          ),
         ),
         _MessageActionsLayout(anchor: anchor, isMine: isMine, bar: bar, menu: menu, messages: messages),
       ]);
@@ -125,15 +128,22 @@ Future<void> showMessageActions(
   );
 }
 
-/// The dim behind a message's actions: 20% black over the chat, except over
-/// a band the screen's width at the pressed message's row ([clear]), which
-/// stays as it is.
+/// The dim behind a message's actions: black over the chat ([color]), except
+/// over a band the screen's width at the pressed message's row ([clear]),
+/// which stays as it is.
 class MessageActionsDim extends CustomPainter {
-  const MessageActionsDim(this.clear);
+  const MessageActionsDim(this.clear, {required this.color});
 
   final Rect clear;
+  final Color color;
 
-  static const Color color = Color(0x33000000);
+  /// 20% black in light, over the white chat and its grey bubbles.
+  static const Color lightColor = Color(0x33000000);
+
+  /// 50% black in dark: on the black page and the dark grey bubbles 20%
+  /// barely shows, and the pressed row would not stand out (WhatsApp's
+  /// dark long press dims about as much).
+  static const Color darkColor = Color(0x80000000);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -145,7 +155,7 @@ class MessageActionsDim extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(MessageActionsDim oldDelegate) => oldDelegate.clear != clear;
+  bool shouldRepaint(MessageActionsDim oldDelegate) => oldDelegate.clear != clear || oldDelegate.color != color;
 }
 
 /// Places the reaction bar above [anchor] and the menu under it, on the

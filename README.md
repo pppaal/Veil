@@ -187,9 +187,10 @@ those checks fails the build:
   files up to 25 MB come from the system file picker and go as they are.
   Received photos show in the chat and open full screen; files open with a
   tap (in another app on Android, in Quick Look on iOS, in the in-app viewer
-  when they are a JPEG, PNG or WebP) or save to the phone. The Windows
-  desktop build sends and shows photos only: File, Save and opening a file
-  are on Android and iOS
+  when they are a JPEG, PNG or WebP) or save to the phone. On the
+  Windows desktop build the plus offers Photos only and there is no Save,
+  and a received file opens only if it is a photo: File, Save and opening a
+  file in another app exist only on Android and iOS
   ([apps/mobile/README.md](apps/mobile/README.md)).
 - The app has no calls, voice messages, stories, stickers or assistant
 - English only, one design system:

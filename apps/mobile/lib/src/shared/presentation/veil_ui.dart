@@ -179,6 +179,9 @@ class VeilEmptyState extends StatelessWidget {
 /// standing follows the user from screen to screen. One with a button
 /// stays longer, and with a screen reader on it waits to be dismissed, as
 /// the platform does.
+///
+/// Over a chat it floats 8 dp above the composer (VeilToastClearance), as
+/// WhatsApp's do, so the field never peeks out from under it.
 void showVeilToast(
   BuildContext context,
   String message, {
@@ -187,13 +190,35 @@ void showVeilToast(
 }) {
   final messenger = ScaffoldMessenger.of(context);
   final action = actionLabel == null || onAction == null ? null : SnackBarAction(label: actionLabel, onPressed: onAction);
+  final clearance = VeilToastClearance.current;
   messenger.clearSnackBars();
   messenger.showSnackBar(
     SnackBar(
       action: action,
       duration: action == null ? const Duration(seconds: 4) : const Duration(seconds: 8),
       persist: action != null && MediaQuery.accessibleNavigationOf(context),
+      // Flutter's floating inset, raised over what the screen keeps at its
+      // bottom.
+      margin: clearance > 0 ? EdgeInsets.fromLTRB(15, 5, 15, clearance + VeilSpace.sm) : null,
       content: Text(message),
     ),
   );
+}
+
+/// What a toast floats above at the bottom of the screen in front: a
+/// chat's composer reports its strip's height here while its page is the
+/// current one (a page pushed over the chat, such as the photo viewer,
+/// gets toasts at the usual place).
+abstract final class VeilToastClearance {
+  static final Map<Object, double Function()> _sources = {};
+
+  /// [height] is read each time a toast shows; 0 when nothing should be
+  /// cleared then.
+  static void set(Object owner, double Function() height) => _sources[owner] = height;
+
+  static void clear(Object owner) => _sources.remove(owner);
+
+  /// The most any current source asks a toast to clear.
+  static double get current =>
+      _sources.values.fold(0.0, (most, height) => height() > most ? height() : most);
 }

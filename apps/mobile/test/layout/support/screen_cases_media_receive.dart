@@ -156,7 +156,8 @@ Future<void> _openSaveDialog(WidgetTester tester) async {
 }
 
 Future<void> _openFileActions(WidgetTester tester) async {
-  await tester.longPress(find.byType(MessageFileCard));
+  // Sam's lease, not the one the user sent this morning.
+  await tester.longPress(find.byWidgetPredicate((widget) => widget is MessageFileCard && !widget.message.isMine));
   await pumpFrames(tester, frames: 4);
   expect(find.byType(ReactionPickerWidget), findsOneWidget, reason: 'the message menu did not open');
 }

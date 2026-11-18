@@ -187,7 +187,7 @@ class MessageBubble extends StatelessWidget {
                           // Sanitized as the file card's is (D27): no bidi
                           // override shows as sent.
                           name: sanitizeFileName(decrypted!.body, fallback: ''),
-                          framed: onBrand,
+                          onBrand: onBrand,
                           voice: decrypted.messageKind == MessageKind.voice,
                         ),
                     ],

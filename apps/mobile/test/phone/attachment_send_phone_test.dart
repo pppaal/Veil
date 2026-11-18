@@ -49,7 +49,9 @@ void main() {
       expect(find.text(en.chatAttachPhotos), findsOneWidget);
       expect(find.byIcon(Icons.photo_library_outlined), findsOneWidget);
       expect(find.text(en.chatAttachFile), findsOneWidget);
-      expect(find.byIcon(Icons.insert_drive_file_outlined), findsOneWidget);
+      // In the sheet: the chat behind it holds the lease the user sent.
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.byIcon(Icons.insert_drive_file_outlined)),
+          findsOneWidget);
     });
     // Every other chat of the account has it too.
     await withPhoneApp(tester, identities, location: '/chat/$emptyChatConversationId', body: (world) async {

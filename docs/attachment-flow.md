@@ -8,8 +8,10 @@ messages: one from the web shows its kind and size with a line saying this
 version can't open it. File, Save and opening a received file are on Android
 and iOS only: the plugin behind File and Save (`flutter_file_dialog`) and the
 `veil/file_open` channel exist only there, so a Windows, macOS or Linux build
-of the app offers Photos only under the plus, shows no Save, and does not open
-a received file. Photos send, show and open full screen there as on a phone.
+of the app offers Photos only under the plus, shows no Save, and opens a
+received file only when it is a photo, in the in-app viewer; any other file
+says "Can't open in this version". Photos send, show and open full screen
+there as on a phone.
 Paths below are under `apps/mobile/lib/src` unless they say otherwise.
 
 ## Send path (mobile)
@@ -131,7 +133,8 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
   while the app was closed: the first list after a start is compared with
   the cached one), when the 1 GiB cap reaches it (never a blob whose upload is pending), and on
   sign-out and wipe. At start, files without a row and rows without a file
-  are deleted.
+  are deleted, and so is a photo or file of the user's whose send the app
+  stopped before queuing it, with its stored content and bubble.
 - Decrypted bytes: in memory only, keyed by conversation id, attachment id,
   digest and the pointer's key, and cleared on lock, sign-out and wipe.
 - Decrypted files exist only to open a file or to save a photo or a file, in

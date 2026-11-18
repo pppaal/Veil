@@ -150,8 +150,9 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
                 _ => Icons.download_outlined,
               },
               size: VeilIconSize.md,
+              // Gone: muted, as the line under it and a gone photo's glyph.
               color: status.state == MediaState.gone && !ready
-                  ? palette.textSubtle
+                  ? palette.textMuted
                   : (own ? Colors.white : palette.text),
             ),
     );
@@ -273,8 +274,10 @@ class _RemoveCross extends StatelessWidget {
 
 /// One line of [text], cut in the middle when it does not fit, keeping its
 /// end (a file's real extension and a few characters before it):
-/// "Lease agreement…final.pdf". It reports its sizes to the bubble, which
-/// is as wide as its widest line.
+/// "Lease agreement…final.pdf". On a line so short that the start would
+/// shrink below [readableStart] characters, only the extension is kept, so
+/// the name still reads: "Lease agree….pdf", not "Lea…t 2026.pdf". It
+/// reports its sizes to the bubble, which is as wide as its widest line.
 class MiddleEllipsisText extends LeafRenderObjectWidget {
   const MiddleEllipsisText(this.text, {super.key, this.style});
 
@@ -340,12 +343,18 @@ class RenderMiddleEllipsisText extends RenderBox {
     markNeedsSemanticsUpdate();
   }
 
-  // The end kept: the extension and up to six characters before it.
-  String get _tail {
+  /// The fewest characters of the name's start a cut keeps before it gives
+  /// up the characters it keeps before the extension.
+  static const readableStart = 8;
+
+  // The end kept: the extension and up to six characters before it, or,
+  // [short], the extension and its dot alone.
+  String _tail({bool short = false}) {
     final characters = _text.characters.toList();
     if (characters.length < 2) return _text;
     final extension = fileExtension(_text);
-    final length = (extension.isEmpty ? 6 : extension.length + 7).clamp(1, characters.length - 1);
+    final kept = extension.isEmpty ? 6 : extension.length + (short ? 1 : 7);
+    final length = kept.clamp(1, characters.length - 1);
     // "…final.pdf", not "… final.pdf".
     return characters.sublist(characters.length - length).join().trimLeft();
   }
@@ -360,11 +369,18 @@ class RenderMiddleEllipsisText extends RenderBox {
   String _fit(double width) {
     if (_measure(_text).width <= width) return _text;
     final characters = _text.characters.toList();
-    final tail = _tail;
-    final tailLength = tail.characters.length;
+    final full = _cutTo(characters, _tail(), width);
+    if (full.start >= readableStart) return full.text;
+    final short = _cutTo(characters, _tail(short: true), width);
+    return short.start > full.start ? short.text : full.text;
+  }
+
+  // The longest start that fits before "…" and [tail] in [width], and how
+  // many characters of the name's start it keeps.
+  ({String text, int start}) _cutTo(List<String> characters, String tail, double width) {
     String cut(int keep) => '${characters.take(keep).join().trimRight()}…$tail';
     var low = 0;
-    var high = characters.length - tailLength;
+    var high = characters.length - tail.characters.length;
     while (low < high) {
       final mid = (low + high + 1) ~/ 2;
       if (_measure(cut(mid)).width <= width) {
@@ -373,11 +389,11 @@ class RenderMiddleEllipsisText extends RenderBox {
         high = mid - 1;
       }
     }
-    return cut(low);
+    return (text: cut(low), start: low);
   }
 
   @override
-  double computeMinIntrinsicWidth(double height) => _measure('…$_tail').width;
+  double computeMinIntrinsicWidth(double height) => _measure('…${_tail(short: true)}').width;
 
   @override
   double computeMaxIntrinsicWidth(double height) => _measure(_text).width;

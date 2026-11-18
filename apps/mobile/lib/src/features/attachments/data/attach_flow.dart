@@ -242,7 +242,9 @@ Future<void> _deletePickerCopy(PickerCopyRoots roots, String path) async {
   if (copy == null) return;
   await AttachFlow._delete(copy);
   final folder = p.dirname(copy);
-  if (!_pluginFolder.hasMatch(p.basename(folder)) || await roots.copyAt(folder) == null) return;
+  if (!AttachmentStoragePaths.pickerCopyFolder.hasMatch(p.basename(folder)) || await roots.copyAt(folder) == null) {
+    return;
+  }
   try {
     await Directory(folder).delete();
   } on FileSystemException {
@@ -250,13 +252,11 @@ Future<void> _deletePickerCopy(PickerCopyRoots roots, String path) async {
   }
 }
 
-final RegExp _pluginFolder = RegExp(
-  r'^(file_dialog-)?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-);
-
 /// Once per process, the first time a chat's attach flow is read: Android's
 /// lost picks (photos picked while the activity was killed) and whatever
-/// the pickers left in the system temporary folder (iOS) are deleted.
+/// the pickers left in the system temporary folder (iOS) are deleted. (Both
+/// are already gone if main()'s purgeLeftPlaintext ran; this catches what
+/// came since.)
 final attachStartupCleanupProvider = FutureProvider<void>((ref) async {
   final paths = ref.read(attachmentStoragePathsProvider);
   final roots = ref.read(pickerCopyRootsProvider);

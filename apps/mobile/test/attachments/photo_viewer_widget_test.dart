@@ -224,6 +224,29 @@ void main() {
     expect(find.byType(PhotoViewerScreen), findsNothing);
   });
 
+  // D36: a lock empties the image cache; the viewer must not decode the
+  // photo into it again while the router takes it down, nor stay up.
+  testWidgets('the app locks: the photo leaves the screen at once, nothing decodes it again, and the viewer closes',
+      (tester) async {
+    await open(tester);
+    await drain(tester);
+    expect(find.byType(Image), findsOneWidget);
+    final decodes = PhotoImageProvider.debugDecodes;
+    PaintingBinding.instance.imageCache
+      ..clear()
+      ..clearLiveImages();
+    media.evict();
+    // The first frame after the lock: the photo is gone from the viewer.
+    await tester.pump();
+    expect(find.descendant(of: find.byType(PhotoViewerScreen), matching: find.byType(Image)), findsNothing);
+    await tester.pumpAndSettle();
+    await drain(tester);
+    expect(find.byType(PhotoViewerScreen), findsNothing, reason: 'the viewer stayed up after the lock');
+    expect(PhotoImageProvider.debugDecodes, decodes, reason: 'the photo was decoded again after the lock');
+    final cache = PaintingBinding.instance.imageCache;
+    expect(cache.currentSize + cache.pendingImageCount + cache.liveImageCount, 0);
+  });
+
   testWidgets('Save asks first, in plain words; Cancel saves nothing', (tester) async {
     await open(tester);
     await tester.tap(find.byKey(const ValueKey('photo-viewer-save')));

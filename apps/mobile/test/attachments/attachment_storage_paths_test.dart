@@ -15,11 +15,13 @@ void main() {
   late Directory systemTemp;
   late List<String> prepared;
 
-  AttachmentStoragePaths paths({required bool sweepSystemTemp}) => AttachmentStoragePaths(
+  AttachmentStoragePaths paths({required bool sweepSystemTemp, bool sweepPickerCopies = false}) =>
+      AttachmentStoragePaths(
         temporaryRoot: () async => temporary,
         supportRoot: () async => support,
         systemTempRoot: () => systemTemp,
         sweepSystemTemp: sweepSystemTemp,
+        sweepPickerCopies: sweepPickerCopies,
         onDirectoryPrepared: (path) async => prepared.add(path),
       );
 
@@ -124,7 +126,7 @@ void main() {
   });
 
   test('purgeLeftPlaintext, run as the app starts, empties veil_open and staging and keeps the media', () async {
-    final storage = paths(sweepSystemTemp: true);
+    final storage = paths(sweepSystemTemp: false);
     write(await storage.stagingDir(), 'one.jpg');
     write(await storage.openDir(), 'xyz/open.pdf');
     final media = write(await storage.mediaDir(), 'b' * 64);
@@ -135,7 +137,51 @@ void main() {
     expect(entriesOf(await storage.stagingDir()), isEmpty);
     expect(entriesOf(await storage.openDir()), isEmpty);
     expect(media.existsSync(), isTrue, reason: 'a sealed blob went');
-    expect(system.existsSync(), isTrue);
+    expect(system.existsSync(), isTrue, reason: 'the system temp folder is swept on iOS only');
+  });
+
+  // D39: a crash between a plugin's copy and its move into staging leaves
+  // the pick under its real name. The next start deletes it before the lock
+  // screen is passed, as it does staging.
+  test('purgeLeftPlaintext on iOS also empties tmp/, where the pickers and the save screen copy under real names',
+      () async {
+    final storage = paths(sweepSystemTemp: true);
+    write(systemTemp, 'lease-signed.pdf');
+    write(systemTemp, 'image_picker_ABCD.jpg');
+    write(systemTemp, 'app.veil-Inbox/scan.pdf');
+    final media = write(await storage.mediaDir(), 'b' * 64);
+
+    await storage.purgeLeftPlaintext();
+
+    expect(entriesOf(systemTemp), isEmpty, reason: 'a pick or save copy outlived a crash under its real name');
+    expect(media.existsSync(), isTrue);
+  });
+
+  test('purgeLeftPlaintext on Android also deletes the pickers\' own copy folders, and only those', () async {
+    final storage = paths(sweepSystemTemp: false, sweepPickerCopies: true);
+    write(temporary, 'file_dialog-0f8fad5b-d9cb-469f-a165-70867728950e/tax-return.pdf');
+    write(temporary, '7c9e6679-7425-40de-944b-e07fc1f90ae7/IMG_2041.jpg');
+    final other = write(temporary, 'some_cache/keep.bin');
+    final lookalike = write(temporary, 'file_dialog-notes/keep.txt');
+    final flat = write(temporary, '0f8fad5b-d9cb-469f-a165-70867728950e');
+
+    await storage.purgeLeftPlaintext();
+
+    expect(entriesOf(temporary), unorderedEquals(['some_cache', 'file_dialog-notes', p.basename(flat.path)]));
+    for (final file in [other, lookalike, flat]) {
+      expect(file.existsSync(), isTrue, reason: file.path);
+    }
+  });
+
+  test('purgeLeftPlaintext elsewhere leaves the temporary folder\'s other folders alone', () async {
+    final storage = paths(sweepSystemTemp: false);
+    final copy = write(temporary, 'file_dialog-0f8fad5b-d9cb-469f-a165-70867728950e/tax-return.pdf');
+    await storage.purgeLeftPlaintext();
+    expect(copy.existsSync(), isTrue, reason: 'a desktop temporary folder is shared with other apps');
+  });
+
+  test('the pickers\' copy folders are swept on Android only unless told otherwise', () {
+    expect(AttachmentStoragePaths().sweepPickerCopies, Platform.isAndroid);
   });
 
   test('purgeLeftPlaintext with no folders yet does nothing and creates none', () async {

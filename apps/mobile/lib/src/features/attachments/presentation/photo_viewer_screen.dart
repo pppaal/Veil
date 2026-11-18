@@ -24,7 +24,8 @@ import 'save_media.dart';
 /// own); [fileName] is set for a photo that came as a file, which Save
 /// keeps. The viewer closes by itself when its message [messageId] leaves
 /// the chat or reaches [expiresAt] (a disappearing photo goes with its
-/// message).
+/// message), and when the app locks or signs out (nothing decrypted stays
+/// on screen or is decoded again behind the lock screen, D36).
 Future<void> showPhotoViewer(
   BuildContext context, {
   required String conversationId,
@@ -118,9 +119,18 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
   Timer? _expiry;
   bool _closing = false;
 
+  // The media service and its eviction count when the viewer opened: once
+  // they differ, the app locked or signed out.
+  late final AttachmentMediaService _media;
+  late final int _evictions;
+  bool _evicted = false;
+
   @override
   void initState() {
     super.initState();
+    _media = ref.read(messengerControllerProvider).media;
+    _evictions = _media.evictions;
+    _media.addListener(_onMedia);
     // A disappearing photo goes with its message (D37): the viewer closes
     // when the message leaves the chat or its time runs out.
     ref.listenManual(messengerControllerProvider, (_, __) => scheduleMicrotask(_closeIfGone));
@@ -141,6 +151,16 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
     });
   }
 
+  // The app locked or signed out: the decrypted photo leaves the screen at
+  // once, so nothing decodes it again into the emptied image cache while
+  // the router takes the viewer down. Should the viewer still be up a frame
+  // later, it closes.
+  void _onMedia() {
+    if (_evicted || _media.evictions == _evictions || !mounted) return;
+    setState(() => _evicted = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _close());
+  }
+
   // The message is gone or expired: the viewer, and a Save dialog over it,
   // close.
   void _closeIfGone() {
@@ -150,8 +170,13 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
     final messageId = widget.messageId;
     final expired = expiresAt != null && !expiresAt.isAfter(controller.expiryNow());
     final left = messageId != null && !controller.messagesFor(widget.conversationId).any((m) => m.id == messageId);
+    if (expired || left) _close();
+  }
+
+  void _close() {
+    if (!mounted || _closing) return;
     final route = ModalRoute.of(context);
-    if ((!expired && !left) || route == null || !route.isActive) return;
+    if (route == null || !route.isActive) return;
     _closing = true;
     Navigator.of(context)
       ..popUntil((candidate) => candidate == route)
@@ -160,6 +185,7 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
 
   @override
   void dispose() {
+    _media.removeListener(_onMedia);
     _expiry?.cancel();
     _zoom.dispose();
     _settle.dispose();
@@ -207,12 +233,17 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
     final size = MediaQuery.sizeOf(context);
     final ratio = MediaQuery.devicePixelRatioOf(context);
     final key = MediaKey(widget.conversationId, widget.attachment);
-    final provider = PhotoImageProvider(
-      media: key,
-      bytes: widget.bytes,
-      target: PhotoDecodeTarget.viewer(PhotoViewerScreen.decodeEdge(math.max(size.width, size.height) * ratio)),
-    );
-    media.noteImageKey(key, provider.key);
+    // Checked here too, not only when told: a rebuild after a lock never
+    // draws the photo again.
+    final evicted = _evicted || !identical(media, _media) || media.evictions != _evictions;
+    final provider = evicted
+        ? null
+        : PhotoImageProvider(
+            media: key,
+            bytes: widget.bytes,
+            target: PhotoDecodeTarget.viewer(PhotoViewerScreen.decodeEdge(math.max(size.width, size.height) * ratio)),
+          );
+    if (provider != null) media.noteImageKey(key, provider.key);
     final fade = (1 - _drag.abs() / 400).clamp(0.0, 1.0);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
@@ -238,12 +269,14 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
                     maxScale: PhotoViewerScreen.maxScale,
                     panEnabled: !_atRest,
                     child: SizedBox.expand(
-                      child: Image(
-                        image: provider,
-                        fit: BoxFit.contain,
-                        gaplessPlayback: true,
-                        errorBuilder: (context, _, __) => const SizedBox.shrink(),
-                      ),
+                      child: provider == null
+                          ? null
+                          : Image(
+                              image: provider,
+                              fit: BoxFit.contain,
+                              gaplessPlayback: true,
+                              errorBuilder: (context, _, __) => const SizedBox.shrink(),
+                            ),
                     ),
                   ),
                 ),

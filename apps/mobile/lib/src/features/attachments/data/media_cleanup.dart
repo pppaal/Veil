@@ -48,7 +48,9 @@ class MediaCopy {
 ///   row, its decrypted bytes through [onEntryDeleted], its copies), swept
 ///   at start, after messages change (at most once per
 ///   [expiryCheckInterval]) and by a timer armed for the next expiry;
-/// - the entries of a conversation that leaves the list go;
+/// - the entries of a conversation that leaves the list go, also one that
+///   left while the app was closed (the first list is compared with what
+///   the cache held);
 /// - at start, files without a row and rows without a file go;
 /// - the folder is held to [maxBytes] by `lastUsedAt`, least recent first,
 ///   never taking the blob of an upload still pending;
@@ -145,13 +147,14 @@ class MediaCleanup {
 
   /// The conversations the store lists now. Those listed before and gone
   /// now (the store drops one only after a successful list) lose their
-  /// blobs, decrypted bytes and copies.
-  Future<void> conversationsListed(Iterable<String> conversationIds) {
+  /// blobs, decrypted bytes and copies. The first list since a start or a
+  /// sign-in is compared with what the cache held, [cached], so a chat that
+  /// left while the app was closed goes too.
+  Future<void> conversationsListed(Iterable<String> conversationIds, {Iterable<String> cached = const []}) {
     final now = {for (final id in conversationIds) id.toLowerCase()};
-    final before = _listed;
+    final before = _listed ?? {for (final id in cached) id.toLowerCase()};
     _listed = now;
     _left.removeAll(now);
-    if (before == null) return Future<void>.value();
     final left = before.difference(now);
     if (left.isEmpty) return Future<void>.value();
     _left.addAll(left);

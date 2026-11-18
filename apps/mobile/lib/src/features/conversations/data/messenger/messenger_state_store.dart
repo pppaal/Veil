@@ -55,6 +55,7 @@ class MessengerStateStore {
   final Map<String, ConversationReadMark> _readMarks = {};
   bool _baselinePending = true;
   bool _listedByRelay = false;
+  Set<String> _hydratedIds = const {};
 
   /// The conversation the user is looking at right now, or null. What
   /// arrives there is read (ReadStateService) and raises no notification.
@@ -108,6 +109,11 @@ class MessengerStateStore {
   /// Whether a relay list was applied since the state was last hydrated or
   /// cleared.
   bool get listedByRelay => _listedByRelay;
+
+  /// The conversations the cache held when the state was last hydrated:
+  /// what the first relay list after a start is compared with, so a chat
+  /// that left while the app was closed is seen to have left.
+  Set<String> get hydratedIds => _hydratedIds;
 
   /// Whether the next relay list is this device's first (the cache held the
   /// baseline marker, or there is no cache to hold anything): what it lists
@@ -315,6 +321,7 @@ class MessengerStateStore {
       ..addAll(snapshot.readMarks);
     _baselinePending = snapshot.baselinePending;
     _listedByRelay = false;
+    _hydratedIds = {for (final conversation in conversations) conversation.id};
     changed();
   }
 
@@ -327,6 +334,7 @@ class MessengerStateStore {
     _readMarks.clear();
     _baselinePending = true;
     _listedByRelay = false;
+    _hydratedIds = const {};
     activeConversationId = null;
     changed();
   }

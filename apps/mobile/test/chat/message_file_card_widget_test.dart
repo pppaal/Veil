@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
@@ -363,6 +364,69 @@ void main() {
       await tester.tap(find.byType(MessageFileCard));
       await drain(tester);
       expect(media.copies, isEmpty, reason: 'opened while it sends');
+    });
+
+    // D19, D27: a send that failed keeps the file glyph (it is on this
+    // phone, nothing to download) and a cross at the card's end that
+    // removes it; a tap anywhere else is the bubble's retry, not an open.
+    for (final withBlob in [false, true]) {
+      testWidgets('failed${withBlob ? ' with its blob found' : ''}: the file glyph and a cross that removes it',
+          (tester) async {
+        if (withBlob) ready();
+        var canceled = 0;
+        await show(
+          tester,
+          message: _message(mine: true, state: MessageDeliveryState.failed),
+          snapshot: const AttachmentTransferSnapshot(
+              clientMessageId: 'c', phase: AttachmentTransferPhase.failed, progress: 0, canRetry: true, canCancel: true),
+          onCancel: () => canceled += 1,
+        );
+        expect(find.byIcon(Icons.insert_drive_file_outlined), findsOneWidget);
+        expect(find.byIcon(Icons.download_outlined), findsNothing, reason: 'a download arrow on the user\'s own file');
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.byTooltip(l10n.chatCancelAction), findsOneWidget);
+        // At the card's end, a whole tap target.
+        final card = tester.getRect(find.byType(MessageFileCard));
+        final cross = tester.getRect(find.byType(IconButton));
+        expect(card.right - cross.right, lessThan(1));
+        expect(cross.width, greaterThanOrEqualTo(44));
+        expect(cross.height, greaterThanOrEqualTo(44));
+        await tester.tap(find.byIcon(Icons.close));
+        expect(canceled, 1);
+
+        await tester.tap(find.byType(MiddleEllipsisText));
+        await drain(tester);
+        expect(media.copies, isEmpty, reason: 'a file that was not sent was opened');
+        expect(opener.opened, isEmpty);
+      });
+    }
+
+    testWidgets('failed, and the outbox no longer offers a cancel: no cross', (tester) async {
+      await show(
+        tester,
+        message: _message(mine: true, state: MessageDeliveryState.failed),
+        snapshot: const AttachmentTransferSnapshot(
+            clientMessageId: 'c', phase: AttachmentTransferPhase.failed, progress: 0, canRetry: true, canCancel: false),
+        onCancel: () {},
+      );
+      expect(find.byIcon(Icons.insert_drive_file_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.close), findsNothing);
+    });
+
+    testWidgets('semantics when it failed: the name, and the cross a screen reader can reach', (tester) async {
+      final handle = tester.ensureSemantics();
+      await show(
+        tester,
+        message: _message(mine: true, state: MessageDeliveryState.failed),
+        snapshot: const AttachmentTransferSnapshot(
+            clientMessageId: 'c', phase: AttachmentTransferPhase.failed, progress: 0, canRetry: true, canCancel: true),
+        onCancel: () {},
+      );
+      expect(tester.getSemantics(find.byType(MessageFileCard)).label, startsWith('lease.pdf, PDF · 2.3 MB'));
+      final cross = tester.getSemantics(find.byType(IconButton)).getSemanticsData();
+      expect(cross.tooltip, l10n.chatCancelAction);
+      expect(cross.hasAction(SemanticsAction.tap), isTrue);
+      handle.dispose();
     });
 
     testWidgets('sent: ready to open from this phone, with no fetch', (tester) async {

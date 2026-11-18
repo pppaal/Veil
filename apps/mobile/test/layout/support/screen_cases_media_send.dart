@@ -65,7 +65,7 @@ const List<ScreenCase> mediaSendScreenCases = [
     overrides: _photoAsFilePick,
     settle: _confirmFile,
   ),
-  // An own photo and an own file while they upload, and a photo that
+  // An own photo and an own file while they upload, and both once they
   // could not be sent.
   ScreenCase(
     'chat-room-uploading',
@@ -81,7 +81,7 @@ const List<ScreenCase> mediaSendScreenCases = [
     file: 'chat_room_screen.dart',
     location: _chat,
     beforeSession: _holdUploads,
-    settle: _failPhotoUpload,
+    settle: _failPhotoAndFileUploads,
   ),
   // A file over the limit: a toast, nothing staged.
   ScreenCase(
@@ -147,28 +147,37 @@ Future<void> _uploadPhotoAndFile(WidgetTester tester) async {
   await awaitOwnPhotos(tester);
 }
 
-Future<void> _failPhotoUpload(WidgetTester tester) async {
+Future<void> _failPhotoAndFileUploads(WidgetTester tester) async {
   appInFront(tester);
   await sendFromChat(tester, lakePhoto(), (path) => OutgoingAttachment.photo(path: path, contentType: 'image/jpeg'));
+  await sendFromChat(
+    tester,
+    leaseBytes(),
+    (path) => OutgoingAttachment.file(path: path, name: leaseFileName, contentType: contentTypeForName(leaseFileName)),
+  );
   final relay = _relay(tester);
   await pumpUntil(tester, () => relay.uploadTickets.length == 1, reason: 'the upload never started');
-  // The storage refuses it: not worth retrying, so the send fails for good.
-  // (Handled here too, in case the upload has not reached the gate yet.)
+  // The storage refuses both: not worth retrying, so each send fails for
+  // good, the file once the photo before it has. (Handled here too, in case
+  // an upload has not reached the gate yet.)
   relay.uploadGate!
     ..future.ignore()
     ..completeError(
         VeilApiException('Attachment upload failed: HTTP 403', code: 'attachment_upload_failed', statusCode: 403));
   await pumpUntil(
     tester,
-    () => find.text(lookupAppLocalizations(const Locale('en')).chatNotSentTapToRetry).evaluate().isNotEmpty,
-    reason: 'the send never failed',
+    () => find.text(lookupAppLocalizations(const Locale('en')).chatNotSentTapToRetry).evaluate().length == 2,
+    reason: 'the sends never failed',
   );
   // The toast that says so has gone by the time anyone looks again: its
   // clock starts once it is in, and it slides out.
   await tester.pump(const Duration(seconds: 1));
   await tester.pump(const Duration(seconds: 5));
-  // A failed photo keeps the photo, without the scrim.
+  // A failed photo keeps the photo, without the scrim; the failed file its
+  // file glyph and the cross that removes it.
   await awaitOwnPhotos(tester);
+  expect(find.byTooltip(lookupAppLocalizations(const Locale('en')).chatCancelAction), findsNWidgets(2),
+      reason: 'a failed photo or file has no cross to remove it');
 }
 
 FakeRelay _relay(WidgetTester tester) => relayOf(tester);

@@ -122,14 +122,17 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
   id, attachment id, digest, size, expiry, last use) is kept only in the
   `media_blobs` table of the encrypted database; the key stays in the
   encrypted content store. The folder is excluded from backup.
-- A blob goes when its message expires, when its chat leaves the list, when
-  the 1 GiB cap reaches it (never a blob whose upload is pending), and on
+- A blob goes when its message expires, when its chat leaves the list (also
+  while the app was closed: the first list after a start is compared with
+  the cached one), when the 1 GiB cap reaches it (never a blob whose upload is pending), and on
   sign-out and wipe. At start, files without a row and rows without a file
   are deleted.
 - Decrypted bytes: in memory only, keyed by conversation id, attachment id,
   digest and the pointer's key, and cleared on lock, sign-out and wipe.
 - Decrypted files exist only to open a file or to save a photo or a file, in
-  `veil_open/<random>/<name>` under the temporary folder. A copy goes when
+  `veil_open/<random>/<name>` under the temporary folder; on iOS the save
+  screen also gets its own copy under the file's name in the system
+  temporary folder, deleted when the save screen returns. A copy goes when
   Quick Look closes (iOS), when the save screen returns and on lock (a Save
   copy), when its message expires, by a sweep every 60 seconds and on resume
   for copies older than 10 minutes, and at start and wipe. An Android copy
@@ -137,11 +140,13 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
   reading it, and that app may keep a copy of its own.
 - The staging folder (`veil_attachment_cache` under the temporary folder)
   holds a pick, in plaintext, until it is sealed or cancelled, or for up to 10
-  minutes while a lock holds it for its chat; nothing in it survives a
-  restart. Plugin copies are moved into staging or deleted at
-  once, and on iOS the system temporary folder is emptied the first time a
-  chat opens after the app starts, after each pick, after each save and on
-  wipe.
+  minutes while a lock holds it for its chat. Plugin copies are moved into
+  staging or deleted at once, and on iOS the system temporary folder is
+  emptied after each pick, after each save and on wipe. At every start,
+  before the lock screen is passed, staging, Android's picker folders
+  (`<uuid>/` and `file_dialog-<uuid>/` in the cache folder) and, on iOS, the
+  system temporary folder are emptied, so no pick or save copy a crash left
+  survives a restart.
 
 ## Failure states
 
@@ -174,9 +179,10 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
   deleted. There is no dialog: nothing was sent. A cancel wins over a send or
   a retry already under way, and a record the cache would not delete is
   dropped at the next start, never sent.
-- The cross on a downloading photo or file stops the fetch, also while the tap
-  still waits for a transfer slot; nothing is kept or opened for it. A blob
-  that finishes downloading after its chat left the list is not kept.
+- The cross on a downloading file stops the fetch, also while the tap still
+  waits for a transfer slot; nothing is kept or opened for it. A photo's
+  download has no cross: its tile shows a ring and the size. A blob that
+  finishes downloading after its chat left the list is not kept.
 
 ## App lock
 

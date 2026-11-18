@@ -76,17 +76,22 @@ app support) under random names of 64 hex characters. Which blob belongs to
 which message is kept only in the `media_blobs` table of the encrypted
 database. The folder is capped at 1 GiB, least recently used first, never
 touching a blob that is still uploading, and a blob goes when its message
-expires. Decrypted bytes live only in memory and are dropped on lock. The
-only decrypted files are the copies made to open a file or to save a photo
-or a file, in `veil_open/` under the temporary folder. They go when Quick
-Look closes or the save screen returns (a Save copy also on lock), when their
-message expires, after 10 minutes (a sweep runs every 60 seconds) and at
-start. On the sending side, a picked photo or file is a plaintext copy in the
-staging folder (`veil_attachment_cache` under the temporary folder) until it
-is sealed, the pick is cancelled, or 10 minutes after a lock held it for its
-chat; the picker's own copy is moved there at once, and nothing in staging
-survives a restart. On iOS the system temporary folder the plugins write to
-is emptied after each pick and each save.
+expires, or when its chat leaves the list. Decrypted bytes live only in
+memory and are dropped on lock. Decrypted files are made only to open a file
+or to save a photo or a file: a copy in `veil_open/` under the temporary
+folder, and on iOS, while the save screen is up, the save screen's own copy
+under the file's name in the system temporary folder, deleted when it
+returns. The `veil_open/` copies go when Quick Look closes or the save screen
+returns (a Save copy also on lock), when their message expires, after 10
+minutes (a sweep runs every 60 seconds) and at start. On the sending side, a
+picked photo or file is a plaintext copy in the staging folder
+(`veil_attachment_cache` under the temporary folder) until it is sealed, the
+pick is cancelled, or 10 minutes after a lock held it for its chat; the
+picker's own copy is moved there at once. On iOS the system temporary folder
+the plugins write to is emptied after each pick and each save. Staging, the
+pickers' own copies and (iOS) the system temporary folder are emptied at
+every start, before the lock screen is passed, so nothing a crash left
+survives a restart.
 
 A file opens through the app's own channel, `veil/file_open`
 (`lib/src/core/platform/file_open_channel.dart`, `FileOpenChannel.kt`, the

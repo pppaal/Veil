@@ -19,11 +19,14 @@ import 'message_photo.dart' show incomingInset, incomingRingTrack;
 
 /// A file in a message (D27): a 40 dp circle holding where it stands (the
 /// download glyph, a ring with a cross while it downloads or sends, the
-/// file glyph once it is here), the sender's file name on one line, cut in
-/// the middle so its real extension stays, and "PDF · 2.3 MB" under it, the
-/// type from that extension, never from what the sender claims. A tap
-/// fetches it if it is not here yet, then opens it (D28): in the viewer
-/// when it is a photo this version draws, else in another app.
+/// file glyph once it is here and on the user's own whenever it is not
+/// sending), the sender's file name on one line, cut in the middle so its
+/// real extension stays, and "PDF · 2.3 MB" under it, the type from that
+/// extension, never from what the sender claims. A tap fetches it if it is
+/// not here yet, then opens it (D28): in the viewer when it is a photo this
+/// version draws, else in another app. The user's own file that failed to
+/// send keeps a cross at its end that removes it (D19); the rest of the
+/// bubble retries.
 class MessageFileCard extends ConsumerStatefulWidget {
   const MessageFileCard({
     super.key,
@@ -106,6 +109,9 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
         : downloading
             ? () => media.cancel(widget.conversationId, widget.attachment)
             : null;
+    // A send that failed, for good or not, can still be taken back.
+    final VoidCallback? remove =
+        own && widget.message.hasFailed && snapshot != null && snapshot.canCancel ? widget.onCancelAttachment : null;
     final ringValue = sending
         ? (snapshot!.phase == AttachmentTransferPhase.uploading ? snapshot.progress.clamp(0.0, 1.0) : null)
         : status.progress;
@@ -135,7 +141,8 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
             ])
           : Icon(
               switch (status.state) {
-                _ when ready || status.state == MediaState.gone => Icons.insert_drive_file_outlined,
+                // The user's own file is on this phone: never the download glyph.
+                _ when own || ready || status.state == MediaState.gone => Icons.insert_drive_file_outlined,
                 _ => Icons.download_outlined,
               },
               size: VeilIconSize.md,
@@ -150,7 +157,7 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
       label: note == null ? '$name, $typeSize' : '$name, $typeSize. $note',
       button: onTap != null,
       onTapHint: ready ? l10n.chatOpenAction : (canFetch ? l10n.chatDownloadAction : null),
-      excludeSemantics: cancel == null,
+      excludeSemantics: cancel == null && remove == null,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
@@ -175,6 +182,8 @@ class _MessageFileCardState extends ConsumerState<MessageFileCard> {
                   ],
                 ),
               ),
+              // Its 44 dp target keeps 8 dp around the disc: no gap needed.
+              if (remove != null) _RemoveCross(onPressed: remove, tooltip: l10n.chatCancelAction),
             ],
           ),
         ),
@@ -226,6 +235,34 @@ class _Circle extends StatelessWidget {
           child,
         ],
       ),
+    );
+  }
+}
+
+/// The cross on the user's own file that failed to send: on a small disc
+/// at the card's end, a whole 44 dp tap target, as the failed photo's.
+class _RemoveCross extends StatelessWidget {
+  const _RemoveCross({required this.onPressed, required this.tooltip});
+
+  final VoidCallback onPressed;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 44,
+      child: Stack(alignment: Alignment.center, children: [
+        DecoratedBox(
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
+          child: const SizedBox.square(dimension: 28),
+        ),
+        IconButton(
+          onPressed: onPressed,
+          tooltip: tooltip,
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.close, size: 18, color: Colors.white),
+        ),
+      ]),
     );
   }
 }

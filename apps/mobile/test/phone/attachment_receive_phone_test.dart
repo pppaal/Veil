@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/app/router/app_router.dart';
+import 'package:veil_mobile/src/app/veil_app.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/notifications/local_notification_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_opener.dart';
 import 'package:veil_mobile/src/features/attachments/presentation/photo_viewer_screen.dart';
@@ -14,11 +16,13 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_file_card.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_photo.dart';
+import 'package:veil_mobile/src/features/chat/presentation/photo_image_provider.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
 
 import '../layout/support/media_receive_seed.dart';
 import '../support/fake_attachment_opener.dart';
+import '../support/fake_platform_security.dart';
 import '../support/media_fixtures.dart';
 import 'phone_app.dart';
 
@@ -169,6 +173,63 @@ void main() {
       world.dispose();
     }
   });
+
+  // D36, through VeilApp, which empties the decrypted bytes and the image
+  // cache on lock before the router takes the chat and the viewer down.
+  for (final viewer in [true, false]) {
+    testWidgets('a lock ${viewer ? 'with the viewer up' : 'over the chat'} leaves no decoded photo behind the lock screen',
+        (tester) async {
+      usePhoneView(tester, phoneSmall);
+      final platform = RecordingPlatformSecurity();
+      addTearDown(platform.close);
+      final world = await LayoutWorld.create(
+        identities: identities,
+        account: LayoutAccount.signedIn,
+        locale: 'en',
+        overrides: [
+          attachmentOpenerProvider.overrideWithValue(opener),
+          platformSecurityServiceProvider.overrideWithValue(platform),
+          localNotificationServiceProvider.overrideWithValue(_QuietNotifications()),
+        ],
+      );
+      try {
+        await deliverAttachment(world,
+            plaintext: landscapePhoto, contentType: 'image/jpeg', kind: MessageKind.image, hour: 10, minute: 16);
+        final router = world.container.read(appRouterProvider);
+        await tester.pumpWidget(UncontrolledProviderScope(container: world.container, child: const VeilApp()));
+        await pumpFrames(tester);
+        unawaited(router.push(_chat));
+        await pumpFrames(tester);
+        expect(find.byType(ChatRoomScreen), findsOneWidget);
+        final inBubble = find.descendant(of: find.byType(MessagePhoto), matching: drawnPhoto);
+        await until(tester, () => inBubble.evaluate().isNotEmpty, reason: 'the photo never showed');
+        if (viewer) {
+          await tester.tap(inBubble);
+          await pumpFrames(tester, frames: 4);
+          final inViewer = find.descendant(of: find.byType(PhotoViewerScreen), matching: drawnPhoto);
+          await until(tester, () => inViewer.evaluate().isNotEmpty, reason: 'the viewer never drew the photo');
+        }
+        final decodes = PhotoImageProvider.debugDecodes;
+
+        world.container.read(appSessionProvider.notifier).lock();
+        for (var i = 0; i < 30; i++) {
+          await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(world.container.read(appSessionProvider).locked, isTrue);
+        expect(find.byType(PhotoViewerScreen, skipOffstage: false), findsNothing);
+        expect(find.byType(ChatRoomScreen, skipOffstage: false), findsNothing);
+        expect(PhotoImageProvider.debugDecodes, decodes, reason: 'a photo was decoded after the lock');
+        final cache = PaintingBinding.instance.imageCache;
+        expect(cache.currentSize + cache.pendingImageCount + cache.liveImageCount, 0,
+            reason: 'a decoded photo stays in memory behind the lock screen');
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        world.dispose();
+      }
+    });
+  }
 
   testWidgets('the viewer closes when its disappearing photo expires, and nothing of it can be saved after',
       (tester) async {
@@ -336,4 +397,21 @@ void main() {
       }
     });
   });
+}
+
+class _QuietNotifications implements LocalNotificationService {
+  @override
+  void Function(String? conversationId)? onNotificationTapped;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> showMessageNotification({required String conversationId, required String title, required String body}) async {}
+
+  @override
+  Future<void> cancelConversation(String conversationId) async {}
 }

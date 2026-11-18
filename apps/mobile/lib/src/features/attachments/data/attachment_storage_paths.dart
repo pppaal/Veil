@@ -11,8 +11,12 @@ import 'package:path_provider/path_provider.dart';
 /// - Media (`<app support>/veil_media`): sealed blobs under random names,
 ///   flat; which one belongs to which message is only in the encrypted
 ///   database (MediaIndex). Excluded from backup.
-/// - Open (`<tmp>/veil_open`): the only decrypted files, a copy while
-///   another app opens it or the save screen keeps it.
+/// - Open (`<tmp>/veil_open`): the decrypted copies the app makes, while
+///   another app opens one or the save screen keeps it. On iOS the save
+///   screen also gets a copy of its own in the system temporary folder.
+/// - Android's picker copies (`<tmp>/<uuid>/` from image_picker,
+///   `<tmp>/file_dialog-<uuid>/` from flutter_file_dialog): a pick under its
+///   real name until it is moved into staging. Swept at start on Android.
 /// - The system temporary folder (`NSTemporaryDirectory()` on iOS, which is
 ///   not `<tmp>`: that is Library/Caches there): where the iOS pickers and
 ///   save sheet leave copies under their real names. Swept on iOS only.
@@ -25,16 +29,25 @@ class AttachmentStoragePaths {
     Future<Directory> Function()? supportRoot,
     Directory Function()? systemTempRoot,
     bool? sweepSystemTemp,
+    bool? sweepPickerCopies,
     Future<void> Function(String path)? onDirectoryPrepared,
   })  : _temporaryRoot = temporaryRoot ?? getTemporaryDirectory,
         _supportRoot = supportRoot ?? getApplicationSupportDirectory,
         _systemTempRoot = systemTempRoot ?? (() => Directory.systemTemp),
         sweepSystemTemp = sweepSystemTemp ?? Platform.isIOS,
+        sweepPickerCopies = sweepPickerCopies ?? Platform.isAndroid,
         _onDirectoryPrepared = onDirectoryPrepared;
 
   static const stagingFolder = 'veil_attachment_cache';
   static const mediaFolder = 'veil_media';
   static const openFolder = 'veil_open';
+
+  /// The name of a folder an Android picker copies a pick into, under the
+  /// temporary folder: image_picker's `<uuid>`, flutter_file_dialog's
+  /// `file_dialog-<uuid>`.
+  static final RegExp pickerCopyFolder = RegExp(
+    r'^(file_dialog-)?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
 
   final Future<Directory> Function() _temporaryRoot;
   final Future<Directory> Function() _supportRoot;
@@ -44,6 +57,11 @@ class AttachmentStoragePaths {
   /// Whether [purgeSystemTemp] empties the system temporary folder: on iOS,
   /// where the pickers write there; elsewhere it holds nothing of ours.
   final bool sweepSystemTemp;
+
+  /// Whether [purgeLeftPlaintext] deletes the [pickerCopyFolder]s under the
+  /// temporary folder: on Android, where the pickers make them. Elsewhere
+  /// that folder may be the system's own, shared with other apps.
+  final bool sweepPickerCopies;
 
   // Folders handed out since they were last created, so each is excluded
   // from backup once per creation rather than on every call.
@@ -65,12 +83,21 @@ class AttachmentStoragePaths {
   }
 
   /// Deletes every decrypted copy and every picked plaintext a previous run
-  /// left: what the app does first, before the lock screen, so none of them
-  /// waits at rest for an unlock (D38, D39). The media folder stays.
+  /// left, the pickers' and the save screen's own copies included (Android's
+  /// [pickerCopyFolder]s, iOS's system temporary folder): what the app does
+  /// first, before the lock screen, so none of them waits at rest for an
+  /// unlock, under its real name or any other (D38, D39). The media folder
+  /// stays.
   Future<void> purgeLeftPlaintext() async {
-    final temporary = (await _temporaryRoot()).path;
-    await _deleteEntriesOf(Directory(p.join(temporary, openFolder)));
-    await _deleteEntriesOf(Directory(p.join(temporary, stagingFolder)));
+    final temporary = Directory((await _temporaryRoot()).path);
+    await _deleteEntriesOf(Directory(p.join(temporary.path, openFolder)));
+    await _deleteEntriesOf(Directory(p.join(temporary.path, stagingFolder)));
+    if (sweepPickerCopies && await temporary.exists()) {
+      await for (final entity in temporary.list(followLinks: false)) {
+        if (entity is Directory && pickerCopyFolder.hasMatch(p.basename(entity.path))) await _delete(entity);
+      }
+    }
+    await purgeSystemTemp();
   }
 
   /// Deletes every entry of the system temporary folder when

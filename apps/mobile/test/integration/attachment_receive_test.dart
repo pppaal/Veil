@@ -125,6 +125,35 @@ void main() {
         isTrue);
   });
 
+  // D37 across a restart: the chat goes from bob's list while his app is
+  // closed (he was removed, or alice deleted her account). The first list
+  // of the next start no longer has it; its blob and its row go, as they do
+  // when a chat leaves while the app runs. A restart that still lists the
+  // chat keeps them.
+  test('a chat that left the list while the app was closed takes its blobs along at the next start', () async {
+    final (_, photoRef) = await send(jpegWithMetadata(width: 120, height: 90),
+        id: '00000000-0000-4000-8000-0000000000b4', contentType: 'image/jpeg', kind: MessageKind.image);
+    await waitFor(() => bob.controller.media.statusOf(conv, photoRef).state == MediaState.ready,
+        reason: 'the photo never came');
+    final mediaDir = Directory(p.join(bob.attachmentDirectory.path, 'support', 'veil_media'));
+    List<FileSystemEntity> blobs() => mediaDir.existsSync() ? mediaDir.listSync() : const [];
+    expect(blobs(), hasLength(1));
+
+    // The restart's first list has been applied once it returns; the
+    // sweeps run one after another, so this one waits for the list's.
+    await bob.restart();
+    expect(bob.controller.conversationById(conv), isNotNull);
+    await settle();
+    await bob.controller.media.cleanup.sweepExpired();
+    expect(await bob.mediaIndex.all(), hasLength(1), reason: 'a chat still listed lost its blob at a restart');
+    expect(blobs(), hasLength(1));
+
+    await bob.restart(whileClosed: () async => relay.conversations.remove(conv));
+    await waitFor(() => bob.controller.conversationById(conv) == null, reason: 'the list still has the chat');
+    await waitFor(() async => (await bob.mediaIndex.all()).isEmpty, reason: 'the blob of a chat that left was kept');
+    expect(blobs(), isEmpty);
+  });
+
   // Mallory opens a 1:1 with bob that the relay lists to bob under alice's
   // handle, and sends a photo in it: held for its account, nothing in it is
   // fetched, whoever asks.

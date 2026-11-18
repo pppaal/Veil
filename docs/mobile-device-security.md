@@ -93,8 +93,9 @@ first opened a file or another photo with a tap.
 
 The folder is capped at 1 GiB, least recently used first, and never loses a
 blob whose upload is still pending. A blob goes when its message expires, when
-its chat leaves the list, and on sign-out and wipe; at start, files without a
-row and rows without a file are deleted. The folder is excluded from backup.
+its chat leaves the list (also while the app was closed: the first list after a
+start is compared with the cached one), and on sign-out and wipe; at start,
+files without a row and rows without a file are deleted. The folder is excluded from backup.
 
 ### Decrypted bytes
 
@@ -102,8 +103,10 @@ A photo is decrypted in memory when it is shown, into a cache of at most 48 MB
 keyed by conversation id, attachment id, digest and the pointer's key (so a
 reused attachment id never returns another message's bytes), and Flutter's image cache. Both are
 emptied when the app locks, on sign-out and on wipe, and an entry goes when
-its blob does. Showing a photo writes nothing decrypted to disk; opening a
-file and saving a photo or a file do (below).
+its blob does. A photo open in the viewer leaves the screen at the lock, so
+nothing decodes it again behind the lock screen. Showing a photo writes
+nothing decrypted to disk; opening a file and saving a photo or a file do
+(below).
 
 ### Plaintext copies to open a file or save a photo or a file
 
@@ -130,18 +133,23 @@ so ("Other apps, and any cloud you save it to, can open it.").
 The pickers and the save screen write copies of their own. On Android,
 `image_picker` writes to `cacheDir/<uuid>/` and `flutter_file_dialog` to
 `cacheDir/file_dialog-<uuid>/`; Veil moves each picked copy into its staging
-folder or deletes it at once, and deletes Android's lost picks (a pick whose
-activity died) the first time a chat opens after the app starts. On iOS both
-plugins write to the system temporary folder (`tmp/`,
-`NSTemporaryDirectory()`): `image_picker_*` files, the picked file under its
-original name, the copy handed to the save screen and the document picker's
-`-Inbox/` folder. Veil empties that folder the first time a chat opens after
-the app starts, after each pick has been copied into staging, after each save
-returns, and on sign-out and wipe. A picked photo or file is a plaintext copy
-in staging (`veil_attachment_cache` under the temporary folder, under an opaque
-name) until it is sealed, the pick is cancelled, or 10 minutes after a lock
-held it for its chat, and staging is emptied at every start, before the lock
-screen is passed, so no plaintext pick survives a crash under its real name.
+folder or deletes it at once. On iOS both plugins write to the system
+temporary folder (`tmp/`, `NSTemporaryDirectory()`): `image_picker_*` files,
+the picked file under its original name, the copy handed to the save screen
+and the document picker's `-Inbox/` folder. Veil empties that folder after
+each pick has been copied into staging, after each save returns, and on
+sign-out and wipe. A picked photo or file is a plaintext copy in staging
+(`veil_attachment_cache` under the temporary folder, under an opaque name)
+until it is sealed, the pick is cancelled, or 10 minutes after a lock held it
+for its chat.
+
+At every start, first thing, while the lock screen still shows, Veil empties
+staging, deletes Android's picker folders (`<uuid>/` and
+`file_dialog-<uuid>/` in the cache folder, which takes Android's lost picks
+too, a pick whose activity died) and empties iOS's `tmp/`. So no plaintext
+pick or save copy that a crash left survives a restart, under its real name or
+any other. The first chat opened after a start checks for lost picks and
+empties iOS's `tmp/` again.
 
 ### Opening a file in another app
 

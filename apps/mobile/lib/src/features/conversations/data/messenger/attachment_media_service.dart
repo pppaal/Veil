@@ -255,7 +255,7 @@ class AttachmentMediaService extends ChangeNotifier implements MessengerStateObs
   void conversationsChanged() {
     if (_disposed) return;
     _ensureStarted();
-    unawaited(cleanup.conversationsListed(_store.conversations.map((conversation) => conversation.id)));
+    unawaited(cleanup.conversationsListed(_store.conversations.map((c) => c.id), cached: _store.hydratedIds));
   }
 
   @override

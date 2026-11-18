@@ -1065,6 +1065,35 @@ void main() {
       expect(cleanup.hasLeft('conv-b'), isFalse);
     });
 
+    test('the first list after a start is compared with what the cache held', () async {
+      final paths = _ownPaths();
+      final blobs = MediaBlobStore(paths: paths, index: MemoryMediaIndex());
+      final cleanup = MediaCleanup(
+        blobs: blobs,
+        paths: paths,
+        now: () => _clock,
+        pendingAttachmentIds: () => {},
+        onEntryDeleted: (_) {},
+      );
+      addTearDown(cleanup.dispose);
+      for (final conversation in ['conv-a', 'conv-b']) {
+        await blobs.write(
+            conversationId: conversation,
+            attachmentId: '00000000-0000-4000-8000-00000000000${conversation == 'conv-a' ? 1 : 2}',
+            digest: 'd-$conversation',
+            sealedBytes: [1, 2, 3]);
+      }
+      // conv-b was in the cache and the relay lists it no more; conv-new
+      // was never listed.
+      await cleanup.conversationsListed(['conv-a', 'conv-new'], cached: ['conv-a', 'Conv-B']);
+      expect(cleanup.hasLeft('conv-b'), isTrue);
+      expect(cleanup.hasLeft('conv-new'), isFalse);
+      expect([for (final entry in await blobs.entries()) entry.conversationId], ['conv-a']);
+      // Only the first list: later ones are compared with the one before.
+      await cleanup.conversationsListed(['conv-a', 'conv-new'], cached: ['conv-gone']);
+      expect(cleanup.hasLeft('conv-gone'), isFalse);
+    });
+
     test('a start deletes files without a row, and every decrypted copy left behind', () async {
       phone.dispose();
       phone = await _Phone.start(beforeStart: (root) {

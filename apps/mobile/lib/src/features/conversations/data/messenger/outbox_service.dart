@@ -17,6 +17,7 @@ import 'identity_trust.dart';
 import 'message_content_service.dart';
 import 'message_merge.dart';
 import 'messenger_api_mapper.dart';
+import 'outbound_text_sealer.dart';
 import 'messenger_operation_runner.dart';
 import 'messenger_session_context.dart';
 import 'messenger_state_store.dart';
@@ -24,11 +25,12 @@ import 'pending_messages.dart';
 import 'retry_policy.dart';
 
 /// Messages on their way to the relay. A message is encrypted (an
-/// attachment sealed) and queued at once, shown as pending, and sent oldest
-/// first within its conversation; conversations drain on their own, so one
-/// chat's upload never holds back another chat's texts (D20). A send that
-/// fails is retried on a schedule (see retry_policy.dart) or left for the
-/// user.
+/// attachment sealed; a timed text that waits behind another, see
+/// OutboundTextSealer, held) and queued at once, shown as pending, and sent
+/// oldest first within its conversation; conversations drain on their own,
+/// so one chat's upload never holds back another chat's texts (D20). A send
+/// that fails is retried on a schedule (see retry_policy.dart) or left for
+/// the user.
 class OutboxService {
   OutboxService({
     required MessengerStateStore store,
@@ -52,6 +54,8 @@ class OutboxService {
         _pending = pending,
         _attachments = attachments,
         _sealer = AttachmentSealer(blobs: blobs, contents: contents),
+        _texts = OutboundTextSealer(
+            store: store, crypto: crypto, contents: contents, pending: pending, expiryClock: expiryClock),
         _ops = ops,
         _expiryClock = expiryClock {
     _retrySweep = Timer.periodic(retrySweepInterval, (_) => unawaited(drain()));
@@ -66,6 +70,7 @@ class OutboxService {
   final PendingMessages _pending;
   final AttachmentTransferService _attachments;
   final AttachmentSealer _sealer;
+  final OutboundTextSealer _texts;
   final MessengerOperationRunner _ops;
   // The relay-corrected clock disappearing expiries are stamped on: the
   // relay refuses an expiry already past by its clock, and recipients
@@ -110,16 +115,29 @@ class OutboxService {
       final session = _session.requireAuthed();
       final conversation = _store.requireConversation(conversationId);
       final clientMessageId = _nextClientMessageId();
-      final expiresAt = disappearAfter == null ? null : _expiryClock().add(disappearAfter);
-      final envelope = await _encryptOutbound(
-        conversation: conversation,
-        senderDeviceId: session.deviceId,
-        clientMessageId: clientMessageId,
-        body: body,
-        messageKind: messageKind,
-        expiresAt: expiresAt,
-      );
-      await _enqueue(conversation: conversation, senderDeviceId: session.deviceId, clientMessageId: clientMessageId, envelope: envelope);
+      // A timed text that waits behind another message of its chat is sealed,
+      // and its timer stamped, when it is posted (D18 for texts).
+      final waits = disappearAfter != null && pendingConversationIds.contains(conversationId);
+      final envelope = waits
+          ? await _texts.holdForStamp(
+              conversation: conversation,
+              senderDeviceId: session.deviceId,
+              clientMessageId: clientMessageId,
+              body: body,
+              kind: messageKind)
+          : await _texts.sealNow(
+              conversation: conversation,
+              senderDeviceId: session.deviceId,
+              clientMessageId: clientMessageId,
+              body: body,
+              kind: messageKind,
+              expiresAt: disappearAfter == null ? null : _expiryClock().add(disappearAfter));
+      await _enqueue(
+          conversation: conversation,
+          senderDeviceId: session.deviceId,
+          clientMessageId: clientMessageId,
+          envelope: envelope,
+          disappearAfterSeconds: waits ? disappearAfter.inSeconds : null);
       queued = true;
       unawaited(drain(conversationId: conversationId));
     });
@@ -296,6 +314,8 @@ class OutboxService {
         await _pending.save(marked);
         _setLocalState(marked.clientMessageId, MessageDeliveryState.pending);
         _attachments.forget(marked.clientMessageId);
+      } else if (OutboundTextSealer.waitsForStamp(marked)) {
+        marked = await _texts.stampAndSeal(marked);
       }
       // A placeholder frame is never posted, and a cancelled message is
       // not posted once cancelled.
@@ -361,45 +381,13 @@ class OutboxService {
     }
   }
 
-  // Stores the plaintext before encrypting so the sender can always show
-  // its own message: the sender cannot decrypt what it sealed.
-  Future<CryptoEnvelope> _encryptOutbound({
-    required ConversationPreview conversation,
-    required String senderDeviceId,
-    required String clientMessageId,
-    required String body,
-    required MessageKind messageKind,
-    DateTime? expiresAt,
-  }) async {
-    await _contents.storeOutbound(
-      conversationId: conversation.id,
-      clientMessageId: clientMessageId,
-      senderDeviceId: senderDeviceId,
-      body: body,
-      kind: messageKind,
-      expiresAt: expiresAt,
-    );
-    try {
-      return await _crypto.encrypt(
-        conversation: conversation,
-        senderDeviceId: senderDeviceId,
-        body: body,
-        messageKind: messageKind,
-        expiresAt: expiresAt,
-      );
-    } catch (_) {
-      // Never queued, so never shown: do not keep its plaintext at rest.
-      await _contents.discardOutbound(clientMessageId);
-      rethrow;
-    }
-  }
-
   Future<void> _enqueue({
     required ConversationPreview conversation,
     required String senderDeviceId,
     required String clientMessageId,
     required CryptoEnvelope envelope,
     AttachmentUploadDraft? draft,
+    int? disappearAfterSeconds,
   }) async {
     final pending = PendingMessageRecord(
       clientMessageId: clientMessageId,
@@ -410,6 +398,7 @@ class OutboxService {
       createdAt: DateTime.now(),
       state: draft == null ? MessageDeliveryState.pending : MessageDeliveryState.uploading,
       attachmentUploadDraft: draft,
+      disappearAfterSeconds: disappearAfterSeconds,
     );
     final saving = _pending.save(pending);
     _store.mergeMessages(conversation.id, [_optimisticMessage(pending)]);

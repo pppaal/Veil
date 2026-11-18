@@ -37,5 +37,6 @@ String veilErrorText(AppLocalizations l10n, String message) => switch (userFacin
       UserFacingErrorCode.attachmentCanceled => l10n.errorAttachmentCanceled,
       UserFacingErrorCode.attachmentRejected => l10n.errorAttachmentRejected,
       UserFacingErrorCode.peerUnreachable => l10n.errorPeerUnreachable,
+      UserFacingErrorCode.requestRejected => l10n.errorRequestRejected,
       null => message,
     };

@@ -241,6 +241,91 @@ void main() {
       expect(entry.expiresAt!.difference(expected).inMilliseconds.abs(), lessThan(1000));
     });
 
+    // D18 for texts: D20 makes a text wait behind an upload in its chat, so
+    // a timer stamped when it was queued could pass before it is posted.
+    ChatMessage? queuedText(MessengerParty party) => party.controller
+        .messagesFor(conv)
+        .where((message) => message.id.startsWith('local-') && message.envelope.messageKind == MessageKind.text)
+        .lastOrNull;
+
+    test('a text sent behind a photo in a 10 s chat outlasts a 90 s upload, is stamped when it is posted, and arrives',
+        () async {
+      await deliver(alice, bob, 'timer next');
+      relay.refusePastExpiry = true;
+      final gate = holdUploads();
+      await alice.controller.sendAttachment(
+        conversationId: conv,
+        attachment: await photo(alice, _preparedJpeg()),
+        disappearAfter: const Duration(seconds: 10),
+      );
+      await alice.controller
+          .sendText(conversationId: conv, body: 'look at this', disappearAfter: const Duration(seconds: 10));
+      await settle();
+      expect(alice.controller.pendingCountFor(conv), 2, reason: 'the text waits behind the upload (D20)');
+      final waiting = queuedText(alice)!;
+      expect(waiting.expiresAt, isNull, reason: 'a text that waits carries no expiry until it is posted');
+      expect((await alice.controller.decryptMessage(waiting)).body, 'look at this');
+      final stored = (await alice.cache.readPendingMessages())
+          .singleWhere((record) => record.clientMessageId == waiting.clientMessageId);
+      expect(stored.envelope.expiresAt, isNull);
+      expect(stored.disappearAfterSeconds, 10);
+
+      moveClocks(const Duration(seconds: 90));
+      await alice.controller.handleAppResumed();
+      await settle();
+      // The expiry sweeps ran: the text is still in the chat and queued.
+      expect(queuedText(alice)?.clientMessageId, waiting.clientMessageId, reason: 'the text left the chat unsent');
+      expect((await alice.controller.decryptMessage(queuedText(alice)!)).body, 'look at this');
+      expect(alice.controller.pendingCountFor(conv), 2);
+
+      final released = alice.controller.expiryNow();
+      gate.complete();
+      await sent(alice);
+      await waitFor(() async => (await bob.bodies(conv)).contains('look at this'),
+          reason: 'the text queued behind the upload never reached bob');
+      expect(alice.controller.errorMessage, isNull);
+      final relayed = relay.conversations[conv]!.messages.last;
+      final outer = DateTime.parse(relayed['expiresAt'] as String);
+      final expected = released.add(const Duration(seconds: 10));
+      expect(outer.difference(expected).inMilliseconds.abs(), lessThan(1000), reason: 'stamped when it was posted');
+      final inner = (await latestAt(bob)).expiresAt!;
+      expect(inner.difference(expected).inMilliseconds.abs(), lessThan(1000));
+      final mine = alice.controller.messagesFor(conv).last;
+      expect((await alice.controller.decryptMessage(mine)).body, 'look at this');
+      expect(mine.expiresAt, isNotNull, reason: 'the sent text took its timer');
+    });
+
+    test('a text waiting for its stamp survives a restart and is stamped when it is posted', () async {
+      await deliver(alice, bob, 'restart timer next');
+      holdUploads();
+      await alice.controller.sendAttachment(conversationId: conv, attachment: await file(alice, 'h.pdf', pdfBytes('h')));
+      await uploading(alice, queuedOf(alice)!.clientMessageId!);
+      await alice.controller
+          .sendText(conversationId: conv, body: 'after the restart', disappearAfter: const Duration(minutes: 5));
+      await settle();
+      final textId = queuedText(alice)!.clientMessageId;
+
+      await alice.restart(whileClosed: () async {
+        relay.uploadGate = null;
+        final text = (await alice.cache.readPendingMessages()).singleWhere((record) => record.attachmentUploadDraft == null);
+        expect(text.disappearAfterSeconds, 300);
+        expect(text.envelope.ciphertext, isEmpty, reason: 'it was sealed before it was posted');
+      });
+      final restartedAt = alice.controller.expiryNow();
+      await sent(alice);
+      await waitFor(() async => (await bob.bodies(conv)).contains('after the restart'));
+      final relayed = relay.conversations[conv]!.messages.singleWhere((message) => message['clientMessageId'] == textId);
+      final outer = DateTime.parse(relayed['expiresAt'] as String);
+      expect(outer.isAfter(restartedAt.add(const Duration(minutes: 5)).subtract(const Duration(seconds: 2))), isTrue);
+    });
+
+    test('a timed text with nothing ahead of it is sealed and stamped when it is queued, as before', () async {
+      await deliver(alice, bob, 'plain timer next');
+      await alice.controller.sendText(conversationId: conv, body: 'right away', disappearAfter: const Duration(minutes: 1));
+      await waitFor(() async => (await bob.bodies(conv)).contains('right away'));
+      expect(alice.controller.messagesFor(conv).last.expiresAt, isNotNull);
+    });
+
     test('on the relay clock, in the inner payload and the envelope', () async {
       await deliver(alice, bob, 'day timer next');
       relay.clockSkew = const Duration(minutes: 30);

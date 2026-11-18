@@ -1882,4 +1882,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String safetyAccountNotFound(String handle) {
     return 'Couldn\'t find @$handle';
   }
+
+  @override
+  String get errorRequestRejected => 'The server didn\'t accept that.';
 }

@@ -53,6 +53,10 @@ final _byWireCode = <VeilApiException, UserFacingErrorCode>{
   VeilApiException('x', code: 'attachment_upload_canceled'): UserFacingErrorCode.attachmentCanceled,
   VeilApiException('x', code: 'attachment_upload_invalid'): UserFacingErrorCode.attachmentRejected,
   VeilApiException('Peer is unreachable', code: 'peer_unreachable', statusCode: 403): UserFacingErrorCode.peerUnreachable,
+  // The relay's own reason (here a disappearing timer already past) is
+  // never what the user reads.
+  VeilApiException('expiresAt is in the past', code: 'validation_failed', statusCode: 400):
+      UserFacingErrorCode.requestRejected,
 };
 
 void main() {

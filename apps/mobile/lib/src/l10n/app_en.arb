@@ -603,5 +603,6 @@
   "blockedAccountsEmptyTitle": "No blocked accounts",
   "blockedAccountsLoadFailedTitle": "Couldn't load blocked accounts",
   "safetyAccountNotFound": "Couldn't find @{handle}",
-  "@safetyAccountNotFound": {"placeholders": {"handle": {"type": "String"}}}
+  "@safetyAccountNotFound": {"placeholders": {"handle": {"type": "String"}}},
+  "errorRequestRejected": "The server didn't accept that."
 }

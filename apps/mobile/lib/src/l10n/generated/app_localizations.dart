@@ -3147,6 +3147,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t find @{handle}'**
   String safetyAccountNotFound(String handle);
+
+  /// No description provided for @errorRequestRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'The server didn\'t accept that.'**
+  String get errorRequestRejected;
 }
 
 class _AppLocalizationsDelegate

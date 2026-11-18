@@ -293,6 +293,7 @@ class PendingMessageRecord {
     this.state = MessageDeliveryState.pending,
     this.errorMessage,
     this.attachmentUploadDraft,
+    this.disappearAfterSeconds,
   });
 
   final String clientMessageId;
@@ -308,6 +309,12 @@ class PendingMessageRecord {
   final String? errorMessage;
   final AttachmentUploadDraft? attachmentUploadDraft;
 
+  /// A text's disappearing timer while it waits to be sealed: a text
+  /// queued behind another message of its chat is sealed, and its expiry
+  /// stamped, only when it is posted (D18 for texts). Null once sealed,
+  /// and for every other record (an attachment's is on its draft).
+  final int? disappearAfterSeconds;
+
   PendingMessageRecord copyWith({
     int? retryCount,
     Object? lastAttemptAt = _unset,
@@ -316,6 +323,7 @@ class PendingMessageRecord {
     Object? errorMessage = _unset,
     Object? attachmentUploadDraft = _unset,
     CryptoEnvelope? envelope,
+    Object? disappearAfterSeconds = _unset,
   }) {
     return PendingMessageRecord(
       clientMessageId: clientMessageId,
@@ -338,6 +346,9 @@ class PendingMessageRecord {
       attachmentUploadDraft: identical(attachmentUploadDraft, _unset)
           ? this.attachmentUploadDraft
           : attachmentUploadDraft as AttachmentUploadDraft?,
+      disappearAfterSeconds: identical(disappearAfterSeconds, _unset)
+          ? this.disappearAfterSeconds
+          : disappearAfterSeconds as int?,
     );
   }
 
@@ -1139,6 +1150,7 @@ class DriftConversationCacheService
           state: _deliveryStateFromString(row.state),
           errorMessage: errorMessage,
           attachmentUploadDraft: _decodeAttachmentUploadDraft(attachmentJson),
+          disappearAfterSeconds: _decodeTextTimer(attachmentJson),
         ),
       );
     }
@@ -1663,7 +1675,7 @@ class DriftConversationCacheService
         decoded['value'] as Map<String, dynamic>,
       );
     }
-    if (decoded['kind'] == 'upload-draft') {
+    if (decoded['kind'] == 'upload-draft' || decoded['kind'] == 'text-timer') {
       return null;
     }
     if (decoded.containsKey('encryption')) {
@@ -1689,8 +1701,19 @@ class DriftConversationCacheService
         'value': pending.attachmentUploadDraft!.toJson(),
       });
     }
+    final seconds = pending.disappearAfterSeconds;
+    if (seconds != null && pending.envelope.attachment == null) {
+      return jsonEncode({'kind': 'text-timer', 'seconds': seconds});
+    }
 
     return _encodeAttachment(pending.envelope.attachment);
+  }
+
+  // The timer a queued text waits with (PendingMessageRecord.disappearAfterSeconds).
+  int? _decodeTextTimer(String? raw) {
+    if (raw == null) return null;
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return decoded['kind'] == 'text-timer' ? decoded['seconds'] as int? : null;
   }
 
   AttachmentUploadDraft? _decodeAttachmentUploadDraft(String? raw) {

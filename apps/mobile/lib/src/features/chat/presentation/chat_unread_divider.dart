@@ -13,9 +13,13 @@ import '../../conversations/data/messenger/read_state_service.dart';
 /// muted type on a full-width band, with the day divider's space around it.
 /// "Unread messages" when the first unread one is older than what is
 /// loaded. It stays while the chat is on screen, however many messages are
-/// read under it.
+/// read under it. The band grows with larger text.
 class ChatUnreadDivider extends StatelessWidget {
   const ChatUnreadDivider({super.key, required this.divider, this.bleed = 0, this.afterDay = false});
+
+  /// Its row's id among the chat's message keys, which ChatOpeningPosition
+  /// measures it by. No relay message id has a ":".
+  static const String rowId = 'unread:divider';
 
   final UnreadDivider divider;
 
@@ -23,12 +27,15 @@ class ChatUnreadDivider extends StatelessWidget {
   final bool afterDay;
 
   /// How far the band reaches past each side of the list's content, to run
-  /// edge to edge across the padding the messages keep.
+  /// edge to edge across the padding the messages keep (and past the
+  /// chat's column, in a pane or screen wider than it).
   final double bleed;
 
+  /// The band's height at the usual text size, the least it takes.
   static const double bandHeight = 28;
 
-  /// The height the divider takes above its message.
+  /// The height the divider takes above its message at the usual text size
+  /// (ChatOpeningPosition measures the one laid out).
   static const double extent = bandHeight + 2 * VeilSpace.md;
 
   @override
@@ -39,27 +46,43 @@ class ChatUnreadDivider extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(top: afterDay ? 0 : VeilSpace.md, bottom: VeilSpace.md),
       child: LayoutBuilder(
-        builder: (context, constraints) => SizedBox(
-          height: bandHeight,
-          child: OverflowBox(
-            minWidth: constraints.maxWidth + 2 * bleed,
-            maxWidth: constraints.maxWidth + 2 * bleed,
-            child: Container(
-              color: palette.surfaceAlt,
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
-              child: Text(
-                text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
-              ),
+        // As tall as the band, as wide as the list's content: the band
+        // reaches past it on both sides.
+        builder: (context, constraints) => OverflowBox(
+          fit: OverflowBoxFit.deferToChild,
+          minWidth: constraints.maxWidth + 2 * bleed,
+          maxWidth: constraints.maxWidth + 2 * bleed,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: bandHeight),
+            color: palette.surfaceAlt,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xxs),
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Clips the message area above and below only, so the unread band can run
+/// [sideRoom] past each side of it: out to the edges of a pane or screen
+/// wider than the chat's column.
+class ChatUnreadBandClip extends CustomClipper<Rect> {
+  const ChatUnreadBandClip(this.sideRoom);
+
+  final double sideRoom;
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(-sideRoom, 0, size.width + sideRoom, size.height);
+
+  @override
+  bool shouldReclip(ChatUnreadBandClip oldClipper) => oldClipper.sideRoom != sideRoom;
 }
 
 /// Opens a chat where its unread messages start, once per [divider]: at
@@ -133,11 +156,14 @@ class _ChatOpeningPositionState extends State<ChatOpeningPosition> {
         continue;
       }
       // At [reveal] the row's top meets the top of the list; a larger
-      // offset brings it further down the screen.
+      // offset brings it further down the screen. The divider above it is
+      // as tall as it was laid out (taller with larger text).
       final reveal = RenderAbstractViewport.of(row).getOffsetToReveal(row, 1).offset;
+      final band = widget.rowContextOf(ChatUnreadDivider.rowId)?.findRenderObject();
+      final extent = band is RenderBox && band.attached && band.hasSize ? band.size.height : ChatUnreadDivider.extent;
       final viewport = position.viewportDimension;
-      if (!moved && position.pixels - reveal - ChatUnreadDivider.extent >= 0) return;
-      final target = (reveal + ChatUnreadDivider.extent + viewport / 3)
+      if (!moved && position.pixels - reveal - extent >= 0) return;
+      final target = (reveal + extent + viewport / 3)
           .clamp(position.minScrollExtent, position.maxScrollExtent)
           .toDouble();
       // The list learns how long it is as it builds: once more until it

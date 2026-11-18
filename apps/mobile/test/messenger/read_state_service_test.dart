@@ -104,7 +104,8 @@ void main() {
   // A message on the relay that atlas has not fetched yet, sealed by the
   // mock engine (any mock instance opens it).
   final sealer = createDefaultCryptoAdapter();
-  Future<void> inject(String from, String body, {String to = conv, MessageKind kind = MessageKind.text}) async {
+  Future<Map<String, dynamic>> inject(String from, String body,
+      {String to = conv, MessageKind kind = MessageKind.text}) async {
     final envelope = await sealer.messaging.encryptMessage(
       conversationId: to,
       senderDeviceId: 'dev-$from',
@@ -119,7 +120,8 @@ void main() {
         signedPrekeyBundle: 'spk',
       ),
     );
-    relay.inject(senderHandle: from, conversationId: to, envelope: sealer.envelopeCodec.encodeApiEnvelope(envelope));
+    return relay.inject(
+        senderHandle: from, conversationId: to, envelope: sealer.envelopeCodec.encodeApiEnvelope(envelope));
   }
 
   String newestFromSelene() => atlas.messagesFor(conv).lastWhere((message) => !message.isMine).id;
@@ -186,6 +188,22 @@ void main() {
       expect(atlas.reads.unreadCount(conv), 1);
       expect(atlas.reads.readMarkOf(conv), isNull);
     });
+
+    test('a peer\'s line that crosses this phone\'s own send in the open chat is still receipted', () async {
+      await say(selene, 'hi');
+      await read(conv);
+      final before = markReadCalls().length;
+      // Selene's line reaches the relay first (the lower order), but its
+      // push comes after atlas's own message is acked.
+      final crossing = await inject('selene', 'crossing');
+      await atlas.sendText(conversationId: conv, body: 'mine, acked first');
+      await settle();
+      relay.realtimeFor('atlas').deliver('message.new', Map<String, dynamic>.of(crossing));
+      await waitFor(() => atlas.messagesFor(conv).any((message) => message.id == crossing['id']));
+      await settle();
+      expect(markReadCalls().skip(before), [crossing['id']]);
+      expect(atlas.reads.readMarkOf(conv)?.readThrough, crossing['conversationOrder']);
+    });
   });
 
   group('mark as read and unread', () {
@@ -228,7 +246,7 @@ void main() {
     });
 
     test('Mark as read with nothing loaded reads through the list\'s last message and sends nothing', () async {
-      await inject('selene', 'not fetched');
+      final line = await inject('selene', 'not fetched');
       await atlas.refreshConversations();
       final listed = atlas.conversationById(conv)!.lastMessageOrder;
       expect(listed, isNotNull);
@@ -236,6 +254,15 @@ void main() {
       await settle();
       expect(atlas.reads.readMarkOf(conv)?.readThrough, listed);
       expect(markReadCalls(), isEmpty);
+
+      // The line the list named comes in under the mark and still notifies;
+      // opening the chat reads it, and its notification goes.
+      relay.realtimeFor('atlas').deliver('message.new', Map<String, dynamic>.of(line));
+      await waitFor(() => notifications.shownForConversations.contains(conv));
+      expect(unread(), 0);
+      final cancelsBefore = notifications.cancelledForConversations.length;
+      await read(conv);
+      expect(notifications.cancelledForConversations.skip(cancelsBefore), contains(conv));
     });
   });
 
@@ -260,6 +287,23 @@ void main() {
     expect(notifications.cancelledForConversations, isEmpty);
     await waitFor(() => unread() == 0, timeout: const Duration(seconds: 8), reason: 'the expired message still counts');
     expect(notifications.cancelledForConversations, contains(conv));
+  });
+
+  test('a chat marked unread loses its notification too when its count reaches 0 by expiry', () async {
+    // The disc is the user's own flag; the notification belonged to the
+    // message, and the message is gone.
+    await say(selene, 'seen');
+    await read(conv);
+    atlas.setActiveConversation(null);
+    atlas.reads.markUnread(conv);
+    await settle();
+    final cancelsBefore = notifications.cancelledForConversations.length;
+    await selene.sendText(conversationId: conv, body: 'gone soon', disappearAfter: const Duration(seconds: 2));
+    await waitFor(() => unread() == 1);
+    expect(notifications.shownForConversations.last, conv);
+    await waitFor(() => unread() == 0, timeout: const Duration(seconds: 8), reason: 'the expired message still counts');
+    expect(notifications.cancelledForConversations.skip(cancelsBefore), [conv]);
+    expect(atlas.reads.markedUnread(conv), isTrue, reason: 'the flag stays');
   });
 
   test('a held chat counts; a screenshot line and a reaction do not', () async {

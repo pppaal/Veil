@@ -12,10 +12,12 @@ import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.d
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_unread_divider.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
 import 'package:veil_mobile/src/features/chat/presentation/scroll_to_bottom_button.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_bubble.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
 
 import '../layout/support/layout_seed.dart';
@@ -85,6 +87,56 @@ void main() {
       // The divider stays where it was.
       expect(world.messenger.reads.dividerFor(chatConversationId, viewer: _screenState(tester))?.count,
           samLongRunLength);
+    });
+  });
+
+  testWidgets('in a group the divider starts a new group: the first unread message names its sender', (tester) async {
+    // Omar's read line at 10:13, then his two unread ones a few minutes
+    // later: without the divider all three would be one group.
+    const unread = ['also the van is booked', 'for 9am'];
+    await withPhoneApp(tester, identities,
+        size: phoneMedium,
+        withGroup: true,
+        location: '/chat/$groupConversationId',
+        afterSession: (world) => deliverLines(world, 'omar_h', unread,
+            firstAt: DateTime.utc(2026, 4, 7, 10, 15), inChat: groupConversationId), body: (world) async {
+      await pumpFrames(tester);
+      expect(find.text('2 unread messages'), findsOneWidget);
+      MessageBubble bubble(String text) =>
+          tester.widget<MessageBubble>(find.ancestor(of: find.text(text), matching: find.byType(MessageBubble)));
+      final read = bubble(latestGroupLine);
+      final first = bubble(unread.first);
+      expect(read.position, VeilBubblePosition.single, reason: 'the read line closes its group, with the avatar');
+      expect(first.position, VeilBubblePosition.first);
+      expect(first.senderName, isNotNull, reason: 'the first unread message names its sender');
+      expect(first.senderName, read.senderName);
+
+      // The divider brings its own space: none under the read line, none
+      // over the unread one, 16 around the band.
+      final band = tester.getRect(divider());
+      final above = tester.getRect(find.ancestor(of: find.text(latestGroupLine), matching: find.byType(MessageBubble)));
+      final below = tester.getRect(find.ancestor(of: find.text(unread.first), matching: find.byType(MessageBubble)));
+      expect(band.top - above.bottom, moreOrLessEquals(0));
+      expect(below.top - band.bottom, moreOrLessEquals(0));
+      expect(band.height, ChatUnreadDivider.extent);
+    });
+  });
+
+  testWidgets('at the largest text the band grows and a long run still opens at the divider', (tester) async {
+    await withPhoneApp(tester, identities,
+        size: phoneMedium,
+        textScale: 2,
+        location: _chat,
+        afterSession: seedLongUnreadRun, body: (world) async {
+      await pumpFrames(tester, frames: 12);
+      final words = find.text('$samLongRunLength unread messages');
+      expect(words, findsOneWidget);
+      final band = tester.getRect(find.descendant(of: divider(), matching: find.byType(ColoredBox)));
+      expect(band.height, greaterThan(ChatUnreadDivider.bandHeight));
+      expect(tester.getRect(words).bottom, lessThanOrEqualTo(band.bottom), reason: 'the words fit in the band');
+      final area = messages(tester);
+      final share = (onScreenRect(tester, divider()).top - area.top) / area.height;
+      expect(share, inInclusiveRange(0.2, 0.45), reason: 'the divider is about a third down (at $share)');
     });
   });
 

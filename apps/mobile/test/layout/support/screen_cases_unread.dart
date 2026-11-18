@@ -103,9 +103,9 @@ Future<void> _expectUnreadRows(WidgetTester tester) async {
 
 // The Chats destination of [bar] carries a badge reading [count].
 void _expectTabBadge(WidgetTester tester, Finder bar, String count) {
-  final badge = tester.widget<Badge>(find.descendant(of: bar, matching: find.byType(Badge)).first);
-  expect(badge.isLabelVisible, isTrue, reason: 'the Chats tab has no badge');
-  expect((badge.label! as Text).data, count);
+  final badge = find.descendant(of: bar, matching: find.byType(Badge)).first;
+  expect(tester.widget<Badge>(badge).isLabelVisible, isTrue, reason: 'the Chats tab has no badge');
+  expect(tester.widget<Text>(find.descendant(of: badge, matching: find.byType(Text))).data, count);
 }
 
 Future<void> _openRowMenu(WidgetTester tester) async {

@@ -224,7 +224,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       onReviewIdentity: _openSafetyNumbers,
       onAcknowledgeHold: _acknowledgePeerAccount,
     );
-    final messageList = ChatMessageList(
+    ChatMessageList messageList(double sideRoom) => ChatMessageList(
       conversationId: widget.conversationId,
       controller: controller,
       messages: messages,
@@ -246,6 +246,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       keyboardUp: MediaQuery.viewInsetsOf(context).bottom > 0,
       onReact: _showReactionPicker,
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
+      sideRoom: sideRoom,
       unreadDivider: unreadDivider,
     );
     final typing = PresenceSelector<(String?, String?)>(
@@ -262,37 +263,44 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       },
     );
 
-    // The same chat on a phone and in the wide layout's second pane.
-    return ChatPhoneScaffold(
-      pane: widget.embedded,
-      conversation: conversation,
-      title: title,
-      connecting: !controller.realtimeConnected,
-      peerVerified: peerVerified,
-      messageTtl: _messageTtl,
-      searchController: searchController,
-      searching: isSearchingMessages,
-      menu: chatMenuEntries(conversation, onPickTimer: _pickDisappearTtl),
-      onOpenSafetyNumbers: _openSafetyNumbers,
-      banners: banners,
-      messages: messageList,
-      typing: typing,
-      composer: blockedComposer(conversation) ??
-          ChatComposerBar(
-            conversationId: widget.conversationId,
-            focusNode: _composerFocusNode,
-            messageTtl: _messageTtl,
-            busy: controller.isBusy,
-          ),
-      searchBar: ChatSearchBar(
-        hasQuery: hasSearchQuery,
+    // The same chat on a phone and in the wide layout's second pane. The
+    // messages keep to the chat's column; the unread band runs past it to
+    // the edges of a wider screen or pane.
+    final column = widget.embedded ? ChatPhoneScaffold.paneContentWidth : ChatPhoneScaffold.screenContentWidth;
+    return LayoutBuilder(builder: (context, constraints) {
+      final room = constraints.hasBoundedWidth ? (constraints.maxWidth - column) / 2 : 0.0;
+      final sideRoom = room > 0 ? room : 0.0;
+      return ChatPhoneScaffold(
+        pane: widget.embedded,
+        conversation: conversation,
+        title: title,
+        connecting: !controller.realtimeConnected,
+        peerVerified: peerVerified,
+        messageTtl: _messageTtl,
+        searchController: searchController,
         searching: isSearchingMessages,
-        count: searchHitCount,
-        index: searchHitIndex,
-        onOlder: showOlderSearchHit,
-        onNewer: showNewerSearchHit,
-      ),
-    );
+        menu: chatMenuEntries(conversation, onPickTimer: _pickDisappearTtl),
+        onOpenSafetyNumbers: _openSafetyNumbers,
+        banners: banners,
+        messages: messageList(sideRoom),
+        typing: typing,
+        composer: blockedComposer(conversation) ??
+            ChatComposerBar(
+              conversationId: widget.conversationId,
+              focusNode: _composerFocusNode,
+              messageTtl: _messageTtl,
+              busy: controller.isBusy,
+            ),
+        searchBar: ChatSearchBar(
+          hasQuery: hasSearchQuery,
+          searching: isSearchingMessages,
+          count: searchHitCount,
+          index: searchHitIndex,
+          onOlder: showOlderSearchHit,
+          onNewer: showNewerSearchHit,
+        ),
+      );
+    });
   }
 
   // Hidden once expired on the messenger's expiry clock, as the messenger

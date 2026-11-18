@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/app/router/main_tab_shell.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_unread_divider.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_phone.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/unread_chats.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
 import '../layout/support/unread_seed.dart';
@@ -32,6 +38,11 @@ void main() {
 
   Badge tabBadge(WidgetTester tester, Type bar) =>
       tester.widget<Badge>(find.descendant(of: find.byType(bar), matching: find.byType(Badge)).first);
+  // What the Chats badge of [bar] reads.
+  String? tabBadgeText(WidgetTester tester, Type bar) => tester
+      .widget<Text>(find.descendant(
+          of: find.descendant(of: find.byType(bar), matching: find.byType(Badge)).first, matching: find.byType(Text)))
+      .data;
 
   Future<void> longPressRow(WidgetTester tester, String title) async {
     await tester.longPress(row(title));
@@ -55,7 +66,7 @@ void main() {
       // Priya, Mia and Omar; Jonas is muted.
       final badge = tabBadge(tester, NavigationBar);
       expect(badge.isLabelVisible, isTrue);
-      expect((badge.label! as Text).data, '3');
+      expect(tabBadgeText(tester, NavigationBar), '3');
       final semantics = tester.ensureSemantics();
       expect(find.bySemanticsLabel(RegExp('3 unread chats')), findsOneWidget);
       semantics.dispose();
@@ -78,7 +89,7 @@ void main() {
       final newest = world.messenger.messagesFor(noticeChatConversationId).last;
       expect(world.api.markReadCalls, [newest.id], reason: 'one receipt, for the newest of the three');
       // Mia, Jonas and Omar are left.
-      expect((tabBadge(tester, NavigationBar).label! as Text).data, '3');
+      expect(tabBadgeText(tester, NavigationBar), '3');
     });
   });
 
@@ -160,7 +171,7 @@ void main() {
       // The newest chat, Priya's, is open beside the list, and read.
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, noticeChatConversationId);
       // Mia, Jonas and Omar are left.
-      expect((tabBadge(tester, NavigationRail).label! as Text).data, '3');
+      expect(tabBadgeText(tester, NavigationRail), '3');
 
       await tester.longPress(inList(row('Priya Nair')));
       await pumpFrames(tester, frames: 4);
@@ -175,6 +186,49 @@ void main() {
       await tester.longPress(inList(row('Sam Rivera')));
       await pumpFrames(tester, frames: 4);
       expect(find.text('Mark as unread'), findsOneWidget, reason: 'a chat not open beside the list can be');
+    });
+  });
+
+  testWidgets('the Chats badge reads 99, then 99+, its pill ringed in the bar\'s colour where the platform puts it',
+      (tester) async {
+    for (final (count, label) in [(99, '99'), (100, '99+')]) {
+      await withPhoneApp(tester, identities,
+          size: phoneMedium,
+          location: '/conversations',
+          overrides: [unreadChatsProvider.overrideWith((ref) => count)], body: (world) async {
+        expect(tabBadgeText(tester, NavigationBar), label);
+        final pill = find.byKey(const ValueKey('chats-badge-pill'));
+        // The badge's own pill, closest above the label, is the ring.
+        final ring = find.ancestor(of: pill, matching: find.byType(Container)).first;
+        final palette = tester.element(pill).veilPalette;
+        expect((tester.widget<Container>(ring).decoration! as ShapeDecoration).color, palette.canvas);
+        expect((tester.widget<Container>(pill).decoration! as ShapeDecoration).color, palette.primary);
+        expect(tester.getRect(pill), tester.getRect(ring).deflate(MainTabShell.badgeRing));
+        // Material's place for a badge: 12 in from the glyph's start, 4 above it.
+        final glyph = tester.getRect(find.descendant(of: find.byType(Badge).first, matching: find.byType(Icon)));
+        expect(tester.getRect(pill).topLeft - glyph.topLeft, const Offset(12, -4));
+      });
+    }
+  });
+
+  testWidgets('in the wide layout the unread band runs to both edges of the pane', (tester) async {
+    await withPhoneApp(tester, identities,
+        size: wideSmall, location: '/conversations', afterSession: seedUnreadChats, body: (world) async {
+      // Priya's chat opens beside the list with her three lines unread; the
+      // chat's column is narrower than the pane.
+      expect(find.text('3 unread messages'), findsOneWidget);
+      final pane = tester.getRect(find.byType(ChatRoomScreen));
+      final list = tester.getRect(find.byType(ChatMessageList));
+      expect(list.width, lessThan(pane.width));
+      final band = tester.getRect(find.descendant(of: find.byType(ChatUnreadDivider), matching: find.byType(ColoredBox)));
+      expect(band.left, moreOrLessEquals(pane.left));
+      expect(band.right, moreOrLessEquals(pane.right));
+      // The message area clips above and below, not at the column's sides.
+      final clip = tester.renderObject<RenderClipRect>(
+          find.descendant(of: find.byType(ChatMessageList), matching: find.byType(ClipRect)).first);
+      final clipped = clip.clipper!.getClip(clip.size).shift(clip.localToGlobal(Offset.zero));
+      expect(clipped.left, lessThanOrEqualTo(band.left + 0.01));
+      expect(clipped.right, greaterThanOrEqualTo(band.right - 0.01));
     });
   });
 }

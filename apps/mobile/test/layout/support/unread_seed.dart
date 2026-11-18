@@ -53,13 +53,20 @@ const _samMore = [
   'the key works',
 ];
 
-/// Delivers [lines] from [peer] in the 1:1 with them: each sealed, stored
-/// by the relay after what the first list named, and pushed over the socket
-/// as message.new, one minute apart from [firstAt]. Then the chat's history
-/// is read once, so every line is loaded before the screen opens.
-Future<void> deliverLines(LayoutWorld world, String peer, List<String> lines, {required DateTime firstAt}) async {
+/// Delivers [lines] from [peer] in the 1:1 with them (or in [inChat]): each
+/// sealed, stored by the relay after what the first list named, and pushed
+/// over the socket as message.new, one minute apart from [firstAt]. Then
+/// the chat's history is read once, so every line is loaded before the
+/// screen opens.
+Future<void> deliverLines(
+  LayoutWorld world,
+  String peer,
+  List<String> lines, {
+  required DateTime firstAt,
+  String? inChat,
+}) async {
   final sealer = createDefaultCryptoAdapter();
-  final conversationId = 'conv-$peer';
+  final conversationId = inChat ?? 'conv-$peer';
   for (final (index, body) in lines.indexed) {
     final envelope = await sealer.messaging.encryptMessage(
       conversationId: conversationId,

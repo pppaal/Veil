@@ -128,11 +128,13 @@ class ReadStateService implements MessengerStateObserver, ReadMarkObserver {
       .length;
 
   /// The conversation the user is looking at right now, or null. Becoming
-  /// active reads it.
+  /// active reads it, and takes its notification away even when nothing
+  /// was left to mark (a line the list had already named read).
   void setActive(String? conversationId) {
     _store.activeConversationId = conversationId;
     if (conversationId == null) return;
     _parked.removeWhere((parkedId, _) => parkedId != conversationId);
+    unawaited(_notifications?.cancelConversation(conversationId));
     _scheduleAdvance(conversationId);
   }
 
@@ -205,8 +207,10 @@ class ReadStateService implements MessengerStateObserver, ReadMarkObserver {
         unreadCountOf(_store.messagesOf(conversationId), _store.readMarkOf(conversationId), now: _now());
     if (conversationId == _store.activeConversationId) {
       _scheduleAdvance(conversationId);
-    } else if (after == 0 && (before ?? 1) > 0 && !markedUnread(conversationId)) {
-      // What was unread expired or went: its notification goes too.
+    } else if (after == 0 && (before ?? 1) > 0) {
+      // What was unread expired or went: its notification goes too. A chat
+      // marked unread keeps its disc, which is the user's own flag; the
+      // notification was the message's.
       unawaited(_notifications?.cancelConversation(conversationId));
     }
   }
@@ -229,11 +233,13 @@ class ReadStateService implements MessengerStateObserver, ReadMarkObserver {
     });
   }
 
-  // Moves the mark to the newest loaded relayed message (or [listedOrder]
-  // when newer), clears "marked unread", cancels the notification and
-  // sends the one receipt. Holds no state across an await: the receipt is
-  // looked up after the mark moved, and re-entering from the receipt's own
-  // readAt finds nothing newer.
+  // Moves the mark to the newest loaded relayed message of someone else
+  // (or [listedOrder] when newer), clears "marked unread", cancels the
+  // notification and sends the one receipt. This phone's own messages do
+  // not move it: one acked before a peer's line the relay ordered under it
+  // would leave that line under the mark, never receipted. Holds no state
+  // across an await: the receipt is looked up after the mark moved, and
+  // re-entering from the receipt's own readAt finds nothing newer.
   void _advance(String conversationId, {int? listedOrder}) {
     final mark = _store.readMarkOf(conversationId);
     final messages = _store.messagesOf(conversationId);
@@ -241,7 +247,9 @@ class ReadStateService implements MessengerStateObserver, ReadMarkObserver {
     int? newest = listedOrder;
     for (final message in messages) {
       final order = message.conversationOrder;
-      if (order != null && !message.isLocalNotice && (newest == null || order > newest)) newest = order;
+      if (order != null && !message.isMine && !message.isLocalNotice && (newest == null || order > newest)) {
+        newest = order;
+      }
     }
     final moves = newest != null && (readThrough == null || newest > readThrough);
     if (!moves && !(mark?.markedUnread ?? false)) return;

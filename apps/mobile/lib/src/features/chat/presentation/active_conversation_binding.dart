@@ -6,11 +6,13 @@ import '../../conversations/data/messenger/read_state_service.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 
 /// Keeps a chat's conversation the messenger's active one only while the
-/// user can actually see it: the app in the foreground and the chat's route
-/// the current one. What is active is read (ReadStateService: the read mark,
-/// the read receipt, the notification) and raises no notification, so the
-/// flag is handed back as soon as the chat stops being visible, and when the
-/// chat goes away.
+/// user can actually see it: the app in the foreground, the session not
+/// locked and the chat's route the current one. What is active is read
+/// (ReadStateService: the read mark, the read receipt, the notification)
+/// and raises no notification, so the flag is handed back as soon as the
+/// chat stops being visible, and when the chat goes away. A lock can come
+/// while the chat is still built (a resume that locks runs before the frame
+/// that puts the lock screen up): a locked session reads nothing.
 ///
 /// The chat's unread divider is taken here too, when the screen begins
 /// showing a conversation and before it first becomes active (initState
@@ -44,7 +46,15 @@ mixin ActiveConversationBinding<W extends ConsumerStatefulWidget>
     _appInForeground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     final container = ProviderScope.containerOf(context, listen: false);
-    _sessionLocked = () => container.exists(appSessionProvider) && container.read(appSessionProvider).locked;
+    // Locked: an account whose lock screen is up (a session that is not
+    // signed in yet starts out "locked" and has no lock screen).
+    bool locked(AppSessionState session) => session.isAuthenticated && session.locked;
+    _sessionLocked = () => container.exists(appSessionProvider) && locked(container.read(appSessionProvider));
+    // The lock hands the flag back at once, and an unlock that keeps this
+    // screen takes it again.
+    if (container.exists(appSessionProvider)) {
+      ref.listenManual<bool>(appSessionProvider.select(locked), (_, __) => syncActiveConversation());
+    }
     _reads = ref.read(messengerControllerProvider).reads..beginViewing(conversationId, viewer: this);
   }
 
@@ -77,7 +87,7 @@ mixin ActiveConversationBinding<W extends ConsumerStatefulWidget>
       return;
     }
     final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
-    if (!_appInForeground || !routeIsCurrent) {
+    if (!_appInForeground || !routeIsCurrent || _sessionLocked()) {
       releaseActiveConversation(conversationId);
       return;
     }

@@ -50,15 +50,32 @@ class MainTabShell extends ConsumerWidget {
   static String _contactsLabel(AppLocalizations l10n) => l10n.navContacts;
   static String _settingsLabel(AppLocalizations l10n) => l10n.navSettings;
 
-  /// The badge on Chats; [count] 0 shows none.
+  /// The ring around the Chats badge, in the bar's colour.
+  static const double badgeRing = 2;
+
+  /// The badge on Chats; [count] 0 shows none. The pill keeps a ring in the
+  /// bar's colour, as a reaction chip over a bubble's edge does, so it
+  /// stands apart from the selected glyph under it (the same blue in the
+  /// light theme). The pill sits where the platform puts it.
   static Widget _chatsIcon(BuildContext context, IconData icon, int count) {
     final palette = context.veilPalette;
+    final ltr = Directionality.of(context) == TextDirection.ltr;
     return Badge(
       isLabelVisible: count > 0,
-      backgroundColor: palette.primary,
+      backgroundColor: palette.canvas,
+      largeSize: 16 + 2 * badgeRing,
+      padding: const EdgeInsets.all(badgeRing),
+      offset: Offset(ltr ? 4 + badgeRing : -4 - badgeRing, -4),
       textColor: Colors.white,
       textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 11, fontWeight: FontWeight.w600),
-      label: Text(count > 99 ? '99+' : '$count'),
+      label: Container(
+        key: const ValueKey('chats-badge-pill'),
+        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        alignment: Alignment.center,
+        decoration: ShapeDecoration(color: palette.primary, shape: const StadiumBorder()),
+        child: Text(count > 99 ? '99+' : '$count'),
+      ),
       child: Icon(icon),
     );
   }

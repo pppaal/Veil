@@ -59,14 +59,14 @@ void main() {
 
   test('a file is quoted by its sanitized name', () async {
     expect(await bodyOfLast('c1', body: 'lease.pdf', kind: MessageKind.file), 'lease.pdf');
-    expect(await bodyOfLast('c2', body: 'invoice‮fdp.exe', kind: MessageKind.file), 'invoicefdp.exe');
+    expect(await bodyOfLast('c2', body: 'invoice\u202Efdp.exe', kind: MessageKind.file), 'invoicefdp.exe');
     expect(latest.kindFor(_conversation), MessageKind.file);
     expect(latest.previewFor(_conversation), isNull, reason: 'only text is quoted as text');
   });
 
   test('a file with no name, or only characters the sanitizer drops, is not quoted', () async {
     expect(await bodyOfLast('c1', body: '', kind: MessageKind.file), isNull);
-    expect(await bodyOfLast('c2', body: ' ‎‮ ', kind: MessageKind.file), isNull);
+    expect(await bodyOfLast('c2', body: ' \u200E\u202E ', kind: MessageKind.file), isNull);
   });
 
   test('text and system lines are quoted as before, a photo is not', () async {

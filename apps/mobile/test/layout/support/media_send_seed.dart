@@ -13,6 +13,7 @@ import 'package:veil_mobile/src/features/attachments/data/image_preparer.dart';
 import 'package:veil_mobile/src/features/attachments/domain/attachment_rules.dart';
 import 'package:veil_mobile/src/features/attachments/domain/outgoing_attachment.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_photo.dart';
 
 import '../../support/fake_attachment_picker.dart';
 import '../../support/fake_relay.dart';
@@ -134,6 +135,32 @@ Future<void> decodeImagesOnScreen(WidgetTester tester) async {
     await tester.runAsync(() => precacheImage(image.image, element));
   }
   await tester.pump();
+}
+
+/// Says the app is in front and unlocked, as VeilApp does on the phone (the
+/// layout world has no VeilApp): the media service then opens what the
+/// chat shows, the user's own photo from its sealed blob included.
+void appInFront(WidgetTester tester) {
+  final container = ProviderScope.containerOf(tester.element(find.byType(ChatRoomScreen)));
+  container.read(messengerControllerProvider).media.setInUse(true);
+}
+
+/// Waits until every photo bubble on screen has its photo drawn: decrypted
+/// in an isolate and decoded on the engine's threads, which only real time
+/// moves.
+Future<void> awaitOwnPhotos(WidgetTester tester) async {
+  final drawn = find.descendant(
+    of: find.byType(MessagePhoto),
+    matching: find.byWidgetPredicate((widget) => widget is RawImage && widget.image != null),
+  );
+  await pumpUntil(
+    tester,
+    () => drawn.evaluate().isNotEmpty && drawn.evaluate().length == find.byType(MessagePhoto).evaluate().length,
+    rounds: 300,
+    reason: 'the own photo never showed from its blob',
+  );
+  // The tile grows into the photo.
+  await pumpFrames(tester, frames: 4);
 }
 
 /// Waits for [future], started from the widget tree, letting the file work

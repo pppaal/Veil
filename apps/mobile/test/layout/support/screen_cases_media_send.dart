@@ -134,6 +134,7 @@ Future<void> _pickHugeFile(WidgetTester tester) async {
 }
 
 Future<void> _uploadPhotoAndFile(WidgetTester tester) async {
+  appInFront(tester);
   await sendFromChat(tester, lakePhoto(), (path) => OutgoingAttachment.photo(path: path, contentType: 'image/jpeg'));
   await sendFromChat(
     tester,
@@ -142,10 +143,12 @@ Future<void> _uploadPhotoAndFile(WidgetTester tester) async {
   );
   // The file waits behind the photo: one chat sends in order.
   await pumpUntil(tester, () => _relay(tester).uploadTickets.length == 1, reason: 'the upload never started');
-  await pumpFrames(tester, frames: 3);
+  // The photo shows from the blob it was sealed into, under the scrim.
+  await awaitOwnPhotos(tester);
 }
 
 Future<void> _failPhotoUpload(WidgetTester tester) async {
+  appInFront(tester);
   await sendFromChat(tester, lakePhoto(), (path) => OutgoingAttachment.photo(path: path, contentType: 'image/jpeg'));
   final relay = _relay(tester);
   await pumpUntil(tester, () => relay.uploadTickets.length == 1, reason: 'the upload never started');
@@ -164,7 +167,8 @@ Future<void> _failPhotoUpload(WidgetTester tester) async {
   // clock starts once it is in, and it slides out.
   await tester.pump(const Duration(seconds: 1));
   await tester.pump(const Duration(seconds: 5));
-  await pumpFrames(tester, frames: 4);
+  // A failed photo keeps the photo, without the scrim.
+  await awaitOwnPhotos(tester);
 }
 
 FakeRelay _relay(WidgetTester tester) => relayOf(tester);

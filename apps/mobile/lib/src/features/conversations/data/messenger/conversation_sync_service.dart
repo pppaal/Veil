@@ -131,14 +131,8 @@ class ConversationSyncService {
       );
     }
     _attachments.clear();
-    _store.hydrate(
-      conversations: conversations,
-      messages: messages,
-      paging: {
-        for (final conversation in conversations)
-          conversation.id: snapshot.paging[conversation.id] ?? const ConversationPagingState(),
-      },
-    );
+    // Paging, read marks and the baseline marker come with the snapshot.
+    _store.hydrate(conversations: conversations, messages: messages, snapshot: snapshot);
 
     // Reactions live only in their encrypted messages; replay the ones
     // already opened and authenticated, as live delivery applies them.

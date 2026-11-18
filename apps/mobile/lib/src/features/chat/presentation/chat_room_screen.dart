@@ -13,7 +13,6 @@ import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
-import '../../conversations/data/veil_messenger_controller.dart';
 import '../../conversations/presentation/peer_names.dart';
 import 'active_conversation_binding.dart';
 import 'chat_composer_bar.dart';
@@ -127,7 +126,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   void didUpdateWidget(covariant ChatRoomScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
-      releaseActiveConversation(oldWidget.conversationId);
+      switchConversation(oldWidget.conversationId);
       resetNavigationTarget();
       resetSearch();
       _loadFailed = false;
@@ -247,6 +246,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       keyboardUp: MediaQuery.viewInsetsOf(context).bottom > 0,
       onReact: _showReactionPicker,
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
+      unreadDivider: unreadDivider,
     );
     final typing = PresenceSelector<(String?, String?)>(
       presence: controller.presenceTyping,
@@ -313,7 +313,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     if (mounted && conversationId == widget.conversationId && failed != _loadFailed) {
       setState(() => _loadFailed = failed);
     }
-    await _markLatestRemoteMessageRead(controller);
     if (hasSearchQuery) {
       await runSearch();
     }
@@ -331,20 +330,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   Future<void> _openSafetyNumbers() async {
     await context.push('/safety-numbers/${widget.conversationId}');
     if (mounted) await _loadPeerVerified();
-  }
-
-  Future<void> _markLatestRemoteMessageRead(
-      VeilMessengerController controller) async {
-    if (controller.activeConversationId != widget.conversationId) {
-      return;
-    }
-    for (final message
-        in controller.messagesFor(widget.conversationId).reversed) {
-      if (!message.isMine) {
-        await controller.markRead(message.id);
-        break;
-      }
-    }
   }
 
   // Binds the held 1:1 to the account it is listed with. Another account

@@ -130,7 +130,9 @@ class MessengerApiMapper {
           : _time(lastMessage is Map<String, dynamic> ? lastMessage['serverReceivedAt'] : null);
       final timer = raw['disappearingTimerSeconds'];
       final epoch = raw['currentEpoch'];
+      final lastOrder = lastMessage is Map<String, dynamic> ? lastMessage['conversationOrder'] : null;
       if ((lastMessage != null && lastEnvelope == null) ||
+          (lastOrder != null && lastOrder is! int) ||
           updatedAt is! DateTime ||
           (timer != null && timer is! int) ||
           (epoch != null && epoch is! num)) {
@@ -151,6 +153,7 @@ class MessengerApiMapper {
           signedPrekeyBundle: '',
         ),
         lastEnvelope: lastEnvelope,
+        lastMessageOrder: lastOrder as int?,
         updatedAt: updatedAt,
         type: type,
         // Only groups carry the member list; a 1:1 names its peer above.

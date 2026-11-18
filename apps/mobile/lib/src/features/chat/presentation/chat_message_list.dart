@@ -7,11 +7,14 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
+import '../../conversations/data/messenger/read_state_service.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_message_runs.dart';
+import 'chat_unread_divider.dart';
 import 'message_bubble.dart';
 import 'message_time.dart';
 import 'reaction_chips_row.dart';
+import 'scroll_to_bottom_button.dart';
 import 'system_notice_bubble.dart';
 
 /// The message area of a chat: a loading, failed or empty state, or the
@@ -25,6 +28,11 @@ import 'system_notice_bubble.dart';
 /// last bubble only; groups are 8 apart. A day starts under its date in
 /// small muted type. In a group chat the first bubble of a group carries the
 /// sender's name and the last one their avatar beside it.
+///
+/// The first message that was unread when the chat opened has the unread
+/// divider above it ([unreadDivider]), and a long unread run opens there
+/// (ChatOpeningPosition). Away from the bottom, the round button brings the
+/// newest message back (ScrollToBottomButton).
 class ChatMessageList extends ConsumerWidget {
   const ChatMessageList({
     super.key,
@@ -48,6 +56,7 @@ class ChatMessageList extends ConsumerWidget {
     this.senderHandleOf,
     this.keyboardUp = false,
     this.padding = EdgeInsets.zero,
+    this.unreadDivider,
   });
 
   final String conversationId;
@@ -105,6 +114,9 @@ class ChatMessageList extends ConsumerWidget {
   /// Space around the messages, inside the area they scroll in.
   final EdgeInsets padding;
 
+  /// Where the unread messages started when the chat opened, if any were.
+  final UnreadDivider? unreadDivider;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
@@ -153,14 +165,24 @@ class ChatMessageList extends ConsumerWidget {
     // arrive: the list runs upwards from the composer, so a short
     // conversation sits against it and a long one starts at its end.
     final count = filteredMessages.length;
-    return ListView.builder(
-      controller: scrollController,
-      key: PageStorageKey<String>('chat-$conversationId'),
-      reverse: true,
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      itemCount: count,
-      padding: padding,
-      itemBuilder: (context, index) => _buildMessageEntry(context, ref, count - 1 - index),
+    return Stack(
+      children: [
+        ChatOpeningPosition(
+          divider: hasSearchQuery ? null : unreadDivider,
+          scrollController: scrollController,
+          rowContextOf: (messageId) => messageKeys[messageId]?.currentContext,
+          child: ListView.builder(
+            controller: scrollController,
+            key: PageStorageKey<String>('chat-$conversationId'),
+            reverse: true,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            itemCount: count,
+            padding: padding,
+            itemBuilder: (context, index) => _buildMessageEntry(context, ref, count - 1 - index),
+          ),
+        ),
+        ScrollToBottomButton(scrollController: scrollController, messages: filteredMessages),
+      ],
     );
   }
 
@@ -174,6 +196,8 @@ class ChatMessageList extends ConsumerWidget {
     final previous = hidden ? null : _neighbour(index, -1);
     final next = hidden ? null : _neighbour(index, 1);
     final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
+    final divider = unreadDivider;
+    final showsDivider = divider != null && divider.firstMessageId == message.id && !hasSearchQuery;
     final now = ref.watch(wallClockProvider)();
     final startsDay = !hidden && (previous == null || !sameChatDay(previous.sentAt, message.sentAt, now: now));
     final runsOn = previous != null && sameChatRun(previous, message, now: now);
@@ -220,7 +244,7 @@ class ChatMessageList extends ConsumerWidget {
         ),
       ),
     );
-    if (!showLoadOlder && !startsDay) return entry;
+    if (!showLoadOlder && !startsDay && !showsDivider) return entry;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -242,6 +266,7 @@ class ChatMessageList extends ConsumerWidget {
             now: now,
             first: index == 0 && !showLoadOlder,
           ),
+        if (showsDivider) ChatUnreadDivider(divider: divider, bleed: padding.left),
         entry,
       ],
     );

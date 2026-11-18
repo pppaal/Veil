@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart' show IconData, Icons;
+
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../chat/presentation/chat_room_labels.dart';
@@ -40,43 +42,66 @@ String conversationRowSemantics(
 
 /// The line under a conversation's name: what was not sent or waits to be
 /// sent, or the last message. Only a text this device decrypted is quoted,
-/// and a system line by its own words; every other kind is named by its
-/// decrypted kind, never by the envelope's unauthenticated one. In a group
-/// the text is led by who wrote it: "You: …", or [groupSender] when this
-/// device knows the member.
+/// a system line by its own words and a file by its sanitized name; every
+/// other kind is named by its decrypted kind, never by the envelope's
+/// unauthenticated one. In a group the text is led by who wrote it: "You:
+/// …", or [groupSender] when this device knows the member.
 String conversationPreviewLine(
   AppLocalizations l10n,
   ConversationPreview item,
   VeilMessengerController controller, {
   String? groupSender,
+}) =>
+    conversationPreview(l10n, item, controller, groupSender: groupSender).text;
+
+/// [conversationPreviewLine], with the glyph a photo or a file shows in it
+/// ([icon], before the character at [iconAt]: after any "Omar: " that leads
+/// the line), as Telegram and WhatsApp draw it.
+({String text, IconData? icon, int iconAt}) conversationPreview(
+  AppLocalizations l10n,
+  ConversationPreview item,
+  VeilMessengerController controller, {
+  String? groupSender,
 }) {
+  ({String text, IconData? icon, int iconAt}) plain(String text) => (text: text, icon: null, iconAt: 0);
   final pendingCount = controller.pendingCountFor(item.id);
   if (pendingCount > 0) {
     final failedCount = controller.messagesFor(item.id).where((message) => message.hasFailed).length;
-    return failedCount > 0 ? l10n.conversationsNotSent(failedCount) : l10n.conversationsQueued(pendingCount);
+    return plain(failedCount > 0 ? l10n.conversationsNotSent(failedCount) : l10n.conversationsQueued(pendingCount));
   }
 
   final envelope = item.lastEnvelope;
   if (envelope == null) {
-    return l10n.conversationsPreviewEmpty;
+    return plain(l10n.conversationsPreviewEmpty);
   }
 
   if (isMessageExpired(envelope.expiresAt, now: controller.expiryNow())) {
-    return l10n.conversationsPreviewExpired;
+    return plain(l10n.conversationsPreviewExpired);
   }
 
   final last = controller.messagesFor(item.id).lastOrNull;
   final kind = controller.lastMessageKindFor(item.id) ?? MessageKind.text;
   if (kind == MessageKind.system && last != null) {
     final body = controller.lastMessageBodyFor(item.id);
-    if (body != null) return systemNoticeText(l10n, last, body);
+    if (body != null) return plain(systemNoticeText(l10n, last, body));
   }
-  final text = controller.lastMessagePreviewFor(item.id) ?? _kindPreview(l10n, kind);
+  final icon = switch (kind) {
+    MessageKind.image => Icons.photo_outlined,
+    MessageKind.file => Icons.insert_drive_file_outlined,
+    _ => null,
+  };
+  final text = kind == MessageKind.file
+      ? controller.lastMessageBodyFor(item.id) ?? l10n.conversationsPreviewAttachment
+      : controller.lastMessagePreviewFor(item.id) ?? _kindPreview(l10n, kind);
   if (item.type != ConversationType.group || last == null || last.isLocalNotice || kind == MessageKind.system) {
-    return text;
+    return (text: text, icon: icon, iconAt: 0);
   }
-  if (last.isMine) return l10n.conversationsPreviewYou(text);
-  return groupSender == null ? text : l10n.conversationsPreviewSender(groupSender, text);
+  final line = last.isMine
+      ? l10n.conversationsPreviewYou(text)
+      : groupSender == null
+          ? text
+          : l10n.conversationsPreviewSender(groupSender, text);
+  return (text: line, icon: icon, iconAt: icon == null ? 0 : line.lastIndexOf(text).clamp(0, line.length));
 }
 
 String _kindPreview(AppLocalizations l10n, MessageKind kind) {

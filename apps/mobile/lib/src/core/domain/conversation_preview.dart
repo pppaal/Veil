@@ -125,7 +125,7 @@ class ConversationPreview {
     this.channelMeta,
     this.memberCount,
     this.members = const [],
-    this.unreadCount = 0,
+    this.lastMessageOrder,
     this.disappearingTimerSeconds,
     this.useSenderKeys = false,
     this.groupEpoch,
@@ -152,7 +152,11 @@ class ConversationPreview {
   // peerHandle/recipientBundle. Key material is NOT
   // carried here; resolve per-member KeyBundles on demand.
   final List<GroupMember> members;
-  final int unreadCount;
+  // The relay's conversation order of the last message the list names
+  // (lastMessage.conversationOrder); null when it names none. Not cached:
+  // the next list brings it. The first list on a new device reads every
+  // conversation through it (ReadStateService).
+  final int? lastMessageOrder;
   // Default TTL (seconds) applied to newly-sent messages in this
   // conversation. null = disappearing messages disabled.
   final int? disappearingTimerSeconds;
@@ -177,7 +181,7 @@ class ConversationPreview {
     Object? channelMeta = _unset,
     Object? memberCount = _unset,
     List<GroupMember>? members,
-    int? unreadCount,
+    Object? lastMessageOrder = _unset,
     Object? disappearingTimerSeconds = _unset,
     bool? useSenderKeys,
     Object? groupEpoch = _unset,
@@ -201,7 +205,7 @@ class ConversationPreview {
       memberCount:
           identical(memberCount, _unset) ? this.memberCount : memberCount as int?,
       members: members ?? this.members,
-      unreadCount: unreadCount ?? this.unreadCount,
+      lastMessageOrder: identical(lastMessageOrder, _unset) ? this.lastMessageOrder : lastMessageOrder as int?,
       disappearingTimerSeconds: identical(disappearingTimerSeconds, _unset)
           ? this.disappearingTimerSeconds
           : disappearingTimerSeconds as int?,

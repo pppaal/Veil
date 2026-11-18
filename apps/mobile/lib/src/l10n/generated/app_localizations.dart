@@ -1690,6 +1690,54 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 unread message} other{{count} unread messages}}'**
   String conversationsUnreadSemantics(int count);
 
+  /// No description provided for @conversationsMarkRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as read'**
+  String get conversationsMarkRead;
+
+  /// No description provided for @conversationsMarkUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as unread'**
+  String get conversationsMarkUnread;
+
+  /// No description provided for @conversationsMarkedUnreadSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked unread'**
+  String get conversationsMarkedUnreadSemantics;
+
+  /// No description provided for @navChatsUnreadSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 unread chat} other{{count} unread chats}}'**
+  String navChatsUnreadSemantics(int count);
+
+  /// No description provided for @chatUnreadDivider.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 unread message} other{{count} unread messages}}'**
+  String chatUnreadDivider(int count);
+
+  /// No description provided for @chatUnreadDividerNoCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Unread messages'**
+  String get chatUnreadDividerNoCount;
+
+  /// No description provided for @chatScrollToBottom.
+  ///
+  /// In en, this message translates to:
+  /// **'Scroll to bottom'**
+  String get chatScrollToBottom;
+
+  /// No description provided for @chatNewBelowSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 new message} other{{count} new messages}}'**
+  String chatNewBelowSemantics(int count);
+
   /// No description provided for @conversationsSyncIssueTitle.
   ///
   /// In en, this message translates to:

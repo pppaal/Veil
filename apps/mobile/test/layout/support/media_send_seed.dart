@@ -99,10 +99,13 @@ class SeedPreparer implements ImagePreparer {
   }
 }
 
-/// The overrides of a case that picks: [picker] and the seed preparer.
-List<Override> pickingOverrides(AttachmentPicker picker) => [
+/// The overrides of a case that picks: [picker], its cache as the place
+/// the pickers' copies are deleted from, and [preparer] (the seed preparer
+/// unless given).
+List<Override> pickingOverrides(FakeAttachmentPicker picker, {ImagePreparer? preparer}) => [
       attachmentPickerProvider.overrideWithValue(picker),
-      imagePreparerProvider.overrideWithValue(SeedPreparer()),
+      pickerCopyRootsProvider.overrideWithValue(PickerCopyRoots.at([picker.pluginCache])),
+      imagePreparerProvider.overrideWithValue(preparer ?? SeedPreparer()),
     ];
 
 /// Lets file work and isolates started from the widget tree run (they

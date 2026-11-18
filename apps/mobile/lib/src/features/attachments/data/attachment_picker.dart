@@ -6,10 +6,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image_picker_android/image_picker_android.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 /// What a system picker handed over: the copy the plugin wrote (into its
-/// cache on Android, into the system temporary folder on iOS), its size,
-/// and the name the picker gave it.
+/// cache on Android, into the system temporary folder on iOS; on Windows,
+/// macOS and Linux the user's own file, never a copy), its size, and the
+/// name the picker gave it.
 class PickedFile {
   const PickedFile({required this.path, required this.sizeBytes, this.name});
 
@@ -73,3 +75,59 @@ class PluginAttachmentPicker implements AttachmentPicker {
 }
 
 final attachmentPickerProvider = Provider<AttachmentPicker>((ref) => PluginAttachmentPicker());
+
+/// Where the system pickers write the copies they hand over (D39), and so
+/// the only places a picked file is ever deleted from: Android's cache
+/// folder (image_picker's `<uuid>/`, flutter_file_dialog's
+/// `file_dialog-<uuid>/`) and iOS's `NSTemporaryDirectory()`
+/// (image_picker's `image_picker_*`, flutter_file_dialog's picked
+/// `<original name>`). Windows, macOS and Linux have none: their pickers
+/// hand over the user's own file, which must outlive the pick.
+class PickerCopyRoots {
+  PickerCopyRoots(Future<List<Directory>> Function() roots) : _roots = roots;
+
+  /// Fixed folders, as the test pickers' caches are.
+  PickerCopyRoots.at(List<Directory> roots) : _roots = (() async => roots);
+
+  /// The roots of the platform this runs on; [android] and [ios] stand in
+  /// for it in tests, [cacheDir] for Android's cache folder and
+  /// [systemTemp] for iOS's `NSTemporaryDirectory()`.
+  factory PickerCopyRoots.platform({
+    bool? android,
+    bool? ios,
+    Future<Directory> Function() cacheDir = getTemporaryDirectory,
+    Directory Function()? systemTemp,
+  }) {
+    if (android ?? Platform.isAndroid) return PickerCopyRoots(() async => [await cacheDir()]);
+    if (ios ?? Platform.isIOS) return PickerCopyRoots(() async => [(systemTemp ?? () => Directory.systemTemp)()]);
+    return PickerCopyRoots(() async => const []);
+  }
+
+  final Future<List<Directory>> Function() _roots;
+
+  /// [path] with its links resolved when it lies strictly inside one of
+  /// the roots (compared with the roots' links resolved too, as iOS's
+  /// `/var` is `/private/var`); null when it lies anywhere else, is a root
+  /// itself, or is not there.
+  Future<String?> copyAt(String path) async {
+    final roots = await _roots();
+    if (roots.isEmpty) return null;
+    final String resolved;
+    try {
+      resolved = await File(path).resolveSymbolicLinks();
+    } on FileSystemException {
+      return null;
+    }
+    for (final root in roots) {
+      try {
+        if (p.isWithin(await root.resolveSymbolicLinks(), resolved)) return resolved;
+      } on FileSystemException {
+        // A root that is not there holds nothing.
+      }
+    }
+    return null;
+  }
+}
+
+/// The pickers' copy folders on this platform; tests point it at theirs.
+final pickerCopyRootsProvider = Provider<PickerCopyRoots>((ref) => PickerCopyRoots.platform());

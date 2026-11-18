@@ -44,8 +44,14 @@ void main() {
 
   tearDown(() => root.deleteSync(recursive: true));
 
-  AttachFlow flow({Duration holdFor = AttachFlow.defaultHoldFor}) =>
-      AttachFlow(picker: picker, preparer: preparer, grace: grace, paths: paths, holdFor: holdFor);
+  AttachFlow flow({Duration holdFor = AttachFlow.defaultHoldFor, PickerCopyRoots? copyRoots}) => AttachFlow(
+        picker: picker,
+        preparer: preparer,
+        grace: grace,
+        paths: paths,
+        copyRoots: copyRoots ?? PickerCopyRoots.at([picker.pluginCache]),
+        holdFor: holdFor,
+      );
 
   Future<List<String>> staged() async => [
         for (final entity in (await paths.stagingDir()).listSync()) p.basename(entity.path),
@@ -105,6 +111,64 @@ void main() {
         ..fileName = name;
       final pick = (await flow().pickFile()).pick! as FilePick;
       expect(pick.keepsMetadata, keeps, reason: name);
+    }
+  });
+
+  // The roots as each platform has them: Android's cache folder and iOS's
+  // system temporary folder, both standing at the picker's cache here, and
+  // none on Windows, macOS or Linux.
+  Map<String, PickerCopyRoots> everyPlatform() => {
+        'Android': PickerCopyRoots.platform(android: true, ios: false, cacheDir: () async => picker.pluginCache),
+        'iOS': PickerCopyRoots.platform(android: false, ios: true, systemTemp: () => picker.pluginCache),
+        'desktop': PickerCopyRoots.platform(android: false, ios: false),
+      };
+
+  test(
+      'a photo or a file the picker hands over from the user\'s own folder (as desktop pickers do) outlives the pick, on every platform',
+      () async {
+    final pictures = Directory(p.join(root.path, 'Pictures'))..createSync();
+    final photo = File(p.join(pictures.path, 'holiday.jpg'))..writeAsBytesSync(jpegWithMetadata());
+    final document = File(p.join(pictures.path, 'lease.pdf'))..writeAsBytesSync(pdfBytes('lease'));
+    // Inside a root only by its spelling: it climbs back out.
+    final climbing = File(p.join(picker.pluginCache.path, '..', 'Pictures', 'holiday.jpg'));
+    for (final MapEntry(key: platform, value: roots) in everyPlatform().entries) {
+      for (final (own, isPhoto) in [(photo, true), (document, false), (climbing, true)]) {
+        picker.ownFile = own;
+        final attach = flow(copyRoots: roots);
+        final pick = (isPhoto ? await attach.pickPhoto() : await attach.pickFile()).pick;
+        expect(pick, isNotNull, reason: '$platform ${own.path}');
+        if (pick case PhotoPick(:final prepared)) await prepared;
+        expect(own.existsSync(), isTrue, reason: '$platform deleted the user\'s own ${own.path}');
+        expect(File(pick!.stagedPath).existsSync(), isTrue, reason: '$platform ${own.path}');
+        await attach.discard(pick);
+      }
+    }
+    expect(photo.readAsBytesSync(), jpegWithMetadata());
+    expect(document.readAsBytesSync(), pdfBytes('lease'));
+  });
+
+  test('on Windows, macOS and Linux nothing picked is deleted, even from a temporary folder', () async {
+    picker.photo = jpegWithMetadata();
+    final attach = flow(copyRoots: everyPlatform()['desktop']);
+    final pick = (await attach.pickPhoto()).pick! as PhotoPick;
+    await pick.prepared;
+    expect(File(picker.written.single).existsSync(), isTrue, reason: 'a desktop pick is the user\'s own file');
+    await attach.discard(pick);
+  });
+
+  test(
+      'on Android and iOS the plugin\'s copy goes, also when the root is reached through a link (iOS /var is /private/var)',
+      () async {
+    final linked = Link(p.join(root.path, 'linked-cache'))..createSync(picker.pluginCache.path);
+    for (final roots in [
+      everyPlatform()['Android']!,
+      everyPlatform()['iOS']!,
+      PickerCopyRoots.platform(android: false, ios: true, systemTemp: () => Directory(linked.path)),
+    ]) {
+      picker.photo = jpegWithMetadata();
+      await flow(copyRoots: roots).pickPhoto();
+      expect(File(picker.written.last).existsSync(), isFalse, reason: 'the plugin copy stayed');
+      expect(picker.pluginCache.listSync(), isEmpty, reason: 'the plugin folder stayed');
     }
   });
 
@@ -187,6 +251,24 @@ void main() {
     expect(attach.held.value, isNull);
   });
 
+  test('a result the picker delivers after the session left is not held, and nothing stays staged', () async {
+    picker
+      ..photo = jpegWithMetadata()
+      ..gate = Completer<void>();
+    final attach = flow();
+    final picking = attach.pickPhoto();
+    await waitFor(() => grace.sheetRunning);
+    grace.closeAllForLock();
+    expect((await picking).pick, isNull);
+
+    // Signed out (attachFlowProvider sets this as the session leaves).
+    attach.holdsPicks = false;
+    picker.gate!.complete();
+    await waitFor(() => picker.pluginCache.listSync().isEmpty, reason: 'the late pick was never staged');
+    await waitFor(() async => (await staged()).isEmpty, reason: 'the late pick stayed staged');
+    expect(attach.held.value, isNull);
+  });
+
   test('a held pick is dropped after a while, and when the chat is left', () async {
     expect(AttachFlow.defaultHoldFor, const Duration(minutes: 10));
     picker.file = pdfBytes('held');
@@ -208,18 +290,25 @@ void main() {
   test('lost picks and the system temporary folder are cleaned once per process, when a chat first attaches', () async {
     final lost = picker.writeLostPick(jpegWithMetadata());
     leaveInSystemTemp();
+    // A lost pick is only ever the plugin's: one named outside its cache
+    // is left alone.
+    final elsewhere = File(p.join(root.path, 'elsewhere.jpg'))..writeAsBytesSync(jpegWithMetadata());
+    picker.lostPicks.add(elsewhere.path);
     final container = ProviderContainer(overrides: [
       attachmentPickerProvider.overrideWithValue(picker),
+      pickerCopyRootsProvider.overrideWithValue(PickerCopyRoots.at([picker.pluginCache])),
       imagePreparerProvider.overrideWithValue(preparer),
       systemSheetGraceProvider.overrideWithValue(grace),
       attachmentStoragePathsProvider.overrideWithValue(paths),
     ]);
     addTearDown(container.dispose);
 
-    container.read(attachFlowProvider('conv-1'));
+    // No session here: the flow holds nothing.
+    expect(container.read(attachFlowProvider('conv-1')).holdsPicks, isFalse);
     await container.read(attachStartupCleanupProvider.future);
     expect(File(lost).existsSync(), isFalse);
     expect(picker.pluginCache.listSync(), isEmpty);
+    expect(elsewhere.existsSync(), isTrue);
     expect(systemTemp.listSync(), isEmpty);
 
     container.read(attachFlowProvider('conv-2'));

@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/core/notifications/local_notification_service.da
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/attachments/data/attach_flow.dart';
+import 'package:veil_mobile/src/features/attachments/data/image_preparer.dart';
 import 'package:veil_mobile/src/features/attachments/presentation/photo_send_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -227,6 +228,136 @@ void main() {
     }
   });
 
+  // The chat open through the real router, as an unlock rebuilds it.
+  Future<LayoutWorld> openChatThroughRouter(WidgetTester tester, List<Override> overrides) async {
+    usePhoneView(tester, phoneSmall);
+    final world = await LayoutWorld.create(
+      identities: identities,
+      account: LayoutAccount.signedIn,
+      locale: 'en',
+      overrides: overrides,
+    );
+    final router = world.container.read(appRouterProvider);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: world.container,
+      child: MaterialApp.router(
+        theme: VeilTheme.dark(fontFamily: layoutFontFamily),
+        locale: const Locale('en'),
+        routerConfig: router,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
+    ));
+    await pumpFrames(tester);
+    unawaited(router.push(_chat));
+    await pumpFrames(tester);
+    expect(find.byType(ChatRoomScreen), findsOneWidget);
+    return world;
+  }
+
+  Future<void> closeApp(WidgetTester tester, LayoutWorld world) async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    world.dispose();
+  }
+
+  testWidgets(
+      'a photo preview the lock takes down is offered again after the unlock, also when the unlock comes before the photo is ready',
+      (tester) async {
+    final picker = scriptedPicker(photo: lakePhoto());
+    final preparer = _GatedPreparer();
+    final world = await openChatThroughRouter(tester, pickingOverrides(picker, preparer: preparer));
+    try {
+      await attachFrom(tester, 'photos');
+      await pumpUntil(tester, () => find.byType(PhotoSendScreen).evaluate().isNotEmpty);
+      await pumpFrames(tester, frames: 4);
+      final staging = await settled(tester, world.attachmentPaths.stagingDir());
+      final flow = world.container.read(attachFlowProvider(chatConversationId));
+
+      // The photo is still being prepared under the spinner when the app
+      // locks, and still when the user is back (Face ID beats a large HEIC).
+      final session = world.container.read(appSessionProvider.notifier);
+      session.lock();
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(AppLockScreen), findsOneWidget);
+      expect(find.byType(PhotoSendScreen), findsNothing);
+      expect(flow.held.value, isA<PhotoPick>(), reason: 'the photo the lock took down was not held');
+
+      session.unlock();
+      await pumpUntil(tester, () => find.byType(PhotoSendScreen).evaluate().isNotEmpty,
+          reason: 'the held photo was not offered again');
+      expect(staging.listSync(), hasLength(1), reason: 'the staged photo went');
+      preparer.gate.complete();
+      await pumpUntil(tester,
+          () => find.descendant(of: find.byType(PhotoSendScreen), matching: find.byType(Image)).evaluate().isNotEmpty,
+          reason: 'the photo never showed');
+
+      final before = world.messenger.messagesFor(chatConversationId).length;
+      await pumpFrames(tester, frames: 4);
+      await tester.tap(find.byKey(const ValueKey('photo-send-send')));
+      await pumpUntil(tester, () => world.messenger.messagesFor(chatConversationId).length == before + 1,
+          reason: 'the photo was not queued');
+    } finally {
+      await closeApp(tester, world);
+    }
+  });
+
+  testWidgets('a file dialog the lock takes down is offered again after the unlock', (tester) async {
+    final picker = scriptedPicker(file: leaseBytes());
+    final world = await openChatThroughRouter(tester, pickingOverrides(picker));
+    try {
+      await attachFrom(tester, 'file');
+      await pumpUntil(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty);
+      final staging = await settled(tester, world.attachmentPaths.stagingDir());
+
+      final session = world.container.read(appSessionProvider.notifier);
+      session.lock();
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(world.container.read(attachFlowProvider(chatConversationId)).held.value, isA<FilePick>());
+
+      session.unlock();
+      await pumpUntil(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty,
+          reason: 'the held file was not offered again');
+      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!)), findsOneWidget);
+      expect(staging.listSync(), hasLength(1));
+    } finally {
+      await closeApp(tester, world);
+    }
+  });
+
+  testWidgets('a pick held while the user is attaching another is offered once that is done', (tester) async {
+    final picker = scriptedPicker(file: leaseBytes())..gate = Completer<void>();
+    final world = await openChatThroughRouter(tester, pickingOverrides(picker));
+    try {
+      await attachFrom(tester, 'file');
+      await pumpUntil(tester, () => world.container.read(systemSheetGraceProvider).sheetRunning);
+      final session = world.container.read(appSessionProvider.notifier);
+      session.lock();
+      world.container.read(systemSheetGraceProvider).closeAllForLock();
+      await pumpFrames(tester, frames: 6);
+      session.unlock();
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(ChatRoomScreen), findsOneWidget);
+
+      // The attach sheet is open again when the first picker answers late.
+      await tester.tap(find.byKey(const ValueKey('composer-attach')));
+      await pumpFrames(tester, frames: 4);
+      picker.gate!.complete();
+      final flow = world.container.read(attachFlowProvider(chatConversationId));
+      await pumpUntil(tester, () => flow.held.value != null, reason: 'the late pick was not held');
+      expect(find.byType(AlertDialog), findsNothing);
+
+      // The sheet closed with nothing picked: the held pick is offered.
+      Navigator.of(tester.element(find.text(en.chatAttachFile))).pop();
+      await pumpUntil(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty,
+          reason: 'the held pick was left to expire');
+      expect(find.text(en.chatSendFileTitle(leaseFileName, peerNames[peerHandle]!)), findsOneWidget);
+    } finally {
+      await closeApp(tester, world);
+    }
+  });
+
   testWidgets('on Android, the app hidden behind a picker does not lock, and the pick comes back', (tester) async {
     final picker = scriptedPicker(file: leaseBytes())..gate = Completer<void>();
     final platform = RecordingPlatformSecurity();
@@ -272,6 +403,18 @@ void main() {
       world.dispose();
     }
   });
+}
+
+/// Prepares a photo only once [gate] opens, as a large photo takes a while.
+class _GatedPreparer implements ImagePreparer {
+  final Completer<void> gate = Completer<void>();
+  final SeedPreparer _inner = SeedPreparer();
+
+  @override
+  Future<PreparedImage> prepare(String sourcePath) async {
+    await gate.future;
+    return _inner.prepare(sourcePath);
+  }
 }
 
 class _QuietNotifications implements LocalNotificationService {

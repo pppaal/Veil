@@ -10,6 +10,7 @@ import '../../../../core/network/veil_api_exception.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
 import '../../../../core/util/uuid_v4.dart';
 import '../../../attachments/data/media_blob_store.dart';
+import '../../../attachments/domain/attachment_rules.dart';
 import '../../../attachments/domain/outgoing_attachment.dart';
 import '../../../../core/errors/user_facing_error.dart';
 import '../conversation_models.dart';
@@ -65,7 +66,7 @@ class AttachmentSealer {
         conversationId: conversationId,
         clientMessageId: clientMessageId,
         senderDeviceId: senderDeviceId(),
-        body: attachment.name,
+        body: bodyOf(attachment),
         kind: messageKindOf(attachment),
         attachment: sealed.reference,
       );
@@ -170,6 +171,12 @@ PendingMessageRecord failedOldDraft(PendingMessageRecord record) => record.copyW
 MessageKind messageKindOf(OutgoingAttachment attachment) =>
     attachment.kind == OutgoingAttachmentKind.photo ? MessageKind.image : MessageKind.file;
 
+/// The message's body: '' for a photo, a file's name sanitized as the web
+/// sanitizes it (D14), here as well as in the composer, so no name reaches
+/// a peer unsanitized whoever built [attachment].
+String bodyOf(OutgoingAttachment attachment) =>
+    attachment.kind == OutgoingAttachmentKind.photo ? '' : sanitizeFileName(attachment.name);
+
 /// The envelope a queued attachment carries until its upload is done
 /// (D17). It is never sent: its ciphertext is empty (the outbox refuses to
 /// post one), it has no expiry, and its pointer names only the sealed blob,
@@ -238,7 +245,7 @@ AttachmentUploadDraft sealedDraft(
   required Duration? disappearAfter,
 }) =>
     AttachmentUploadDraft(
-      filename: attachment.name,
+      filename: bodyOf(attachment),
       contentType: sealed.reference.contentType,
       sizeBytes: sealed.sealedSize,
       sha256: sealed.sealedSha256Hex,

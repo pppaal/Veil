@@ -35,7 +35,7 @@ class PhotoSendScreen extends StatefulWidget {
 }
 
 class _PhotoSendScreenState extends State<PhotoSendScreen> {
-  PreparedImage? _photo;
+  MemoryImage? _photo;
   bool _sendWhenReady = false;
 
   @override
@@ -47,9 +47,17 @@ class _PhotoSendScreenState extends State<PhotoSendScreen> {
         Navigator.of(context).pop(PhotoSendChoice.failed);
         return;
       }
-      setState(() => _photo = photo);
+      setState(() => _photo = MemoryImage(photo.bytes));
       if (_sendWhenReady) Navigator.of(context).pop(PhotoSendChoice.send);
     });
+  }
+
+  @override
+  void dispose() {
+    // The decoded pixels leave the image cache with the preview, also when
+    // the lock takes it down.
+    _photo?.evict().ignore();
+    super.dispose();
   }
 
   void _send() {
@@ -91,8 +99,8 @@ class _PhotoSendScreenState extends State<PhotoSendScreen> {
                           dimension: 28,
                           child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                         )
-                      : Image.memory(
-                          photo.bytes,
+                      : Image(
+                          image: photo,
                           fit: BoxFit.contain,
                           gaplessPlayback: true,
                           semanticLabel: l10n.chatAttachmentKindPhoto,

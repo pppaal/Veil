@@ -62,19 +62,23 @@ class AttachOutcome {
 /// inside the system-sheet grace; a lock closes it like a cancel, and a
 /// result the plugin still delivers afterwards is staged and held for this
 /// chat's composer to show once it is back. The plugin's own copy goes as
-/// soon as the pick is staged, and the system temporary folder is swept
-/// (iOS). A held pick is dropped after [holdFor], or when the chat is left.
+/// soon as the pick is staged (only a copy under [PickerCopyRoots], never
+/// the user's own file a desktop picker hands over), and the system
+/// temporary folder is swept (iOS). A held pick is dropped after [holdFor],
+/// or when the chat is left.
 class AttachFlow {
   AttachFlow({
     required AttachmentPicker picker,
     required ImagePreparer preparer,
     required SystemSheetGrace grace,
     required AttachmentStoragePaths paths,
+    PickerCopyRoots? copyRoots,
     this.holdFor = defaultHoldFor,
   })  : _picker = picker,
         _preparer = preparer,
         _grace = grace,
-        _paths = paths;
+        _paths = paths,
+        _copyRoots = copyRoots ?? PickerCopyRoots.platform();
 
   static const defaultHoldFor = Duration(minutes: 10);
 
@@ -82,6 +86,7 @@ class AttachFlow {
   final ImagePreparer _preparer;
   final SystemSheetGrace _grace;
   final AttachmentStoragePaths _paths;
+  final PickerCopyRoots _copyRoots;
   final Duration holdFor;
   final Random _random = Random.secure();
   // Staged copies dropped while their photo was still being prepared.
@@ -91,6 +96,10 @@ class AttachFlow {
   /// A pick waiting for this chat's composer: one that came back after a
   /// lock closed its picker, or whose preview the lock closed.
   final ValueNotifier<AttachPick?> held = ValueNotifier<AttachPick?>(null);
+
+  /// Whether a pick may be held: not once the session left (signed out,
+  /// wiped), so a picker that answers after that leaves nothing staged.
+  bool holdsPicks = true;
 
   /// The system photo picker.
   Future<AttachOutcome> pickPhoto() => _pick(SystemSheet.photoPicker, _picker.pickPhoto, photo: true);
@@ -106,8 +115,13 @@ class AttachFlow {
     return pick;
   }
 
-  /// Keeps [pick] for this chat's composer, dropping one held before.
+  /// Keeps [pick] for this chat's composer, dropping one held before; once
+  /// the session left ([holdsPicks] false), drops [pick] instead.
   void hold(AttachPick pick) {
+    if (!holdsPicks) {
+      unawaited(discard(pick));
+      return;
+    }
     final previous = held.value;
     if (previous != null && previous.stagedPath != pick.stagedPath) unawaited(discard(previous));
     held.value = pick;
@@ -159,10 +173,11 @@ class AttachFlow {
   }
 
   Future<AttachOutcome> _stage(PickedFile picked, {required bool photo}) async {
+    File? staged;
     try {
       if (!photo && picked.sizeBytes > kMaxFileBytes) return const AttachOutcome.refused(AttachRefusal.tooBig);
       final staging = await _paths.stagingDir();
-      final staged = await File(picked.path).copy(p.join(staging.path, _opaqueName()));
+      staged = await File(picked.path).copy(p.join(staging.path, _opaqueName()));
       if (photo) return AttachOutcome.picked(PhotoPick(staged.path, _prepare(staged.path)));
       final name = sanitizeFileName(picked.name ?? p.basename(picked.path));
       final head = await _head(staged);
@@ -173,9 +188,11 @@ class AttachFlow {
         keepsMetadata: looksLikePhotoOrVideo(head, name),
       ));
     } catch (_) {
+      // Copied but not read: the copy goes too.
+      if (staged != null) await _delete(staged.path);
       return AttachOutcome.refused(photo ? AttachRefusal.photoFailed : AttachRefusal.fileFailed);
     } finally {
-      await _deletePluginCopy(picked.path);
+      await _deletePickerCopy(_copyRoots, picked.path);
       await _paths.purgeSystemTemp().catchError((Object _) {});
     }
   }
@@ -195,24 +212,6 @@ class AttachFlow {
       return null;
     }
   }
-
-  // The plugin's copy, and the folder of its own it made for it (Android:
-  // cache/<uuid>/ for photos, cache/file_dialog-<uuid>/ for files) once
-  // empty.
-  static Future<void> _deletePluginCopy(String path) async {
-    await _delete(path);
-    final folder = Directory(p.dirname(path));
-    if (!_pluginFolder.hasMatch(p.basename(folder.path))) return;
-    try {
-      await folder.delete();
-    } on FileSystemException {
-      // Not empty, or gone already: left alone.
-    }
-  }
-
-  static final RegExp _pluginFolder = RegExp(
-    r'^(file_dialog-)?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-  );
 
   static Future<void> _delete(String path) async {
     try {
@@ -234,14 +233,36 @@ class AttachFlow {
   String _opaqueName() => List<String>.generate(16, (_) => _random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
 }
 
+/// The plugin's copy at [path], and the folder of its own it made for it
+/// (Android: `cache/<uuid>/` for photos, `cache/file_dialog-<uuid>/` for
+/// files) once empty. Nothing outside [roots] is touched: a desktop picker hands
+/// over the user's own file, and it stays where it is.
+Future<void> _deletePickerCopy(PickerCopyRoots roots, String path) async {
+  final copy = await roots.copyAt(path);
+  if (copy == null) return;
+  await AttachFlow._delete(copy);
+  final folder = p.dirname(copy);
+  if (!_pluginFolder.hasMatch(p.basename(folder)) || await roots.copyAt(folder) == null) return;
+  try {
+    await Directory(folder).delete();
+  } on FileSystemException {
+    // Not empty, or gone already: left alone.
+  }
+}
+
+final RegExp _pluginFolder = RegExp(
+  r'^(file_dialog-)?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+);
+
 /// Once per process, the first time a chat's attach flow is read: Android's
 /// lost picks (photos picked while the activity was killed) and whatever
 /// the pickers left in the system temporary folder (iOS) are deleted.
 final attachStartupCleanupProvider = FutureProvider<void>((ref) async {
   final paths = ref.read(attachmentStoragePathsProvider);
+  final roots = ref.read(pickerCopyRootsProvider);
   try {
     for (final path in await ref.read(attachmentPickerProvider).recoverLostPicks()) {
-      await AttachFlow._deletePluginCopy(path);
+      await _deletePickerCopy(roots, path);
     }
   } catch (_) {
     // Nothing to recover on this platform.
@@ -259,8 +280,11 @@ final attachFlowProvider = Provider.family<AttachFlow, String>((ref, conversatio
     preparer: ref.read(imagePreparerProvider),
     grace: ref.read(systemSheetGraceProvider),
     paths: ref.read(attachmentStoragePathsProvider),
+    copyRoots: ref.read(pickerCopyRootsProvider),
   );
+  flow.holdsPicks = ref.read(appSessionProvider).isAuthenticated;
   ref.listen<bool>(appSessionProvider.select((session) => session.isAuthenticated), (_, authenticated) {
+    flow.holdsPicks = authenticated;
     if (!authenticated) flow.chatLeft();
   });
   ref.onDispose(flow.dispose);

@@ -165,7 +165,7 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
           if (outcome.pick case final pick?) await _offer(pick);
       }
     } finally {
-      _attaching = false;
+      _doneAttaching();
     }
   }
 
@@ -176,7 +176,14 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
     final pick = _flow.takeHeld();
     if (pick == null) return;
     _attaching = true;
-    unawaited(_offer(pick).whenComplete(() => _attaching = false));
+    unawaited(_offer(pick).whenComplete(_doneAttaching));
+  }
+
+  // A pick held while another was being attached (a picker that answered
+  // late) is offered once that is done, not left to expire.
+  void _doneAttaching() {
+    _attaching = false;
+    _offerHeld();
   }
 
   // The preview for a photo, the confirm dialog for a file, then the send.
@@ -187,14 +194,22 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
     switch (pick) {
       case PhotoPick():
         final choice = await Navigator.of(context, rootNavigator: true).push(PhotoSendScreen.route(pick.prepared));
-        final prepared = await pick.prepared;
-        if (prepared == null || choice == PhotoSendChoice.failed) {
+        // Whether the lock took the preview down is read as it closes, not
+        // once the photo is ready: the unlock can come first.
+        if (choice == null && _container.read(appSessionProvider).locked) {
+          _flow.hold(pick);
+          return;
+        }
+        if (choice == PhotoSendChoice.failed) {
           if (mounted) showVeilToast(context, AppLocalizations.of(context).chatAttachPhotoFailed);
           return;
         }
-        attachment = choice == PhotoSendChoice.send
-            ? OutgoingAttachment.photo(path: pick.stagedPath, contentType: prepared.contentType)
-            : null;
+        // Send closes the preview only once the photo is ready; closed,
+        // nothing waits for it.
+        final prepared = choice == PhotoSendChoice.send ? await pick.prepared : null;
+        attachment = prepared == null
+            ? null
+            : OutgoingAttachment.photo(path: pick.stagedPath, contentType: prepared.contentType);
       case FilePick():
         final send = await confirmSendFile(
           context,

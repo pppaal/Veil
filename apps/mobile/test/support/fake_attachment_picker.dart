@@ -27,6 +27,11 @@ class FakeAttachmentPicker implements AttachmentPicker {
   /// would without writing one.
   int? reportedSize;
 
+  /// When set, a pick hands over this file itself instead of writing a
+  /// copy, as the Windows, macOS and Linux pickers hand over the user's own
+  /// file.
+  File? ownFile;
+
   /// While set, a pick waits for it before it answers, as a picker the user
   /// is still looking at; a lock meanwhile closes the sheet around it.
   Completer<void>? gate;
@@ -47,6 +52,7 @@ class FakeAttachmentPicker implements AttachmentPicker {
   Future<PickedFile?> pickPhoto() async {
     calls.add('photo');
     await gate?.future;
+    if (ownFile case final own?) return _handOver(own);
     final bytes = photo;
     if (bytes == null) return null;
     return _write(bytes, _uuid(), photoName);
@@ -56,6 +62,7 @@ class FakeAttachmentPicker implements AttachmentPicker {
   Future<PickedFile?> pickFile() async {
     calls.add('file');
     await gate?.future;
+    if (ownFile case final own?) return _handOver(own);
     final bytes = file;
     if (bytes == null) return null;
     return _write(bytes, 'file_dialog-${_uuid()}', fileName);
@@ -83,6 +90,8 @@ class FakeAttachmentPicker implements AttachmentPicker {
     written.add(path);
     return PickedFile(path: path, sizeBytes: reportedSize ?? bytes.length, name: name);
   }
+
+  PickedFile _handOver(File own) => PickedFile(path: own.path, sizeBytes: own.lengthSync(), name: p.basename(own.path));
 
   String _uuid() {
     String hex(int length) => List.generate(length, (_) => _random.nextInt(16).toRadixString(16)).join();

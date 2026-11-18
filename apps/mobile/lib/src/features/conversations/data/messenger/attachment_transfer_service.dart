@@ -169,8 +169,14 @@ class AttachmentTransferService {
     // update moves the container. A blob that is gone is never made up.
     final blobPath =
         await _blobs.pathOf(conversation.id, reference.attachmentId, reference.sha256) ?? (throw _invalid());
+    // A chat held since this was sealed uploads nothing until it is settled
+    // (D16), as it seals nothing new.
+    await _crypto.checkAttachmentSend(conversation);
 
     draft = await _ensureUploadTicket(draft);
+    // Cancelled while it was ticketed, the saved record names no ticket for
+    // discard() to release (D19): it is released here.
+    if (_pending.isCanceled(id)) await _resetTicket(draft);
     _throwIfCanceled(id);
     pending = pending.copyWith(attachmentUploadDraft: draft);
     await _pending.save(pending);

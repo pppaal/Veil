@@ -175,6 +175,21 @@ void main() {
       expect(own.messageKind, MessageKind.file);
       expect(own.body, 'Leaseagreement.pdf');
     });
+
+    test('is sanitized again as it is sealed, whoever named it', () async {
+      await deliver(alice, bob, 'raw name next');
+      const raw = '  \u202Egpj.exe\u200F\u0007 ';
+      final staged = await stage(alice, pdfBytes('raw'));
+      await alice.controller.sendAttachment(
+        conversationId: conv,
+        attachment: OutgoingAttachment.file(path: staged.path, name: raw, contentType: 'application/octet-stream'),
+      );
+      await sent(alice);
+      await waitFor(() => bob.controller.messagesFor(conv).length == 2);
+      expect((await latestAt(bob)).body, sanitizeFileName(raw));
+      expect(sanitizeFileName(raw), 'gpj.exe');
+      expect((await alice.controller.decryptMessage(alice.controller.messagesFor(conv).last)).body, 'gpj.exe');
+    });
   });
 
   group('the disappearing timer is stamped after the upload', () {
@@ -349,6 +364,34 @@ void main() {
     });
   });
 
+  test('cancel while the upload is being ticketed: the ticket is released, nothing is uploaded', () async {
+    final gated = _TicketGatedRelay();
+    final carol = await MessengerParty.join(gated, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
+    final dave = await MessengerParty.join(gated, handle: 'dave', userId: 'user-dave', deviceId: 'dev-dave');
+    addTearDown(() async {
+      await carol.dispose();
+      await dave.dispose();
+    });
+    gated.addDirect(conv, 'carol', 'dave');
+    await carol.signIn();
+    await dave.signIn();
+    await deliver(carol, dave, 'ticket next');
+
+    final gate = gated.ticketGate = Completer<void>();
+    await carol.controller.sendAttachment(conversationId: conv, attachment: await file(carol, 'i.pdf', pdfBytes('i')));
+    final id = queuedOf(carol)!.clientMessageId!;
+    await waitFor(() => gated.ticketsAsked == 1, reason: 'no ticket was asked for');
+
+    final cancel = carol.controller.cancelPendingAttachment(id);
+    gate.complete();
+    await cancel;
+    await settle();
+    expect(gated.attachments[gated.uploadTickets.single]!.uploadStatus, 'failed', reason: 'the relay was not told');
+    expect(gated.uploadedBlobs, isEmpty);
+    expect(carol.controller.messagesFor(conv).where((message) => message.clientMessageId == id), isEmpty);
+    expect(await carol.cache.readPendingMessages(), isEmpty);
+  });
+
   group('the sealed blob', () {
     test('survives a disappearing message expiring in the same chat during the upload, and uploads', () async {
       await alice.controller.sendText(conversationId: conv, body: 'gone soon', disappearAfter: const Duration(seconds: 10));
@@ -504,7 +547,62 @@ void main() {
       expect(relay.uploadTickets, isEmpty);
       expect(alice.controller.errorMessage, isNull, reason: 'the banner says why, not a toast');
     });
+
+    test('sealed before its 1:1 was held is not uploaded once the hold is there, and waits with its blob', () async {
+      await deliver(alice, bob, 'hello bob');
+      await deliver(bob, alice, 'hi alice');
+      final gate = holdUploads();
+      await alice.controller
+          .sendAttachment(conversationId: conv, attachment: await file(alice, 'one.pdf', pdfBytes('one')));
+      await uploading(alice, queuedOf(alice)!.clientMessageId!);
+      // Sealed and queued behind the first while the chat is not held yet.
+      await alice.controller
+          .sendAttachment(conversationId: conv, attachment: await file(alice, 'two.pdf', pdfBytes('two')));
+      final second = queuedOf(alice)!.clientMessageId!;
+      expect(relay.uploadTickets, hasLength(1));
+
+      final ghost = await InjectedDevice.mint('dev-ghost', owner: bob);
+      await ghost.handshake(relay, alice, 'ghost hello', conversationId: conv);
+      await alice.controller.loadConversationMessages(conv);
+      await settle();
+      relay.bundleOverrides['bob'] = ghost.bundleJson;
+      await alice.controller.sendText(conversationId: conv, body: 'to the ghost while bob is unverified');
+      await alice.pins.markVerified('user-bob', 'dev-bob', bob.device.identity.identityPublicKey);
+      await alice.controller.sendText(conversationId: conv, body: 'after verifying bob');
+      await settle();
+      expect(alice.controller.pendingIdentityChangeFor(conv), isNotNull, reason: 'the chat is not held');
+
+      gate.complete();
+      await settle(const Duration(seconds: 1));
+      expect(relay.uploadTickets, hasLength(1), reason: 'the second was ticketed in a held chat');
+      expect(relay.uploadedBlobs, hasLength(1), reason: 'the second was uploaded in a held chat');
+      expect((await alice.cache.readPendingMessages()).map((record) => record.clientMessageId), contains(second));
+      expect(blobsIn(await mediaOf(alice)), hasLength(2));
+    });
   });
+}
+
+/// A relay whose upload tickets wait for [ticketGate] while it is set.
+class _TicketGatedRelay extends FakeRelay {
+  Completer<void>? ticketGate;
+  int ticketsAsked = 0;
+  final Map<String, FakeRelayClient> _clients = {};
+
+  @override
+  FakeRelayClient clientFor(String handle) =>
+      _clients.putIfAbsent(handle, () => _TicketGatedClient(this, partiesByHandle[handle]!));
+}
+
+class _TicketGatedClient extends FakeRelayClient {
+  _TicketGatedClient(_TicketGatedRelay super.relay, super.me);
+
+  @override
+  Future<Map<String, dynamic>> createUploadTicket(String accessToken, Map<String, dynamic> body) async {
+    final gated = relay as _TicketGatedRelay;
+    gated.ticketsAsked += 1;
+    await gated.ticketGate?.future;
+    return super.createUploadTicket(accessToken, body);
+  }
 }
 
 // What EngineImagePreparer leaves of a photo: pixels as a JPEG, no metadata.

@@ -297,27 +297,27 @@ void main() {
 
     String draft(WidgetTester tester) => tester.widget<TextField>(find.byType(TextField)).controller!.text;
 
-    testWidgets('shows an attach button only where the screen gives it somewhere to go', (tester) async {
+    testWidgets('offers a plus that opens Photos and File, and none while who the peer is waits', (tester) async {
       await tester.pumpWidget(composer());
-      expect(find.byTooltip(l10n.chatAttachAction), findsNothing);
-      // The composer has no padlock (design system 7.7): nothing before the draft.
+      // The composer has no padlock (design system 7.7): only the plus
+      // before the draft.
       expect(find.byIcon(Icons.lock_outline), findsNothing);
       expect(find.text(l10n.chatComposeHint), findsOneWidget);
+      final plus = find.byTooltip(l10n.chatAttachAction);
+      expect(plus, findsOneWidget);
+      expect(tester.getSize(plus).shortestSide, greaterThanOrEqualTo(44));
 
-      var attached = 0;
-      await tester.pumpWidget(_app(
-        ChatComposerBar(
-          conversationId: 'conv-1',
-          focusNode: focusNode,
-          messageTtl: null,
-          busy: false,
-          onAttach: () => attached++,
-        ),
-        messenger: messenger,
-      ));
-      await tester.tap(find.byTooltip(l10n.chatAttachAction));
-      expect(attached, 1);
-      expect(tester.getSize(find.byTooltip(l10n.chatAttachAction)).shortestSide, greaterThanOrEqualTo(44));
+      await tester.tap(plus);
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.chatAttachPhotos), findsOneWidget);
+      expect(find.text(l10n.chatAttachFile), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      messenger.hold = const PeerAccountHold(PeerAccountHoldReason.ownHandle);
+      messenger.notifyListeners();
+      await tester.pump();
+      expect(find.byTooltip(l10n.chatAttachAction), findsNothing);
     });
     testWidgets('typing tells the peer; a send carries the timer and clears the draft', (tester) async {
       await tester.pumpWidget(composer(messageTtl: const Duration(minutes: 5)));

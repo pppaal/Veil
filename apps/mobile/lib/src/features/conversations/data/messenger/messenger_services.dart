@@ -137,8 +137,9 @@ class MessengerServices {
       crypto: crypto,
       contents: contents,
       pending: pending,
-      tempStore: attachmentTempFileStore,
+      blobs: blobs,
       ops: ops,
+      expiryClock: expiryClock,
     );
     outbox = OutboxService(
       store: store,
@@ -149,6 +150,7 @@ class MessengerServices {
       contents: contents,
       pending: pending,
       attachments: attachments,
+      blobs: blobs,
       ops: ops,
       expiryClock: expiryClock,
     );

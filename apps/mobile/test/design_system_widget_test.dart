@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:veil_mobile/src/app/router/main_tab_shell.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/unread_chats.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -895,13 +897,17 @@ void main() {
         ],
       );
       addTearDown(router.dispose);
+      // The shell reads how many chats are unread for the Chats badge.
       await _pump(
           tester,
-          MaterialApp.router(
-            theme: VeilTheme.light(fontFamily: layoutFontFamily),
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            routerConfig: router,
+          ProviderScope(
+            overrides: [unreadChatsProvider.overrideWith((ref) => 0)],
+            child: MaterialApp.router(
+              theme: VeilTheme.light(fontFamily: layoutFontFamily),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              routerConfig: router,
+            ),
           ));
       await tester.pumpAndSettle();
       final bar = find.byType(NavigationBar);
@@ -958,11 +964,14 @@ void main() {
       tester.view.physicalSize = const Size(MainTabShell.railBreakpoint, 768);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      await tester.pumpWidget(MaterialApp.router(
-        theme: VeilTheme.dark(fontFamily: layoutFontFamily),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        routerConfig: router,
+      await tester.pumpWidget(ProviderScope(
+        overrides: [unreadChatsProvider.overrideWith((ref) => 0)],
+        child: MaterialApp.router(
+          theme: VeilTheme.dark(fontFamily: layoutFontFamily),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
+        ),
       ));
       await tester.pumpAndSettle();
 

@@ -148,6 +148,9 @@ class MessengerParty {
   final Map<String, Map<String, dynamic>> _ratchetSnapshots = {};
   final RecordingNotifications notifications = RecordingNotifications();
 
+  /// The device's read receipts setting, read on every use as the app's is.
+  bool readReceipts = true;
+
   /// What the messenger raises notifications through, given what records
   /// them (as the app wraps the platform service); the recorder itself
   /// when unset.
@@ -270,6 +273,7 @@ class MessengerParty {
       attachmentPaths: attachmentPaths,
       mediaIndex: mediaIndex,
       notificationService: _notificationsFor?.call(notifications) ?? notifications,
+      readReceiptsEnabled: () => readReceipts,
       sessionSnapshotRestorer: () => lib.restoreSessionsFromSnapshots(
         Map<String, Map<String, dynamic>>.of(_ratchetSnapshots),
       ),

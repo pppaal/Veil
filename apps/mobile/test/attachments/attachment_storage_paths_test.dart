@@ -140,8 +140,11 @@ void main() {
   test('the staging store stages in the staging folder and its purge empties every folder', () async {
     final storage = paths(sweepSystemTemp: true);
     final store = DefaultAttachmentTempFileStore(paths: storage);
-    final blob = await store.createOpaqueBlob(filename: 'brief.pdf', sizeBytes: 64);
+    // A pick is staged as a file of its own; the store only reads it back.
+    final staged = write(await storage.stagingDir(), 'staged-brief');
+    final blob = await store.createOpaqueBlob(filename: 'brief.pdf', sizeBytes: 64, existingPath: staged.path);
     expect(p.dirname(blob.path), (await storage.stagingDir()).path);
+    expect(blob.sizeBytes, staged.lengthSync());
     write(await storage.mediaDir(), 'c' * 64);
     write(systemTemp, 'brief.pdf');
 

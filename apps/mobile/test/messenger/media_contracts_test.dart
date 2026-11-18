@@ -101,19 +101,26 @@ void main() {
     expect(() => media.addListener(() {}), throwsFlutterError, reason: 'the media service outlived its messenger');
   });
 
-  test('sending a photo or a file is not built yet', () async {
-    await expectLater(
-      controller.sendAttachment(
-        conversationId: 'conv-1',
-        attachment: const OutgoingAttachment.photo(path: '/staging/photo.jpg', contentType: 'image/jpeg'),
-      ),
-      throwsUnimplementedError,
-    );
+  // A file as the attach flow leaves it: a plaintext in staging.
+  Future<OutgoingAttachment> stagedFile(String name) async {
+    final staging = Directory('${root.path}/tmp/veil_attachment_cache')..createSync(recursive: true);
+    final file = File('${staging.path}/staged-$name')..writeAsStringSync('%PDF-1.4 $name');
+    return OutgoingAttachment.file(path: file.path, name: name, contentType: 'application/pdf');
+  }
+
+  test('sending a photo or a file seals it and queues it, and the staged plaintext goes', () async {
+    relay.uploadGate = Completer<void>();
+    final attachment = await stagedFile('brief.pdf');
+    expect(await controller.sendAttachment(conversationId: 'conv-1', attachment: attachment), isTrue);
+    expect(File(attachment.path).existsSync(), isFalse);
+    expect(controller.pendingCountFor('conv-1'), 1);
+    relay.uploadGate!.complete();
+    await waitFor(() => controller.pendingCountFor('conv-1') == 0, reason: 'not sent');
   });
 
   test('the attachment id of a sealed upload still pending is held back from cleanup, lower-cased', () async {
     relay.uploadGate = Completer<void>();
-    await controller.sendAttachmentPlaceholder('conv-1', filename: 'brief.pdf');
+    await controller.sendAttachment(conversationId: 'conv-1', attachment: await stagedFile('brief.pdf'));
     await waitFor(() => controller.media.pendingAttachmentIds().isNotEmpty, reason: 'never sealed');
     final pending = controller.media.pendingAttachmentIds().single;
     expect(pending, pending.toLowerCase());

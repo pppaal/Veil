@@ -11,6 +11,7 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../attachments/presentation/save_media.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/presentation/peer_names.dart';
@@ -365,7 +366,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         groupSenderUserId: groupSenderUserId,
         groupSenderHandle: groupSenderHandle,
         groupSenderTitle: (message) => groupSenderName(message, ref.read(peerNamesProvider)));
-    if (!canReact && report == null) return;
+    // A photo or file that opened is saved from here too (D30).
+    final save =
+        mediaSaveAction(context, ref, conversationId: widget.conversationId, message: message, decrypted: decrypted);
+    if (!canReact && report == null && save == null) return;
     VeilHaptics.selection();
     // The message list on screen, so a menu that shows alone keeps clear of
     // what is under the list.
@@ -377,6 +381,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       isMine: message.isMine,
       onSelected: canReact ? (emoji) => controller.toggleReaction(message, emoji) : null,
       onReport: report,
+      onSave: save,
       messages: box is RenderBox && box.hasSize ? box.localToGlobal(Offset.zero) & box.size : null,
     );
   }

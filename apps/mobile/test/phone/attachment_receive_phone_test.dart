@@ -235,6 +235,39 @@ void main() {
     });
   });
 
+  // The long-press menu's Save (H4): above Report, behind the dialog, and
+  // the copy goes once the save screen returns.
+  testWidgets('a long press on a file offers Save above Report, and Save asks first', (tester) async {
+    await withChat(tester, (world) async {
+      final lease = await deliverAttachment(world,
+          plaintext: leasePdf,
+          contentType: 'application/pdf',
+          kind: MessageKind.file,
+          body: leaseFileName,
+          hour: 10,
+          minute: 16);
+      await fetchAndOpen(world, lease, photo: false);
+    }, (world) async {
+      await tester.longPress(find.byType(MessageFileCard));
+      await pumpFrames(tester, frames: 4);
+      final save = find.byKey(const ValueKey('message-save'));
+      final report = find.byKey(const ValueKey('message-report'));
+      expect(save, findsOneWidget);
+      expect(report, findsOneWidget);
+      expect(tester.getTopLeft(save).dy, lessThan(tester.getTopLeft(report).dy), reason: 'Save sits above Report');
+
+      await tester.tap(save);
+      await pumpFrames(tester, frames: 4);
+      expect(find.text(l10n.chatSaveTitle), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('save-confirm')));
+      await until(tester, () => opener.saved.isNotEmpty, reason: 'nothing reached the save screen');
+      expect(opener.saved.single.bytes, leasePdf);
+      expect(opener.saved.single.as, leaseFileName);
+      await until(tester, () => find.text(l10n.chatSaved).evaluate().isNotEmpty, reason: 'no "Saved"');
+      expect(world.messenger.media.cleanup.copies, isEmpty, reason: 'the copy outlived the save');
+    });
+  });
+
   testWidgets('a voice message still says this version cannot open it', (tester) async {
     await withChat(
         tester,

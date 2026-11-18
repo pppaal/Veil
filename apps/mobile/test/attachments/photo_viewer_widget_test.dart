@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -118,6 +119,37 @@ void main() {
     expect(find.byTooltip(l10n.commonClose), findsOneWidget);
     final image = tester.widget<Image>(find.byType(Image));
     expect(image.fit, BoxFit.contain);
+  });
+
+  // A tall photo, or a screenshot, reaches under the bar: whatever it shows
+  // there, white on the band reads (4.5:1 for words, 3:1 for the glyphs),
+  // judged over a white photo, the worst case.
+  testWidgets('the bar is white on a flat band of black that runs up behind the status bar', (tester) async {
+    tester.view.padding = FakeViewPadding(top: 24 * tester.view.devicePixelRatio);
+    addTearDown(tester.view.reset);
+    await open(tester);
+    final bandFinder = find.byKey(const ValueKey('photo-viewer-bar-band'));
+    final band = tester.widget<ColoredBox>(bandFinder);
+    final rect = tester.getRect(bandFinder);
+    expect(rect.top, 0);
+    expect(rect.height, 24 + 52, reason: 'the band covers the status bar and the bar');
+    expect(rect.width, tester.getSize(find.byType(PhotoViewerScreen)).width);
+    expect(band.color.a, closeTo(PhotoViewerScreen.barBandOpacity, 0.01));
+    expect((band.color.r, band.color.g, band.color.b), (0, 0, 0), reason: 'flat black, no gradient');
+
+    final ground = Color.alphaBlend(band.color, Colors.white);
+    double contrastOn(Color ink) {
+      final a = Color.alphaBlend(ink, ground).computeLuminance();
+      final b = ground.computeLuminance();
+      return (math.max(a, b) + 0.05) / (math.min(a, b) + 0.05);
+    }
+
+    expect(contrastOn(tester.widget<Text>(find.text('Selene')).style!.color!), greaterThanOrEqualTo(4.5));
+    expect(contrastOn(tester.widget<Text>(find.text('Today at 9:52\u00A0AM')).style!.color!),
+        greaterThanOrEqualTo(4.5));
+    for (final glyph in [Icons.close, Icons.download_outlined]) {
+      expect(contrastOn(tester.widget<Icon>(find.byIcon(glyph)).color!), greaterThanOrEqualTo(3));
+    }
   });
 
   testWidgets('the user\'s own photo is titled "You"', (tester) async {

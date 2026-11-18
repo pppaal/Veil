@@ -13,6 +13,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dar
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_unread_divider.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_photo.dart';
 import 'package:veil_mobile/src/features/chat/presentation/scroll_to_bottom_button.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
@@ -21,6 +22,7 @@ import 'package:veil_mobile/src/shared/presentation/veil_bubble.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
 
 import '../layout/support/layout_seed.dart';
+import '../layout/support/media_receive_seed.dart';
 import '../layout/support/unread_seed.dart';
 import 'phone_app.dart';
 
@@ -87,6 +89,27 @@ void main() {
       // The divider stays where it was.
       expect(world.messenger.reads.dividerFor(chatConversationId, viewer: _screenState(tester))?.count,
           samLongRunLength);
+    });
+  });
+
+  // A photo row is a small placeholder until its photo is in, and grows
+  // then: the run of three opens at its divider all the same.
+  testWidgets('a run of unread photos opens at the divider, a third down, once the photos are in', (tester) async {
+    await withPhoneApp(tester, identities,
+        size: phoneSmall, location: _chat, afterSession: _seedUnreadPhotos, body: (world) async {
+      final drawn = find.descendant(
+          of: find.byType(MessagePhoto),
+          matching: find.byWidgetPredicate((widget) => widget is RawImage && widget.image != null));
+      for (var i = 0; i < 300 && drawn.evaluate().length < 2; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+      }
+      await pumpFrames(tester, frames: 4);
+      expect(drawn, findsWidgets, reason: 'the photos did not open');
+      expect(find.text('3 unread messages'), findsOneWidget);
+      final area = messages(tester);
+      final share = (onScreenRect(tester, divider()).top - area.top) / area.height;
+      expect(share, inInclusiveRange(0.2, 0.45), reason: 'the divider is about a third down (at $share)');
     });
   });
 
@@ -216,6 +239,16 @@ void main() {
       world.dispose();
     }
   });
+}
+
+/// Three photos from Sam that came after the list was read, fetched and
+/// opened into memory as their bubbles open them.
+Future<void> _seedUnreadPhotos(LayoutWorld world) async {
+  for (final (minute, photo) in [(14, landscapePhoto), (15, portraitPhoto), (16, landscapePhoto)]) {
+    final seeded = await deliverAttachment(world,
+        plaintext: photo, contentType: 'image/jpeg', kind: MessageKind.image, hour: 10, minute: minute);
+    await fetchAndOpen(world, seeded);
+  }
 }
 
 /// The chat screen's state, the viewer its divider was taken for.

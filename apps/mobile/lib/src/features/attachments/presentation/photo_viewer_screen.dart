@@ -93,6 +93,10 @@ class PhotoViewerScreen extends ConsumerStatefulWidget {
   /// How far a drag down at 1x must go to close the viewer.
   static const double closeDistance = 120;
 
+  /// The black of the flat band behind the bars while they show: white on
+  /// it reads at 6:1 even over a white photo.
+  static const double barBandOpacity = 0.65;
+
   /// The long edge the photo is decoded at on a screen whose long edge is
   /// [screenLongEdge] physical pixels.
   static int decodeEdge(double screenLongEdge) => math.min(kViewerMaxEdge, (2 * screenLongEdge).round());
@@ -274,10 +278,16 @@ class _PhotoViewerScreenState extends ConsumerState<PhotoViewerScreen> with Tick
   }
 }
 
-/// The viewer's bar: 52 dp, transparent, in the dark theme's text colours
-/// whatever the app's theme, since the page is black in both.
+/// The viewer's bar: 52 dp, in white whatever the app's theme, on a flat
+/// band of [PhotoViewerScreen.barBandOpacity] black that runs up behind the
+/// status bar, so it reads over a photo that reaches under it (a tall photo
+/// or a screenshot) as well as over the black.
 class _Bar extends StatelessWidget {
   static const VeilPalette _ink = VeilPalette.dark;
+
+  /// The day and time under the name: white, a little dimmer than the name,
+  /// which still reads at 4.5:1 on the band over a white photo.
+  static final Color _subtitleInk = _ink.text.withValues(alpha: 0.85);
 
   const _Bar({
     required this.shown,
@@ -306,45 +316,49 @@ class _Bar extends StatelessWidget {
         child: AnimatedOpacity(
           opacity: shown ? 1 : 0,
           duration: VeilMotion.fast,
-          child: SafeArea(
-            bottom: false,
-            child: SizedBox(
-              height: 52,
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: onClose,
-                    tooltip: l10n.commonClose,
-                    icon: Icon(Icons.close, color: _ink.text),
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (title.isNotEmpty)
+          child: ColoredBox(
+            key: const ValueKey('photo-viewer-bar-band'),
+            color: Colors.black.withValues(alpha: PhotoViewerScreen.barBandOpacity),
+            child: SafeArea(
+              bottom: false,
+              child: SizedBox(
+                height: 52,
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: onClose,
+                      tooltip: l10n.commonClose,
+                      icon: Icon(Icons.close, color: _ink.text),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (title.isNotEmpty)
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(color: _ink.text),
+                            ),
                           Text(
-                            title,
+                            subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(color: _ink.text),
+                            style: theme.textTheme.bodySmall?.copyWith(color: _subtitleInk),
                           ),
-                        Text(
-                          subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(color: _ink.textMuted),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    key: const ValueKey('photo-viewer-save'),
-                    onPressed: onSave,
-                    tooltip: l10n.chatSaveAction,
-                    icon: Icon(Icons.download_outlined, color: _ink.text),
-                  ),
-                ],
+                    IconButton(
+                      key: const ValueKey('photo-viewer-save'),
+                      onPressed: onSave,
+                      tooltip: l10n.chatSaveAction,
+                      icon: Icon(Icons.download_outlined, color: _ink.text),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

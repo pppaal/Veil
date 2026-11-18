@@ -113,21 +113,23 @@ Future<void> showMessageActions(
                 ),
               ),
             );
-      return _MessageActionsLayout(
-          anchor: anchor, isMine: isMine, bar: bar, menu: menu, menuRows: rows.length, messages: messages);
+      return _MessageActionsLayout(anchor: anchor, isMine: isMine, bar: bar, menu: menu, messages: messages);
     },
   );
 }
 
-/// Places the reaction bar above [anchor] (below it when there is no room)
-/// and the menu under it, on the message's side, inside the safe area.
+/// Places the reaction bar above [anchor] and the menu under it, on the
+/// message's side, inside the safe area, by their laid-out heights (taller
+/// with larger text). The menu stays next to its message: with no room
+/// under it (the newest message), the menu sits right above the message
+/// and the bar above the menu; with no room above, both go under it, the
+/// bar first.
 class _MessageActionsLayout extends StatelessWidget {
   const _MessageActionsLayout({
     required this.anchor,
     required this.isMine,
     this.bar,
     this.menu,
-    this.menuRows = 1,
     this.messages,
   });
 
@@ -135,54 +137,103 @@ class _MessageActionsLayout extends StatelessWidget {
   final bool isMine;
   final Widget? bar;
   final Widget? menu;
-  final int menuRows;
   final Rect? messages;
-
-  double get _menuHeight => _menuRowHeight * menuRows;
-
-  // A menu alone: under the message when it fits above [bottom], else above
-  // the message.
-  double _menuAloneTop(double top, double bottom) {
-    if (anchor.bottom + _menuHeight <= bottom) return anchor.bottom.clamp(top, bottom - _menuHeight);
-    final above = anchor.top - _gap - _menuHeight;
-    return above >= top ? above : anchor.bottom.clamp(top, bottom - _menuHeight);
-  }
-
-  static const double _barHeight = 52;
-  static const double _menuRowHeight = 52;
-  static const double _gap = VeilSpace.xs;
 
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final size = media.size;
-    final top = media.padding.top + _gap;
-    final bottom = size.height - media.viewInsets.bottom - media.padding.bottom - _gap;
-    var barTop = anchor.top - _gap - _barHeight;
-    var menuTop = anchor.bottom + _gap;
-    if (barTop < top) {
-      // No room above: the bar goes under the message, the menu under it.
-      barTop = (anchor.bottom + _gap).clamp(top, bottom - _barHeight);
-      menuTop = barTop + _barHeight + _gap;
-    }
-    if (menuTop + _menuHeight > bottom) menuTop = (barTop - _gap - _menuHeight).clamp(top, bottom - _menuHeight);
-    // On the message's side of the message's own column (in the wide layout
-    // the chat is a pane, not the screen).
-    Widget place(double y, Widget child) => Positioned(
-          top: y,
-          left: isMine ? null : anchor.left + VeilSpace.xs,
-          right: isMine ? size.width - anchor.right + VeilSpace.xs : null,
-          child: child,
-        );
-    return Stack(
+    final top = media.padding.top + _ActionsPlacement.gap;
+    final bottom = media.size.height - media.viewInsets.bottom - media.padding.bottom - _ActionsPlacement.gap;
+    return CustomMultiChildLayout(
+      delegate: _ActionsPlacement(
+        anchor: anchor,
+        isMine: isMine,
+        top: top,
+        bottom: bottom,
+        menuAloneBottom: messages == null ? bottom : math.min(bottom, messages!.bottom),
+      ),
       children: [
-        if (bar != null) place(barTop, bar!),
-        if (menu != null)
-          place(
-            bar == null ? _menuAloneTop(top, messages == null ? bottom : math.min(bottom, messages!.bottom)) : menuTop,
-            menu!,
-          ),
+        if (bar != null) LayoutId(id: _ActionsSlot.bar, child: bar!),
+        if (menu != null) LayoutId(id: _ActionsSlot.menu, child: menu!),
       ],
     );
   }
+}
+
+enum _ActionsSlot { bar, menu }
+
+class _ActionsPlacement extends MultiChildLayoutDelegate {
+  _ActionsPlacement({
+    required this.anchor,
+    required this.isMine,
+    required this.top,
+    required this.bottom,
+    required this.menuAloneBottom,
+  });
+
+  static const double gap = VeilSpace.xs;
+
+  final Rect anchor;
+  final bool isMine;
+  final double top;
+  final double bottom;
+
+  /// How low a menu shown without the bar may reach: the message list's
+  /// bottom, so what is under the list (a blocked chat's line) stays seen.
+  final double menuAloneBottom;
+
+  @override
+  void performLayout(Size size) {
+    final loose = BoxConstraints.loose(size);
+    final barSize = hasChild(_ActionsSlot.bar) ? layoutChild(_ActionsSlot.bar, loose) : null;
+    final menuSize = hasChild(_ActionsSlot.menu) ? layoutChild(_ActionsSlot.menu, loose) : null;
+    // On the message's side of the message's own column (in the wide layout
+    // the chat is a pane, not the screen).
+    double x(Size child) => isMine ? anchor.right - VeilSpace.xs - child.width : anchor.left + VeilSpace.xs;
+    if (barSize == null) {
+      if (menuSize != null) positionChild(_ActionsSlot.menu, Offset(x(menuSize), _menuAloneTop(menuSize.height)));
+      return;
+    }
+    final bar = barSize.height;
+    final menu = menuSize == null ? 0.0 : menuSize.height;
+    final menuSpan = menuSize == null ? 0.0 : menu + gap;
+    final above = anchor.top - gap - top;
+    final under = bottom - anchor.bottom - gap;
+    final double barTop;
+    final double menuTop;
+    if (above >= bar && under >= menu) {
+      barTop = anchor.top - gap - bar;
+      menuTop = anchor.bottom + gap;
+    } else if (above >= bar + menuSpan) {
+      // Bar, menu, message.
+      menuTop = anchor.top - gap - menu;
+      barTop = menuTop - gap - bar;
+    } else if (under >= bar + menuSpan) {
+      // Message, bar, menu.
+      barTop = anchor.bottom + gap;
+      menuTop = barTop + bar + gap;
+    } else {
+      // A message taller than the room around it: over its edge, on screen.
+      barTop = (anchor.top - gap - bar).clamp(top, math.max(top, bottom - bar));
+      menuTop = (barTop + bar + gap).clamp(top, math.max(top, bottom - menu));
+    }
+    positionChild(_ActionsSlot.bar, Offset(x(barSize), barTop));
+    if (menuSize != null) positionChild(_ActionsSlot.menu, Offset(x(menuSize), menuTop));
+  }
+
+  // A menu alone: under the message when it fits, else above it.
+  double _menuAloneTop(double height) {
+    final limit = math.max(top, menuAloneBottom - height);
+    if (anchor.bottom + height <= menuAloneBottom) return anchor.bottom.clamp(top, limit);
+    final above = anchor.top - gap - height;
+    return above >= top ? above : anchor.bottom.clamp(top, limit);
+  }
+
+  @override
+  bool shouldRelayout(_ActionsPlacement oldDelegate) =>
+      anchor != oldDelegate.anchor ||
+      isMine != oldDelegate.isMine ||
+      top != oldDelegate.top ||
+      bottom != oldDelegate.bottom ||
+      menuAloneBottom != oldDelegate.menuAloneBottom;
 }

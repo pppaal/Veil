@@ -455,6 +455,53 @@ void main() {
       expect(find.byType(ReactionPickerWidget), findsNothing);
     });
 
+    // A long press on a photo or file from someone else: the bar, and the
+    // menu with Save above Report, kept next to the message wherever it is.
+    Future<({Rect bar, Rect menu})> pressAt(WidgetTester tester, Rect anchor) async {
+      tester.view
+        ..physicalSize = const Size(360, 640)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(opener((context) => showMessageActions(
+            context,
+            anchor: anchor,
+            isMine: false,
+            onSelected: (_) {},
+            onSave: () {},
+            onReport: () {},
+          )));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      final save = tester.getRect(find.byKey(const ValueKey('message-save')));
+      final report = tester.getRect(find.byKey(const ValueKey('message-report')));
+      return (bar: tester.getRect(find.byType(ReactionPickerWidget)), menu: save.expandToInclude(report));
+    }
+
+    testWidgets('with room around the message, the bar is above it and the menu under it', (tester) async {
+      const anchor = Rect.fromLTWH(12, 300, 220, 60);
+      final placed = await pressAt(tester, anchor);
+      expect(placed.bar.bottom, lessThanOrEqualTo(anchor.top));
+      expect(placed.menu.top, greaterThanOrEqualTo(anchor.bottom));
+      expect(placed.menu.top - anchor.bottom, lessThanOrEqualTo(VeilSpace.md), reason: 'the menu left its message');
+    });
+
+    testWidgets('under the newest message, the menu sits right above it and the bar above the menu', (tester) async {
+      const anchor = Rect.fromLTWH(12, 540, 220, 60);
+      final placed = await pressAt(tester, anchor);
+      expect(placed.menu.bottom, lessThanOrEqualTo(anchor.top), reason: 'the menu covers its message');
+      expect(anchor.top - placed.menu.bottom, lessThanOrEqualTo(VeilSpace.md),
+          reason: 'the menu floats away from its message, over another one');
+      expect(placed.bar.bottom, lessThanOrEqualTo(placed.menu.top), reason: 'bar, menu, message');
+    });
+
+    testWidgets('with no room above the message, both go under it, the bar first', (tester) async {
+      const anchor = Rect.fromLTWH(12, 20, 220, 60);
+      final placed = await pressAt(tester, anchor);
+      expect(placed.bar.top, greaterThanOrEqualTo(anchor.bottom));
+      expect(placed.menu.top, greaterThanOrEqualTo(placed.bar.bottom));
+      expect(placed.menu.bottom, lessThanOrEqualTo(640));
+    });
+
     testWidgets('another account under the user\'s own handle is confirmed only by the confirm button',
         (tester) async {
       final answers = <bool>[];

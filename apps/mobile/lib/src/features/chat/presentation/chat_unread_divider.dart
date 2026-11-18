@@ -36,20 +36,21 @@ class ChatUnreadDivider extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: VeilSpace.md),
       child: LayoutBuilder(
-        builder: (context, constraints) => OverflowBox(
-          minWidth: constraints.maxWidth + 2 * bleed,
-          maxWidth: constraints.maxWidth + 2 * bleed,
-          minHeight: bandHeight,
-          maxHeight: bandHeight,
-          child: Container(
-            color: palette.surfaceAlt,
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+        builder: (context, constraints) => SizedBox(
+          height: bandHeight,
+          child: OverflowBox(
+            minWidth: constraints.maxWidth + 2 * bleed,
+            maxWidth: constraints.maxWidth + 2 * bleed,
+            child: Container(
+              color: palette.surfaceAlt,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+              ),
             ),
           ),
         ),

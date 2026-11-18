@@ -24,7 +24,8 @@ import '../support/strict_mock_crypto_adapter.dart';
 // What the read state does with real controllers over the fake relay: when
 // the read mark moves, what it counts, the one read receipt each move sends
 // (and the ones it never sends), the fresh-device baseline and the unread
-// divider. Atlas reads; selene and rowan write to atlas.
+// divider. Atlas reads; selene writes to atlas, and rowan's frames are put
+// on the relay for atlas to fetch.
 
 const conv = 'conv-1';
 const other = 'conv-2';
@@ -37,7 +38,6 @@ void main() {
   late bool receipts;
   late VeilMessengerController atlas;
   late VeilMessengerController selene;
-  late VeilMessengerController rowan;
   final disposeLater = <VeilMessengerController>[];
 
   VeilMessengerController atlasOn(ConversationCacheService? cache) {
@@ -77,7 +77,6 @@ void main() {
     atlas = atlasOn(null);
     await atlas.applySession(mockPartySession('atlas'));
     selene = await peer('selene');
-    rowan = await peer('rowan');
   });
 
   tearDown(() {

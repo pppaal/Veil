@@ -3,9 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/veil_theme.dart';
-import '../../features/conversations/data/conversation_models.dart';
-import '../../features/conversations/data/messenger_providers.dart';
-import '../../features/safety/data/safety_providers.dart';
+import '../../features/conversations/presentation/unread_chats.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../shared/presentation/veil_ui.dart';
 
@@ -70,15 +68,7 @@ class MainTabShell extends ConsumerWidget {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
-    final mutes = ref.watch(conversationMutesProvider);
-    final blocked = ref.watch(blockedAccountsProvider);
-    final unreadChats = ref.watch(messengerControllerProvider.select((messenger) => messenger.reads.unreadChats(
-          excluded: (id) {
-            final conversation = messenger.conversationById(id);
-            return mutes.isMuted(id) ||
-                (conversation?.type == ConversationType.direct && blocked.isBlocked(conversation!.recipientBundle.userId));
-          },
-        )));
+    final unreadChats = ref.watch(unreadChatsProvider);
     // The tab says how many chats are unread; the badge's number is left
     // to that.
     Widget icon(_VeilNavTab tab, {required bool selected}) {

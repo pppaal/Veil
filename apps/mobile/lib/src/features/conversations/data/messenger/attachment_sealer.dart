@@ -87,7 +87,7 @@ class AttachmentSealer {
       final partPath = await _blobs.reservePartPath();
       final ({AttachmentReference reference, int size, String sha256Hex}) sealed;
       try {
-        sealed = await Isolate.run(() => _sealFile(attachment.path, partPath, attachment.contentType));
+        sealed = await sealStagedFileInIsolate(attachment.path, partPath, attachment.contentType);
         await _blobs.commit(
           partPath: partPath,
           conversationId: conversationId,
@@ -116,9 +116,21 @@ class AttachmentSealer {
   }
 }
 
-// Runs in its own isolate: reads, seals and writes there, and returns only
-// the reference and the blob's size and digest.
-Future<({AttachmentReference reference, int size, String sha256Hex})> _sealFile(
+/// [sealStagedFile] in an isolate of its own. Top level, so the isolate is
+/// handed the three paths and nothing else of the caller's.
+Future<({AttachmentReference reference, int size, String sha256Hex})> sealStagedFileInIsolate(
+  String plaintextPath,
+  String partPath,
+  String contentType,
+) =>
+    Isolate.run(() => sealStagedFile(plaintextPath, partPath, contentType));
+
+/// Seals the plaintext at [plaintextPath] with pointer v2 under a fresh
+/// random id, writes the ciphertext to [partPath], and returns only the
+/// reference and the blob's size and digest. Run in an isolate of its own
+/// (AttachmentSealer), so neither the plaintext nor the ciphertext crosses
+/// into the caller's.
+Future<({AttachmentReference reference, int size, String sha256Hex})> sealStagedFile(
   String plaintextPath,
   String partPath,
   String contentType,

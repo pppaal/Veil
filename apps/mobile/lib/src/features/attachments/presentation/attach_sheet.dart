@@ -25,16 +25,21 @@ Future<AttachSource?> showAttachSheet(BuildContext context) {
             trailing: const SizedBox.shrink(),
             onTap: () => Navigator.of(sheetContext).pop(source),
           );
+      // As tall as its two rows, no taller.
       return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: VeilSpace.xs),
-          child: VeilGroup(
-            inset: 56,
-            children: [
-              row(AttachSource.photos, Icons.photo_library_outlined, l10n.chatAttachPhotos),
-              row(AttachSource.file, Icons.insert_drive_file_outlined, l10n.chatAttachFile),
-            ],
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            VeilGroup(
+              inset: 56,
+              children: [
+                row(AttachSource.photos, Icons.photo_library_outlined, l10n.chatAttachPhotos),
+                row(AttachSource.file, Icons.insert_drive_file_outlined, l10n.chatAttachFile),
+              ],
+            ),
+            const SizedBox(height: VeilSpace.xs),
+          ],
         ),
       );
     },

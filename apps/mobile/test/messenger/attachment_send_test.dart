@@ -334,7 +334,9 @@ void main() {
       final id = queuedOf(alice)!.clientMessageId!;
       await uploading(alice, id);
 
-      gate.completeError(VeilApiException('The server is unreachable.', code: 'network_unavailable'));
+      gate
+        ..future.ignore()
+        ..completeError(VeilApiException('The server is unreachable.', code: 'network_unavailable'));
       final cancel = alice.controller.cancelPendingAttachment(id);
       await cancel;
       await settle(const Duration(seconds: 1));

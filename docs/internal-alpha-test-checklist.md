@@ -26,11 +26,12 @@
 - On wide desktop or tablet layouts, confirm the conversation list stays visible beside the active chat.
 
 ## Attachment Flow
-- Open the attachment screen and confirm the flow copy matches the encrypted-envelope architecture.
-- Send an attachment placeholder and confirm it stages locally, uploads with visible progress, then resolves into an encrypted attachment card.
-- Cancel an in-flight attachment upload and confirm the message enters a retryable failed state without losing the local draft.
-- Retry the failed attachment upload and confirm the staged blob is reused and the send succeeds.
-- Resolve a download ticket from the attachment card and confirm the dialog returns the opaque ticket URL.
+- Tap + in a chat, choose Photos, pick a photo and send it; confirm the photo shows in the bubble at once, with a ring while it uploads, and on the other phone after its download.
+- Choose File, pick a PDF, confirm the dialog names the file and the chat, and send it; on the other phone, confirm a tap downloads it and opens it in another app.
+- Pick a JPEG or an MP4 as a file and confirm the dialog adds "A photo or video sent as a file keeps any location saved in it."
+- Cancel an upload with the cross and confirm the message is removed and nothing is sent.
+- Let an upload fail (go offline), confirm "Not sent. Tap to retry." under the bubble, then retry and confirm it sends.
+- Open a received photo full screen, tap Save, and confirm the dialog "Save to your phone?" appears before the system save screen.
 
 ## Lock And Session
 - Open App Lock with no PIN set and confirm the screen explains there is no remote reset path.

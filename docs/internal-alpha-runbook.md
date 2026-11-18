@@ -10,7 +10,7 @@ Use this build to validate:
 - device-bound registration flow
 - direct conversation creation
 - encrypted-envelope chat flow
-- attachment placeholder flow
+- photo and file send and open
 - disappearing message UX
 - app lock UX
 - device transfer UX
@@ -107,11 +107,11 @@ For a concise click-by-click Windows flow, see [Internal Alpha Desktop QA](inter
 
 ### D. Attachments
 
-1. Open the attachment screen from the chat room.
-2. Confirm the copy states opaque blob upload and encrypted envelope send.
-3. Send the attachment placeholder.
-4. Confirm the chat room renders an encrypted attachment card.
-5. Resolve a download ticket and confirm the ticket dialog appears.
+1. Tap + in the chat room and choose Photos; pick a photo and send it.
+2. Confirm the photo shows in the bubble at once, with a ring while it uploads.
+3. Choose File, pick a PDF and send it from the confirm dialog.
+4. On the other device, confirm the photo shows by itself and the PDF opens with a tap.
+5. Open the photo full screen and confirm Save asks "Save to your phone?" first.
 
 ### E. App lock
 
@@ -173,6 +173,5 @@ pnpm mobile:test
 
 - Crypto is still mock-only.
 - The transfer UX is alpha scaffolding, not a full multi-device QR production flow.
-- The attachment flow uses placeholder opaque blobs.
 - Push fallback is metadata-only and the real APNs/FCM provider is not wired yet.
 - Local cache is encrypted at rest for this alpha path, but it is not a production-hardened mobile storage story yet.

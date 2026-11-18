@@ -126,7 +126,8 @@ Future<void> showMessageActions(
 }
 
 /// The dim behind a message's actions: 20% black over the chat, except over
-/// the pressed message's row ([clear]), which stays as it is.
+/// a band the screen's width at the pressed message's row ([clear]), which
+/// stays as it is.
 class MessageActionsDim extends CustomPainter {
   const MessageActionsDim(this.clear);
 
@@ -139,7 +140,7 @@ class MessageActionsDim extends CustomPainter {
     final around = Path()
       ..fillType = PathFillType.evenOdd
       ..addRect(Offset.zero & size)
-      ..addRect(clear);
+      ..addRect(Rect.fromLTRB(0, clear.top, size.width, clear.bottom));
     canvas.drawPath(around, Paint()..color = color);
   }
 

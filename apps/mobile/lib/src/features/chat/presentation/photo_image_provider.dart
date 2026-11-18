@@ -31,23 +31,28 @@ Size photoBubbleSize(int width, int height, {double maxWidth = 240}) {
 /// pointer carries no size, so it is square, as Signal's is.
 const double photoTileExtent = 210;
 
-/// What a photo is decoded for: a bubble no wider than [bubbleWidth]
-/// pixels, or the viewer, whose long edge is at most [longEdge] pixels.
+/// What a photo is decoded for: a bubble no wider than [bubbleWidth] dp on
+/// a screen of [pixelRatio], or the viewer, whose long edge is at most
+/// [longEdge] pixels.
 @immutable
 class PhotoDecodeTarget {
-  const PhotoDecodeTarget.bubble(int this.bubbleWidth) : longEdge = null;
+  const PhotoDecodeTarget.bubble(int this.bubbleWidth, {this.pixelRatio = 1}) : longEdge = null;
 
-  const PhotoDecodeTarget.viewer(int this.longEdge) : bubbleWidth = null;
+  const PhotoDecodeTarget.viewer(int this.longEdge)
+      : bubbleWidth = null,
+        pixelRatio = 1;
 
   final int? bubbleWidth;
+  final double pixelRatio;
   final int? longEdge;
 
-  /// The size to decode a [width] x [height] photo at: enough to cover its
-  /// bubble, or to fit the viewer's long edge; never larger than it is.
+  /// The size in pixels to decode a [width] x [height] photo at: enough to
+  /// cover its bubble on this screen, or to fit the viewer's long edge;
+  /// never larger than it is.
   (int, int) decodeSize(int width, int height) {
     final double scale;
     if (bubbleWidth case final bubble?) {
-      final box = photoBubbleSize(width, height, maxWidth: bubble.toDouble());
+      final box = photoBubbleSize(width, height, maxWidth: bubble.toDouble()) * pixelRatio;
       scale = math.max(box.width / width, box.height / height);
     } else {
       scale = longEdge! / math.max(width, height);
@@ -58,10 +63,13 @@ class PhotoDecodeTarget {
 
   @override
   bool operator ==(Object other) =>
-      other is PhotoDecodeTarget && other.bubbleWidth == bubbleWidth && other.longEdge == longEdge;
+      other is PhotoDecodeTarget &&
+      other.bubbleWidth == bubbleWidth &&
+      other.pixelRatio == pixelRatio &&
+      other.longEdge == longEdge;
 
   @override
-  int get hashCode => Object.hash(bubbleWidth, longEdge);
+  int get hashCode => Object.hash(bubbleWidth, pixelRatio, longEdge);
 }
 
 /// What the image cache keeps a decoded photo under: whose it is (the

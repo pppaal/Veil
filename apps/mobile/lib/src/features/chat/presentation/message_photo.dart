@@ -306,7 +306,7 @@ class _MessagePhotoState extends ConsumerState<MessagePhoto> {
     final provider = PhotoImageProvider(
       media: _key,
       bytes: bytes,
-      target: PhotoDecodeTarget.bubble((maxWidth * ratio).round()),
+      target: PhotoDecodeTarget.bubble(maxWidth.round(), pixelRatio: ratio),
     );
     if (provider.key == _resolving) return;
     _resolving = provider.key;

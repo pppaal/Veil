@@ -335,6 +335,10 @@ class RenderMiddleEllipsisText extends RenderBox {
   final TextPainter _painter;
   String _shown = '';
 
+  /// The line as it is drawn now, cut or whole.
+  @visibleForTesting
+  String get shownText => _shown;
+
   void update({
     required String text,
     required TextStyle style,

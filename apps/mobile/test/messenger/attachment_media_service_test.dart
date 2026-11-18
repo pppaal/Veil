@@ -450,11 +450,12 @@ void main() {
       final provider = PhotoImageProvider(
         media: MediaKey(_chat, reference),
         bytes: bytes!,
-        target: const PhotoDecodeTarget.bubble(720),
+        target: const PhotoDecodeTarget.bubble(240, pixelRatio: 3),
       );
       final info = await _resolve(provider);
-      expect(info.image.width, lessThanOrEqualTo(720));
-      expect(info.image.height, lessThanOrEqualTo(960));
+      // Its 240 x 320 dp bubble on a 3x screen, sharp and no larger.
+      expect(info.image.width, 720);
+      expect(info.image.height, 960);
       expect(PhotoImageProvider.debugDecodes, 1);
       info.dispose();
     }, timeout: const Timeout(Duration(minutes: 2)));
@@ -555,8 +556,8 @@ void main() {
 
       // Another digest and key under the same id: its own entry.
       expect(MediaKey(_chat, second), isNot(MediaKey(_chat, first)));
-      expect(PhotoImageKey(MediaKey(_chat, second), const PhotoDecodeTarget.bubble(720)),
-          isNot(PhotoImageKey(MediaKey(_chat, first), const PhotoDecodeTarget.bubble(720))));
+      expect(PhotoImageKey(MediaKey(_chat, second), const PhotoDecodeTarget.bubble(240, pixelRatio: 3)),
+          isNot(PhotoImageKey(MediaKey(_chat, first), const PhotoDecodeTarget.bubble(240, pixelRatio: 3))));
       expect(phone.media.cachedPhotoBytes(_chat, second), isNull);
       expect(await phone.media.photoBytes(_chat, second, userAsked: true), isNull);
 

@@ -45,6 +45,10 @@ class _ScrollToBottomButtonState extends State<ScrollToBottomButton> {
     super.initState();
     _newestId = widget.messages.lastOrNull?.id;
     widget.scrollController.addListener(_scrolled);
+    // A list put back where it was (its page storage) moves without telling.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrolled();
+    });
   }
 
   @override

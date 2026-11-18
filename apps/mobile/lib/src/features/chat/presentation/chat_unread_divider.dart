@@ -15,9 +15,12 @@ import '../../conversations/data/messenger/read_state_service.dart';
 /// loaded. It stays while the chat is on screen, however many messages are
 /// read under it.
 class ChatUnreadDivider extends StatelessWidget {
-  const ChatUnreadDivider({super.key, required this.divider, this.bleed = 0});
+  const ChatUnreadDivider({super.key, required this.divider, this.bleed = 0, this.afterDay = false});
 
   final UnreadDivider divider;
+
+  /// Right under a day's date, whose space below it is enough.
+  final bool afterDay;
 
   /// How far the band reaches past each side of the list's content, to run
   /// edge to edge across the padding the messages keep.
@@ -34,7 +37,7 @@ class ChatUnreadDivider extends StatelessWidget {
     final palette = context.veilPalette;
     final text = divider.olderThanLoaded ? l10n.chatUnreadDividerNoCount : l10n.chatUnreadDivider(divider.count);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: VeilSpace.md),
+      padding: EdgeInsets.only(top: afterDay ? 0 : VeilSpace.md, bottom: VeilSpace.md),
       child: LayoutBuilder(
         builder: (context, constraints) => SizedBox(
           height: bandHeight,

@@ -13,7 +13,6 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
-import '../layout/support/layout_seed.dart';
 import '../phone/phone_app.dart';
 import '../support/fake_relay.dart';
 import '../support/messenger_party.dart';

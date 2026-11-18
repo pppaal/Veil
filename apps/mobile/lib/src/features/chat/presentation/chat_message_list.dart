@@ -168,6 +168,7 @@ class ChatMessageList extends ConsumerWidget {
     return Stack(
       children: [
         ChatOpeningPosition(
+          key: ValueKey('opening-$conversationId'),
           divider: hasSearchQuery ? null : unreadDivider,
           scrollController: scrollController,
           rowContextOf: (messageId) => messageKeys[messageId]?.currentContext,
@@ -181,7 +182,11 @@ class ChatMessageList extends ConsumerWidget {
             itemBuilder: (context, index) => _buildMessageEntry(context, ref, count - 1 - index),
           ),
         ),
-        ScrollToBottomButton(scrollController: scrollController, messages: filteredMessages),
+        ScrollToBottomButton(
+          key: ValueKey('scroll-$conversationId'),
+          scrollController: scrollController,
+          messages: filteredMessages,
+        ),
       ],
     );
   }
@@ -266,7 +271,7 @@ class ChatMessageList extends ConsumerWidget {
             now: now,
             first: index == 0 && !showLoadOlder,
           ),
-        if (showsDivider) ChatUnreadDivider(divider: divider, bleed: padding.left),
+        if (showsDivider) ChatUnreadDivider(divider: divider, bleed: padding.left, afterDay: startsDay),
         entry,
       ],
     );

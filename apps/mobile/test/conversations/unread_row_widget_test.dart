@@ -105,7 +105,7 @@ void main() {
     final actions = node.getSemanticsData().customSemanticsActionIds!.map(CustomSemanticsAction.getAction).toList();
     expect(actions.map((action) => action!.label), ['Mark as read', 'Mute notifications']);
     for (final action in actions) {
-      tester.binding.pipelineOwner.semanticsOwner!.performAction(
+      node.owner!.performAction(
         node.id,
         SemanticsAction.customAction,
         CustomSemanticsAction.getIdentifier(action!),

@@ -60,8 +60,12 @@ No demo credentials are needed because **there are no credentials.** The flow:
      a safety number the two devices can compare to confirm each other's keys.
    - Send a 1:1 message from A to B and confirm it is received and decrypted on B.
    - Optionally create a group (**New group**) and send a message in it to
-     confirm the group path. This build sends text only: it has no attachments,
-     voice messages or calls.
+     confirm the group path.
+   - On Device A, tap **+** in the chat with B, choose **Photos** and send a
+     photo, then choose **File** and send a PDF; on B the photo shows in the
+     chat (tap it to open it full screen) and the PDF opens with a tap.
+     Picking uses the system photo and file pickers, so the app asks for no
+     photo access. This build has no voice messages or calls.
    - To report or block (guideline 1.2): on Device A, open the menu at the top
      right of the chat with B (**Report**, **Block**), or long-press one of B's
      messages (**Report**), or add B in **Contacts** (**Add contact** at the

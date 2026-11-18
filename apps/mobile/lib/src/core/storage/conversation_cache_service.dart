@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import '../crypto/crypto_engine.dart';
 import '../domain/chat_message.dart';
 import '../domain/conversation_preview.dart';
+import '../domain/conversation_read_mark.dart';
 import '../domain/message_search.dart';
 import '../security/local_data_cipher.dart';
 import 'app_database.dart';
@@ -557,11 +558,21 @@ class ConversationCacheSnapshot {
     this.conversations = const [],
     this.messages = const {},
     this.paging = const {},
+    this.readMarks = const {},
+    this.baselinePending = false,
   });
 
   final List<ConversationPreview> conversations;
   final Map<String, List<ChatMessage>> messages;
   final Map<String, ConversationPagingState> paging;
+
+  /// What has been read of each conversation on this phone.
+  final Map<String, ConversationReadMark> readMarks;
+
+  /// Whether the cache holds the baseline marker (baselineReadMarkId): the
+  /// next successful relay list is this device's first, and everything it
+  /// lists counts as read. A cache that could not be read holds none.
+  final bool baselinePending;
 }
 
 /// Rows a writer changed since its last write, applied together.
@@ -572,6 +583,8 @@ class ConversationCacheChanges {
     this.replacedConversationIds = const {},
     this.deletedMessageIds = const {},
     this.paging = const {},
+    this.readMarks = const {},
+    this.consumeBaselineMarker = false,
   });
 
   /// Inserted or updated; their paging columns are left as they are.
@@ -587,12 +600,39 @@ class ConversationCacheChanges {
   final Set<String> deletedMessageIds;
   final Map<String, ConversationPagingState> paging;
 
+  /// Inserted or updated, whether or not their conversation has a row yet.
+  final Map<String, ConversationReadMark> readMarks;
+
+  /// Deletes the baseline marker in the same write as [readMarks], which
+  /// then hold the marks the first list set.
+  final bool consumeBaselineMarker;
+
   bool get isEmpty =>
       conversations.isEmpty &&
       messages.isEmpty &&
       replacedConversationIds.isEmpty &&
       deletedMessageIds.isEmpty &&
-      paging.isEmpty;
+      paging.isEmpty &&
+      readMarks.isEmpty &&
+      !consumeBaselineMarker;
+}
+
+/// What a cache holds about read marks: the marks, and whether the
+/// baseline marker is there.
+typedef ConversationReadMarkState = ({Map<String, ConversationReadMark> marks, bool baselinePending});
+
+/// Read marks for a cache without row-level writes; an
+/// [IncrementalConversationCache] carries them in its snapshot and changes.
+/// Kept apart from [ConversationCacheService] so its many fakes in tests are
+/// unaffected; callers check for it with `is`. A cache that is neither reads
+/// as holding the baseline marker and no marks, as a fresh install does, and
+/// keeps no marks between launches.
+abstract interface class ConversationReadMarkSource {
+  Future<ConversationReadMarkState> readReadMarks();
+
+  /// Stores [marks]; with [consumeBaselineMarker] the marker goes in the
+  /// same step.
+  Future<void> storeReadMarks(Map<String, ConversationReadMark> marks, {required bool consumeBaselineMarker});
 }
 
 /// Thrown by the row-level calls of [IncrementalConversationCache] when no
@@ -745,7 +785,30 @@ class DriftConversationCacheService
         conversationMessages.add(message);
       }
     }
-    return ConversationCacheSnapshot(conversations: conversations, messages: messages, paging: paging);
+    final (:marks, :baselinePending) = await _readMarkState();
+    return ConversationCacheSnapshot(
+      conversations: conversations,
+      messages: messages,
+      paging: paging,
+      readMarks: marks,
+      baselinePending: baselinePending,
+    );
+  }
+
+  // The baseline marker's row is no conversation: it reads as
+  // baselinePending, never as a mark.
+  Future<ConversationReadMarkState> _readMarkState() async {
+    final marks = <String, ConversationReadMark>{};
+    var baselinePending = false;
+    for (final row in await _db.select(_db.conversationReadMarks).get()) {
+      if (row.conversationId == baselineReadMarkId) {
+        baselinePending = true;
+      } else {
+        marks[row.conversationId] =
+            ConversationReadMark(readThrough: row.readThroughOrder, markedUnread: row.markedUnread);
+      }
+    }
+    return (marks: marks, baselinePending: baselinePending);
   }
 
   @override
@@ -772,6 +835,18 @@ class DriftConversationCacheService
           ),
           where: (table) => table.id.equals(conversationId),
         );
+      }
+      batch.insertAllOnConflictUpdate(_db.conversationReadMarks, [
+        for (final MapEntry(key: conversationId, value: mark) in changes.readMarks.entries)
+          if (conversationId != baselineReadMarkId)
+            ConversationReadMarksCompanion.insert(
+              conversationId: conversationId,
+              readThroughOrder: Value(mark.readThrough),
+              markedUnread: Value(mark.markedUnread),
+            ),
+      ]);
+      if (changes.consumeBaselineMarker) {
+        batch.deleteWhere(_db.conversationReadMarks, (table) => table.conversationId.equals(baselineReadMarkId));
       }
     });
   }

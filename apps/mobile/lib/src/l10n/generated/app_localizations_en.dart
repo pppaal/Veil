@@ -1011,6 +1011,54 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get conversationsMarkRead => 'Mark as read';
+
+  @override
+  String get conversationsMarkUnread => 'Mark as unread';
+
+  @override
+  String get conversationsMarkedUnreadSemantics => 'Marked unread';
+
+  @override
+  String navChatsUnreadSemantics(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unread chats',
+      one: '1 unread chat',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatUnreadDivider(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unread messages',
+      one: '1 unread message',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get chatUnreadDividerNoCount => 'Unread messages';
+
+  @override
+  String get chatScrollToBottom => 'Scroll to bottom';
+
+  @override
+  String chatNewBelowSemantics(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count new messages',
+      one: '1 new message',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get conversationsSyncIssueTitle => 'Couldn\'t refresh chats';
 
   @override

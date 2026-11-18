@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/veil_theme.dart';
+import '../../features/conversations/presentation/unread_chats.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../shared/presentation/veil_ui.dart';
 
@@ -13,7 +15,11 @@ import '../../shared/presentation/veil_ui.dart';
 /// From [railBreakpoint] wide (a tablet, a desktop window) three tabs stretched
 /// across the bottom would sit far apart: the same tabs are a
 /// [NavigationRail] at the start edge instead, with a hairline beside it.
-class MainTabShell extends StatelessWidget {
+///
+/// Chats carries a badge with the number of unread chats, as WhatsApp's
+/// tab does: muted chats and blocked 1:1s left out, a chat marked unread
+/// counted once, nothing at 0, "99+" past 99. Nothing on the app icon.
+class MainTabShell extends ConsumerWidget {
   const MainTabShell({super.key, required this.child});
 
   final Widget child;
@@ -44,11 +50,53 @@ class MainTabShell extends StatelessWidget {
   static String _contactsLabel(AppLocalizations l10n) => l10n.navContacts;
   static String _settingsLabel(AppLocalizations l10n) => l10n.navSettings;
 
+  /// The ring around the Chats badge, in the bar's colour.
+  static const double badgeRing = 2;
+
+  /// The badge on Chats; [count] 0 shows none. The pill keeps a ring in the
+  /// bar's colour, as a reaction chip over a bubble's edge does, so it
+  /// stands apart from the selected glyph under it (the same blue in the
+  /// light theme). The pill sits where the platform puts it.
+  static Widget _chatsIcon(BuildContext context, IconData icon, int count) {
+    final palette = context.veilPalette;
+    final ltr = Directionality.of(context) == TextDirection.ltr;
+    return Badge(
+      isLabelVisible: count > 0,
+      backgroundColor: palette.canvas,
+      largeSize: 16 + 2 * badgeRing,
+      padding: const EdgeInsets.all(badgeRing),
+      offset: Offset(ltr ? 4 + badgeRing : -4 - badgeRing, -4),
+      textColor: Colors.white,
+      textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 11, fontWeight: FontWeight.w600),
+      label: Container(
+        key: const ValueKey('chats-badge-pill'),
+        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        alignment: Alignment.center,
+        decoration: ShapeDecoration(color: palette.primary, shape: const StadiumBorder()),
+        child: Text(count > 99 ? '99+' : '$count'),
+      ),
+      child: Icon(icon),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
+    final unreadChats = ref.watch(unreadChatsProvider);
+    // The tab says how many chats are unread; the badge's number is left
+    // to that.
+    Widget icon(_VeilNavTab tab, {required bool selected}) {
+      final glyph = selected ? tab.activeIcon : tab.icon;
+      if (tab.path != _tabs.first.path) return Icon(glyph);
+      return Semantics(
+        label: unreadChats > 0 ? l10n.navChatsUnreadSemantics(unreadChats) : null,
+        child: ExcludeSemantics(child: _chatsIcon(context, glyph, unreadChats)),
+      );
+    }
+
     final currentPath = GoRouterState.of(context).fullPath ?? '/conversations';
     var currentIndex = _tabs.indexWhere((tab) => currentPath.startsWith(tab.path));
     if (currentIndex < 0) {
@@ -78,8 +126,8 @@ class MainTabShell extends StatelessWidget {
                   destinations: [
                     for (final tab in _tabs)
                       NavigationRailDestination(
-                        icon: Icon(tab.icon),
-                        selectedIcon: Icon(tab.activeIcon),
+                        icon: icon(tab, selected: false),
+                        selectedIcon: icon(tab, selected: true),
                         label: Text(tab.label(l10n)),
                       ),
                   ],
@@ -109,8 +157,8 @@ class MainTabShell extends StatelessWidget {
             destinations: [
               for (final tab in _tabs)
                 NavigationDestination(
-                  icon: Icon(tab.icon),
-                  selectedIcon: Icon(tab.activeIcon),
+                  icon: icon(tab, selected: false),
+                  selectedIcon: icon(tab, selected: true),
                   label: tab.label(l10n),
                   // The label is always shown; a tooltip would only say it
                   // again.

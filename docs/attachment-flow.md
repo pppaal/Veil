@@ -126,8 +126,8 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
   the 1 GiB cap reaches it (never a blob whose upload is pending), and on
   sign-out and wipe. At start, files without a row and rows without a file
   are deleted.
-- Decrypted bytes: in memory only, keyed by conversation id, attachment id
-  and digest, and cleared on lock, sign-out and wipe.
+- Decrypted bytes: in memory only, keyed by conversation id, attachment id,
+  digest and the pointer's key, and cleared on lock, sign-out and wipe.
 - Plaintext files exist only to open a file or to save a photo or a file, in
   `veil_open/<random>/<name>` under the temporary folder. A copy goes when
   Quick Look closes (iOS), when the save screen returns and on lock (a Save
@@ -137,8 +137,9 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
   reading it, and that app may keep a copy of its own.
 - The staging folder holds a pick until it is sealed or cancelled; nothing in
   it survives a restart. Plugin copies are moved into staging or deleted at
-  once, and on iOS the system temporary folder is emptied at start, after
-  each pick, after each save and on wipe.
+  once, and on iOS the system temporary folder is emptied the first time a
+  chat opens after the app starts, after each pick, after each save and on
+  wipe.
 
 ## Failure states
 

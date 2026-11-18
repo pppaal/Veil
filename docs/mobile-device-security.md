@@ -99,8 +99,8 @@ row and rows without a file are deleted. The folder is excluded from backup.
 ### Decrypted bytes
 
 A photo is decrypted in memory when it is shown, into a cache of at most 48 MB
-keyed by conversation id, attachment id and digest (so a reused attachment id
-never returns another message's bytes), and Flutter's image cache. Both are
+keyed by conversation id, attachment id, digest and the pointer's key (so a
+reused attachment id never returns another message's bytes), and Flutter's image cache. Both are
 emptied when the app locks, on sign-out and on wipe, and an entry goes when
 its blob does. Showing a photo writes nothing decrypted to disk; opening a
 file and saving a photo or a file do (below).
@@ -129,12 +129,13 @@ The pickers and the save screen write copies of their own. On Android,
 `image_picker` writes to `cacheDir/<uuid>/` and `flutter_file_dialog` to
 `cacheDir/file_dialog-<uuid>/`; Veil moves each picked copy into its staging
 folder or deletes it at once, and deletes Android's lost picks (a pick whose
-activity died) at start. On iOS both plugins write to the system temporary
-folder (`tmp/`, `NSTemporaryDirectory()`): `image_picker_*` files, the picked
-file under its original name, the copy handed to the save screen and the
-document picker's `-Inbox/` folder. Veil empties that folder at start, after
-each pick has been copied into staging, after each save returns, and on
-sign-out and wipe. A picked file stays in staging only until it is sealed or
+activity died) the first time a chat opens after the app starts. On iOS both
+plugins write to the system temporary folder (`tmp/`,
+`NSTemporaryDirectory()`): `image_picker_*` files, the picked file under its
+original name, the copy handed to the save screen and the document picker's
+`-Inbox/` folder. Veil empties that folder the first time a chat opens after
+the app starts, after each pick has been copied into staging, after each save
+returns, and on sign-out and wipe. A picked file stays in staging only until it is sealed or
 the pick is cancelled, and staging is emptied at every start, so no plaintext
 pick survives a crash under its real name.
 

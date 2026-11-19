@@ -114,6 +114,9 @@ class ConversationSyncService {
     _heldThrough.clear();
     final cached = await _persistence.hydrate();
     if (cached == null) return;
+    // Before the state shows and a send can land: what is restored below
+    // stays ahead of anything queued meanwhile.
+    _outbox.reserveQueueOrders(cached.pending);
     final snapshot = cached.snapshot;
     final (conversations, _) = await _crypto.keepSenderKeys(snapshot.conversations);
     // Content this device already retired stays gone, even when a cached

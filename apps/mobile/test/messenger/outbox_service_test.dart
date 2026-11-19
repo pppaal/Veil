@@ -156,13 +156,19 @@ void main() {
     expect(first, greaterThan(0));
     expect(second, greaterThan(first));
 
-    // A restart brings the queue back from the cache, here one of a long-lived install.
-    cached.outbox.restore([
+    // A restart brings the queue back from the cache, here one of a long-lived
+    // install. Its records are reserved as soon as they are read, so a send
+    // landing before they are restored stands behind them too.
+    final kept = [
       _pending('c-kept-a', second: 1, queueOrder: second + 40),
       _pending('c-kept-b', second: 1, queueOrder: second + 41),
-    ]);
+    ];
+    cached.outbox.reserveQueueOrders(kept);
+    final between = await numberOf('between');
+    expect(between, greaterThan(second + 41), reason: 'queued after the cache was read, before it was restored');
+    cached.outbox.restore(kept);
     final third = await numberOf('three');
-    expect(third, greaterThan(second + 41), reason: 'queued after everything restored');
+    expect(third, greaterThan(between), reason: 'queued after everything restored');
 
     // A sign-out forgets the queue, not the numbers already handed out.
     cached.outbox.clear();

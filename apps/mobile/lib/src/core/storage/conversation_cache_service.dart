@@ -310,7 +310,8 @@ class PendingMessageRecord {
   /// across a restart: [createdAt] comes back from the cache in whole
   /// seconds (DateTime columns keep whole seconds), so two messages queued
   /// in the same second would tie on it. Kept through every rewrite of the
-  /// record (see [copyWith]); 0 only on a record that was never queued.
+  /// record (see [copyWith]). 0 on a record that was never queued, and on
+  /// the first row the upgrade to schema 13 numbered (its numbers start at 0).
   final int queueOrder;
   final int retryCount;
   final DateTime? lastAttemptAt;

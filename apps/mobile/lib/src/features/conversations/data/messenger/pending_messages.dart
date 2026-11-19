@@ -73,15 +73,22 @@ class PendingMessages {
     return _persistence.removePending(clientMessageId);
   }
 
-  /// Replaces everything with the records the cache held. The next queue
-  /// number moves above every restored one; it never moves down.
+  /// Moves the next queue number above every one of [records]'; it never
+  /// moves down. Called with the cache's records before they are restored,
+  /// so a message queued in between stands behind them too.
+  void reserve(Iterable<PendingMessageRecord> records) {
+    for (final record in records) {
+      _next = math.max(_next, record.queueOrder + 1);
+    }
+  }
+
+  /// Replaces everything with the records the cache held, and moves the
+  /// next queue number above every one of theirs (see [reserve]).
   void restore(Iterable<PendingMessageRecord> records) {
     _records
       ..clear()
       ..addAll({for (final record in records) record.clientMessageId: record});
-    for (final record in _records.values) {
-      _next = math.max(_next, record.queueOrder + 1);
-    }
+    reserve(_records.values);
   }
 
   /// Forgets every record; the numbers handed out so far stay handed out.

@@ -2,63 +2,55 @@ import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nes
 import { randomUUID } from 'node:crypto';
 import { Observable, tap } from 'rxjs';
 
+import { httpStatusOf } from '../filters/exception-status';
 import { AppLoggerService } from '../logger/app-logger.service';
+import { ActorRefGenerator, routeTemplate, type RoutedRequest } from '../logger/request-redactor';
 import { MetricsService } from '../../modules/metrics/metrics.service';
 
-// Logs are durable, so it is dangerous to ship per-request URLs that include
-// social handles — if logs leak we hand attackers a verified handle list.
-// Redact the handle segment of /users/:handle and any UUID-looking segment.
-function redactUrl(url: string): string {
-  const [path, query] = url.split('?', 2);
-  const segments = path.split('/');
-  const redacted = segments.map((seg, i) => {
-    if (segments[1] === 'users' && i === 2 && seg.length > 0) return '*';
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg)) return '*';
-    return seg;
-  });
-  return query ? `${redacted.join('/')}?*` : redacted.join('/');
-}
+type LoggedRequest = RoutedRequest & {
+  method?: string;
+  headers: Record<string, string | string[] | undefined>;
+  auth?: { userId: string };
+  requestId?: string;
+};
 
+// Request logs are durable, so they carry only the route template, never the
+// concrete path or query: a leaked log must not become a verified handle
+// list. The actor appears only on 5xx lines, and then only as a daily-keyed
+// pseudonym (see request-redactor.ts).
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
   constructor(
     private readonly logger: AppLoggerService,
     private readonly metrics: MetricsService,
+    private readonly actorRefs: ActorRefGenerator,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const request = context
-      .switchToHttp()
-      .getRequest<Request & { auth?: { userId: string }; requestId?: string }>();
+    const request = context.switchToHttp().getRequest<LoggedRequest>();
     const response = context.switchToHttp().getResponse<{
       setHeader(name: string, value: string): void;
       statusCode?: number;
     }>();
-    const headers = request.headers as unknown as Record<string, string | string[] | undefined>;
-    const requestIdHeader = headers['x-request-id'];
-    const incomingRequestId =
-      typeof requestIdHeader === 'string'
-        ? requestIdHeader
-        : Array.isArray(requestIdHeader)
-          ? requestIdHeader[0]
-          : undefined;
-    request.requestId ??=
-      (incomingRequestId && incomingRequestId.trim().length > 0 ? incomingRequestId : undefined) ||
-      randomUUID();
+    const requestIdHeader = request.headers['x-request-id'];
+    const incomingRequestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
+    request.requestId ??= incomingRequestId?.trim() ? incomingRequestId : randomUUID();
     response.setHeader('x-request-id', request.requestId);
-    const method = request?.method ?? 'UNKNOWN';
-    const rawUrl = request?.url ?? 'UNKNOWN';
-    const url = redactUrl(rawUrl);
-    const routeClass = this.metrics.classifyRoute(rawUrl);
+    const method = request.method ?? 'UNKNOWN';
+    const route = routeTemplate(request);
+    const routeClass = this.metrics.classifyRoute(request);
     const startedAt = Date.now();
     const finish = (status: number): void => {
       const durationMs = Date.now() - startedAt;
       this.logger.info('request.completed', {
         method,
-        url,
-        requestId: request.requestId,
-        actorUserId: request?.auth?.userId ?? null,
+        route,
+        status,
         durationMs,
+        requestId: request.requestId,
+        ...(status >= 500 && request.auth
+          ? { actorRef: this.actorRefs.actorRef(request.auth.userId) }
+          : {}),
       });
       this.metrics.httpRequestsTotal
         .labels({
@@ -75,10 +67,7 @@ export class LoggingInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap({
         next: () => finish(response.statusCode ?? 200),
-        error: (err) => {
-          const status = typeof err?.status === 'number' ? err.status : 500;
-          finish(status);
-        },
+        error: (error: unknown) => finish(httpStatusOf(error)),
       }),
     );
   }

@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsString, MaxLength, MinLength } from 'class-validator';
 
-import type { AuthLogoutRequest, AuthRefreshRequest } from '@veil/contracts';
+import type { AuthRefreshRequest } from '@veil/contracts';
 
 export class RefreshDto implements AuthRefreshRequest {
   @ApiProperty()
@@ -9,12 +9,4 @@ export class RefreshDto implements AuthRefreshRequest {
   @MinLength(1)
   @MaxLength(256)
   refreshToken!: string;
-}
-
-export class LogoutDto implements AuthLogoutRequest {
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(256)
-  refreshToken?: string;
 }

@@ -78,7 +78,9 @@ bucket per request against the unauthenticated `/auth` and registration routes.
 (no wildcard).
 
 **Container/infra**: multi-stage-ish Dockerfile with a `HEALTHCHECK` hitting
-`/v1/health`; entrypoint runs `prisma migrate deploy` before starting; the prod
+`/v1/health`; entrypoint runs the boot gate (`dist/preflight.js`), then
+`prisma migrate deploy`, then the API, so a refused configuration never
+reaches a migration; the prod
 compose sets resource limits on every service, `restart: always`, healthchecks
 + `depends_on: service_healthy` for Postgres/Redis, private `expose` (no host
 port publishing except Caddy 80/443), and `.env.prod`-sourced secrets with
@@ -87,7 +89,7 @@ port publishing except Caddy 80/443), and `.env.prod`-sourced secrets with
 ## Blocker (by design)
 
 **External cryptographic audit is incomplete.** `docs/production-deployment.md`
-and the boot gate both encode this. `LibCryptoAdapter` (`lib-x25519-aes256gcm-v3`)
+and the boot gate both encode this. `LibCryptoAdapter` (`lib-x3dh-x25519-aes256gcm-v4`)
 is wired and pinned by tests but has not had independent review. This is the
 intended gate; do not set `VEIL_AUDITED_CRYPTO_ATTESTED=true` to work around it.
 Nothing in this review changes that recommendation.
@@ -124,6 +126,15 @@ Nothing in this review changes that recommendation.
    Postgres (accounts, device graph, conversation metadata) still needs durable
    backups for continuity.
 
+   **Reversed.** The service was removed again: a 14-day nightly dump kept
+   deleted accounts and handles, burned one-time links, expired and view-once
+   ciphertext, receipts and the social graph well past every window
+   `docs/metadata-retention.md`, the privacy policies and the in-app consent
+   publish, on the host and on any off-site copy. The production stack now
+   runs no dump (the `no-database-dumps` policy rule guards compose and
+   `infra/`), and losing the Postgres volume means users register again. See
+   `docs/vps-deploy-runbook.md` section 6.
+
 5. **No image publishing / single API replica.** CI builds the API image but
    doesn't push it to a registry; deploys build on the host via compose, and the
    stack runs one `api` container. That's fine for the ~$5 VPS beta target, but
@@ -141,8 +152,9 @@ Nothing in this review changes that recommendation.
 - **Private beta over TLS (VPS or Cloudflare Tunnel): ready now.** The gates are
   green and the boot-time guardrails are strong.
 - **Public production: gated on the external crypto audit** — the project's own
-  hard blocker — plus the small operational cleanups above (backups automation,
-  README refresh, startup-ordering and readiness-endpoint polish).
+  hard blocker — plus the small operational cleanups above (README refresh,
+  startup-ordering and readiness-endpoint polish; the backup service of item 4
+  was removed again).
 
 None of the non-blocking items are correctness bugs; they are launch-hygiene
 polish. The dominant remaining work is external review, exactly as the repo

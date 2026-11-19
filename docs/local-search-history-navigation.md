@@ -9,8 +9,9 @@ The relay remains ciphertext-only. Search, snippets, and jump-to-context behavio
 ## What Exists Today
 
 - Local conversation search:
-  - handle
-  - display name
+  - handle (a 1:1's peer)
+  - the name the row shows: the nickname saved on this device for a 1:1's
+    peer, or a group's name
 - Local message archive search:
   - cached message text index on the current device
   - sender filter

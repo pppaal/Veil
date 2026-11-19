@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsOptional, IsString, Length } from 'class-validator';
+import { GROUP_MAX_MEMBERS } from '@veil/shared';
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsBoolean,
+  IsOptional,
+  IsString,
+  Length,
+} from 'class-validator';
 
 export class CreateGroupDto {
   @ApiProperty()
@@ -13,8 +22,11 @@ export class CreateGroupDto {
   @Length(0, 500)
   description?: string;
 
-  @ApiPropertyOptional()
+  // The creator is the owner, so founding members fill the remaining seats.
+  @ApiPropertyOptional({ maxItems: GROUP_MAX_MEMBERS - 1 })
   @IsArray()
+  @ArrayMaxSize(GROUP_MAX_MEMBERS - 1)
+  @ArrayUnique()
   @IsString({ each: true })
   @IsOptional()
   memberHandles?: string[];

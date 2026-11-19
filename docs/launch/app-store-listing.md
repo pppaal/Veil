@@ -1,4 +1,4 @@
-# App Store Listing — Draft
+# App Store listing (draft)
 
 Target storefront: Apple App Store (iOS, iPadOS, macOS Catalyst).
 Bundle identifier: `app.veil.messenger` (placeholder; align with
@@ -7,47 +7,56 @@ Bundle identifier: `app.veil.messenger` (placeholder; align with
 > **Legal review required** for every user-facing string below before
 > submission. This is a starting draft, not reviewed copy.
 
-## App name
+The texts below are the fields of `store/appstore/metadata-en.txt`; change
+them there and here together.
 
-**Veil — Private Messenger**
+## App name (30 chars)
 
-Alternative (if name collision): **Veil Messenger**.
+`Veil: Encrypted Messenger`
 
 ## Subtitle (30 chars)
 
-`Messages that actually vanish`
+`Chat without a phone number`
 
 ## Promotional text (170 chars, updatable without review)
 
-`End-to-end encrypted. No phone number. No cloud backup. No ads. Built for people who actually want their messages to stay private.`
+Sign up with a handle, not a phone number. Messages are end-to-end encrypted, so only you and the people you talk to can read them.
 
 ## Description
 
-Veil is an end-to-end encrypted messenger built around a single idea:
-what you say on Veil never leaves your device in a form the server can
-read.
+Veil is a messenger you sign up for with a handle. No phone number, no email, no real name.
 
-- **Ciphertext-only relay.** The server routes encrypted envelopes. It
-  does not see message bodies, attachments, or conversation content.
-- **No phone number.** No SMS verification, no address-book upload, no
-  contact discovery. You choose a handle and share it on your terms.
-- **Device-bound identity.** Your identity lives on your device. There is
-  no cloud copy. When you retire a device, its access retires with it.
-- **Disappearing messages.** Set a per-conversation timer and messages
-  self-destruct on every device after it expires. Or send a view-once
-  message that is hard-deleted the moment it's read.
-- **Safety, quietly.** Block, mute, or report without the other side
-  seeing the block as a visible state.
-- **Signed backups.** Your local history can be sealed under a passphrase
-  you control. No cloud, no recovery you didn't consent to.
+Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
-Veil does not run ads, does not sell analytics, and does not offer account
-recovery. Losing your device is final by design — that's the privacy
-guarantee.
+- One-to-one and group chats
+- Photos and files
+- Disappearing messages
+- Read receipts and typing indicators you can turn off
+- Safety numbers to check who you're talking to
+- One-time links for a password or a note
+- App lock with a PIN or biometrics
+- Block or report someone, and mute a chat
+- Move your account to a new phone
+
+There is no backup and no account recovery. If you lose your phone, you lose the account and its messages.
+
+Veil runs on one phone at a time. Moving to a new phone moves your handle to it and signs the old phone out. Your message history does not move.
+
+No ads, no tracking and no third-party analytics. The code is open source.
+
+Privacy policy: https://pppaal.github.io/Veil/
+Contact: privacy@veil.app
+
+Not in the mobile build, so not in this listing: view-once messages, calls
+and voice messages, and an online status (no one else ever sees whether you
+are online). Add a bullet only when its screen ships.
 
 ## Keywords (100 chars, comma-separated)
 
-`private,messenger,encrypted,chat,privacy,secure,no sms,no phone,signal,e2ee,disappearing`
+`private,secure,e2ee,handle,username,disappearing,one-time link,app lock,safety number,pin`
+
+No word of the name or the subtitle (App Store indexes those already) and
+no other app's name.
 
 ## Category
 
@@ -57,31 +66,31 @@ guarantee.
 ## Age rating
 
 17+ (unrestricted web access not enabled, but user-generated content is
-end-to-end encrypted so we cannot moderate private content — this is the
-honest rating even though we ship a reporting path).
+end-to-end encrypted so we cannot moderate private content). The mobile app
+reports and blocks accounts from a chat, a message and a contact, as App
+Review expects in an app with user-generated content (guideline 1.2).
 
 ## Privacy nutrition label
 
-### Data Not Collected
+Transcribe [`store/appstore/app-privacy-answers.md`](../../store/appstore/app-privacy-answers.md)
+into App Store Connect → App Privacy. That file is the only source of the
+answers; `scripts/store-label-check.mjs` fails CI when this page or any other
+document contradicts it. In short:
 
-This is the truth for Veil. Every category below maps to "Data Not
-Collected" in App Store Connect's privacy questionnaire, assuming the
-crash reporter is off or configured as "Not linked to identity."
-
-- Contact Info — not collected
-- Health & Fitness — not collected
-- Financial Info — not collected
-- Location — not collected
-- Sensitive Info — not collected
-- Contacts — not collected (no address-book sync by design)
-- User Content — encrypted on the user's device; the server never has
-  access to plaintext, therefore not "collected" per Apple's definition
-- Browsing History — not collected
-- Search History — not collected
-- Identifiers — **handle only**, no IDFA, no IDFV linked to identity
-- Purchases — not collected
-- Usage Data — not collected (no analytics SDK)
-- Diagnostics — crash logs only, not linked to identity, user-togglable
+- **Collected and linked to the user, for App Functionality only:** User ID
+  and Device ID (with the device's push token); Contacts (the in-app contact
+  list, a social graph; the phone's address book is never read); Other User
+  Content (group and channel names and descriptions and device labels, which
+  the server stores readable, and the metadata needed to deliver messages:
+  who is in which conversation, message and receipt times, call records).
+- **Collected and not linked:** Other User Content for the encrypted message
+  payloads, which the server cannot decrypt.
+- **Diagnostics:** Crash Data, Performance Data and Other Diagnostic Data are
+  declared as not collected. The crash log stays on the device and the app
+  ships no crash-reporting SDK; adding one changes the answers.
+- The remaining categories (Contact Info, Location, Financial Info, Health &
+  Fitness, Sensitive Info, Browsing History, Search History, Purchases, Usage
+  Data and the rest) are declared as not collected, as the answers file lists.
 
 ### Tracking
 
@@ -102,54 +111,53 @@ Release <version>
 
 - <ship items>
 - <bug fixes>
-
-Nothing you send is stored on our servers in a form we can read.
 ```
 
 ## Screenshot guide
 
-Ship 5 screenshots per device class (6.7" iPhone, 6.5" iPhone, 5.5"
-iPhone, 12.9" iPad, 11" iPad). Consistent visual order:
-
-1. Hero shot — conversation list with at least one disappearing-messages
-   indicator visible. Korean + English variants.
-2. Safety numbers screen — the "verify this conversation" moment.
-3. Compose + view-once toggle.
-4. Settings → Block list + Mute list.
-5. Onboarding — "no phone number required" screen.
+The shot list, the sizes and how to capture them are in
+[`store/appstore/screenshot-spec.md`](../../store/appstore/screenshot-spec.md):
+six shots per iPhone size, captured on the iOS Simulator. The Xcode project
+still builds for iPad as well (`TARGETED_DEVICE_FAMILY = "1,2"`), and App
+Store Connect asks for iPad screenshots for such a build: set the device
+family to iPhone before archiving, as the spec plans, or capture a 13" iPad
+set too. The shots cannot be rendered like the Google Play set
+(`store/play/screenshots/`), because iOS draws SF Pro, which the renderer
+does not have.
 
 Asset directory: `apps/mobile/ios/fastlane/screenshots/` (not yet
-configured — see `docs/launch/store-asset-pipeline.md` once it exists).
+configured).
 
 ## Review notes for Apple
 
-Paste the following block into "App Review Information → Notes":
+Paste the following block into "App Review Information → Notes"
+([`store/appstore/app-review-notes.md`](../../store/appstore/app-review-notes.md)
+has the full walkthrough):
 
 ```
-Veil is an end-to-end encrypted messenger. To sign in, the reviewer can
-use the following test account:
+No login is needed. Veil has no password, phone number or email: open the
+app, accept the privacy notice, tick the box on "Before you start", and
+pick any free handle (for example reviewer_a). The app creates the account
+on the phone.
 
-  Handle: @appstore-review-<random>
-  Device transfer token: <generated per review, see README>
+To send messages, use two devices or simulators, each with its own handle,
+and start a chat from one to the other's handle. Messages show only on
+those two devices. To send a photo or a file, tap + in a chat and choose
+Photos or File.
 
-Veil does not use a phone number or email for onboarding. The reviewer
-chooses a handle, and the app generates keys on-device. There is no
-cloud account.
-
-Because Veil is end-to-end encrypted, the server cannot display message
-content to the review team. Test messages sent between the reviewer's
-two installs will be visible only on those installs.
+Messages are end-to-end encrypted, so we cannot show their content to the
+review team.
 ```
 
 ## Export compliance
 
 Veil uses end-to-end encryption with only standard, published algorithms
-(X25519, AES-256-GCM, Ed25519, HKDF-SHA256 — see `docs/crypto-envelope-spec.md`).
+(X25519, AES-256-GCM, Ed25519, HKDF-SHA256; see `docs/crypto-envelope-spec.md`).
 It implements no proprietary cryptography, so it qualifies for the mass-market
 self-classification exemption under 15 CFR 740.17(b)(1). For App Store
 submission:
 
-- `ITSAppUsesNonExemptEncryption` = `YES` (already set in `Info.plist`) — the
+- `ITSAppUsesNonExemptEncryption` = `YES` (already set in `Info.plist`): the
   encryption is not OS/auth/HTTPS-only, so this is the truthful value.
 - Do **not** add `ITSEncryptionExportComplianceCode`. That key is only for apps
   that hold an issued BIS CCATS/ERN. Standard-algorithm mass-market software
@@ -167,8 +175,8 @@ completed truthfully.
 
 ## Localization
 
-Priority v1: English, Korean. Both privacy policies exist in-repo. Tier 2
-after launch: Japanese, Chinese (Traditional), German.
+The app and the listing are English only. The privacy policy exists in
+English and Korean (`docs/privacy-policy-en.md`, `docs/privacy-policy-ko.md`).
 
 ## Submission checklist
 
@@ -179,9 +187,15 @@ after launch: Japanese, Chinese (Traditional), German.
 - [ ] No placeholders in Promotional text / Description
 - [ ] Screenshots exist for every required device class
 - [ ] Legal has reviewed "description" + "promotional text"
-- [ ] `NSCameraUsageDescription`, `NSMicrophoneUsageDescription`,
-      `NSPhotoLibraryUsageDescription` copy reviewed and matches actual
-      feature behavior
+- [ ] `Info.plist` asks only for what the build uses:
+      `NSFaceIDUsageDescription` (app lock) and
+      `NSPhotoLibraryUsageDescription`, which the photo picker plugin
+      requires even though the system picker never asks for access. No
+      camera, microphone or photo-library-add usage string. If App Store
+      Connect asks for a camera string on upload (`image_picker_ios` and
+      `flutter_file_dialog` reference camera APIs), do not add one: call
+      PHPicker and the document picker from the app's own code instead
 - [ ] Push entitlement only if push is actually wired to APNs for this
       build (otherwise reject-risk)
-- [ ] Crash reporter settings reviewed against privacy nutrition label
+- [ ] App Privacy answers transcribed from `store/appstore/app-privacy-answers.md`
+      (no crash-reporting SDK added since; adding one changes the answers)

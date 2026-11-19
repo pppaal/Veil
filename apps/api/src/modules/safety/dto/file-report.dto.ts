@@ -32,7 +32,8 @@ export class FileAbuseReportDto implements FileAbuseReportRequest {
   @IsEnum(REPORT_REASONS as readonly string[] as string[])
   reason!: AbuseReportReason;
 
-  @ApiProperty({ required: false, nullable: true, maxLength: 1000 })
+  /** @deprecated Accepted so older clients keep working; never stored. */
+  @ApiProperty({ required: false, nullable: true, maxLength: 1000, deprecated: true })
   @IsOptional()
   @IsString()
   @MaxLength(1000)

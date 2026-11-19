@@ -1,0 +1,99 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_ui.dart';
+import 'chat_room_labels.dart';
+
+class _TtlOption {
+  const _TtlOption({required this.label, required this.duration});
+
+  final String label;
+  final Duration? duration;
+}
+
+List<_TtlOption> _ttlOptions(AppLocalizations l10n) => <_TtlOption>[
+      _TtlOption(label: l10n.chatTtlOff, duration: null),
+      _TtlOption(label: l10n.chatTtl10s, duration: const Duration(seconds: 10)),
+      _TtlOption(label: l10n.chatTtl1m, duration: const Duration(minutes: 1)),
+      _TtlOption(label: l10n.chatTtl5m, duration: const Duration(minutes: 5)),
+      _TtlOption(label: l10n.chatTtl1h, duration: const Duration(hours: 1)),
+      _TtlOption(label: l10n.chatTtl1d, duration: const Duration(days: 1)),
+      _TtlOption(label: l10n.chatTtl1w, duration: const Duration(days: 7)),
+    ];
+
+/// The label of the disappearing-message timer [current] (null is off).
+String disappearingTimerLabel(AppLocalizations l10n, Duration? current) {
+  if (current == null) return l10n.chatTtlDisabledLabel;
+  for (final option in _ttlOptions(l10n)) {
+    if (option.duration == current) return option.label;
+  }
+  // A timer another app set that this sheet does not offer ("2 days").
+  return formatDurationLabel(l10n, current);
+}
+
+/// Offers the disappearing-message timers, marking the one [current]
+/// returns each time the sheet builds. Completes with null when the sheet
+/// is dismissed without a choice, and otherwise with the chosen timer,
+/// whose `ttl` is null for Off.
+Future<({Duration? ttl})?> showDisappearingTimerSheet(
+  BuildContext context, {
+  required Duration? Function() current,
+}) async {
+  final l10n = AppLocalizations.of(context);
+  final options = _ttlOptions(l10n);
+  final sentinel = const Duration(microseconds: -1);
+  final selected = await showModalBottomSheet<Duration?>(
+    context: context,
+    showDragHandle: true,
+    // Six options and their footer are taller than the half screen a sheet
+    // gets by default: this one takes the height it needs, up to most of
+    // the screen, and scrolls beyond that.
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      final palette = VeilPalette.forBrightness(theme.brightness);
+      return SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.85),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(VeilSpace.md, 0, VeilSpace.md, VeilSpace.xs),
+                  child: Text(l10n.chatTtlSheetTitle, style: theme.textTheme.titleLarge),
+                ),
+                // One line under the choices says what the timer does; no
+                // row repeats it in a caption of its own.
+                VeilGroup(
+                  footer: l10n.chatTtlSheetFooter,
+                  children: [
+                    for (final option in options)
+                      Semantics(
+                        selected: current() == option.duration,
+                        child: VeilRow(
+                          title: option.label,
+                          // The chosen timer is ticked; the others keep its
+                          // room, and no row has a chevron: a tap chooses.
+                          trailing: current() == option.duration
+                              ? Icon(Icons.check, size: 20, color: palette.text)
+                              : const SizedBox(width: 20),
+                          onTap: () => Navigator.of(sheetContext).pop<Duration?>(option.duration ?? sentinel),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: VeilSpace.xs),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+  // Distinguish "dismissed without selection" (null) from "selected Off" (sentinel).
+  if (selected == null) return null;
+  return (ttl: selected == sentinel ? null : selected);
+}

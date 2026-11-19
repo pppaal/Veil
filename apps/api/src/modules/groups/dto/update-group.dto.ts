@@ -21,7 +21,8 @@ export class UpdateGroupDto {
 
   // Flip the group onto Sender Keys (phase AB.2). Enabling starts epoch
   // enforcement on the next send; clients must be on a Sender-Keys-capable
-  // build before this is turned on for a live group.
+  // build before this is turned on for a live group. It cannot be turned
+  // back off (sender_keys_irreversible).
   @ApiPropertyOptional()
   @IsBoolean()
   @IsOptional()

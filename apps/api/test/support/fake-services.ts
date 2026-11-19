@@ -5,6 +5,10 @@ export class FakeEphemeralStoreService {
     this.values.set(key, JSON.stringify(value));
   }
 
+  async setJsonUntil<T>(key: string, value: T, _expiresAtMs: number): Promise<void> {
+    this.values.set(key, JSON.stringify(value));
+  }
+
   async getJson<T>(key: string): Promise<T | null> {
     const value = this.values.get(key);
     return value ? (JSON.parse(value) as T) : null;
@@ -19,6 +23,32 @@ export class FakeEphemeralStoreService {
     if (!value) return null;
     this.values.delete(key);
     return JSON.parse(value) as T;
+  }
+
+  async incrementWithTtl(key: string, _ttlSeconds: number): Promise<number> {
+    const next = Number(this.values.get(key) ?? '0') + 1;
+    this.values.set(key, String(next));
+    return next;
+  }
+
+  async setJsonIfAbsent<T>(key: string, value: T, _ttlSeconds: number): Promise<boolean> {
+    if (this.values.has(key)) return false;
+    this.values.set(key, JSON.stringify(value));
+    return true;
+  }
+
+  async incrementFieldsUntil<F extends string>(
+    key: string,
+    amounts: Readonly<Record<F, number>>,
+    _expiresAtMs: number,
+  ): Promise<Record<F, number>> {
+    const current = JSON.parse(this.values.get(key) ?? '{}') as Partial<Record<F, number>>;
+    const totals = {} as Record<F, number>;
+    for (const field of Object.keys(amounts) as F[]) {
+      totals[field] = (current[field] ?? 0) + amounts[field];
+    }
+    this.values.set(key, JSON.stringify({ ...current, ...totals }));
+    return totals;
   }
 }
 
@@ -42,6 +72,8 @@ export class FakeConfigService {
   allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
   transferTokenTtlSeconds = 300;
   authChallengeTtlSeconds = 120;
+  messageMaxAgeDays = 30;
+  retiredHandlePepper = 'test-retired-handle-pepper-0123456789abcdef';
   s3Endpoint = 'http://localhost:9000';
   s3PublicEndpoint = 'http://localhost:9000';
   s3Region = 'us-east-1';
@@ -102,6 +134,12 @@ export class FakeRealtimeGateway {
   }
 }
 
+// Resolves once every promise chain already started has run to its end,
+// such as the push wakes MessagesService.send dispatches after it answers.
+// Enough for the in-memory fakes, which never wait on a timer or I/O.
+export const settleDetachedWork = (): Promise<void> =>
+  new Promise((resolve) => setImmediate(resolve));
+
 export class FakePushService {
   readonly providerKind = 'none' as const;
   readonly sentHints: Array<{ pushToken: string; hint: unknown }> = [];
@@ -157,12 +195,21 @@ export class FakeAttachmentStorageGateway {
     }
   >();
 
-  async createUploadTarget(storageKey: string, metadata: {
-    attachmentId: string;
-    sha256: string;
-    sizeBytes: number;
+  async createUploadTarget(
+    storageKey: string,
+    metadata: {
+      attachmentId: string;
+      sha256: string;
+      sizeBytes: number;
+      contentType: string;
+    },
+  ): Promise<{
+    url: string;
+    headers: Record<string, string>;
     contentType: string;
-  }): Promise<{ url: string; headers: Record<string, string>; contentType: string; sizeBytes: number; expiresAt: string }> {
+    sizeBytes: number;
+    expiresAt: string;
+  }> {
     return {
       url: `https://signed-upload.invalid/${storageKey}`,
       headers: {

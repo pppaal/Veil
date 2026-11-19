@@ -21,6 +21,9 @@ void main() {
     final peer = createConfiguredCryptoAdapter();
     final peerIdentity =
         await peer.identity.generateDeviceIdentity('device-remote');
+    // The handshake authenticates both ends, so the local side needs an
+    // identity as well.
+    await adapter.identity.generateDeviceIdentity('device-local');
 
     final bootstrap = await adapter.sessions.bootstrapSession(
       SessionBootstrapRequest(

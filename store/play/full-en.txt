@@ -1,44 +1,22 @@
-An end-to-end encrypted messenger with no phone number and no account.
-VEIL is a private, secure chat app where even the server can't read your
-messages. Instead of finding friends by phone number, you connect with a
-single handle — anonymous, encrypted, and ad-free.
+Veil is a messenger you sign up for with a handle. No phone number, no email, no real name.
 
-■ Why VEIL
-• Sign up with no phone number, no email, no real name — an anonymous secure messenger.
-• Every message is end-to-end encrypted on-device. Servers never see plaintext.
-• No ads, no tracking, no third-party analytics.
+Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
-■ Core principles
-• No phone number. No email. No real name required.
-• Every message is end-to-end encrypted on-device. Servers never see plaintext.
-• No recovery path. If you lose the device, the conversations go with it. This is the VEIL safety model.
+• One-to-one and group chats
+• Photos and files
+• Disappearing messages
+• Read receipts and typing indicators you can turn off
+• Safety numbers to check who you're talking to
+• One-time links for a password or a note
+• App lock with a PIN or biometrics
+• Block or report someone, and mute a chat
+• Move your account to a new phone
 
-■ Cryptography (real encrypted chat)
-• X25519 key exchange + AES-256-GCM symmetric encryption
-• Ed25519 device signatures
-• HKDF-SHA256 session key derivation
-• Payloads are sealed just before transit and never stored server-side.
+There is no backup and no account recovery. If you lose your phone, you lose the account and its messages.
 
-■ Features
-• 1:1 and group conversations with encrypted attachments
-• Typing indicators, presence, optional read receipts
-• Local app lock (PIN, biometrics)
-• Encrypted device transfer
-• Korean and English UI
+Veil runs on one phone at a time. Moving to a new phone moves your handle to it and signs the old phone out. Your message history does not move.
 
-■ Who it's for
-• Anyone who needs a private messenger without exposing a phone number
-• Journalists, activists, and professionals who need a secure messenger for sensitive conversations
-• People who want a clean encrypted messenger with no ads and no data collection
-
-■ Privacy posture
-• No ads. No tracking. No third-party analytics.
-• Minimal data collection. The in-app consent screen lists every field.
-• Designed to meet Korea's PIPA requirements.
-• Open source — the code is public and auditable.
-
-■ Safety note
-VEIL deliberately has no account recovery. If your device is lost, conversations cannot be restored. This is by design. For multi-device access, use the built-in encrypted device transfer.
+No ads, no tracking and no third-party analytics. The code is open source.
 
 Privacy policy: https://pppaal.github.io/Veil/
 Contact: privacy@veil.app

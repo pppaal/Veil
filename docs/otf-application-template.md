@@ -56,11 +56,17 @@ crowded; the "no-recovery, device-bound" niche is largely vacant
 outside Threema (closed-source, paid, EU-only).
 
 We have shipped:
-- a Signal-style double ratchet on Flutter mobile
+- protocol v2 (X3DH with signed and one-time prekeys, then a Double
+  Ratchet with AES-256-GCM; `docs/crypto-envelope-spec.md`) on two
+  independent clients, Flutter mobile and the web client, pinned byte
+  for byte by shared known-answer vectors
+- trust-on-first-use identity pins and safety numbers on both clients
+- Sender Keys for new groups on mobile
 - atomic device transfer with old-device revocation in a single
   serializable transaction
 - ciphertext-only server policy enforced in CI
-- 132+ unit tests, 6+ e2e tests, all passing on every commit
+- API, web and mobile test suites and the CI gates, passing on every
+  commit
 - comprehensive operator runbooks (abuse-triage, tester-guide,
   data-subject-rights)
 
@@ -73,10 +79,12 @@ A funded external cryptographic review by Cure53, Trail of Bits, NCC
 Group, or equivalent. Estimated scope:
 
 - 4-6 weeks wall clock
-- Mobile ratchet implementation review
-- Spec review for the three pending designs (envelope v3 unified, group
-  sender keys, sealed sender)
-- Backend auth + device transfer review
+- Protocol v2 review on both clients (mobile and web), including
+  web/mobile byte parity
+- The identity-trust layer and Sender Keys (implemented on mobile)
+- The key directory and prekeys API, backend auth, step-up proofs and
+  device transfer
+- Spec review of the sealed-sender revision (not implemented)
 - Public report
 
 Preferred budget: $30K-$80K. Open to a smaller-scope engagement if
@@ -90,7 +98,7 @@ that's what fits the program.
   device-transfer atomic revoke
 - 2026 Q2 (current) — Awaiting external audit before public beta
 
-132 unit tests + 6 e2e tests + policy-check passing on every commit.
+API, web and mobile test suites + policy-check passing on every commit.
 Codebase ~25K lines.
 
 ## 8. User base
@@ -147,7 +155,10 @@ for non-technical journalists / activists]
 - Threat model (`docs/threat-model.md`)
 - No-recovery rationale (`docs/no-recovery.md`)
 - External review packet (`docs/external-security-review-packet.md`)
-- Three crypto design docs (envelope v3, sender keys, sealed sender)
+- Protocol v2 specification (`docs/crypto-envelope-spec.md`), the crypto
+  surface catalog (`docs/security/crypto-surfaces.md`), Sender Keys design
+  (`docs/group-sender-keys-design.md`, implemented on mobile) and the
+  sealed-sender design (`docs/sealed-sender-design.md`, under revision)
 - Audit firm shortlist (`docs/external-audit-firm-shortlist.md`)
 - Pinned audit-ready commit SHA: [TODO]
 

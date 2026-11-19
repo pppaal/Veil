@@ -1,147 +1,26 @@
 import { Injectable } from '@nestjs/common';
+import type { ProfileResponse } from '@veil/contracts';
 
+import { apiError } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
-import { notFound } from '../../common/errors/api-error';
-import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { UpdateProfileDto } from './dto/update-profile.dto';
 
+/**
+ * A profile is the handle only. Display names, bio, status and avatars come
+ * back once they can be stored end-to-end encrypted for the people the user
+ * shares them with; until then the server keeps none of them.
+ */
 @Injectable()
 export class ProfileService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly realtimeGateway: RealtimeGateway,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async getProfile(auth: { userId: string }) {
+  async getProfile(auth: { userId: string }): Promise<ProfileResponse> {
     const user = await this.prisma.user.findUnique({
       where: { id: auth.userId },
-      select: {
-        id: true,
-        handle: true,
-        displayName: true,
-        createdAt: true,
-      },
+      select: { id: true, handle: true },
     });
-
     if (!user) {
-      throw notFound('profile_not_found', 'User not found');
+      throw apiError('profile_not_found', 'User not found');
     }
-
-    // Avoid a per-read upsert: a missing profile is the rare case (only for
-    // accounts that never wrote profile fields), so a findUnique + create
-    // fallback is much cheaper than an upsert that always allocates.
-    let profile = await this.prisma.userProfile.findUnique({
-      where: { userId: auth.userId },
-    });
-    if (!profile) {
-      profile = await this.prisma.userProfile.create({
-        data: { userId: auth.userId },
-      });
-    }
-
-    return {
-      id: user.id,
-      handle: user.handle,
-      displayName: user.displayName,
-      bio: profile.bio,
-      statusMessage: profile.statusMessage,
-      statusEmoji: profile.statusEmoji,
-      avatarPath: profile.avatarPath,
-      lastStatusAt: profile.lastStatusAt?.toISOString() ?? null,
-      createdAt: user.createdAt.toISOString(),
-    };
-  }
-
-  async updateProfile(auth: { userId: string }, dto: UpdateProfileDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: auth.userId },
-      select: { id: true },
-    });
-
-    if (!user) {
-      throw notFound('profile_not_found', 'User not found');
-    }
-
-    if (dto.displayName !== undefined) {
-      await this.prisma.user.update({
-        where: { id: auth.userId },
-        data: { displayName: dto.displayName },
-      });
-    }
-
-    const currentProfile = await this.prisma.userProfile.findUnique({
-      where: { userId: auth.userId },
-    });
-
-    const statusChanged =
-      (dto.statusMessage !== undefined && dto.statusMessage !== currentProfile?.statusMessage) ||
-      (dto.statusEmoji !== undefined && dto.statusEmoji !== currentProfile?.statusEmoji);
-
-    const profile = await this.prisma.userProfile.upsert({
-      where: { userId: auth.userId },
-      update: {
-        ...(dto.bio !== undefined ? { bio: dto.bio } : {}),
-        ...(dto.statusMessage !== undefined ? { statusMessage: dto.statusMessage } : {}),
-        ...(dto.statusEmoji !== undefined ? { statusEmoji: dto.statusEmoji } : {}),
-        ...(statusChanged ? { lastStatusAt: new Date() } : {}),
-      },
-      create: {
-        userId: auth.userId,
-        bio: dto.bio ?? null,
-        statusMessage: dto.statusMessage ?? null,
-        statusEmoji: dto.statusEmoji ?? null,
-        ...(statusChanged ? { lastStatusAt: new Date() } : {}),
-      },
-    });
-
-    const updatedUser = await this.prisma.user.findUnique({
-      where: { id: auth.userId },
-      select: {
-        id: true,
-        handle: true,
-        displayName: true,
-        createdAt: true,
-      },
-    });
-
-    return {
-      id: updatedUser!.id,
-      handle: updatedUser!.handle,
-      displayName: updatedUser!.displayName,
-      bio: profile.bio,
-      statusMessage: profile.statusMessage,
-      statusEmoji: profile.statusEmoji,
-      avatarPath: profile.avatarPath,
-      lastStatusAt: profile.lastStatusAt?.toISOString() ?? null,
-      createdAt: updatedUser!.createdAt.toISOString(),
-    };
-  }
-
-  async getPublicProfile(auth: { userId: string }, handle: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { handle: handle.toLowerCase() },
-      select: {
-        id: true,
-        handle: true,
-        displayName: true,
-      },
-    });
-
-    if (!user) {
-      throw notFound('profile_not_found', 'User not found');
-    }
-
-    const profile = await this.prisma.userProfile.findUnique({
-      where: { userId: user.id },
-    });
-
-    return {
-      handle: user.handle,
-      displayName: user.displayName,
-      bio: profile?.bio ?? null,
-      statusMessage: profile?.statusMessage ?? null,
-      statusEmoji: profile?.statusEmoji ?? null,
-      avatarPath: profile?.avatarPath ?? null,
-    };
+    return { userId: user.id, handle: user.handle };
   }
 }

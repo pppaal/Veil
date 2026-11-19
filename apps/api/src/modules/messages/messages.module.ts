@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { ConversationAccessModule } from '../../common/conversation-access/conversation-access.module';
 import { PushModule } from '../push/push.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { SafetyModule } from '../safety/safety.module';
@@ -7,7 +8,7 @@ import { MessagesController } from './messages.controller';
 import { MessagesService } from './messages.service';
 
 @Module({
-  imports: [PushModule, RealtimeModule, SafetyModule],
+  imports: [ConversationAccessModule, PushModule, RealtimeModule, SafetyModule],
   controllers: [MessagesController],
   providers: [MessagesService],
   exports: [MessagesService],

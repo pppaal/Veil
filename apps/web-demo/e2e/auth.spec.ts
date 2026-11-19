@@ -14,7 +14,6 @@ test.describe('VEIL web demo — auth', () => {
 
     // Fresh handle so reruns don't collide.
     const handle = `e2e${Date.now().toString(36).slice(-7)}`;
-    await page.fill('#reg-name', 'E2E Tester');
     await page.fill('#reg-handle', handle);
     await page.click('#reg-btn');
 
@@ -23,20 +22,19 @@ test.describe('VEIL web demo — auth', () => {
     await expect(page.locator('#app')).toBeVisible();
     await expect(page.locator('#auth-screen')).toBeHidden();
 
-    // Conn pill flips out of "연결 중…" once the WS upgrades.
-    await expect(page.locator('#conn-pill')).not.toContainText('연결 중', {
+    // The bar's connection text leaves "Connecting…" once the WS upgrades.
+    await expect(page.locator('#conn-status')).not.toContainText('Connecting', {
       timeout: 10_000,
     });
   });
 
   test('rejects invalid handle shapes client-side', async ({ page }) => {
     await page.goto('./');
-    await page.fill('#reg-name', 'E2E');
-    // Uppercase + dash — invalid by the input pattern attribute.
+    // A dash breaks the server's handle rules.
     await page.fill('#reg-handle', 'BadHandle-1');
     await page.click('#reg-btn');
-    // We should still be on the auth screen — the form's pattern
-    // refused to submit.
+    // We should still be on the auth screen: the form's own check, the
+    // server's rules (src/domain/handles.js), refused to submit.
     await expect(page.locator('#auth-screen')).toBeVisible();
   });
 });

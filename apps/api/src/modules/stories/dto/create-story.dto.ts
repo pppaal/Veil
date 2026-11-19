@@ -1,30 +1,38 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import {
+  STORY_MAX_AUDIENCE,
+  STORY_MAX_CIPHERTEXT_LENGTH,
+  type CreateStoryRequest,
+} from '@veil/contracts';
+import { SUPPORTED_ENVELOPE_VERSIONS } from '@veil/shared';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
+  IsIn,
+  IsString,
+  IsUUID,
+  Length,
+} from 'class-validator';
 
-export enum StoryContentType {
-  TEXT = 'text',
-  IMAGE = 'image',
-  VIDEO = 'video',
-}
-
-export class CreateStoryDto {
-  @ApiProperty({ enum: StoryContentType })
-  @IsEnum(StoryContentType)
-  contentType!: StoryContentType;
-
-  @ApiProperty()
+// The server stores a story as one opaque envelope plus the audience it is
+// addressed to; its content and media type exist only inside the ciphertext.
+export class CreateStoryDto implements CreateStoryRequest {
+  @ApiProperty({ maxLength: STORY_MAX_CIPHERTEXT_LENGTH })
   @IsString()
-  @MaxLength(2048)
-  // Scheme allowlist: media stories carry an https URL, text stories carry the
-  // `text://inline` sentinel. Requiring one of these bounds the value and
-  // rejects dangerous schemes (javascript:, data:, file:) at the persistence
-  // boundary. New media schemes must be added here deliberately.
-  @Matches(/^(https?|text):\/\/.+/i)
-  contentUrl!: string;
+  @Length(1, STORY_MAX_CIPHERTEXT_LENGTH)
+  ciphertext!: string;
 
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  @Length(0, 500)
-  caption?: string;
+  @ApiProperty({ enum: SUPPORTED_ENVELOPE_VERSIONS })
+  @IsIn(SUPPORTED_ENVELOPE_VERSIONS)
+  envelopeVersion!: string;
+
+  @ApiProperty({ type: [String], minItems: 1, maxItems: STORY_MAX_AUDIENCE })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(STORY_MAX_AUDIENCE)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  audienceUserIds!: string[];
 }

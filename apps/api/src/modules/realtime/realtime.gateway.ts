@@ -9,8 +9,11 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import type { RealtimeEventMap } from '@veil/contracts';
+import { isUUID } from 'class-validator';
 
+import { isAccessTokenRevoked } from '../../common/access-token-revocation';
 import { AppConfigService } from '../../common/config/app-config.service';
+import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { MetricsService } from '../metrics/metrics.service';
@@ -20,14 +23,28 @@ interface AccessTokenPayload {
   deviceId: string;
   handle: string;
   jti?: string;
+  exp?: number;
+  sid?: string;
 }
 
-const jtiBlacklistKey = (jti: string): string => `auth:blacklist:${jti}`;
+type TypingEvent = 'typing.start' | 'typing.stop';
+
+// SDP offers and answers run to a few KiB and ICE candidates to a few hundred
+// bytes, so this leaves room for any real signal while bounding what one
+// frame can make the server relay.
+export const CALL_SIGNAL_MAX_DATA_LENGTH = 64 * 1024;
+// socket.io closes a connection whose frame exceeds this, before any handler
+// runs. The default (1 MB) would let every frame carry 1 MB.
+export const MAX_INBOUND_FRAME_BYTES = 128 * 1024;
+// Calls that can still be set up or are under way; signals for any other call
+// are dropped.
+const SIGNALLING_CALL_STATUSES = new Set(['ringing', 'active']);
 
 @Injectable()
 @WebSocketGateway({
   path: '/v1/realtime',
   cors: false,
+  maxHttpBufferSize: MAX_INBOUND_FRAME_BYTES,
 })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -36,7 +53,18 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private readonly socketsByUserId = new Map<string, Set<string>>();
   private readonly socketsByDeviceId = new Map<string, Set<string>>();
   private readonly typingRateLimitBySocket = new Map<string, Map<string, number>>();
+  private readonly tokenExpiryTimers = new Map<string, NodeJS.Timeout>();
+  private readonly eventBudgetByDevice = new Map<string, { tokens: number; at: number }>();
+  private lastEventBudgetSweepAt = 0;
   private static readonly TYPING_MIN_INTERVAL_MS = 500;
+  // Inbound events (typing, call signals) per device: a burst of 30, then 5 a
+  // second. The HTTP throttler does not run for gateway handlers, and every
+  // event costs database reads and a fan-out. Keyed by device, not socket, so
+  // opening more sockets with the same token does not multiply the budget, and
+  // kept across disconnects until it has refilled, so reconnecting does not
+  // reset it either.
+  private static readonly EVENT_BURST = 30;
+  private static readonly EVENT_REFILL_PER_SECOND = 5;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -44,6 +72,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly prisma: PrismaService,
     private readonly ephemeralStore: EphemeralStoreService,
     private readonly metrics: MetricsService,
+    private readonly access: ConversationAccessService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -54,10 +83,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return;
     }
 
+    // Only the handshake auth payload carries the token. A query-string
+    // token ends up in proxy and access logs.
     const token =
-      (typeof client.handshake.auth.token === 'string' && client.handshake.auth.token) ||
-      (typeof client.handshake.query.token === 'string' && client.handshake.query.token) ||
-      null;
+      typeof client.handshake.auth?.token === 'string' && client.handshake.auth.token
+        ? client.handshake.auth.token
+        : null;
 
     if (!token) {
       client.disconnect(true);
@@ -71,17 +102,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         issuer: this.config.jwtIssuer,
       });
 
-      // Reject sockets whose access token has been logged out. The same
-      // blacklist key the HTTP guard checks; without this a logged-out
-      // session keeps its WS channel alive until the socket disconnects.
-      if (payload.jti) {
-        const blacklisted = await this.ephemeralStore.getJson<unknown>(
-          jtiBlacklistKey(payload.jti),
-        );
-        if (blacklisted) {
-          client.disconnect(true);
-          return;
-        }
+      // Reject sockets whose access token has been revoked, by the same
+      // check the HTTP guard makes; without it a logged-out session could
+      // open a new realtime channel for the rest of its token's lifetime.
+      if (await isAccessTokenRevoked(this.ephemeralStore, payload)) {
+        client.disconnect(true);
+        return;
       }
 
       const device = await this.prisma.device.findUnique({
@@ -90,6 +116,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       });
 
       if (
+        typeof payload.exp !== 'number' ||
         !device ||
         device.userId !== payload.sub ||
         !device.isActive ||
@@ -102,6 +129,22 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         client.disconnect(true);
         return;
       }
+
+      // The client may have gone away while the checks above were awaited.
+      // handleDisconnect has then already run, so registering now would
+      // leave a dead socket, its gauge increment and its expiry timer behind.
+      if (!client.connected) {
+        return;
+      }
+
+      // A socket lives no longer than the token that opened it; the client
+      // reconnects with a refreshed token.
+      const expiryTimer = setTimeout(
+        () => client.disconnect(true),
+        Math.max(0, payload.exp * 1000 - Date.now()),
+      );
+      expiryTimer.unref();
+      this.tokenExpiryTimers.set(client.id, expiryTimer);
 
       client.data.userId = payload.sub;
       client.data.deviceId = payload.deviceId;
@@ -136,6 +179,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   handleDisconnect(client: Socket): void {
+    const expiryTimer = this.tokenExpiryTimers.get(client.id);
+    if (expiryTimer) {
+      clearTimeout(expiryTimer);
+      this.tokenExpiryTimers.delete(client.id);
+    }
+
     const userId = client.data.userId as string | undefined;
     const deviceId = client.data.deviceId as string | undefined;
     if (!userId) {
@@ -171,6 +220,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         deviceSockets.delete(client.id);
         if (deviceSockets.size === 0) {
           this.socketsByDeviceId.delete(deviceId);
+          // Only a refilled budget is dropped. A spent one stays, so a device
+          // that disconnects and reconnects continues from what it spent
+          // rather than getting a fresh burst; the sweep in takeEventToken
+          // drops it once it has refilled.
+          if (this.eventBudgetRefilled(deviceId, Date.now())) {
+            this.eventBudgetByDevice.delete(deviceId);
+          }
         }
       }
     }
@@ -193,12 +249,73 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     return false;
   }
 
+  private refilledEventTokens(budget: { tokens: number; at: number }, now: number): number {
+    return Math.min(
+      RealtimeGateway.EVENT_BURST,
+      budget.tokens + ((now - budget.at) / 1000) * RealtimeGateway.EVENT_REFILL_PER_SECOND,
+    );
+  }
+
+  private eventBudgetRefilled(deviceId: string, now: number): boolean {
+    const budget = this.eventBudgetByDevice.get(deviceId);
+    return !budget || this.refilledEventTokens(budget, now) >= RealtimeGateway.EVENT_BURST;
+  }
+
+  // Drops every refilled bucket, connected device or not, at most once per
+  // refill period (the time a spent bucket takes to fill again, 6 s). A
+  // missing entry counts as a full bucket, so this changes no budget; the map
+  // then holds only devices that sent an event in about the last two refill
+  // periods, however many have disconnected.
+  private sweepRefilledEventBudgets(now: number): void {
+    const refillMs = (RealtimeGateway.EVENT_BURST / RealtimeGateway.EVENT_REFILL_PER_SECOND) * 1000;
+    if (now - this.lastEventBudgetSweepAt < refillMs) return;
+    this.lastEventBudgetSweepAt = now;
+    for (const [deviceId, budget] of this.eventBudgetByDevice) {
+      if (this.refilledEventTokens(budget, now) >= RealtimeGateway.EVENT_BURST) {
+        this.eventBudgetByDevice.delete(deviceId);
+      }
+    }
+  }
+
+  // Token bucket over the device's inbound events. Returns false when the
+  // device has spent its budget, and the event is then dropped.
+  private takeEventToken(deviceId: string): boolean {
+    const now = Date.now();
+    this.sweepRefilledEventBudgets(now);
+    const budget = this.eventBudgetByDevice.get(deviceId) ?? {
+      tokens: RealtimeGateway.EVENT_BURST,
+      at: now,
+    };
+    const refilled = this.refilledEventTokens(budget, now);
+    if (refilled < 1) {
+      this.eventBudgetByDevice.set(deviceId, { tokens: refilled, at: now });
+      return false;
+    }
+    this.eventBudgetByDevice.set(deviceId, { tokens: refilled - 1, at: now });
+    return true;
+  }
+
   emitToUser<K extends keyof RealtimeEventMap>(
     userId: string,
     event: K,
     payload: RealtimeEventMap[K],
   ): void {
     const socketIds = this.socketsByUserId.get(userId);
+    if (!socketIds) {
+      return;
+    }
+
+    for (const socketId of socketIds) {
+      this.server.to(socketId).emit(event, payload);
+    }
+  }
+
+  emitToDevice<K extends keyof RealtimeEventMap>(
+    deviceId: string,
+    event: K,
+    payload: RealtimeEventMap[K],
+  ): void {
+    const socketIds = this.socketsByDeviceId.get(deviceId);
     if (!socketIds) {
       return;
     }
@@ -285,55 +402,62 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('typing.start')
-  async handleTypingStart(client: Socket, payload: { conversationId: string }): Promise<void> {
-    const userId = client.data.userId as string | undefined;
-    const handle = client.data.handle as string | undefined;
-    if (!userId || !handle || !payload?.conversationId) return;
-    if (this.shouldThrottleTyping(client.id, payload.conversationId)) return;
-
-    const members = await this.prisma.conversationMember.findMany({
-      where: { conversationId: payload.conversationId },
-      select: { userId: true },
-    });
-
-    for (const member of members) {
-      if (member.userId !== userId) {
-        this.emitToUser(member.userId, 'typing.start', {
-          conversationId: payload.conversationId,
-          userId,
-          handle,
-        });
-      }
-    }
+  handleTypingStart(client: Socket, payload: { conversationId?: unknown }): Promise<void> {
+    return this.relayTyping(client, payload, 'typing.start');
   }
 
   @SubscribeMessage('typing.stop')
-  async handleTypingStop(client: Socket, payload: { conversationId: string }): Promise<void> {
-    const userId = client.data.userId as string | undefined;
-    const handle = client.data.handle as string | undefined;
-    if (!userId || !handle || !payload?.conversationId) return;
-    if (this.shouldThrottleTyping(client.id, payload.conversationId)) return;
+  handleTypingStop(client: Socket, payload: { conversationId?: unknown }): Promise<void> {
+    return this.relayTyping(client, payload, 'typing.stop');
+  }
 
-    const members = await this.prisma.conversationMember.findMany({
-      where: { conversationId: payload.conversationId },
+  /**
+   * Relays a typing indicator to the other members. Typing is best-effort, so
+   * anything the policy refuses (non-member, a role without 'typing', a block
+   * either way) is dropped silently rather than answered.
+   */
+  private async relayTyping(
+    client: Socket,
+    payload: { conversationId?: unknown },
+    event: TypingEvent,
+  ): Promise<void> {
+    const userId = client.data.userId as string | undefined;
+    const deviceId = client.data.deviceId as string | undefined;
+    const handle = client.data.handle as string | undefined;
+    const conversationId = payload?.conversationId;
+    if (
+      !userId ||
+      !deviceId ||
+      !handle ||
+      typeof conversationId !== 'string' ||
+      !isUUID(conversationId)
+    ) {
+      return;
+    }
+    if (!this.takeEventToken(deviceId)) return;
+
+    try {
+      await this.access.requireAccess(userId, conversationId, 'typing');
+    } catch {
+      return;
+    }
+    // Recorded only for a conversation the caller may type in, so made-up
+    // ids cannot grow the throttle map.
+    if (this.shouldThrottleTyping(client.id, conversationId)) return;
+
+    const recipients = await this.prisma.conversationMember.findMany({
+      where: { conversationId, userId: { not: userId } },
       select: { userId: true },
     });
-
-    for (const member of members) {
-      if (member.userId !== userId) {
-        this.emitToUser(member.userId, 'typing.stop', {
-          conversationId: payload.conversationId,
-          userId,
-          handle,
-        });
-      }
-    }
+    this.emitConversationMembers(recipients, event, { conversationId, userId, handle });
   }
 
   /**
    * Relay a WebRTC signaling message (SDP offer/answer or ICE candidate)
-   * between the two parties of a 1:1 call. The sender must be a member of the
-   * call's conversation; otherwise the message is dropped silently.
+   * between the two parties of a 1:1 call. The sender must be allowed to call
+   * in the call's conversation, the call must still be ringing or active, the
+   * blob must fit CALL_SIGNAL_MAX_DATA_LENGTH and the device must have event
+   * budget left; otherwise the message is dropped silently.
    *
    * IMPORTANT: `payload.data` is an opaque E2E media-setup blob. The server
    * MUST NOT inspect, parse, persist, or otherwise interpret it — WebRTC media
@@ -352,38 +476,41 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       !deviceId ||
       !payload?.callId ||
       typeof payload.data !== 'string' ||
+      payload.data.length > CALL_SIGNAL_MAX_DATA_LENGTH ||
       (payload.kind !== 'offer' && payload.kind !== 'answer' && payload.kind !== 'ice')
     ) {
       return;
     }
 
-    // Resolve the call's conversation members, mirroring how the typing
-    // handlers authorize fan-out against conversation membership.
+    if (!isUUID(payload.callId)) return;
+    if (!this.takeEventToken(deviceId)) return;
     const call = await this.prisma.callRecord.findUnique({
       where: { id: payload.callId },
-      select: {
-        conversationId: true,
-        conversation: { select: { members: { select: { userId: true } } } },
-      },
+      select: { conversationId: true, status: true },
     });
+    // An ended, declined or missed call is not a relay channel: its record
+    // lives on for up to 30 days.
+    if (!call || !SIGNALLING_CALL_STATUSES.has(call.status)) return;
 
-    if (!call) return;
-
-    const members = call.conversation.members;
-    // Drop silently if the sender is not a member of the call's conversation.
-    if (!members.some((m) => m.userId === userId)) return;
-
-    for (const member of members) {
-      if (member.userId !== userId) {
-        this.emitToUser(member.userId, 'call.signal', {
-          callId: payload.callId,
-          kind: payload.kind,
-          data: payload.data,
-          fromUserId: userId,
-          fromDeviceId: deviceId,
-        });
-      }
+    // Same policy as placing the call: a non-member or a blocked pair is
+    // dropped silently.
+    try {
+      await this.access.requireAccess(userId, call.conversationId, 'call');
+    } catch {
+      return;
     }
+
+    const recipients = await this.prisma.conversationMember.findMany({
+      where: { conversationId: call.conversationId, userId: { not: userId } },
+      select: { userId: true },
+    });
+    this.emitConversationMembers(recipients, 'call.signal', {
+      callId: payload.callId,
+      kind: payload.kind,
+      data: payload.data,
+      fromUserId: userId,
+      fromDeviceId: deviceId,
+    });
   }
 
   isUserOnline(userId: string): boolean {

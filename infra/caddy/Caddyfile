@@ -1,9 +1,16 @@
 # VEIL Caddy front-end. Two upstreams:
-#   - {$CADDY_PUBLIC_HOSTNAME}    → API + web demo + WS
+#   - {$CADDY_PUBLIC_HOSTNAME}    → API + WS + the one-time link viewer under
+#                                   /demo (a production API serves no web demo)
 #   - {$CADDY_S3_HOSTNAME}        → MinIO public endpoint for presigned PUT/GET
 #
 # Caddy auto-renews TLS via Let's Encrypt. Set ACME_EMAIL in .env.prod for
 # expiry alerts.
+#
+# Client addresses: Caddy is the edge, so the API runs with
+# VEIL_CLIENT_IP_SOURCE=x-forwarded-for and VEIL_TRUSTED_PROXY_HOPS=1. Every
+# reverse_proxy therefore drops any client-supplied CF-Connecting-IP and
+# overwrites X-Forwarded-For with the address of the peer Caddy actually
+# talked to; otherwise a client could pick its own rate-limit bucket.
 
 {
 	email {$ACME_EMAIL}
@@ -18,23 +25,31 @@
 	encode zstd gzip
 
 	# Security headers — denies framing, blocks MIME sniffing, opts into
-	# strict referrer policy. CSP is intentionally permissive in this
-	# revision (web demo loads its own JS+CSS); tighten once we ship a
-	# nonce-based pipeline.
+	# strict referrer policy. The CSP comes from the API: helmet's
+	# default-src 'none' in production, and the one-time link viewer's own.
+	#
+	# Referrer-Policy is only a default (`?`): the API answers no-referrer,
+	# and the one-time link viewer (/demo/s.html) depends on it. A plain set
+	# would replace it on every response. Caddy must not set CSP or
+	# Cache-Control here either (scripts/policy-check.mjs).
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
+		?Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(self), geolocation=(), interest-cohort=()"
 		-Server
 	}
 
-	# Web demo lives at /demo. It loads its own JS so we just proxy the
-	# static assets that the API container serves at /demo/*.
-	handle_path /demo* {
+	# The API serves /demo/* itself, under that prefix: in production only the
+	# one-time link viewer (/demo/s.html and the modules it loads), the whole
+	# web demo otherwise. `handle`, not `handle_path`: stripping /demo would
+	# turn every viewer request into a 404.
+	handle /demo* {
 		reverse_proxy api:3000 {
 			header_up X-Forwarded-Proto https
+			header_up -CF-Connecting-IP
+			header_up X-Forwarded-For {remote_host}
 		}
 	}
 
@@ -47,6 +62,8 @@
 	handle @ws {
 		reverse_proxy api:3000 {
 			header_up X-Forwarded-Proto https
+			header_up -CF-Connecting-IP
+			header_up X-Forwarded-For {remote_host}
 		}
 	}
 
@@ -54,12 +71,14 @@
 	handle {
 		reverse_proxy api:3000 {
 			header_up X-Forwarded-Proto https
+			header_up -CF-Connecting-IP
+			header_up X-Forwarded-For {remote_host}
 		}
 	}
 
 	# Trim outgoing access logs to a single line per request and only
-	# keep what we'd actually need to debug. Avoid header dumps so we
-	# don't accidentally log Authorization.
+	# keep what we'd actually need to debug. No client addresses, no URIs
+	# (they carry handles) and no header dumps.
 	log {
 		output file /data/access.log {
 			roll_size 50mb
@@ -69,7 +88,14 @@
 			wrap json
 			fields {
 				common_log delete
+				request>remote_ip delete
+				request>client_ip delete
 				request>headers delete
+				# Named again so narrowing the blanket header rule above can
+				# never start logging credentials or client addresses.
+				request>headers>Authorization delete
+				request>headers>X-Forwarded-For delete
+				request>headers>Cf-Connecting-Ip delete
 				resp_headers delete
 				request>uri delete
 			}
@@ -89,5 +115,7 @@
 	reverse_proxy minio:9000 {
 		header_up Host {host}
 		header_up X-Forwarded-Proto https
+		header_up -CF-Connecting-IP
+		header_up X-Forwarded-For {remote_host}
 	}
 }

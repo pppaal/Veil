@@ -1,0 +1,410 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../app/app_state.dart';
+import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_ui.dart';
+import '../../conversations/presentation/peer_names.dart';
+import '../../safety/application/safety_accounts.dart';
+import '../../safety/data/abuse_reports.dart';
+import '../../safety/data/safety_providers.dart';
+import '../../safety/presentation/block_actions.dart';
+import '../../safety/presentation/report_sheet.dart';
+import '../data/contact_names.dart';
+import '../data/contacts_providers.dart';
+
+// The sheets of the contacts tab: adding a contact, what to do with one,
+// and the name this phone calls it by. Each scrolls inside the room the
+// keyboard leaves, so its button stays in reach on a small phone.
+
+/// Opens a sheet of the contacts tab, with the drag handle every sheet has,
+/// over the tab bar like any sheet.
+Future<void> _showSheet(BuildContext context, WidgetBuilder builder) => showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      // A sheet with a field grows above the keyboard, and three rows under a
+      // header are taller than the half screen a sheet gets by default; it
+      // stops under the status bar.
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: builder,
+    );
+
+/// A sheet's content above the keyboard and the system bar, scrolling when
+/// the two leave it less room than it needs. Rows run full-bleed; the rest
+/// keeps the 16 side gutter ([_padded]).
+class _SheetBody extends StatelessWidget {
+  const _SheetBody({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: VeilSpace.md),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The 16 side gutter of what is not a row: a title, a field, a button.
+Widget _padded(Widget child) => Padding(padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md), child: child);
+
+/// Asks for a handle and, optionally, a name for it, and adds the contact.
+Future<void> showAddContactSheet(BuildContext context, WidgetRef ref) {
+  VeilHaptics.selection();
+  final l10n = AppLocalizations.of(context);
+  return _showSheet(
+    context,
+    (_) => _AddContactSheet(
+      // Said on the screen behind the sheet, once the sheet is gone.
+      onAdded: (name) {
+        if (!context.mounted) return;
+        showVeilToast(context, l10n.contactsAdded(name));
+      },
+    ),
+  );
+}
+
+class _AddContactSheet extends ConsumerStatefulWidget {
+  const _AddContactSheet({required this.onAdded});
+
+  /// Called once the contact is added, with what its row calls it: the
+  /// nickname typed, or the handle with its "@".
+  final ValueChanged<String> onAdded;
+
+  @override
+  ConsumerState<_AddContactSheet> createState() => _AddContactSheetState();
+}
+
+class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
+  final _handle = TextEditingController();
+  final _nickname = TextEditingController();
+  bool _saving = false;
+  // Why the last try failed: no such account, or anything else.
+  String? _failure;
+
+  @override
+  void dispose() {
+    _handle.dispose();
+    _nickname.dispose();
+    super.dispose();
+  }
+
+  String get _typedHandle => _handle.text.trim().replaceAll(RegExp(r'^@'), '');
+
+  Future<void> _save() async {
+    final handle = _typedHandle;
+    if (handle.isEmpty || _saving) return;
+    final navigator = Navigator.of(context);
+    final l10n = AppLocalizations.of(context);
+    setState(() {
+      _saving = true;
+      _failure = null;
+    });
+    final contacts = ref.read(contactsControllerProvider);
+    final added = await contacts.addContact(handle: handle, nickname: _nickname.text);
+    if (!mounted) return;
+    if (!added) {
+      setState(() {
+        _saving = false;
+        // In lower case, as the server looks it up and the add toast says it.
+        _failure =
+            contacts.failedAsNotFound ? l10n.safetyAccountNotFound(handle.toLowerCase()) : l10n.contactsAddFailed;
+      });
+      return;
+    }
+    navigator.pop();
+    final nickname = _nickname.text.trim();
+    // The server keeps handles in lower case, as the row shows it.
+    widget.onAdded(nickname.isEmpty ? '@${handle.toLowerCase()}' : nickname);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return _SheetBody(
+      children: [
+        _padded(Text(l10n.contactsAdd, style: theme.textTheme.titleLarge)),
+        const SizedBox(height: VeilSpace.md),
+        // No line under the field until a try failed: then why.
+        _padded(TextField(
+          controller: _handle,
+          autofocus: true,
+          autocorrect: false,
+          enableSuggestions: false,
+          textInputAction: TextInputAction.next,
+          onChanged: (_) => setState(() => _failure = null),
+          decoration: InputDecoration(
+            labelText: l10n.contactsHandleLabel,
+            hintText: l10n.contactsHandleHint,
+            prefixText: '@',
+            errorText: _failure,
+            errorMaxLines: 2,
+          ),
+        )),
+        const SizedBox(height: VeilSpace.sm),
+        _padded(TextField(
+          controller: _nickname,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _save(),
+          decoration: InputDecoration(labelText: l10n.contactsNicknameLabel),
+        )),
+        const SizedBox(height: VeilSpace.md),
+        _padded(VeilButton(
+          label: _saving ? l10n.contactsWorking : l10n.contactsSave,
+          onPressed: _saving || _typedHandle.isEmpty ? null : _save,
+        )),
+      ],
+    );
+  }
+}
+
+/// What to do with [contact], led by Message as Signal and WhatsApp lead
+/// theirs: message them, rename or remove the contact, report or block
+/// them. Only Block is red.
+Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, ContactEntry contact) {
+  VeilHaptics.medium();
+  final l10n = AppLocalizations.of(context);
+  final blocked = ref.read(blockedAccountsProvider).byHandle(contact.handle);
+
+  // Blocking and reporting need their account, which the contact list does
+  // not hold (see SafetyAccounts.accountIdFor).
+  Future<String?> account() async {
+    final userId = await ref.read(safetyAccountsProvider).accountIdFor(contact.handle);
+    if (userId == null && context.mounted) {
+      showVeilToast(context, l10n.safetyAccountNotFound(contact.handle));
+    }
+    return userId;
+  }
+
+  // What Report, Block and Unblock call the account [userId] they reach:
+  // the name every other screen gives it (PeerNames.accountName), else
+  // "@handle", as a lying server can put another account under the
+  // handle. While the nickname names no account yet, the nickname, as the
+  // sheet's header says, unless it may come to name another account or the
+  // handle's 1:1 is held (PeerNames.mayNameUnclaimed).
+  String nameOf(String userId) {
+    final nickname = ref.read(contactNameBookProvider).nicknames[contact.handle.toLowerCase()];
+    if (nickname != null && nickname.userId == null) {
+      return ref.read(peerNamesProvider).mayNameUnclaimed(userId, contact.handle) ? contact.title : '@${contact.handle}';
+    }
+    return ref.read(safetyAccountsProvider).knownNameFor(userId: userId, handle: contact.handle) ??
+        '@${contact.handle}';
+  }
+
+  Future<void> report() async {
+    final userId = await account();
+    if (userId == null || !context.mounted) return;
+    await showReportSheet(
+      context,
+      ReportTarget(userId: userId, handle: contact.handle, offerBlock: true),
+      name: nameOf(userId),
+    );
+  }
+
+  Future<void> block() async {
+    final userId = await account();
+    if (userId == null || !context.mounted) return;
+    await confirmAndBlock(context, userId: userId, handle: contact.handle, name: nameOf(userId), announce: true);
+  }
+
+  Future<void> startChat() async {
+    final conversationId = await ref.read(messengerControllerProvider).startConversationByHandle(contact.handle);
+    if (!context.mounted) return;
+    if (conversationId != null) {
+      context.push('/chat/$conversationId');
+    } else {
+      showVeilToast(context, l10n.contactsStartChatFailed);
+    }
+  }
+
+  Future<void> remove() async {
+    final removed = await ref.read(contactsControllerProvider).removeContact(contact.handle);
+    if (!context.mounted) return;
+    showVeilToast(
+      context,
+      removed ? l10n.contactsRemoved(contact.title) : l10n.contactsRemoveFailed,
+    );
+  }
+
+  return _showSheet(context, (sheetContext) {
+    void close() => Navigator.of(sheetContext).pop();
+    // Each row does what it says at once: none leads to a screen of its own.
+    const noChevron = SizedBox.shrink();
+    return _SheetBody(
+      children: [
+        _ContactHeader(contact: contact),
+        const SizedBox(height: VeilSpace.xs),
+        VeilGroup(
+          children: [
+            VeilRow(
+              title: l10n.contactsStartChat,
+              trailing: noChevron,
+              onTap: () {
+                close();
+                startChat();
+              },
+            ),
+            VeilRow(
+              title: l10n.contactsEditNickname,
+              trailing: noChevron,
+              onTap: () {
+                close();
+                showContactNicknameSheet(context, ref, contact);
+              },
+            ),
+            VeilRow(
+              key: const ValueKey('contact-remove'),
+              title: l10n.contactsRemove,
+              trailing: noChevron,
+              onTap: () {
+                close();
+                remove();
+              },
+            ),
+            VeilRow(
+              key: const ValueKey('contact-report'),
+              title: l10n.reportAction,
+              trailing: noChevron,
+              onTap: () {
+                close();
+                report();
+              },
+            ),
+            if (blocked != null)
+              VeilRow(
+                key: const ValueKey('contact-unblock'),
+                title: l10n.unblockAction,
+                trailing: noChevron,
+                onTap: () {
+                  close();
+                  unblockAccount(context, userId: blocked.userId, name: nameOf(blocked.userId), announce: true);
+                },
+              )
+            else
+              VeilRow(
+                key: const ValueKey('contact-block'),
+                title: l10n.blockAction,
+                destructive: true,
+                onTap: () {
+                  close();
+                  block();
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  });
+}
+
+/// Changes the name this phone calls [contact] by. The server never sees it.
+Future<void> showContactNicknameSheet(BuildContext context, WidgetRef ref, ContactEntry contact) {
+  return _showSheet(context, (_) => _NicknameSheet(contact: contact));
+}
+
+class _NicknameSheet extends ConsumerStatefulWidget {
+  const _NicknameSheet({required this.contact});
+
+  final ContactEntry contact;
+
+  @override
+  ConsumerState<_NicknameSheet> createState() => _NicknameSheetState();
+}
+
+class _NicknameSheetState extends ConsumerState<_NicknameSheet> {
+  late final _nickname = TextEditingController(text: widget.contact.nickname ?? '');
+  // The keystore's wipes when the sheet opened: a sign-out or wipe that
+  // begins while it is open drops what it saves.
+  late final int _wipesSeen;
+
+  @override
+  void initState() {
+    super.initState();
+    _wipesSeen = ref.read(secureStorageProvider).wipesBegun;
+  }
+
+  @override
+  void dispose() {
+    _nickname.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final navigator = Navigator.of(context);
+    await ref
+        .read(contactsControllerProvider)
+        .renameContact(widget.contact.handle, _nickname.text, wipesSeen: _wipesSeen);
+    if (mounted) navigator.pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return _SheetBody(
+      children: [
+        _padded(Text(l10n.contactsEditNickname, style: Theme.of(context).textTheme.titleLarge)),
+        const SizedBox(height: VeilSpace.md),
+        _padded(TextField(
+          controller: _nickname,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _save(),
+          decoration: InputDecoration(
+            labelText: l10n.contactsNicknameLabel,
+            helperText: l10n.contactsNicknameCaption,
+            helperMaxLines: 2,
+          ),
+        )),
+        const SizedBox(height: VeilSpace.md),
+        _padded(VeilButton(label: l10n.contactsSaveNickname, onPressed: _save)),
+      ],
+    );
+  }
+}
+
+/// Who a sheet is about: the avatar, the name this phone shows and the
+/// handle.
+class _ContactHeader extends StatelessWidget {
+  const _ContactHeader({required this.contact});
+
+  final ContactEntry contact;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = context.veilPalette;
+    return _padded(Row(
+      children: [
+        VeilAvatar(name: contact.label, seed: contact.handle, size: 56),
+        const SizedBox(width: VeilSpace.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // A name and a handle are their owner's words: drawn as typed.
+              Text(contact.title, style: theme.textTheme.titleLarge),
+              if (contact.handleLine case final handle?)
+                Text(handle, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
+            ],
+          ),
+        ),
+      ],
+    ));
+  }
+}

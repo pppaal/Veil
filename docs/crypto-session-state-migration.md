@@ -1,6 +1,6 @@
 # VEIL Crypto Session State Migration
 
-Last updated: 2026-04-11
+Last updated: 2026-11-11
 
 This document defines how VEIL should migrate from the current mock-backed
 conversation bootstrap metadata to a future audited real crypto session-state
@@ -43,6 +43,75 @@ VEIL already persists migration-oriented metadata around conversation state:
 This is intentionally not enough to recreate real cryptographic state. It is
 only enough to help detect when a native session-state reference must be
 recreated or invalidated.
+
+## Dart protocol v2 session state (implemented)
+
+The default in-Dart adapter already persists real ratchet state (it is the
+default build until libsignal is). Its on-device format and the migrations it
+performs:
+
+### Snapshot schema v4
+
+```json
+{
+  "v": 4,
+  "rev": 1762851234567890,
+  "current": { "protocol": 2, "rootKey": "...", "...": "..." },
+  "archived": [{ "lastUsedAt": "2026-11-11T09:00:00.000Z", "state": { "...": "..." } }]
+}
+```
+
+- One record per conversation: the sending state plus up to five archived
+  states that still receive in-flight messages after a re-bootstrap, a peer
+  reset or glare. Archived states are ordered most recently used first, and
+  each is dropped 30 days after `lastUsedAt` (when it was archived or last
+  committed a message), so a state still in use is never pruned.
+- `rev` only grows. The adapter persists every commit and waits for the write
+  before the operation returns; storage refuses, with an error, a write whose
+  `rev` is lower than the one it holds, so an older state can never overwrite
+  a newer one and the operation fails instead of running ahead of disk. `rev`
+  is seeded from the clock (microseconds) and kept above any rev restore read
+  back for that conversation, including from an unreadable snapshot, so a
+  re-created record outranks the stored one even after the clock went back.
+- A state map records its `protocol`: `2` for X3DH sessions, `1` for legacy
+  `veil-envelope-v1` sessions, which keep working with peers that still
+  publish v1 bundles and are reported as `legacyUnauthenticated`.
+
+### Restoring older snapshots
+
+- v3 (and v2) snapshots were a single legacy-protocol state; they restore as
+  the `current` state of a fresh record (`protocol` 1). Nothing is re-keyed
+  and no trust is invented: they stay legacy-unauthenticated until the peer
+  starts a v2 session.
+- Unreadable or unknown-version snapshots are skipped; the conversation
+  re-bootstraps on the next send.
+- A restore never replaces an in-memory record with a higher `rev`.
+
+### Storage layout migration
+
+- Before v4, all snapshots lived in one secure-storage blob
+  (`veil.crypto.session_snapshots`), and concurrent writers lost updates.
+  Now each conversation has its own key, `veil.crypto.session.<sha256hex(conversationId)>`,
+  listed in `veil.crypto.session_index` (FlutterSecureStorage cannot enumerate
+  keys portably). The id is hashed so key names never carry it.
+- The legacy blob is migrated once, on first access, and deleted; a restart
+  never re-applies it.
+- Session, group sender-key and prekey writes share one serial queue.
+
+### Identity refs and prekeys
+
+- New identities are v2 refs (`{v: 2, ed25519, x25519, spk}`); v1 refs keep
+  working. `rotateSignedPrekey` upgrades a v1 ref (its X25519 key becomes the
+  certified IKx) and returns `upgradedIdentityPrivateRef` for the caller to
+  persist in place of the old one.
+- Prekey private halves live under `veil.crypto.opk.<id>` /
+  `veil.crypto.spk.<id>` plus `veil.crypto.prekey_index`, which also holds the
+  next one-time prekey id so ids are never reused.
+
+### Wipe
+
+`wipeLocalDeviceState` clears session records, group sender keys, prekey
+private halves and the identity, exactly as Rule 3 below requires.
 
 ## Target model
 

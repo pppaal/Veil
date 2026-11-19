@@ -5,10 +5,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
-import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import 'brand_mark.dart';
+
+const double _markWidth = 96;
+const double _indicatorSize = 20;
+const double _indicatorGap = 24;
+
+/// How long a start may take before a spinner shows under the mark.
+const Duration _spinnerDelay = Duration(seconds: 1);
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -18,9 +26,15 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
+  Timer? _spinnerTimer;
+  bool _slow = false;
+
   @override
   void initState() {
     super.initState();
+    _spinnerTimer = Timer(_spinnerDelay, () {
+      if (mounted) setState(() => _slow = true);
+    });
     scheduleMicrotask(() async {
       await ref.read(appSessionProvider.notifier).bootstrap();
       if (!mounted) {
@@ -28,6 +42,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       }
       _route(ref.read(appSessionProvider));
     });
+  }
+
+  @override
+  void dispose() {
+    _spinnerTimer?.cancel();
+    super.dispose();
   }
 
   void _route(AppSessionState session) {
@@ -45,7 +65,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     }
 
     if (!session.isAuthenticated) {
-      context.go('/create-account');
+      context.go('/choose-handle');
       return;
     }
 
@@ -67,60 +87,33 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     final session = ref.watch(appSessionProvider);
     final l10n = AppLocalizations.of(context);
+    final error = session.errorMessage;
 
+    // The mark where the native splash had it, and nothing else. A start
+    // that takes more than a second adds a small spinner under it; only a
+    // start that failed says something.
     return VeilShell(
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            VeilHeroPanel(
-              eyebrow: l10n.splashEyebrow,
-              title: l10n.appTitle,
-              body: l10n.splashBody,
-              bottom: Column(
+      maxWidth: null,
+      child: error != null
+          ? VeilEmptyState.error(title: l10n.splashErrorTitle, body: veilErrorText(l10n, error))
+          : SizedBox.expand(
+              child: Stack(
                 children: [
-                  Wrap(
-                    spacing: VeilSpace.xs,
-                    runSpacing: VeilSpace.xs,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      VeilStatusPill(label: l10n.pillDeviceBoundMessenger),
-                      VeilStatusPill(label: l10n.pillPrivateBeta),
-                    ],
-                  ),
-                  const SizedBox(height: VeilSpace.lg),
-                  if (session.errorMessage != null)
-                    VeilInlineBanner(
-                      title: l10n.splashErrorTitle,
-                        message: session.errorMessage!,
-                        tone: VeilBannerTone.danger,
-                      )
-                  else
-                    VeilSurfaceCard(
-                      toned: true,
-                      child: Column(
-                        children: [
-                          VeilLoadingBlock(
-                            title: l10n.splashPreparingTitle,
-                            body: l10n.splashPreparingBody,
-                          ),
-                          const SizedBox(height: VeilSpace.md),
-                          const Row(
-                            children: [
-                              Expanded(child: VeilSkeletonLine()),
-                              SizedBox(width: VeilSpace.sm),
-                              VeilSkeletonLine(width: 72),
-                            ],
-                          ),
-                        ],
+                  const Center(child: BrandMark(width: _markWidth)),
+                  // 24 under the mark, which stays at the centre.
+                  if (_slow)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.only(top: _markWidth + 2 * _indicatorGap + _indicatorSize),
+                        child: SizedBox.square(
+                          dimension: _indicatorSize,
+                          child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                        ),
                       ),
                     ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }

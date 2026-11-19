@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { Ed25519DeviceAuthVerifier } from '../auth/device-auth-verifier';
-import { DeviceTransferService } from './device-transfer.service';
+import { buildApprovalChallenge, DeviceTransferService } from './device-transfer.service';
 import { DeviceAuthTestHelper } from '../../../test/support/device-auth-test-helper';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import {
@@ -19,6 +19,7 @@ describe('DeviceTransferService', () => {
     const keyHelper = new DeviceAuthTestHelper();
     const realtime = new FakeRealtimeGateway();
     const keyPair = keyHelper.createKeyPair();
+    const oldKeyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
@@ -30,8 +31,6 @@ describe('DeviceTransferService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),
@@ -44,7 +43,7 @@ describe('DeviceTransferService', () => {
       deviceName: 'Pixel',
       publicIdentityKey: 'pub',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth',
+      authPublicKey: oldKeyPair.authPublicKey,
       pushToken: null,
       isActive: true,
       revokedAt: null,
@@ -83,6 +82,14 @@ describe('DeviceTransferService', () => {
       {
         sessionId: init.sessionId,
         claimId: claim.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: buildApprovalChallenge(
+            init.sessionId,
+            claim.claimId,
+            claim.claimantFingerprint,
+          ),
+          authPrivateKey: oldKeyPair.authPrivateKey,
+        }),
       },
     );
 
@@ -126,8 +133,6 @@ describe('DeviceTransferService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),
@@ -192,8 +197,6 @@ describe('DeviceTransferService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),
@@ -254,8 +257,6 @@ describe('DeviceTransferService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),
@@ -303,13 +304,14 @@ describe('DeviceTransferService', () => {
     ).rejects.toThrow('Transfer must be initiated from the trusted old device');
   });
 
-  it('rejects replaying completion after the join already succeeded', async () => {
+  it('answers a replayed completion with the original result and joins no second device', async () => {
     const prisma = new FakePrismaService();
     const store = new FakeEphemeralStoreService();
     const config = new FakeConfigService();
     const verifier = new Ed25519DeviceAuthVerifier();
     const keyHelper = new DeviceAuthTestHelper();
     const keyPair = keyHelper.createKeyPair();
+    const oldKeyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
@@ -321,8 +323,6 @@ describe('DeviceTransferService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),
@@ -335,7 +335,7 @@ describe('DeviceTransferService', () => {
       deviceName: 'Pixel',
       publicIdentityKey: 'pub',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth',
+      authPublicKey: oldKeyPair.authPublicKey,
       pushToken: null,
       isActive: true,
       revokedAt: null,
@@ -370,7 +370,18 @@ describe('DeviceTransferService', () => {
 
     await service.approve(
       { userId: 'user-1', deviceId: 'device-old' },
-      { sessionId: init.sessionId, claimId: claim.claimId },
+      {
+        sessionId: init.sessionId,
+        claimId: claim.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: buildApprovalChallenge(
+            init.sessionId,
+            claim.claimId,
+            claim.claimantFingerprint,
+          ),
+          authPrivateKey: oldKeyPair.authPrivateKey,
+        }),
+      },
     );
 
     const proof = keyHelper.createProof({
@@ -378,13 +389,16 @@ describe('DeviceTransferService', () => {
       authPrivateKey: keyPair.authPrivateKey,
     });
 
-    await service.complete({
+    const first = await service.complete({
       sessionId: init.sessionId,
       transferToken: init.transferToken,
       claimId: claim.claimId,
       authProof: proof,
     });
 
+    // The first response can be lost after the transfer committed; the new
+    // device asks again and must learn the same device id, while nothing is
+    // created or revoked a second time.
     await expect(
       service.complete({
         sessionId: init.sessionId,
@@ -392,7 +406,9 @@ describe('DeviceTransferService', () => {
         claimId: claim.claimId,
         authProof: proof,
       }),
-    ).rejects.toThrow('Transfer session already completed');
+    ).resolves.toEqual(first);
+    expect(prisma.devices).toHaveLength(2);
+    expect(prisma.users[0]!.activeDeviceId).toBe(first.newDeviceId);
   });
 
   it('rejects completion when the old device is revoked concurrently (TOCTOU)', async () => {
@@ -407,6 +423,7 @@ describe('DeviceTransferService', () => {
     const verifier = new Ed25519DeviceAuthVerifier();
     const keyHelper = new DeviceAuthTestHelper();
     const keyPair = keyHelper.createKeyPair();
+    const oldKeyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
@@ -418,8 +435,6 @@ describe('DeviceTransferService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),
@@ -432,7 +447,7 @@ describe('DeviceTransferService', () => {
       deviceName: 'Pixel',
       publicIdentityKey: 'pub',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth',
+      authPublicKey: oldKeyPair.authPublicKey,
       pushToken: null,
       isActive: true,
       revokedAt: null,
@@ -468,7 +483,18 @@ describe('DeviceTransferService', () => {
 
     await service.approve(
       { userId: 'user-1', deviceId: 'device-old' },
-      { sessionId: init.sessionId, claimId: claim.claimId },
+      {
+        sessionId: init.sessionId,
+        claimId: claim.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: buildApprovalChallenge(
+            init.sessionId,
+            claim.claimId,
+            claim.claimantFingerprint,
+          ),
+          authPrivateKey: oldKeyPair.authPrivateKey,
+        }),
+      },
     );
 
     // Wedge a revocation in right before the serializable transaction runs.

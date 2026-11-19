@@ -11,7 +11,7 @@ Review the current VEIL private beta as:
 - a privacy-first mobile messenger
 - a trusted-device graph product
 - a ciphertext-only relay architecture
-- a production crypto implementation (X25519+AES-256-GCM) with a strict adapter boundary
+- protocol v2 (X3DH + Double Ratchet + AES-256-GCM, [crypto-envelope-spec.md](docs/crypto-envelope-spec.md)) implemented on two clients, mobile and web, with a strict adapter boundary
 
 Do not treat the current build as externally audited production E2EE until the external review is complete.
 
@@ -30,7 +30,10 @@ Do not treat the current build as externally audited production E2EE until the e
 4. Local security and observability posture
    - [mobile-device-security.md](docs/mobile-device-security.md)
    - [observability-hygiene.md](docs/observability-hygiene.md)
-5. Crypto boundary and migration posture
+5. Crypto specification, surfaces, boundary and migration posture
+   - [crypto-envelope-spec.md](docs/crypto-envelope-spec.md) — protocol v2, normative
+   - [security/crypto-surfaces.md](docs/security/crypto-surfaces.md)
+   - [group-sender-keys-design.md](docs/group-sender-keys-design.md) — implemented on mobile
    - [crypto-adapter-architecture.md](docs/crypto-adapter-architecture.md)
    - [mock-crypto-replacement.md](docs/mock-crypto-replacement.md)
    - [audited-crypto-adapter-execution.md](docs/audited-crypto-adapter-execution.md)
@@ -55,7 +58,10 @@ Do not treat the current build as externally audited production E2EE until the e
    - local cache
    - admin/debug tooling
 3. Are revoke, transfer expiry, and stale-device handling strong enough for private beta?
-4. Is the crypto adapter boundary strict enough to support audited replacement without reworking product logic?
+4. Is protocol v2 correct as docs/crypto-envelope-spec.md specifies it, and the same on both clients: mutual X3DH authentication (DH1 over the initiator's X25519 identity key, IKx and signed prekeys certified by the Ed25519 identity key, one-time prekeys consumed once), the Double Ratchet (PN, skipped-key bounds, replay rejection), TOFU identity-trust gating before any session is installed, opened or sealed, and Sender Keys distribution and epochs on mobile? Do the mobile (Dart) and web (WebCrypto) implementations produce byte-identical results for packages/shared/test-vectors/crypto-kat.json?
+5. Is the crypto adapter boundary strict enough to support audited replacement without reworking product logic?
+
+The documents and code paths in scope are listed in `scripts/audit-scope.mjs`, which the handoff bundle (`pnpm audit:handoff`) and the review manifest are generated from.
 
 ## Evidence to provide alongside docs
 
@@ -115,11 +121,17 @@ should focus on these in addition to the regular scope.
 
 ### Throttling and ingress (Phase R)
 
-- New `cf-throttler.guard.ts` replaces the default `ThrottlerGuard`.
-  Tracker preference order: `cf-connecting-ip`, then JWT-bound
-  `auth.deviceId`, then `x-forwarded-for`, then `req.ip`. Required because
-  behind a Cloudflare Tunnel sidecar all requests share the loopback
-  address and would collapse into a single bucket.
+- New `cf-throttler.guard.ts` replaces the default `ThrottlerGuard`. It
+  runs after `JwtAuthGuard`, so an authenticated request is keyed by the
+  device id bound to its verified JWT (`dev:<deviceId>`). Any other request
+  is keyed by client address (`ip:<address>`), read only from the single
+  source the operator sets in `VEIL_CLIENT_IP_SOURCE`: `cf-connecting-ip`
+  (behind a Cloudflare Tunnel, where every request shares the loopback
+  address; a value that is not exactly one IP falls back to the socket
+  address), `x-forwarded-for` (Express's `req.ip`, trusting exactly
+  `VEIL_TRUSTED_PROXY_HOPS` hops) or `socket`. No other header is ever
+  consulted, since a forwarding header the configured edge does not
+  overwrite is attacker-controlled.
 - `users.controller.ts`: `/users/:handle` and `/users/:handle/key-bundle`
   dropped from 60/min to 10/min unauthenticated. Mitigates handle
   enumeration.
@@ -168,9 +180,10 @@ should focus on these in addition to the regular scope.
 
 ### Operational documentation (Phase T)
 
-- `docs/cloudflare-tunnel-deploy.md`: added pg_dump cron snippet (daily,
-  14-day retention) with privacy callout — snapshots include handle
-  metadata even though message bodies remain ciphertext.
+- `docs/cloudflare-tunnel-deploy.md`: once added a daily database dump
+  snippet; it has since been removed, along with the production stack's dump
+  service, because a dump keeps deleted accounts and expired ciphertext past
+  the published retention windows (see `docs/vps-deploy-runbook.md` section 6).
 - `docs/ops/abuse-triage.md`: new runbook. SQL queries omit the
   `messages.ciphertext` column entirely. Suspend uses
   `users.status='suspended'`; the JwtAuthGuard `status==='active'` check

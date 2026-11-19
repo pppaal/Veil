@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,11 +9,146 @@ import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
+import 'package:veil_mobile/src/core/util/base64url.dart';
+import 'package:veil_mobile/src/core/storage/media_index.dart';
+import 'package:veil_mobile/src/features/attachments/data/attachment_storage_paths.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_store.dart';
+import 'package:veil_mobile/src/features/attachments/domain/outgoing_attachment.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
+import 'package:veil_mobile/src/core/security/local_data_cipher.dart';
+import 'package:veil_mobile/src/core/storage/app_database.dart';
+import 'package:veil_mobile/src/core/storage/cache_handle.dart';
+
+import 'support/async_wait.dart';
+import 'support/media_fixtures.dart';
+import 'support/strict_mock_crypto_adapter.dart';
+
 void main() {
+  group('a conversation list still on its way when the identity leaves', () {
+    const atlas = AppSessionState(
+      accessToken: 'token',
+      userId: 'user-local',
+      deviceId: 'device-local',
+      handle: 'atlas',
+      displayName: 'Atlas',
+      onboardingAccepted: true,
+      locked: false,
+      initializing: false,
+    );
+    const orion = AppSessionState(
+      accessToken: 'token-orion',
+      userId: 'user-other',
+      deviceId: 'device-other',
+      handle: 'orion',
+      displayName: 'Orion',
+      onboardingAccepted: true,
+      locked: false,
+      initializing: false,
+    );
+    const signedOut = AppSessionState(onboardingAccepted: true, initializing: false, locked: true);
+
+    // The production wiring: CacheHandle over the encrypted Drift cache.
+    Future<(DriftConversationCacheService, CacheHandle, _GatedListApi, VeilMessengerController)> signedInAtlas() async {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      final crypto = createDefaultCryptoAdapter();
+      final drift = DriftConversationCacheService(
+        AppDatabase(NativeDatabase.memory()),
+        envelopeCodec: crypto.envelopeCodec,
+        cipher: LocalDataCipher.forTesting('AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8'),
+      );
+      final handle = CacheHandle(() async => drift);
+      final api = _GatedListApi();
+      final controller = VeilMessengerController(
+        apiClient: api,
+        cryptoEngine: crypto.messaging,
+        keyBundleCodec: crypto.keyBundles,
+        envelopeCodec: crypto.envelopeCodec,
+        sessionBootstrapper: crypto.sessions,
+        realtimeService: _FakeRealtimeService(),
+        cacheService: handle,
+      );
+      addTearDown(controller.dispose);
+      await controller.applySession(atlas);
+      await controller.flushPendingWrites();
+      expect((await drift.readConversations()).map((c) => c.id), ['conv-1']);
+      return (drift, handle, api, controller);
+    }
+
+    test('writes nothing into the cache wiped at sign-out', () async {
+      final (drift, handle, api, controller) = await signedInAtlas();
+
+      api.gate = Completer<void>();
+      final inflight = controller.refreshConversations();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      // What AppSessionController does on sign-out: wipe through the same
+      // handle, then publish the signed-out state.
+      await handle.clearAll();
+      await controller.applySession(signedOut);
+      api.gate!.complete();
+      await inflight;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await controller.flushPendingWrites();
+
+      expect(controller.conversations, isEmpty);
+      expect(await drift.readConversations(), isEmpty, reason: 'the signed-out identity wrote its list into the wiped cache');
+
+      // The next identity finds nothing of the last one.
+      api.gate = Completer<void>();
+      unawaited(controller.applySession(orion));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.conversations, isEmpty);
+      api.gate!.complete();
+    });
+
+    // refactor-mobile-3: the writer stays wiped from sign-out until a new
+    // identity starts it over, so an ack that lands in between writes
+    // nothing.
+    test('a send acked after sign-out writes nothing into the wiped cache', () async {
+      final (drift, handle, api, controller) = await signedInAtlas();
+
+      api.sendGate = Completer<void>();
+      final sending = controller.sendText(conversationId: 'conv-1', body: 'in flight at sign-out');
+      await waitFor(() => api.sentPayloads.isEmpty && controller.pendingCountFor('conv-1') == 1,
+          reason: 'the send did not start');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await handle.clearAll();
+      await controller.applySession(signedOut);
+      api.sendGate!.complete();
+      await sending;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await controller.flushPendingWrites();
+
+      expect(await drift.readMessages('conv-1'), isEmpty, reason: 'the ack reached the wiped cache');
+      expect(await drift.readPendingMessages(), isEmpty);
+      expect(await drift.readConversations(), isEmpty);
+    });
+
+    test('does not land under the identity that signs in next', () async {
+      final (drift, handle, api, controller) = await signedInAtlas();
+
+      api.gate = Completer<void>();
+      final inflight = controller.refreshConversations();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await handle.clearAll();
+      await controller.applySession(signedOut);
+      api.gate = null;
+      api.listFor['token-orion'] = const [];
+      await controller.applySession(orion);
+      // atlas's list arrives only now.
+      api.releaseHeld();
+      await inflight;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await controller.flushPendingWrites();
+
+      expect(controller.conversations, isEmpty, reason: 'atlas\'s list reached orion');
+      expect(await drift.readConversations(), isEmpty);
+    });
+  });
+
   test('sendText drains outbox and replaces optimistic message with server ack',
       () async {
     final api = _FakeVeilApiClient();
@@ -52,10 +189,116 @@ void main() {
     expect(api.sentPayloads, hasLength(1));
   });
 
+  test('a message goes out under a random UUID v4, the same one on every attempt', () async {
+    // The relay keeps the id and shows it to every member: it must carry
+    // no clock, and a retry must reuse it for the relay to recognise it.
+    final api = _FakeVeilApiClient(failSendAttempts: 1);
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: _FakeRealtimeService(),
+      cacheService: _MemoryConversationCache(),
+    );
+    addTearDown(controller.dispose);
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+    final uuidV4 = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+
+    await controller.sendText(conversationId: 'conv-1', body: 'first');
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+    expect(api.sentPayloads, isEmpty, reason: 'the first attempt failed and stays queued');
+    final queuedId = controller.messagesFor('conv-1').single.clientMessageId!;
+    expect(queuedId, matches(uuidV4));
+
+    await controller.retryPendingMessages('conv-1');
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+    expect(api.sentPayloads.single['clientMessageId'], queuedId, reason: 'the retry reused the id');
+
+    await controller.sendText(conversationId: 'conv-1', body: 'second');
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+    final secondId = api.sentPayloads.last['clientMessageId'] as String;
+    expect(secondId, matches(uuidV4));
+    expect(secondId, isNot(queuedId));
+  });
+
+  group('a crash at any point after a send keeps the message and the session it opened', () {
+    VeilMessengerController sender(_FakeVeilApiClient api, _MemoryConversationCache cache) {
+      // Tracks sessions, so the first send to conv-1 bootstraps one.
+      final crypto = StrictMockCryptoAdapter();
+      final controller = VeilMessengerController(
+        apiClient: api,
+        cryptoEngine: crypto.messaging,
+        keyBundleCodec: crypto.keyBundles,
+        envelopeCodec: crypto.envelopeCodec,
+        sessionBootstrapper: crypto.sessions,
+        realtimeService: _FakeRealtimeService(),
+        cacheService: cache,
+      );
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    const session = AppSessionState(
+      accessToken: 'token',
+      userId: 'user-local',
+      deviceId: 'device-local',
+      handle: 'atlas',
+      displayName: 'Atlas',
+      onboardingAccepted: true,
+      locked: false,
+      initializing: false,
+    );
+
+    test('the acked message is in the cache before its outbox record leaves it', () async {
+      final cache = _OutboxRemovalCache();
+      final controller = sender(_FakeVeilApiClient(), cache);
+      await controller.applySession(session);
+
+      await controller.sendText(conversationId: 'conv-1', body: 'hello');
+      await waitFor(() => cache.heldAtRemoval.isNotEmpty, reason: 'the send was acked and its record deleted');
+
+      final held = cache.heldAtRemoval.values.single;
+      expect(held.messages.map((message) => message.id), contains('srv-1'));
+      expect(held.conversation?.sessionState, isNotNull);
+      expect(held.conversation?.recipientBundle.identityPublicKey, isNotEmpty);
+    });
+
+    test('the session a send opened is in the cache as soon as the message is queued', () async {
+      final cache = _MemoryConversationCache();
+      // The relay refuses the send, so no ack writes anything.
+      final controller = sender(_FakeVeilApiClient(failSendAttempts: 1), cache);
+      await controller.applySession(session);
+
+      await controller.sendText(conversationId: 'conv-1', body: 'hello');
+
+      // No time has passed for a debounced write.
+      final cached = (await cache.readConversations()).where((item) => item.id == 'conv-1').singleOrNull;
+      expect(cached?.sessionState?.remoteDeviceId, 'device-selene-primary');
+      expect(cached?.recipientBundle.identityPublicKey, _testKey('pub-selene-primary'));
+      expect(await cache.readPendingMessages(), hasLength(1));
+    });
+  });
+
   test('sendText prefers the active device bundle from the local directory response',
       () async {
     final api = _FakeVeilApiClient();
-    final crypto = createDefaultCryptoAdapter();
+    // Sessions must be tracked for the controller to know one is needed; the
+    // plain mock claims a session exists for every conversation.
+    final crypto = StrictMockCryptoAdapter();
     final controller = VeilMessengerController(
       apiClient: api,
       cryptoEngine: crypto.messaging,
@@ -87,7 +330,7 @@ void main() {
     expect(payload['recipientUserId'], 'user-selene');
     final refreshedConversation = controller.conversations.firstWhere((item) => item.id == 'conv-1');
     expect(refreshedConversation.recipientBundle.deviceId, 'device-selene-primary');
-    expect(refreshedConversation.recipientBundle.identityPublicKey, 'pub-selene-primary');
+    expect(refreshedConversation.recipientBundle.identityPublicKey, _testKey('pub-selene-primary'));
     expect(refreshedConversation.sessionState, isNotNull);
     expect(
       refreshedConversation.sessionState?.sessionEnvelopeVersion,
@@ -392,6 +635,7 @@ void main() {
       () async {
     final api = _FakeVeilApiClient(failUploadAttempts: 1);
     final tempStore = _FakeAttachmentTempFileStore();
+    final attachments = _AttachmentFolders.create();
     final crypto = createDefaultCryptoAdapter();
     final controller = VeilMessengerController(
       apiClient: api,
@@ -402,7 +646,10 @@ void main() {
       realtimeService: _FakeRealtimeService(),
       cacheService: _MemoryConversationCache(),
       attachmentTempFileStore: tempStore,
+      attachmentPaths: attachments.paths,
+      mediaIndex: attachments.index,
     );
+    addTearDown(controller.dispose);
 
     await controller.applySession(
       const AppSessionState(
@@ -417,8 +664,20 @@ void main() {
       ),
     );
 
-    await controller.sendAttachmentPlaceholder('conv-1', filename: 'brief.enc');
-    await Future<void>.delayed(const Duration(milliseconds: 30));
+    final staged = await attachments.stage(pdfBytes('brief'));
+    expect(
+      await controller.sendAttachment(
+        conversationId: 'conv-1',
+        attachment: OutgoingAttachment.file(path: staged.path, name: 'brief.pdf', contentType: 'application/pdf'),
+      ),
+      isTrue,
+    );
+    final clientMessageId = controller.messagesFor('conv-1').single.clientMessageId!;
+    // The file is sealed before it is queued; a retry issued while the
+    // first upload is still running would be a no-op.
+    await waitFor(() =>
+        controller.attachmentTransferForMessage(clientMessageId)?.phase ==
+        AttachmentTransferPhase.failed);
 
     expect(controller.pendingCountFor('conv-1'), 1);
     expect(
@@ -432,8 +691,92 @@ void main() {
     expect(controller.pendingCountFor('conv-1'), 0);
     expect(controller.messagesFor('conv-1').single.deliveryState,
         MessageDeliveryState.sent);
-    expect(api.completedUploads, contains('attachment-2'));
-    expect(tempStore.deletedPaths, isNotEmpty);
+    // The retry re-tickets the id the file was sealed under: marked failed
+    // after the first attempt, uploaded after the second.
+    final sealedId = api.ticketedAttachmentIds.first;
+    expect(api.ticketedAttachmentIds, [sealedId, sealedId]);
+    expect(api.completedUploads, [sealedId, sealedId]);
+    expect(api.uploadStatuses, ['failed', 'uploaded']);
+    // The plaintext was deleted once sealed; the sealed blob stays.
+    expect(staged.existsSync(), isFalse);
+    expect(await attachments.blobCount(), 1);
+  });
+
+  test('a draft an older build sealed under an empty attachment id fails for good',
+      () async {
+    final api = _FakeVeilApiClient();
+    final cache = _MemoryConversationCache(
+      pendingMessages: [
+        PendingMessageRecord(
+          clientMessageId: 'client-legacy-file',
+          conversationId: 'conv-1',
+          senderDeviceId: 'device-local',
+          recipientUserId: 'user-selene',
+          envelope: api.makeEnvelope(
+            conversationId: 'conv-1',
+            senderDeviceId: 'device-local',
+            recipientUserId: 'user-selene',
+            ciphertext: 'opaque-placeholder',
+            nonce: 'nonce-placeholder',
+          ),
+          createdAt: DateTime.utc(2026, 3, 30, 12),
+          state: MessageDeliveryState.uploading,
+          attachmentUploadDraft: AttachmentUploadDraft(
+            filename: 'brief.pdf',
+            contentType: 'application/pdf',
+            sizeBytes: 2064,
+            sha256: 'cipher-hash',
+            tempFilePath: '${Directory.systemTemp.path}/veil-test-legacy-sealed.blob',
+            sealedReference: const AttachmentReference(
+              attachmentId: '',
+              storageKey: '',
+              contentType: 'application/pdf',
+              sizeBytes: 2048,
+              sha256: 'cipher-hash',
+              encryptedKey: 'content-key',
+              nonce: 'content-nonce',
+              algorithmHint: 'aes256gcm-v2',
+            ),
+          ),
+        ),
+      ],
+    );
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: _FakeRealtimeService(),
+      cacheService: cache,
+      attachmentTempFileStore: _FakeAttachmentTempFileStore(),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+    await controller.retryPendingMessages('conv-1');
+    await waitFor(() async =>
+        (await cache.readPendingMessages()).single.state == MessageDeliveryState.failed);
+
+    final pending = (await cache.readPendingMessages()).single;
+    expect(pending.nextRetryAt, isNull);
+    // Reported by its code; the chat words it from the ARB file.
+    expect(pending.errorMessage, UserFacingErrorCode.attachmentRejected.sentence);
+    // Its blob would never open for the recipient, so it is never uploaded.
+    expect(api.ticketedAttachmentIds, isEmpty);
+    expect(api.sentPayloads, isEmpty);
   });
 
   test(
@@ -775,6 +1118,14 @@ void main() {
     );
 
     expect(controller.conversations.first.id, 'conv-1');
+    // The first list fetches the history of what it names and this device
+    // never loaded (for the previews), newest first; that is over before
+    // the event.
+    for (var i = 0; i < 200 && api.messageFetches.length < 2; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(api.messageFetches.map((query) => query.conversationId), ['conv-1', 'conv-2']);
     api.messageFetches.clear();
 
     realtime.emit(
@@ -847,47 +1198,13 @@ void main() {
     expect(controller.messagesFor('conv-1').map((message) => message.id).toList(), ['srv-dedupe-1']);
   });
 
-  test('attachment download resolution exposes a transient resolving state',
-      () async {
-    final api = _FakeVeilApiClient(
-        downloadTicketDelay: const Duration(milliseconds: 50));
-    final crypto = createDefaultCryptoAdapter();
-    final controller = VeilMessengerController(
-      apiClient: api,
-      cryptoEngine: crypto.messaging,
-      keyBundleCodec: crypto.keyBundles,
-      envelopeCodec: crypto.envelopeCodec,
-      sessionBootstrapper: crypto.sessions,
-      realtimeService: _FakeRealtimeService(),
-      cacheService: _MemoryConversationCache(),
-    );
-
-    await controller.applySession(
-      const AppSessionState(
-        accessToken: 'token',
-        userId: 'user-local',
-        deviceId: 'device-local',
-        handle: 'atlas',
-        displayName: 'Atlas',
-        onboardingAccepted: true,
-        locked: false,
-        initializing: false,
-      ),
-    );
-
-    final future = controller.getAttachmentDownloadUrl('attachment-77');
-    expect(controller.isResolvingAttachment('attachment-77'), isTrue);
-
-    final ticketUrl = await future;
-    expect(ticketUrl, 'https://signed-download.invalid/attachment-77');
-    expect(controller.isResolvingAttachment('attachment-77'), isFalse);
-  });
-
-  test('canceling an attachment upload preserves the draft for retry',
+  test('canceling an attachment upload removes the message, its draft and its blob',
       () async {
     final api =
         _FakeVeilApiClient(uploadDelay: const Duration(milliseconds: 80));
     final tempStore = _FakeAttachmentTempFileStore();
+    final attachments = _AttachmentFolders.create();
+    final cache = _MemoryConversationCache();
     final crypto = createDefaultCryptoAdapter();
     final controller = VeilMessengerController(
       apiClient: api,
@@ -896,9 +1213,12 @@ void main() {
       envelopeCodec: crypto.envelopeCodec,
       sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
-      cacheService: _MemoryConversationCache(),
+      cacheService: cache,
       attachmentTempFileStore: tempStore,
+      attachmentPaths: attachments.paths,
+      mediaIndex: attachments.index,
     );
+    addTearDown(controller.dispose);
 
     await controller.applySession(
       const AppSessionState(
@@ -913,20 +1233,32 @@ void main() {
       ),
     );
 
-    await controller.sendAttachmentPlaceholder('conv-1', filename: 'brief.enc');
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-
+    final staged = await attachments.stage(pdfBytes('brief'));
+    await controller.sendAttachment(
+      conversationId: 'conv-1',
+      attachment: OutgoingAttachment.file(path: staged.path, name: 'brief.pdf', contentType: 'application/pdf'),
+    );
     final clientMessageId =
         controller.messagesFor('conv-1').single.clientMessageId!;
-    await controller.cancelPendingAttachment(clientMessageId);
-    await Future<void>.delayed(const Duration(milliseconds: 40));
+    await waitFor(() =>
+        controller.attachmentTransferForMessage(clientMessageId)?.phase ==
+        AttachmentTransferPhase.uploading);
+    expect(await attachments.blobCount(), 1);
 
-    expect(controller.pendingCountFor('conv-1'), 1);
-    expect(controller.messagesFor('conv-1').single.deliveryState,
-        MessageDeliveryState.failed);
-    expect(controller.attachmentTransferForMessage(clientMessageId)?.phase,
-        AttachmentTransferPhase.canceled);
-    expect(tempStore.deletedPaths, isEmpty);
+    await controller.cancelPendingAttachment(clientMessageId);
+    await controller.retryPendingMessages('conv-1');
+    await controller.flushPendingWrites();
+
+    // Nothing of it was sent, so nothing of it is left: no bubble, no
+    // queued record (none for a restart to bring back), no transfer, no
+    // blob, and the relay was told the upload failed.
+    expect(controller.messagesFor('conv-1'), isEmpty);
+    expect(controller.pendingCountFor('conv-1'), 0);
+    expect(await cache.readPendingMessages(), isEmpty);
+    expect(controller.attachmentTransferForMessage(clientMessageId), isNull);
+    expect(await attachments.blobCount(), 0);
+    expect(api.uploadStatuses, ['failed']);
+    expect(api.sentPayloads, isEmpty);
   });
 
   test('archive search returns filtered local results from cached history',
@@ -1109,20 +1441,25 @@ void main() {
   });
 }
 
+/// Identity keys are compared as base64url bytes, so test labels are
+/// encoded into such a key.
+String _testKey(String label) => base64UrlNoPadEncode(utf8.encode(label));
+
 class _FakeVeilApiClient extends VeilApiClient {
   _FakeVeilApiClient({
     Map<_PagedQuery, Map<String, dynamic>>? pagedMessages,
     List<Map<String, dynamic>>? conversations,
     this.failSendAttempts = 0,
     this.failUploadAttempts = 0,
-    this.downloadTicketDelay = Duration.zero,
     this.uploadDelay = Duration.zero,
   })  : _pagedMessages = pagedMessages ?? {},
         _conversationsResponse = conversations,
         super(baseUrl: 'http://localhost:3000/v1');
 
   final List<Map<String, dynamic>> sentPayloads = [];
+  final List<String> ticketedAttachmentIds = [];
   final List<String> completedUploads = [];
+  final List<String> uploadStatuses = [];
   final List<_PagedQuery> messageFetches = [];
   int conversationFetchCount = 0;
   final Map<_PagedQuery, Map<String, dynamic>> _pagedMessages;
@@ -1132,7 +1469,6 @@ class _FakeVeilApiClient extends VeilApiClient {
   int failSendAttempts;
   int failUploadAttempts;
   int failDownloadAttempts = 0;
-  final Duration downloadTicketDelay;
   final Duration uploadDelay;
   int _serverCounter = 0;
 
@@ -1209,35 +1545,24 @@ class _FakeVeilApiClient extends VeilApiClient {
     return {'items': items, 'nextCursor': null};
   }
 
+  // GET /keys/:handle: the active device first, a second trusted one after.
   @override
-  Future<Map<String, dynamic>> getKeyBundle(String handle) async {
+  Future<Map<String, dynamic>> getJson(
+    String path, {
+    required String? accessToken,
+    Map<String, String>? query,
+  }) async {
+    final handle = path.substring('/keys/'.length);
+    Map<String, dynamic> device(String role, {required bool isActive}) => {
+          'deviceId': 'device-$handle-$role',
+          'identityPublicKey': _testKey('pub-$handle-$role'),
+          'signedPrekeyBundle': 'prekey-$handle-$role',
+          'isActive': isActive,
+          'oneTimePrekey': null,
+        };
     return {
-      'user': {
-        'activeDeviceId': 'device-$handle-primary',
-      },
-      'bundle': {
-        'userId': 'user-$handle',
-        'deviceId': 'device-$handle',
-        'handle': handle,
-        'identityPublicKey': 'pub-$handle',
-        'signedPrekeyBundle': 'prekey-$handle',
-      },
-      'deviceBundles': [
-        {
-          'userId': 'user-$handle',
-          'deviceId': 'device-$handle-primary',
-          'handle': handle,
-          'identityPublicKey': 'pub-$handle-primary',
-          'signedPrekeyBundle': 'prekey-$handle-primary',
-        },
-        {
-          'userId': 'user-$handle',
-          'deviceId': 'device-$handle-secondary',
-          'handle': handle,
-          'identityPublicKey': 'pub-$handle-secondary',
-          'signedPrekeyBundle': 'prekey-$handle-secondary',
-        },
-      ],
+      'user': {'id': 'user-$handle', 'handle': handle, 'activeDeviceId': 'device-$handle-primary'},
+      'devices': [device('primary', isActive: true), device('secondary', isActive: false)],
     };
   }
 
@@ -1302,7 +1627,9 @@ class _FakeVeilApiClient extends VeilApiClient {
     String accessToken,
     Map<String, dynamic> body,
   ) async {
-    final ticketId = 'attachment-${completedUploads.length + 1}';
+    // The app proposes the id its blob is sealed under; the relay keeps it.
+    final ticketId = body['attachmentId'] as String;
+    ticketedAttachmentIds.add(ticketId);
     return {
       'attachmentId': ticketId,
       'upload': {
@@ -1359,6 +1686,7 @@ class _FakeVeilApiClient extends VeilApiClient {
     Map<String, dynamic> body,
   ) async {
     completedUploads.add(body['attachmentId'] as String);
+    uploadStatuses.add(body['uploadStatus'] as String);
     return {
       'attachmentId': body['attachmentId'],
       'uploadStatus': body['uploadStatus'],
@@ -1370,9 +1698,6 @@ class _FakeVeilApiClient extends VeilApiClient {
     String accessToken,
     String attachmentId,
   ) async {
-    if (downloadTicketDelay > Duration.zero) {
-      await Future<void>.delayed(downloadTicketDelay);
-    }
     if (failDownloadAttempts > 0) {
       failDownloadAttempts -= 1;
       throw VeilApiException(
@@ -1387,6 +1712,42 @@ class _FakeVeilApiClient extends VeilApiClient {
         'downloadUrl': 'https://signed-download.invalid/$attachmentId',
       },
     };
+  }
+}
+
+/// Holds getConversations while [gate] is set, and answers per token from
+/// [listFor] when it has an entry.
+class _GatedListApi extends _FakeVeilApiClient {
+  Completer<void>? gate;
+  // While set, sends wait for it before the relay answers.
+  Completer<void>? sendGate;
+
+  @override
+  Future<Map<String, dynamic>> sendMessage(String accessToken, Map<String, dynamic> body) async {
+    await sendGate?.future;
+    return super.sendMessage(accessToken, body);
+  }
+  final Map<String, List<Map<String, dynamic>>> listFor = {};
+  final List<Completer<void>> _held = [];
+
+  void releaseHeld() {
+    for (final held in _held) {
+      held.complete();
+    }
+    _held.clear();
+  }
+
+  @override
+  Future<Map<String, dynamic>> getConversations(String accessToken) async {
+    final pending = gate;
+    if (pending != null) {
+      final held = Completer<void>();
+      _held.add(held);
+      await Future.any([pending.future, held.future]);
+    }
+    final own = listFor[accessToken];
+    if (own != null) return {'items': own, 'nextCursor': null};
+    return super.getConversations(accessToken);
   }
 }
 
@@ -1473,6 +1834,24 @@ class _FakeAttachmentTempFileStore implements AttachmentTempFileStore {
   }
 }
 
+/// Records, for each outbox record it deletes, what it held at that
+/// moment: what a process killed right after the delete starts from.
+class _OutboxRemovalCache extends _MemoryConversationCache {
+  final Map<String, ({ConversationPreview? conversation, List<ChatMessage> messages})> heldAtRemoval = {};
+
+  @override
+  Future<void> removePendingMessage(String clientMessageId) async {
+    final conversationId = _pendingMessages[clientMessageId]?.conversationId;
+    if (conversationId != null) {
+      heldAtRemoval[clientMessageId] = (
+        conversation: _conversations[conversationId],
+        messages: List<ChatMessage>.of(_messages[conversationId] ?? const []),
+      );
+    }
+    await super.removePendingMessage(clientMessageId);
+  }
+}
+
 class _MemoryConversationCache implements ConversationCacheService {
   _MemoryConversationCache({
     List<ConversationPreview>? conversations,
@@ -1500,7 +1879,7 @@ class _MemoryConversationCache implements ConversationCacheService {
   final Map<String, Map<String, String>> _searchIndex = {};
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<void> clearAll() async {
@@ -1693,5 +2072,36 @@ class _PagedQuery {
   int get hashCode => Object.hash(conversationId, cursor);
 }
 
+/// A device's attachment folders under a temporary folder of the test's,
+/// and its media index, so sealing and the media store run for real.
+class _AttachmentFolders {
+  _AttachmentFolders._(this.root)
+      : paths = AttachmentStoragePaths(
+          temporaryRoot: () async => Directory('${root.path}/tmp')..createSync(recursive: true),
+          supportRoot: () async => Directory('${root.path}/support')..createSync(recursive: true),
+          systemTempRoot: () => Directory('${root.path}/system-tmp')..createSync(recursive: true),
+          sweepSystemTemp: true,
+        );
 
+  factory _AttachmentFolders.create() {
+    final folders = _AttachmentFolders._(Directory.systemTemp.createTempSync('veil-controller-attachments-'));
+    addTearDown(() {
+      if (folders.root.existsSync()) folders.root.deleteSync(recursive: true);
+    });
+    return folders;
+  }
 
+  final Directory root;
+  final AttachmentStoragePaths paths;
+  final MediaIndex index = MemoryMediaIndex();
+
+  /// [bytes] as the attach flow leaves a pick: a file in staging.
+  Future<File> stage(List<int> bytes) async {
+    final staging = await paths.stagingDir();
+    return File('${staging.path}/staged-${DateTime.now().microsecondsSinceEpoch}')..writeAsBytesSync(bytes);
+  }
+
+  /// How many sealed blobs the media folder holds.
+  Future<int> blobCount() async =>
+      (await paths.mediaDir()).listSync().whereType<File>().where((file) => !file.path.endsWith('.part')).length;
+}

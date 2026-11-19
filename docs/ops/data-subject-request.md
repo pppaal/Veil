@@ -102,11 +102,20 @@ docker exec veil-postgres-1 psql -U veil -d veil -c "
   UPDATE devices SET is_active=false WHERE user_id='$USER_ID';
 "
 
-# 그 후 API 가 동작 중이라면 동일 사용자 토큰으로:
-# DELETE /v1/account
-# 가 자동으로 Phase 2 + Phase 3 을 실행.
-# 토큰이 없는 강제 삭제 시는 별도 admin 스크립트 또는 위 SQL 절차를
-# 모방하는 manual cascade 가 필요. (Phase L 의 chunked-delete 코드 참고)
+# 그 후의 Phase 2 + Phase 3 은 서버가 직접 끝냅니다. users.status='revoked' 는
+# 진행 중인 삭제를 뜻하고, API 의 AccountDeletionResumer 가 15분마다
+# 마지막 시도가 1시간 넘게 지난 'revoked' 계정에 대해
+# AccountService.deleteAccount 를 다시 실행합니다 (모든 단계가 멱등). 즉
+# 위 Phase 1 뒤 약 1시간 안에 블롭·메시지·통화 기록·연락처·멤버십·Redis 의
+# 세션 키가 지워지고, 핸들이 격리되고, users/devices 행이 삭제됩니다.
+# DELETE /v1/account 를 다시 부를 수는 없습니다: Phase 1 이 기기를 해제했으므로
+# 그 사용자의 토큰은 더 이상 인증되지 않습니다.
+# 완료 확인:
+#   SELECT count(*) FROM users WHERE id='$USER_ID';   -- 0 이어야 함
+# 1시간 넘게 남아 있으면 API 로그의 account.delete.resume_failed /
+# account.delete.step_failed (단계·오류 종류만, id 없음) 를 보고 원인을
+# 고친 뒤 다음 주기를 기다리세요.
+# 중간에 멈춘 사용자 본인의 삭제도 같은 방식으로 서버가 이어서 끝냅니다.
 ```
 
 삭제 완료 후:

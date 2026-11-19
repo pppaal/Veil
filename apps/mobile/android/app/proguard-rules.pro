@@ -15,6 +15,11 @@
 -keep class androidx.security.crypto.** { *; }
 -keep class com.google.crypto.tink.** { *; }
 
+# libsignal: the Rust core calls back into these classes by name over JNI.
+-keep class org.signal.libsignal.** { *; }
+-keepclassmembers class org.signal.libsignal.** { *; }
+-keep class io.veil.mobile.crypto.** { *; }
+
 # Kotlin coroutines — prevent obfuscation breaking lambda metadata.
 -keepclassmembernames class kotlinx.** { volatile <fields>; }
 

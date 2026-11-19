@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 import { ContactsService } from './contacts.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
-import { FakeRealtimeGateway } from '../../../test/support/fake-services';
 import { AddContactDto } from './dto/add-contact.dto';
 
 type Seed = {
@@ -12,38 +11,21 @@ type Seed = {
 
 function makeService(): Seed {
   const prisma = new FakePrismaService();
-  const gateway = new FakeRealtimeGateway();
-  const service = new ContactsService(prisma as never, gateway as never);
+  const service = new ContactsService(prisma as never);
   return { prisma, service };
 }
 
-function seedUser(prisma: FakePrismaService, handle: string, displayName?: string): string {
+function seedUser(prisma: FakePrismaService, handle: string): string {
   const userId = randomUUID();
   prisma.users.push({
     id: userId,
     handle,
-    displayName: displayName ?? handle,
-    avatarPath: null,
     status: 'active',
     activeDeviceId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
   return userId;
-}
-
-function seedProfile(prisma: FakePrismaService, userId: string, avatarPath: string): void {
-  prisma.userProfiles.push({
-    id: randomUUID(),
-    userId,
-    bio: null,
-    statusMessage: null,
-    statusEmoji: null,
-    lastStatusAt: null,
-    avatarPath,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
 }
 
 function buildAddDto(handle: string, nickname?: string): AddContactDto {
@@ -60,11 +42,21 @@ describe('ContactsService', () => {
       const alice = seedUser(prisma, 'alice');
       seedUser(prisma, 'bob');
 
-      const result = await service.addContact({ userId: alice }, buildAddDto('bob', 'Bobby'));
+      const result = await service.addContact({ userId: alice }, buildAddDto('bob'));
 
-      expect(result.handle).toBe('bob');
-      expect(result.nickname).toBe('Bobby');
+      expect(result).toEqual({ handle: 'bob', addedAt: expect.any(String) });
       expect(prisma.userContacts).toHaveLength(1);
+    });
+
+    it('accepts a nickname from older clients but never stores or returns it', async () => {
+      const { service, prisma } = makeService();
+      const alice = seedUser(prisma, 'alice');
+      seedUser(prisma, 'bob');
+
+      const result = await service.addContact({ userId: alice }, buildAddDto('bob', 'Mom'));
+
+      expect(result).not.toHaveProperty('nickname');
+      expect(JSON.stringify(prisma.userContacts)).not.toContain('Mom');
     });
 
     it('rejects when the handle does not exist', async () => {
@@ -93,7 +85,6 @@ describe('ContactsService', () => {
         id: randomUUID(),
         userId: alice,
         contactUserId: bob,
-        nickname: null,
         createdAt: new Date(),
       });
 
@@ -104,28 +95,21 @@ describe('ContactsService', () => {
   });
 
   describe('listContacts', () => {
-    it('returns contacts with profile avatar path hydrated', async () => {
+    it('returns each contact as a handle and when it was added', async () => {
       const { service, prisma } = makeService();
       const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob', 'Bob Smith');
-      seedProfile(prisma, bob, 'profiles/bob.jpg');
+      const bob = seedUser(prisma, 'bob');
+      const addedAt = new Date('2026-05-01T10:00:00.000Z');
       prisma.userContacts.push({
         id: randomUUID(),
         userId: alice,
         contactUserId: bob,
-        nickname: 'B',
-        createdAt: new Date(),
+        createdAt: addedAt,
       });
 
       const result = await service.listContacts({ userId: alice });
 
-      expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({
-        handle: 'bob',
-        displayName: 'Bob Smith',
-        nickname: 'B',
-        avatarPath: 'profiles/bob.jpg',
-      });
+      expect(result).toEqual([{ handle: 'bob', addedAt: addedAt.toISOString() }]);
     });
 
     it('returns an empty list when the user has no contacts', async () => {
@@ -147,7 +131,6 @@ describe('ContactsService', () => {
         id: randomUUID(),
         userId: alice,
         contactUserId: bob,
-        nickname: null,
         createdAt: new Date(),
       });
 

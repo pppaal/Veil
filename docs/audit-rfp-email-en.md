@@ -29,32 +29,49 @@ review.
 - Backend: NestJS + Prisma + Postgres + Redis + MinIO. Server is
   ciphertext-only; policy-check enforces no plaintext in push, no admin
   message viewer, no recovery flow.
-- Mobile (Flutter): full Signal-style double ratchet implemented in
-  `apps/mobile/lib/src/core/crypto/lib_crypto_adapter.dart`
-  (X25519 + HKDF-SHA256 + AES-256-GCM). Session state persisted in
-  encrypted secure storage.
-- Web demo: simpler per-message ECDH (no DH ratchet yet) — Phase W
-  spec exists, implementation deferred to post-audit.
-- Group chats: shared conversation key today; Sender Keys design in
-  `docs/group-sender-keys-design.md`, not implemented.
-- Sealed Sender: design in `docs/sealed-sender-design.md`, not
-  implemented.
+- Protocol v2 (`docs/crypto-envelope-spec.md`, normative): X3DH with
+  signed and one-time prekeys that authenticates both parties, then a
+  Double Ratchet with AES-256-GCM (X25519, Ed25519, HKDF-SHA256).
+  Implemented on both clients and pinned byte for byte by
+  `packages/shared/test-vectors/crypto-kat.json`, which an independent
+  node:crypto implementation (`scripts/crypto-test-vectors.mjs`) and both
+  clients reproduce.
+- Mobile (Flutter): `apps/mobile/lib/src/core/crypto/` (`x3dh/`,
+  `ratchet/`, `payload/`, `attachment/`), with session state in OS secure
+  storage. A trust-on-first-use layer decides which identity keys a
+  conversation may use (`apps/mobile/lib/src/features/conversations/data/messenger/`).
+- Web client: the second protocol-v2 implementation, on WebCrypto with
+  non-extractable keys (`apps/web-demo/src/crypto/`, its trust pins and
+  storage).
+- Group chats: new mobile groups use Sender Keys
+  (`docs/group-sender-keys-design.md`, implemented on mobile, pre-audit);
+  groups created by older clients keep a shared conversation key.
+- Sealed Sender: design in `docs/sealed-sender-design.md` is under
+  revision and not implemented.
+- `docs/envelope-v3-unified-spec.md` is superseded and was never
+  implemented; it is history only.
 - Authentication: Ed25519 challenge/verify with JTI blacklist + WS
-  force-disconnect on logout.
+  force-disconnect on logout; account deletion, revoking the calling or
+  last device, and approving a device transfer also need a signature by
+  the device's key.
 
 ## Review scope (priority order)
 
-1. Mobile double-ratchet implementation (Dart)
-2. Existing forward-secrecy spec (`docs/forward-secrecy-ratchet-design.md`)
-3. Envelope v3 unified spec (`docs/envelope-v3-unified-spec.md`) —
-   not yet implemented; review the spec for soundness so we don't
-   ship known-bad
-4. Group Sender Keys spec (`docs/group-sender-keys-design.md`) —
+1. Protocol v2 on mobile (Dart) and web (WebCrypto) against
+   `docs/crypto-envelope-spec.md`, including web/mobile byte parity
+2. The identity-trust layer on both clients (pins, identity-change
+   handling, safety numbers)
+3. Sender Keys on mobile (`docs/group-sender-keys-design.md`)
+4. The key directory and prekeys API (`apps/api/src/modules/prekeys`)
+   and the group key-distribution relay (`apps/api/src/modules/groups`)
+5. Backend auth, step-up proofs and device transfer
+   (`apps/api/src/modules/auth`, `apps/api/src/modules/device-transfer`)
+6. Backend message routing (`apps/api/src/modules/messages`)
+7. The sealed-sender spec revision (`docs/sealed-sender-design.md`) —
    spec only
-5. Sealed Sender spec (`docs/sealed-sender-design.md`) — spec only
-6. Backend auth + device transfer (`apps/api/src/modules/auth`,
-   `apps/api/src/modules/device-transfer`)
-7. Backend message routing (`apps/api/src/modules/messages`)
+
+The full list of documents and code paths is generated from
+`scripts/audit-scope.mjs` into the handoff bundle.
 
 We're explicitly **not** asking you to review:
 - iOS/Android packaging (separate)
@@ -83,17 +100,18 @@ We're explicitly **not** asking you to review:
 
 We're a single-developer beta, not a funded startup. If your typical
 engagement floor is over our budget, we'd love to hear about a
-narrower-scope option (e.g. mobile ratchet only, or spec review only).
+narrower-scope option (e.g. protocol v2 on one client only).
 We've also applied for OTF funding which may cover some or all of the
 cost — happy to coordinate if you've worked with OTF before.
 
 ## Attachments
 
 - `external-security-review-packet.md` — full packet manifest
-- `forward-secrecy-ratchet-design.md` — current spec
-- `envelope-v3-unified-spec.md` — next spec
-- `group-sender-keys-design.md` — group spec
-- `sealed-sender-design.md` — sealed spec
+- `crypto-envelope-spec.md` — protocol v2, normative
+- `crypto-surfaces.md` — where each cryptographic operation happens
+- `group-sender-keys-design.md` — Sender Keys, implemented on mobile
+- `sealed-sender-design.md` — sealed sender, under revision
+- the handoff bundle from `pnpm audit:handoff`, which carries the rest
 - Repo URL with audit-pinned commit SHA: [TODO commit SHA]
 - Pinned tag: [TODO tag]
 

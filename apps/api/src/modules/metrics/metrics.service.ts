@@ -1,6 +1,8 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
 
+import { routeTemplate, type RoutedRequest } from '../../common/logger/request-redactor';
+
 // Centralized Prometheus registry. Counters that touch user identity
 // (handle, deviceId, conversationId) are intentionally NOT included —
 // even bucketed labels can leak metadata over time. Only operational
@@ -68,21 +70,10 @@ export class MetricsService implements OnModuleInit {
     collectDefaultMetrics({ register: this.registry, prefix: 'veil_' });
   }
 
-  // Coarse route classification keeps the cardinality bounded — a label
-  // per UUID-shaped path segment would explode the index. Mirrors the
-  // logging-interceptor redaction rules.
-  classifyRoute(url: string): string {
-    const path = url.split('?', 1)[0];
-    return path
-      .split('/')
-      .map((seg, i) => {
-        if (i === 0) return seg;
-        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg))
-          return ':id';
-        if (i === 2 && path.split('/')[1] === 'users') return ':handle';
-        return seg;
-      })
-      .join('/');
+  // The matched route template ('/v1/users/:handle') bounds label
+  // cardinality by the number of routes, whatever the concrete path holds.
+  classifyRoute(request: RoutedRequest): string {
+    return routeTemplate(request);
   }
 
   classifyStatus(status: number): string {

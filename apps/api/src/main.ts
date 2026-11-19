@@ -1,6 +1,3 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -9,8 +6,11 @@ import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { AppConfigService } from './common/config/app-config.service';
+import { corsOptions } from './common/config/cors-options';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { AppLoggerService } from './common/logger/app-logger.service';
+import { ActorRefGenerator } from './common/logger/request-redactor';
+import { mountWebAssets } from './web-assets';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -26,18 +26,6 @@ async function bootstrap(): Promise<void> {
   app.useBodyParser('json', { limit: '512kb' });
   const config = app.get(AppConfigService);
   config.assertProductionReady();
-  const corsOrigin = (
-    origin: string | undefined,
-    callback: (error: Error | null, allow?: boolean) => void,
-  ): void => {
-    if (config.isOriginAllowed(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    callback(new Error('CORS origin rejected'));
-  };
-
   app.use(
     helmet({
       contentSecurityPolicy: config.isProduction
@@ -54,26 +42,16 @@ async function bootstrap(): Promise<void> {
         : false,
     }),
   );
-  app.enableCors({
-    origin: corsOrigin,
-    credentials: false,
-  });
-  if (config.trustProxy) {
-    app.set('trust proxy', 1);
+  app.enableCors(corsOptions(config));
+  // Only the X-Forwarded-For source needs Express to walk the proxy chain,
+  // and then by exactly the configured number of hops; trusting it otherwise
+  // would let any client pick its own req.ip.
+  if (config.clientIpSource === 'x-forwarded-for') {
+    app.set('trust proxy', config.trustedProxyHops);
   }
   app.enableShutdownHooks();
 
-  if (!config.isProduction) {
-    const candidates = [
-      join(process.cwd(), 'apps', 'web-demo'),
-      join(process.cwd(), '..', 'web-demo'),
-      join(__dirname, '..', '..', 'web-demo'),
-    ];
-    const webDemoRoot = candidates.find((path) => existsSync(path));
-    if (webDemoRoot) {
-      app.useStaticAssets(webDemoRoot, { prefix: '/demo' });
-    }
-  }
+  mountWebAssets(app, config);
 
   app.setGlobalPrefix('v1');
   app.useGlobalPipes(
@@ -83,7 +61,9 @@ async function bootstrap(): Promise<void> {
       forbidNonWhitelisted: true,
     }),
   );
-  app.useGlobalFilters(new ApiExceptionFilter(app.get(AppLoggerService)));
+  app.useGlobalFilters(
+    new ApiExceptionFilter(app.get(AppLoggerService), app.get(ActorRefGenerator)),
+  );
 
   if (config.swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()

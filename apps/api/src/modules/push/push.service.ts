@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { AppLoggerService } from '../../common/logger/app-logger.service';
+import { describeFailure } from '../../common/logger/describe-failure';
 import { MetricsService } from '../metrics/metrics.service';
 import type { MessagePushHint, PushProvider } from './push.types';
 
@@ -34,12 +35,14 @@ export class PushService {
     } catch (error) {
       // Push delivery must never block the message relay path — still swallow.
       // But it must be observable: count it and log a redacted line (the
-      // logger redacts pushToken) so silent push outages are diagnosable.
+      // logger redacts pushToken) so silent push outages are diagnosable. The
+      // error is logged as its class and code, never its message, which can
+      // carry the provider's response body or the endpoint it was sent to.
       this.metrics.pushDeliveryTotal.inc({ provider: this.provider.kind, result: 'failure' });
       this.logger.warn('push.delivery_failed', {
         provider: this.provider.kind,
         pushToken,
-        error: error instanceof Error ? error.message : String(error),
+        error: describeFailure(error),
       });
     }
   }

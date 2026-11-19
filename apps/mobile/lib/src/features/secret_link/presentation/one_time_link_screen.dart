@@ -1,30 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../chat/presentation/message_time.dart';
+import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 import '../data/one_time_link_service.dart';
 
 /// Compose a one-time secret link: type a secret, encrypt on-device, store
-/// only the ciphertext, and share the resulting burn-after-read link.
+/// only the ciphertext, and share the resulting burn-after-read link. The
+/// form, with the one rule of such a link under it, then the button; the
+/// link that was made follows.
 class OneTimeLinkScreen extends StatefulWidget {
-  const OneTimeLinkScreen({super.key, OneTimeLinkService? service})
-      : _service = service;
+  const OneTimeLinkScreen({super.key, OneTimeLinkService? service, DateTime Function() clock = DateTime.now})
+      : _service = service,
+        _clock = clock;
 
   final OneTimeLinkService? _service;
+
+  // The phone's clock, against which the link's expiry says "today" or
+  // "tomorrow".
+  final DateTime Function() _clock;
 
   @override
   State<OneTimeLinkScreen> createState() => _OneTimeLinkScreenState();
 }
 
 class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
-  late final OneTimeLinkService _service =
-      widget._service ?? OneTimeLinkService();
+  late final OneTimeLinkService _service = widget._service ?? OneTimeLinkService();
   final _secret = TextEditingController();
   final _pass = TextEditingController();
+  final _resultKey = GlobalKey();
   bool _usePass = false;
   bool _busy = false;
-  String? _link;
-  String? _error;
+  CreatedOneTimeLink? _link;
+  bool _failed = false;
 
   @override
   void dispose() {
@@ -33,24 +44,39 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
     super.dispose();
   }
 
+  // A passphrase that was asked for must be given: an empty one would put
+  // the key back into the link without saying so.
+  bool get _ready => _secret.text.trim().isNotEmpty && (!_usePass || _pass.text.isNotEmpty);
+
+  // The link on screen is the one the form, as it stands, made. Once the
+  // secret, the passphrase or the switch changes, the link would be shown
+  // beside words it does not carry and a lock it may not have, so it goes.
+  void _edited() => setState(() => _link = null);
+
   Future<void> _generate() async {
     final secret = _secret.text.trim();
-    if (secret.isEmpty) return;
+    if (!_ready || _busy) return;
+    final passphrase = _usePass ? _pass.text : null;
     setState(() {
       _busy = true;
-      _error = null;
+      _failed = false;
       _link = null;
     });
     try {
-      final link = await _service.createLink(
-        secret,
-        passphrase: _usePass ? _pass.text : null,
-      );
-      if (mounted) setState(() => _link = link);
+      final link = await _service.create(secret, passphrase: passphrase);
+      if (!mounted) return;
+      // Sealing takes a moment, and the fields stay open meanwhile: a link
+      // for what the form no longer says is not shown.
+      if (_secret.text.trim() != secret || (_usePass ? _pass.text : null) != passphrase) return;
+      setState(() => _link = link);
+      // The link appears under the button, which a small phone or an open
+      // keyboard may have at the bottom edge.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final result = _resultKey.currentContext;
+        if (result != null) Scrollable.ensureVisible(result, duration: VeilMotion.normal, alignment: 0.1);
+      });
     } catch (_) {
-      if (mounted) {
-        setState(() => _error = '링크 생성에 실패했습니다. 잠시 후 다시 시도하세요.');
-      }
+      if (mounted) setState(() => _failed = true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -58,97 +84,127 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('일회성 비밀 링크')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
+    final l10n = AppLocalizations.of(context);
+    final link = _link;
+    return VeilShell(
+      title: l10n.oneTimeLinkTitle,
+      grouped: true,
+      maxWidth: 560,
+      child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.only(bottom: VeilSpace.xxl),
         children: [
-          Text(
-            '한 번 읽히면 사라지는 메시지를 만듭니다. 받는 사람은 앱이 없어도 됩니다. '
-            '복호화 키는 링크에만 담겨 서버로 전송되지 않습니다.',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _secret,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: '비밀 내용',
-              hintText: '비밀번호, 계좌, 민감한 메모…',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            value: _usePass,
-            onChanged: _busy ? null : (v) => setState(() => _usePass = v ?? false),
-            title: const Text('암호문구 추가 (링크에 키를 넣지 않음 — 더 안전)'),
-          ),
-          if (_usePass)
-            TextField(
-              controller: _pass,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: '암호문구',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _busy ? null : _generate,
-            child: _busy
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('보안 링크 생성'),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-          ],
-          if (_link != null) ...[
-            const SizedBox(height: 24),
-            Center(
-              child: QrImageView(
-                data: _link!,
-                size: 200,
-                backgroundColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SelectableText(_link!, style: theme.textTheme.bodySmall),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: _link!));
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('링크를 복사했습니다')),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.copy, size: 18),
-                    label: const Text('링크 복사'),
+          const SizedBox(height: VeilSpace.md),
+          VeilGroup(
+            footer: l10n.oneTimeLinkFooter,
+            children: [
+              VeilRow.field(
+                // The hint names the field on screen; a screen reader hears
+                // its name on the field itself.
+                field: Semantics(
+                  label: l10n.oneTimeLinkSecretLabel,
+                  child: TextField(
+                    controller: _secret,
+                    minLines: 3,
+                    maxLines: 5,
+                    onChanged: (_) => _edited(),
+                    decoration: InputDecoration(hintText: l10n.oneTimeLinkSecretHint),
                   ),
                 ),
-              ],
+              ),
+              VeilRow(
+                title: l10n.oneTimeLinkUsePassphrase,
+                switchValue: _usePass,
+                onSwitch: _busy
+                    ? null
+                    : (value) {
+                        _usePass = value;
+                        _edited();
+                      },
+              ),
+              if (_usePass)
+                VeilRow.field(
+                  title: l10n.oneTimeLinkPassphraseLabel,
+                  field: TextField(
+                    controller: _pass,
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    onChanged: (_) => _edited(),
+                  ),
+                ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+            child: VeilButton(
+              label: _busy ? l10n.oneTimeLinkCreating : l10n.oneTimeLinkCreate,
+              onPressed: _busy || !_ready ? null : _generate,
             ),
-            const SizedBox(height: 8),
-            Text(
-              '🔒 종단간 암호화 · 🙈 서버는 평문·키를 못 봄 · 💨 읽으면 소멸',
-              style: theme.textTheme.bodySmall,
+          ),
+          // A failure is one line under the button that tries again, not a
+          // notice: there is nothing to decide, and the button is the retry.
+          if (_failed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.xs, VeilSpace.md, 0),
+              child: Semantics(
+                liveRegion: true,
+                child: Text(
+                  l10n.oneTimeLinkFailed,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.danger),
+                ),
+              ),
             ),
+          if (link != null) ...[
+            const SizedBox(height: VeilSpace.lg),
+            _CreatedLink(key: _resultKey, link: link, now: widget._clock()),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// The link that was made: the link itself and the button that copies it,
+/// and under them when it is deleted unopened and, if it was sealed with
+/// one, the reminder to send its passphrase apart.
+class _CreatedLink extends StatelessWidget {
+  const _CreatedLink({super.key, required this.link, required this.now});
+
+  final CreatedOneTimeLink link;
+
+  /// When the link is shown, against which its expiry is said.
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final expiresAt = link.expiresAt?.toLocal();
+    final notes = [
+      if (expiresAt != null) l10n.oneTimeLinkExpires(MessageTimeFormat.of(context).dayAndTime(expiresAt, now: now)),
+      if (link.passphraseLocked) l10n.oneTimeLinkSendPassphraseApart,
+    ];
+    return VeilGroup(
+      footer: notes.isEmpty ? null : notes.join(' '),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.sm),
+          child: SelectableText(
+            link.url,
+            style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', height: 1.4),
+          ),
+        ),
+        VeilRow(
+          title: l10n.oneTimeLinkCopy,
+          leading: const Icon(Icons.copy_outlined, size: 20),
+          trailing: const SizedBox.shrink(),
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: link.url));
+            if (context.mounted) showVeilToast(context, l10n.oneTimeLinkCopied);
+          },
+        ),
+      ],
     );
   }
 }

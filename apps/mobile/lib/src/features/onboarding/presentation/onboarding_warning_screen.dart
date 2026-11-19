@@ -5,118 +5,60 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import 'onboarding_action_scaffold.dart';
 
-class OnboardingWarningScreen extends ConsumerWidget {
+/// What the user takes on before there is an account: that it lives on
+/// this phone, that losing the phone loses it, and that moving needs this
+/// phone. Plain sentences, no list. "Continue" waits for the box that says
+/// so to be ticked; both stay at the foot of the screen, in reach on any
+/// height.
+class OnboardingWarningScreen extends ConsumerStatefulWidget {
   const OnboardingWarningScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final l10n = AppLocalizations.of(context);
-
-    return VeilShell(
-      child: ListView(
-        children: [
-          VeilHeroPanel(
-            eyebrow: l10n.onboardingWarnEyebrow,
-            title: l10n.onboardingWarnTitle,
-            body: l10n.onboardingWarnBody,
-            trailing: Container(
-              width: 64,
-              height: 64,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: theme.colorScheme.outline),
-                color: theme.colorScheme.primary.withValues(alpha: 0.08),
-              ),
-              child: Icon(Icons.shield_outlined, color: theme.colorScheme.primary),
-            ),
-            bottom: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                VeilStatusPill(label: l10n.pillDeviceBound),
-                VeilStatusPill(label: l10n.pillNoPasswordReset),
-                VeilStatusPill(label: l10n.pillOldDeviceRequired),
-              ],
-            ),
-          ),
-          const SizedBox(height: VeilSpace.lg),
-          VeilDestructiveNotice(
-            title: l10n.onboardingWarnDestructiveTitle,
-            body: l10n.onboardingWarnDestructiveBody,
-          ),
-          const SizedBox(height: VeilSpace.md),
-          _WarningCard(
-            title: l10n.onboardingWarnIdentityTitle,
-            lines: [
-              l10n.onboardingWarnIdentityLine1,
-              l10n.onboardingWarnIdentityLine2,
-              l10n.onboardingWarnIdentityLine3,
-            ],
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          _WarningCard(
-            title: l10n.onboardingWarnTransferTitle,
-            lines: [
-              l10n.onboardingWarnTransferLine1,
-              l10n.onboardingWarnTransferLine2,
-              l10n.onboardingWarnTransferLine3,
-            ],
-          ),
-          const SizedBox(height: VeilSpace.xl),
-          VeilButton(
-            onPressed: () async {
-              await ref.read(appSessionProvider.notifier).acceptOnboarding();
-              if (!context.mounted) {
-                return;
-              }
-              context.go('/create-account');
-            },
-            label: l10n.commonIUnderstand,
-            icon: Icons.arrow_forward_rounded,
-          ),
-        ],
-      ),
-    );
-  }
+  ConsumerState<OnboardingWarningScreen> createState() => _OnboardingWarningScreenState();
 }
 
-class _WarningCard extends StatelessWidget {
-  const _WarningCard({required this.title, required this.lines});
+class _OnboardingWarningScreenState extends ConsumerState<OnboardingWarningScreen> {
+  bool _understood = false;
 
-  final String title;
-  final List<String> lines;
+  Future<void> _continue() async {
+    await ref.read(appSessionProvider.notifier).acceptOnboarding();
+    if (!mounted) return;
+    context.go('/choose-handle');
+  }
 
   @override
   Widget build(BuildContext context) {
-    return VeilSurfaceCard(
-      toned: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: VeilSpace.sm),
-          for (final line in lines) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.remove,
-                  size: VeilIconSize.sm,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: VeilSpace.xs),
-                Expanded(child: Text(line)),
-              ],
-            ),
-            const SizedBox(height: VeilSpace.sm),
-          ],
-        ],
-      ),
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+
+    return OnboardingActionScaffold(
+      actions: [
+        CheckboxListTile(
+          value: _understood,
+          onChanged: (value) => setState(() => _understood = value ?? false),
+          controlAffinity: ListTileControlAffinity.leading,
+          // The box, not its tap area, lines up with the text above.
+          contentPadding: const EdgeInsetsDirectional.only(start: VeilSpace.xxs, end: VeilSpace.md),
+          title: Text(l10n.onboardingWarnAgreeCheckbox, style: theme.textTheme.bodyLarge),
+        ),
+        const SizedBox(height: VeilSpace.xs),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+          child: VeilButton(label: l10n.commonContinue, onPressed: _understood ? _continue : null),
+        ),
+      ],
+      children: [
+        Semantics(header: true, child: Text(l10n.onboardingWarnTitle, style: theme.textTheme.headlineLarge)),
+        const SizedBox(height: VeilSpace.lg),
+        for (final line in [l10n.onboardingWarnLine1, l10n.onboardingWarnLine2, l10n.onboardingWarnLine3])
+          Padding(
+            padding: const EdgeInsets.only(bottom: VeilSpace.md),
+            child: Text(line, style: theme.textTheme.bodyLarge),
+          ),
+      ],
     );
   }
 }

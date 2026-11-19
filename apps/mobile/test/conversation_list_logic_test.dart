@@ -4,26 +4,26 @@ import 'package:veil_mobile/src/features/conversations/data/conversation_models.
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 
 void main() {
-  test('filterConversationPreviews matches handle and display name locally', () {
+  test('filterConversationPreviews matches the handle and the name the row shows', () {
     final conversations = [
       _conversation('conv-1', 'selene', 'Selene'),
       _conversation('conv-2', 'orion', 'Orion'),
     ];
 
     expect(
-      filterConversationPreviews(conversations, 'sel'),
+      _filter(conversations, 'sel'),
       hasLength(1),
     );
     expect(
-      filterConversationPreviews(conversations, 'sel').single.peerHandle,
+      _filter(conversations, 'sel').single.peerHandle,
       'selene',
     );
     expect(
-      filterConversationPreviews(conversations, 'orion').single.peerHandle,
+      _filter(conversations, 'orion').single.peerHandle,
       'orion',
     );
     expect(
-      filterConversationPreviews(conversations, '   '),
+      _filter(conversations, '   '),
       hasLength(2),
     );
   });
@@ -35,7 +35,7 @@ void main() {
       _conversation('conv-3', 'orion', 'Orbital Selene Desk'),
     ];
 
-    final results = filterConversationPreviews(conversations, 'sel');
+    final results = _filter(conversations, 'sel');
 
     expect(results.map((item) => item.peerHandle).toList(), [
       'selene',
@@ -44,10 +44,66 @@ void main() {
     ]);
   });
 
+  // A name word that starts with the query is as good a match as a name
+  // that does: "ri" finds Sam Rivera before Priya, whose handle only holds it.
+  test('filterConversationPreviews ranks a name word that starts with the query above a handle that holds it', () {
+    final conversations = [
+      _conversation('conv-priya', 'priya', 'Priya Nair'),
+      _conversation('conv-sam', 'sam', 'Sam Rivera'),
+    ];
+
+    expect(_filter(conversations, 'ri').map((item) => item.id).toList(), ['conv-sam', 'conv-priya']);
+  });
+
+  test('filterConversationPreviews finds a group by its name, never by the handle of one of its members', () {
+    final conversations = [
+      _conversation('conv-group', 'sam', 'Moving day', type: ConversationType.group),
+      _conversation('conv-sam', 'sam', 'Sam Rivera'),
+    ];
+
+    expect(_filter(conversations, 'sam').map((item) => item.id).toList(), ['conv-sam']);
+    expect(_filter(conversations, 'moving').map((item) => item.id).toList(), ['conv-group']);
+  });
+
   test('shouldUseWideConversationLayout switches at desktop breakpoint', () {
     expect(shouldUseWideConversationLayout(1119), isFalse);
     expect(shouldUseWideConversationLayout(1120), isTrue);
     expect(shouldUseWideConversationLayout(1440), isTrue);
+  });
+
+  // The status line of the list: parts separated by a dot, which is drawn
+  // only between two parts of one line.
+  group('packPartsIntoLines', () {
+    test('keeps every part on one line while they fit, separators counted', () {
+      expect(packPartsIntoLines([80, 100, 60], separatorWidth: 20, maxWidth: 280), [
+        [0, 1, 2],
+      ]);
+    });
+
+    test('breaks between parts, so no line ends or starts with a separator', () {
+      // 80 + 20 + 100 fits 279; the third part with its separator does not.
+      expect(packPartsIntoLines([80, 100, 60], separatorWidth: 20, maxWidth: 279), [
+        [0, 1],
+        [2],
+      ]);
+      expect(packPartsIntoLines([80, 100, 60], separatorWidth: 20, maxWidth: 199), [
+        [0],
+        [1, 2],
+      ]);
+      expect(packPartsIntoLines([80, 100, 60], separatorWidth: 20, maxWidth: 100), [
+        [0],
+        [1],
+        [2],
+      ]);
+    });
+
+    test('a part wider than a line gets a line to itself, and nothing gives none', () {
+      expect(packPartsIntoLines([300, 40, 40], separatorWidth: 10, maxWidth: 120), [
+        [0],
+        [1, 2],
+      ]);
+      expect(packPartsIntoLines([], separatorWidth: 10, maxWidth: 120), isEmpty);
+    });
   });
 
   test('issueMessageNavigationTarget emits a fresh replayable request id', () {
@@ -197,14 +253,14 @@ void main() {
     ];
 
     expect(
-      filterConversationPreviews(conversations, 'zzz_no_match'),
+      _filter(conversations, 'zzz_no_match'),
       isEmpty,
     );
   });
 
   test('filterConversationPreviews handles empty input list', () {
     expect(
-      filterConversationPreviews(const [], 'anything'),
+      _filter(const [], 'anything'),
       isEmpty,
     );
   });
@@ -242,15 +298,25 @@ void main() {
   });
 }
 
+// The name each test chat's row shows (the nickname of its peer's handle,
+// or a group's name), by conversation id.
+final _names = <String, String>{};
+
+List<ConversationPreview> _filter(List<ConversationPreview> conversations, String query) =>
+    filterConversationPreviews(conversations, query, nameOf: (chat) => _names[chat.id] ?? chat.peerHandle);
+
 ConversationPreview _conversation(
   String id,
   String handle,
-  String displayName,
-) {
+  String name, {
+  ConversationType type = ConversationType.direct,
+}) {
+  _names[id] = name;
   return ConversationPreview(
     id: id,
     peerHandle: handle,
-    peerDisplayName: displayName,
+    peerDisplayName: null,
+    type: type,
     recipientBundle: const KeyBundle(
       userId: 'user',
       deviceId: 'device',

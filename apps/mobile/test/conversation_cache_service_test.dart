@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,7 @@ import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/security/local_data_cipher.dart';
 import 'package:veil_mobile/src/core/storage/app_database.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
+import 'package:veil_mobile/src/core/storage/in_memory_message_content_store.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 
 void main() {
@@ -23,6 +25,74 @@ void main() {
 
   tearDown(() async {
     await database.close();
+  });
+
+  PendingMessageRecord queuedText(String clientMessageId, {int? disappearAfterSeconds, int queueOrder = 0}) =>
+      PendingMessageRecord(
+        clientMessageId: clientMessageId,
+        conversationId: 'conv-1',
+        senderDeviceId: 'device-local',
+        recipientUserId: 'user-selene',
+        envelope: const CryptoEnvelope(
+          version: '',
+          conversationId: 'conv-1',
+          senderDeviceId: 'device-local',
+          recipientUserId: 'user-selene',
+          ciphertext: '',
+          nonce: '',
+          messageKind: MessageKind.text,
+        ),
+        createdAt: DateTime.utc(2026, 3, 30, 10, 6, 0),
+        disappearAfterSeconds: disappearAfterSeconds,
+        queueOrder: queueOrder,
+      );
+
+  MessageContentRecord outbound(String messageKey, {String? clientMessageId}) => MessageContentRecord(
+        messageKey: messageKey,
+        conversationId: 'conv-1',
+        clientMessageId: clientMessageId,
+        senderDeviceId: 'device-local',
+        body: 'hello',
+        kind: MessageKind.text,
+        status: MessageContentStatus.ok,
+        createdAt: DateTime.utc(2026, 3, 30, 10, 6, 0),
+        updatedAt: DateTime.utc(2026, 3, 30, 10, 6, 0),
+      );
+
+  test('a queued text waiting for its stamp keeps its timer, and no expiry, across a restart', () async {
+    await cache.upsertPendingMessage(queuedText('client-timed', disappearAfterSeconds: 10));
+    await cache.upsertPendingMessage(queuedText('client-plain'));
+    final restored = {for (final record in await cache.readPendingMessages()) record.clientMessageId: record};
+    expect(restored['client-timed']!.disappearAfterSeconds, 10);
+    expect(restored['client-timed']!.envelope.expiresAt, isNull);
+    expect(restored['client-timed']!.envelope.attachment, isNull);
+    expect(restored['client-timed']!.attachmentUploadDraft, isNull);
+    expect(restored['client-plain']!.disappearAfterSeconds, isNull);
+  });
+
+  test('queued records with the same whole second come back by queue number, whichever row was rewritten last',
+      () async {
+    await cache.upsertPendingMessage(queuedText('client-first', queueOrder: 1));
+    await cache.upsertPendingMessage(queuedText('client-second', queueOrder: 2));
+    // A state write (a retry, upload progress) rewrites the first row, which
+    // insertOrReplace re-inserts behind the second.
+    await cache.upsertPendingMessage(queuedText('client-first', queueOrder: 1).copyWith(retryCount: 1));
+    final rowids = await database.customSelect('SELECT client_message_id FROM pending_messages ORDER BY rowid').get();
+    expect(rowids.map((row) => row.data['client_message_id']), ['client-second', 'client-first'],
+        reason: 'the rewritten row is now the later one in the table');
+
+    final restored = await cache.readPendingMessages();
+    expect(restored.map((record) => record.clientMessageId), ['client-first', 'client-second']);
+    expect(restored.map((record) => record.queueOrder), [1, 2]);
+    expect(restored.first.retryCount, 1, reason: 'the rewrite is what is read back');
+  });
+
+  test('lists the content stored under a local key that no queued record names, and nothing else', () async {
+    await cache.upsertPendingMessage(queuedText('client-queued'));
+    await cache.put(outbound(localMessageContentKey('client-queued'), clientMessageId: 'client-queued'));
+    await cache.put(outbound(localMessageContentKey('client-orphan'), clientMessageId: 'client-orphan'));
+    await cache.put(outbound('server-msg-1', clientMessageId: 'client-acked'));
+    expect([for (final record in await cache.unqueuedOutbound()) record.clientMessageId], ['client-orphan']);
   });
 
   test('persists pending outbox items and restores paging state', () async {
@@ -116,6 +186,90 @@ void main() {
     );
   });
 
+  test('a sealed attachment draft survives a restart with its wrapped key', () async {
+    const sealed = AttachmentReference(
+      attachmentId: '',
+      storageKey: '',
+      contentType: 'application/pdf',
+      sizeBytes: 2064,
+      sha256: 'cipher-hash',
+      encryptedKey: 'wrapped-content-key',
+      nonce: 'content-nonce.wrap-nonce',
+      algorithmHint: 'x25519-aes256gcm',
+    );
+    await cache.upsertPendingMessage(PendingMessageRecord(
+      clientMessageId: 'client-file',
+      conversationId: 'conv-1',
+      senderDeviceId: 'device-local',
+      recipientUserId: 'user-selene',
+      envelope: const CryptoEnvelope(
+        version: 'veil-envelope-v1-dev',
+        conversationId: 'conv-1',
+        senderDeviceId: 'device-local',
+        recipientUserId: 'user-selene',
+        ciphertext: 'opaque-file',
+        nonce: 'nonce-file',
+        messageKind: MessageKind.file,
+      ),
+      createdAt: DateTime.utc(2026, 4, 1),
+      state: MessageDeliveryState.uploading,
+      attachmentUploadDraft: AttachmentUploadDraft(
+        filename: 'brief.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 2064,
+        sha256: 'ab' * 32,
+        tempFilePath: '/tmp/brief.blob.sealed',
+        sealedReference: sealed,
+      ),
+    ));
+
+    final draft = (await cache.readPendingMessages()).single.attachmentUploadDraft!;
+
+    expect(draft.tempFilePath, '/tmp/brief.blob.sealed');
+    expect(draft.sealedReference!.encryptedKey, 'wrapped-content-key');
+    expect(draft.sealedReference!.nonce, 'content-nonce.wrap-nonce');
+    expect(draft.sealedReference!.sha256, 'cipher-hash');
+    expect(draft.sealedReference!.sizeBytes, 2064);
+    expect(draft.sealedReference!.algorithmHint, 'x25519-aes256gcm');
+  });
+
+  test('an attachment draft keeps the chat\'s timer, and one written without it reads none', () async {
+    PendingMessageRecord record(String clientMessageId, AttachmentUploadDraft draft) => PendingMessageRecord(
+          clientMessageId: clientMessageId,
+          conversationId: 'conv-1',
+          senderDeviceId: 'device-local',
+          recipientUserId: 'user-selene',
+          envelope: const CryptoEnvelope(
+            version: 'veil-envelope-v1-dev',
+            conversationId: 'conv-1',
+            senderDeviceId: 'device-local',
+            recipientUserId: 'user-selene',
+            ciphertext: '',
+            nonce: '',
+            messageKind: MessageKind.image,
+          ),
+          createdAt: DateTime.utc(2026, 4, 1),
+          state: MessageDeliveryState.uploading,
+          attachmentUploadDraft: draft,
+        );
+    const draft = AttachmentUploadDraft(filename: '', contentType: 'image/jpeg', sizeBytes: 10, sha256: 'd');
+    await cache.upsertPendingMessage(record('client-timer', draft.copyWith(disappearAfterSeconds: 10)));
+    await cache.upsertPendingMessage(record('client-none', draft));
+
+    final restored = {
+      for (final pending in await cache.readPendingMessages()) pending.clientMessageId: pending.attachmentUploadDraft!,
+    };
+    expect(restored['client-timer']!.disappearAfterSeconds, 10);
+    expect(restored['client-none']!.disappearAfterSeconds, isNull);
+    // A draft stored before the field existed has no key for it.
+    expect(draft.toJson().containsKey('disappearAfterSeconds'), isFalse);
+    expect(AttachmentUploadDraft.fromJson(draft.toJson()).disappearAfterSeconds, isNull);
+    // copyWith keeps it unless told, and can clear it.
+    final timed = draft.copyWith(disappearAfterSeconds: 300);
+    expect(timed.copyWith(bytesUploaded: 5).disappearAfterSeconds, 300);
+    expect(timed.copyWith(disappearAfterSeconds: null).disappearAfterSeconds, isNull);
+  });
+
   test('restores message ordering and delivery states from cache', () async {
     const baseEnvelope = CryptoEnvelope(
       version: 'veil-envelope-v1-dev',
@@ -186,7 +340,7 @@ void main() {
     );
   });
 
-  test('indexes cached message bodies for device-local archive search',
+  test('searches decrypted content of cached messages on this device',
       () async {
     await cache.storeConversations([
       ConversationPreview(
@@ -223,11 +377,13 @@ void main() {
       ),
     ]);
 
-    await cache.indexMessageBody(
-      conversationId: 'conv-3',
-      messageId: 'msg-archive-1',
-      searchableBody: 'orion archive keyword',
-    );
+    await cache.put(_content('msg-archive-1', 'conv-3', 'orion archive keyword'));
+    await cache.put(_content(
+      'msg-archive-2',
+      'conv-3',
+      'archive placeholder',
+      status: MessageContentStatus.failed,
+    ));
 
     final matches = await cache.searchCachedMessageIds(
       conversationId: 'conv-3',
@@ -341,7 +497,6 @@ void main() {
           nonce: 'nonce-a',
           messageKind: MessageKind.text,
         ),
-        searchableBody: 'meeting dossier',
         isMine: true,
       ),
       ChatMessage(
@@ -357,10 +512,16 @@ void main() {
           nonce: 'nonce-b',
           messageKind: MessageKind.file,
         ),
-        searchableBody: 'meeting attachment',
         isMine: false,
       ),
     ]);
+    await cache.put(_content('msg-mine', 'conv-search', 'meeting dossier'));
+    await cache.put(_content(
+      'msg-theirs-file',
+      'conv-search',
+      'meeting attachment',
+      kind: MessageKind.file,
+    ));
 
     final mineResults = await cache.searchMessageArchive(
       query: const MessageSearchQuery(
@@ -382,11 +543,68 @@ void main() {
       expect(fileResults.items.map((item) => item.messageId).toList(),
           ['msg-theirs-file']);
       expect(fileResults.items.single.isMine, isFalse);
+      // The device that sent it, by which a group's hit says who wrote it.
+      expect(fileResults.items.single.senderDeviceId, 'device-selene');
+      expect(mineResults.items.single.senderDeviceId, 'device-local');
       expect(
         fileResults.items.single.bodySnippet.toLowerCase(),
         contains('meeting'),
       );
     });
+
+  test('searchMessageArchive leaves out content the relay relabelled', () async {
+    // Opened content is bound to the conversation and sender it was opened
+    // under. A relay that later lists the same message id under another
+    // sender (our own device) or another conversation gets no search hit.
+    final now = DateTime.now();
+    await cache.storeConversations([_conversation('conv-search'), _conversation('conv-other')]);
+    ChatMessage listed(String id, String conversationId, String senderDeviceId) => ChatMessage(
+          id: id,
+          senderDeviceId: senderDeviceId,
+          sentAt: now.subtract(const Duration(minutes: 1)),
+          envelope: CryptoEnvelope(
+            version: 'veil-envelope-v1-dev',
+            conversationId: conversationId,
+            senderDeviceId: senderDeviceId,
+            recipientUserId: 'user-local',
+            ciphertext: 'opaque-$id',
+            nonce: 'nonce-$id',
+            messageKind: MessageKind.text,
+          ),
+          isMine: senderDeviceId == 'device-local',
+        );
+    await cache.storeMessages('conv-search', [
+      listed('msg-honest', 'conv-search', 'device-peer'),
+      listed('msg-as-mine', 'conv-search', 'device-local'),
+      listed('msg-moved', 'conv-search', 'device-peer'),
+    ]);
+    MessageContentRecord opened(String id, String conversationId) => MessageContentRecord(
+          messageKey: id,
+          conversationId: conversationId,
+          serverMessageId: id,
+          senderDeviceId: 'device-peer',
+          body: 'quarterly ledger $id',
+          kind: MessageKind.text,
+          status: MessageContentStatus.ok,
+          createdAt: DateTime.utc(2026, 4, 1),
+          updatedAt: DateTime.utc(2026, 4, 1),
+        );
+    await cache.put(opened('msg-honest', 'conv-search'));
+    await cache.put(opened('msg-as-mine', 'conv-search'));
+    await cache.put(opened('msg-moved', 'conv-other'));
+
+    final all = await cache.searchMessageArchive(
+      query: const MessageSearchQuery(query: 'ledger'),
+      currentDeviceId: 'device-local',
+    );
+    final mine = await cache.searchMessageArchive(
+      query: const MessageSearchQuery(query: 'ledger', senderFilter: MessageSearchSenderFilter.mine),
+      currentDeviceId: 'device-local',
+    );
+
+    expect(all.items.map((item) => item.messageId), ['msg-honest']);
+    expect(mine.items, isEmpty);
+  });
 
   test('searchMessageArchive returns paged results for larger local archives',
       () async {
@@ -425,11 +643,13 @@ void main() {
             nonce: 'nonce-$index',
             messageKind: MessageKind.text,
           ),
-          searchableBody: 'archive keyword $index',
           isMine: true,
         ),
       ),
     );
+    for (var index = 0; index < 3; index++) {
+      await cache.put(_content('msg-page-$index', 'conv-paged', 'archive keyword $index'));
+    }
 
     final firstPage = await cache.searchMessageArchive(
       query: const MessageSearchQuery(query: 'archive', limit: 2),
@@ -487,7 +707,6 @@ void main() {
             nonce: 'nonce-ranked-1',
             messageKind: MessageKind.text,
           ),
-          searchableBody: 'Orbit',
           isMine: true,
         ),
         ChatMessage(
@@ -503,7 +722,6 @@ void main() {
             nonce: 'nonce-ranked-2',
             messageKind: MessageKind.text,
           ),
-          searchableBody: 'A relay window into orbit mechanics',
           isMine: true,
         ),
         ChatMessage(
@@ -519,11 +737,13 @@ void main() {
             nonce: 'nonce-ranked-3',
             messageKind: MessageKind.text,
           ),
-          searchableBody: 'Telemetry for the ORBIT relay',
           isMine: true,
         ),
       ],
     );
+    await cache.put(_content('msg-ranked-1', 'conv-ranked', 'Orbit'));
+    await cache.put(_content('msg-ranked-2', 'conv-ranked', 'A relay window into orbit mechanics'));
+    await cache.put(_content('msg-ranked-3', 'conv-ranked', 'Telemetry for the ORBIT relay'));
 
     final results = await cache.searchMessageArchive(
       query: const MessageSearchQuery(query: 'orbit', limit: 3),
@@ -573,7 +793,6 @@ void main() {
             nonce: 'nonce-same-a',
             messageKind: MessageKind.text,
           ),
-          searchableBody: 'orbit first',
           isMine: true,
         ),
         ChatMessage(
@@ -589,11 +808,12 @@ void main() {
             nonce: 'nonce-same-b',
             messageKind: MessageKind.text,
           ),
-          searchableBody: 'orbit second',
           isMine: true,
         ),
       ],
     );
+    await cache.put(_content('msg-same-a', 'conv-same-time', 'orbit first'));
+    await cache.put(_content('msg-same-b', 'conv-same-time', 'orbit second'));
 
     final firstPage = await cache.searchMessageArchive(
       query: const MessageSearchQuery(query: 'orbit', limit: 1),
@@ -617,6 +837,432 @@ void main() {
     );
   });
 
+  test('message content round trip is field-encrypted at rest', () async {
+    cache = DriftConversationCacheService(
+      database,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+      cipher: LocalDataCipher.forTesting(
+        base64Url.encode(List<int>.filled(32, 9)).replaceAll('=', ''),
+      ),
+    );
+    const attachment = AttachmentReference(
+      attachmentId: 'att-9',
+      storageKey: 'attachments/att-9/blob',
+      contentType: 'image/png',
+      sizeBytes: 64,
+      sha256: 'cipher-hash',
+      encryptedKey: 'wrapped-key',
+      nonce: 'content-nonce.wrap-nonce',
+      algorithmHint: 'x25519-aes256gcm',
+    );
+    final expiry = DateTime.utc(2026, 5, 1, 12, 0, 0, 250);
+    await cache.put(_content(
+      'srv-9',
+      'conv-9',
+      'confidential body',
+      kind: MessageKind.image,
+      attachment: attachment,
+      innerExpiresAt: expiry,
+    ));
+
+    final row = await database
+        .customSelect(
+          "SELECT body, attachment_json, kind, status FROM message_contents WHERE message_key = 'srv-9'",
+        )
+        .getSingle();
+    expect(row.data['body'], isNot(contains('confidential')));
+    expect(row.data['attachment_json'], isNot(contains('att-9')));
+    expect(row.data['kind'], isNot(MessageKind.image.name));
+    expect(row.data['status'], 'ok');
+
+    final restored = await cache.get('srv-9');
+    expect(restored!.body, 'confidential body');
+    expect(restored.kind, MessageKind.image);
+    expect(restored.status, MessageContentStatus.ok);
+    expect(restored.attachment!.attachmentId, 'att-9');
+    expect(restored.attachment!.encryptedKey, 'wrapped-key');
+    expect(restored.attachment!.nonce, 'content-nonce.wrap-nonce');
+    expect(restored.innerExpiresAt!.isAtSameMomentAs(expiry), isTrue);
+    expect((await cache.getMany(['srv-9', 'srv-missing'])).keys, ['srv-9']);
+  });
+
+  test('rekey local content to server id', () async {
+    await cache.put(_content(
+      localMessageContentKey('client-1'),
+      'conv-1',
+      'my own words',
+      clientMessageId: 'client-1',
+    ));
+    // A failed attempt to open our own echoed envelope must not win.
+    await cache.put(_content(
+      'srv-1',
+      'conv-1',
+      '[Decryption failed]',
+      status: MessageContentStatus.failed,
+    ));
+
+    await cache.rekeyLocalToServer(clientMessageId: 'client-1', serverMessageId: 'srv-1');
+
+    expect(await cache.get(localMessageContentKey('client-1')), isNull);
+    final rekeyed = await cache.get('srv-1');
+    expect(rekeyed!.body, 'my own words');
+    expect(rekeyed.status, MessageContentStatus.ok);
+    expect(rekeyed.serverMessageId, 'srv-1');
+    expect(rekeyed.clientMessageId, 'client-1');
+    expect(
+      await cache.searchCachedMessageIds(conversationId: 'conv-1', query: 'own'),
+      ['srv-1'],
+    );
+  });
+
+  for (final (name, store) in <(String, MessageContentStore Function(DriftConversationCacheService))>[
+    ('drift', (drift) => drift),
+    ('in memory', (_) => InMemoryMessageContentStore()),
+  ]) {
+    test('$name store: staged content takes over only its own failed echo', () async {
+      final contents = store(cache);
+      Future<void> stage(String client) => contents.put(_content(
+            localMessageContentKey(client),
+            'conv-1',
+            'my words $client',
+            clientMessageId: client,
+          ));
+
+      // Content another message opened under the relayed id stays.
+      await contents.put(_content('srv-opened', 'conv-1', 'their words'));
+      await stage('c1');
+      await contents.rekeyLocalToServer(clientMessageId: 'c1', serverMessageId: 'srv-opened');
+      expect((await contents.get('srv-opened'))!.body, 'their words');
+      expect((await contents.get(localMessageContentKey('c1')))!.body, 'my words c1');
+
+      // So does another conversation's row, even one that failed to open.
+      await contents.put(_content('srv-elsewhere', 'conv-2', '', status: MessageContentStatus.failed));
+      await stage('c2');
+      await contents.rekeyLocalToServer(clientMessageId: 'c2', serverMessageId: 'srv-elsewhere');
+      expect((await contents.get('srv-elsewhere'))!.conversationId, 'conv-2');
+      expect((await contents.get(localMessageContentKey('c2')))!.body, 'my words c2');
+
+      // A failed attempt to open our own echo in the same conversation loses.
+      await contents.put(_content('srv-echo', 'conv-1', '', status: MessageContentStatus.failed));
+      await stage('c3');
+      await contents.rekeyLocalToServer(clientMessageId: 'c3', serverMessageId: 'srv-echo');
+      expect((await contents.get('srv-echo'))!.body, 'my words c3');
+      expect(await contents.get(localMessageContentKey('c3')), isNull);
+    });
+  }
+
+  test('final content under a relayed id is never replaced by a later put', () async {
+    // The one decrypt of srv-2 opened it; a later outcome, e.g. a replayed
+    // attempt racing the sender's own rekey, must not overwrite it.
+    await cache.put(_content('srv-2', 'conv-1', 'opened once'));
+    await cache.put(_content(
+      'srv-2',
+      'conv-1',
+      '[Replayed or out-of-window message]',
+      status: MessageContentStatus.replayed,
+    ));
+    expect((await cache.get('srv-2'))!.body, 'opened once');
+
+    // A row still waiting for key material takes its retry's outcome.
+    await cache.put(_content('srv-3', 'conv-1', '[waiting]', status: MessageContentStatus.awaitingKey));
+    await cache.put(_content('srv-3', 'conv-1', 'opened on retry'));
+    expect((await cache.get('srv-3'))!.body, 'opened on retry');
+
+    // The sender may restage its own outbound content.
+    final local = localMessageContentKey('client-2');
+    await cache.put(_content(local, 'conv-1', 'staged', clientMessageId: 'client-2'));
+    await cache.put(_content(local, 'conv-1', 'staged with attachment', clientMessageId: 'client-2'));
+    expect((await cache.get(local))!.body, 'staged with attachment');
+  });
+
+  test('values sealed under another cache key are skipped, not thrown', () async {
+    LocalDataCipher cipherFor(int byte) =>
+        LocalDataCipher.forTesting(base64Url.encode(List<int>.filled(32, byte)).replaceAll('=', ''));
+    final codec = createDefaultCryptoAdapter().envelopeCodec;
+    final writer = DriftConversationCacheService(database, envelopeCodec: codec, cipher: cipherFor(1));
+    await writer.storeConversations([_conversation('conv-old-key')]);
+    await writer.put(_content('srv-old-key', 'conv-old-key', 'sealed under the old key'));
+
+    final reader = DriftConversationCacheService(database, envelopeCodec: codec, cipher: cipherFor(2));
+
+    expect(await reader.readConversations(), isEmpty);
+    expect(await reader.get('srv-old-key'), isNull);
+    expect(await reader.getMany(['srv-old-key']), isEmpty);
+  });
+
+  test('expired, retired and wiped content is deleted', () async {
+    final now = DateTime.now();
+    await cache.put(_content(
+      'srv-inner',
+      'conv-1',
+      'gone at inner time',
+      innerExpiresAt: now.subtract(const Duration(seconds: 1)),
+    ));
+    await cache.put(_content('srv-outer', 'conv-1', 'gone with its message'));
+    await cache.put(_content('srv-retired', 'conv-1', 'expired by the caller'));
+    await cache.put(_content('srv-kept', 'conv-1', 'still here'));
+    await cache.storeConversations([_conversation('conv-1')]);
+    await cache.storeMessages('conv-1', [
+      ChatMessage(
+        id: 'srv-outer',
+        senderDeviceId: 'device-peer',
+        sentAt: now.subtract(const Duration(minutes: 1)),
+        expiresAt: now.subtract(const Duration(seconds: 1)),
+        envelope: const CryptoEnvelope(
+          version: 'veil-envelope-v1-dev',
+          conversationId: 'conv-1',
+          senderDeviceId: 'device-peer',
+          recipientUserId: 'user-local',
+          ciphertext: 'opaque-outer',
+          nonce: 'nonce-outer',
+          messageKind: MessageKind.text,
+        ),
+      ),
+    ]);
+
+    await cache.purgeExpiredMessages();
+    await cache.deleteExpired(now, messageKeys: ['srv-retired']);
+
+    const keys = ['srv-inner', 'srv-outer', 'srv-retired', 'srv-kept'];
+    expect((await cache.getMany(keys)).keys, ['srv-kept']);
+    expect(await cache.retiredAmong(keys), {'srv-inner', 'srv-outer', 'srv-retired'});
+    await cache.clearAll();
+    expect(await cache.get('srv-kept'), isNull);
+    expect(await cache.retiredAmong(keys), isEmpty);
+  });
+
+  test('a retired key never takes content again and is forgotten after the retention window', () async {
+    final now = DateTime.now();
+    await cache.deleteExpired(now, messageKeys: ['srv-late']);
+
+    // A decrypt that was still running when its message expired.
+    await cache.put(_content('srv-late', 'conv-1', 'must not come back'));
+    expect(await cache.get('srv-late'), isNull);
+
+    await database.customStatement(
+      'UPDATE retired_messages SET retired_at = ?',
+      [now.subtract(retiredMessageRetention + const Duration(minutes: 1)).millisecondsSinceEpoch ~/ 1000],
+    );
+    await cache.purgeExpiredMessages();
+    expect(await cache.retiredAmong(['srv-late']), isEmpty);
+  });
+
+  test('inner expiries are read without decrypting content', () async {
+    final expiry = DateTime.utc(2026, 5, 1, 12, 0, 0, 250);
+    await cache.put(_content('srv-timed', 'conv-1', 'timed', innerExpiresAt: expiry));
+    await cache.put(_content('srv-forever', 'conv-1', 'untimed'));
+
+    final expiries = await cache.innerExpiries(['srv-timed', 'srv-forever', 'srv-missing']);
+
+    expect(expiries.keys, ['srv-timed']);
+    expect(expiries['srv-timed']!.isAtSameMomentAs(expiry), isTrue);
+  });
+
+  test('migration from 8 creates the content tables', () async {
+    final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
+      for (final statement in _schemaVersion8) {
+        raw.execute(statement);
+      }
+      raw.execute(
+        "INSERT INTO cached_conversations (id, peer_handle, updated_at) VALUES ('conv-old', 'h', 1)",
+      );
+      raw.execute(
+        'INSERT INTO cached_messages (id, conversation_id, sender_device_id, ciphertext, '
+        "nonce, message_type, search_body, received_at) VALUES ('msg-old', 'conv-old', 'd', "
+        "'c', 'n', 'text', 'legacy plaintext copy', 1)",
+      );
+      raw.execute('PRAGMA user_version = 8');
+    }));
+    addTearDown(legacy.close);
+
+    final tables = await legacy
+        .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .get();
+    expect(tables.map((row) => row.data['name']), containsAll(['message_contents', 'retired_messages']));
+    final triggers = await legacy
+        .customSelect("SELECT name FROM sqlite_master WHERE type = 'trigger'")
+        .get();
+    expect(triggers.map((row) => row.data['name']), contains('message_contents_skip_retired'));
+    final conversationColumns =
+        await legacy.customSelect('PRAGMA table_info(cached_conversations)').get();
+    expect(conversationColumns.map((row) => row.data['name']), contains('session_remote_identity_public_key'));
+    expect(conversationColumns.map((row) => row.data['name']), isNot(contains('identity_mismatch_pending')));
+    final migratedMessage = await legacy
+        .customSelect("SELECT search_body FROM cached_messages WHERE id = 'msg-old'")
+        .getSingle();
+    expect(migratedMessage.data['search_body'], isNull);
+
+    final migratedCache = DriftConversationCacheService(
+      legacy,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+    );
+    expect((await migratedCache.readConversations()).single.id, 'conv-old');
+    await migratedCache.put(_content('srv-new', 'conv-old', 'first row after upgrade'));
+    expect((await migratedCache.get('srv-new'))!.body, 'first row after upgrade');
+  });
+
+  // The content tables as schemas 9 and 10 created them: today's, without
+  // the sender column schema 11 added.
+  Future<List<String>> schema9ContentTables() async {
+    final current = AppDatabase(NativeDatabase.memory());
+    final contentTables = [
+      for (final row in await current
+          .customSelect(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name IN ('message_contents', 'retired_messages')",
+          )
+          .get())
+        (row.data['sql'] as String).replaceFirst(RegExp(r'"sender_device_id" TEXT NULL,\s*'), ''),
+    ];
+    await current.close();
+    expect(contentTables, hasLength(2));
+    expect(contentTables.join(), isNot(contains('sender_device_id')));
+    return contentTables;
+  }
+
+  test('migration from 10 adds the content sender and keeps stored content', () async {
+    final contentTables = await schema9ContentTables();
+    final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
+      for (final statement in [..._schemaVersion8, ...contentTables]) {
+        raw.execute(statement);
+      }
+      raw.execute('ALTER TABLE cached_conversations ADD COLUMN "session_remote_identity_public_key" TEXT NULL');
+      raw.execute(
+        'INSERT INTO message_contents (message_key, conversation_id, body, kind, status, created_at, updated_at) '
+        "VALUES ('msg-old', 'conv-old', 'kept words', 'text', 'ok', 1, 1)",
+      );
+      raw.execute('PRAGMA user_version = 10');
+    }));
+    addTearDown(legacy.close);
+
+    final contentColumns = await legacy.customSelect('PRAGMA table_info(message_contents)').get();
+    expect(contentColumns.map((row) => row.data['name']), contains('sender_device_id'));
+    final migratedCache = DriftConversationCacheService(
+      legacy,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+    );
+    final kept = (await migratedCache.get('msg-old'))!;
+    expect(kept.body, 'kept words');
+    // Written before senders were recorded: bound to its conversation only.
+    expect(kept.senderDeviceId, isNull);
+    expect(kept.belongsTo(conversationId: 'conv-old', senderDeviceId: 'any'), isTrue);
+    expect(kept.belongsTo(conversationId: 'conv-other', senderDeviceId: 'any'), isFalse);
+  });
+
+  test('migration from 9 drops the identity mismatch flag and keeps the rows', () async {
+    final contentTables = await schema9ContentTables();
+    final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
+      for (final statement in [..._schemaVersion8, ...contentTables]) {
+        raw.execute(statement);
+      }
+      raw.execute('ALTER TABLE cached_conversations ADD COLUMN "session_remote_identity_public_key" TEXT NULL');
+      raw.execute(
+        'ALTER TABLE cached_conversations ADD COLUMN "identity_mismatch_pending" INTEGER NOT NULL DEFAULT 0 '
+        'CHECK ("identity_mismatch_pending" IN (0, 1))',
+      );
+      raw.execute(
+        'INSERT INTO cached_conversations (id, peer_handle, updated_at, session_remote_identity_public_key, '
+        "identity_mismatch_pending) VALUES ('conv-old', 'h', 1, 'key-old', 1)",
+      );
+      raw.execute(
+        'INSERT INTO cached_messages (id, conversation_id, sender_device_id, ciphertext, '
+        "nonce, message_type, received_at) VALUES ('msg-old', 'conv-old', 'd', 'c', 'n', 'text', 1)",
+      );
+      raw.execute('PRAGMA user_version = 9');
+    }));
+    addTearDown(legacy.close);
+
+    final conversationColumns = await legacy.customSelect('PRAGMA table_info(cached_conversations)').get();
+    expect(conversationColumns.map((row) => row.data['name']), isNot(contains('identity_mismatch_pending')));
+    final kept = await legacy
+        .customSelect("SELECT session_remote_identity_public_key FROM cached_conversations WHERE id = 'conv-old'")
+        .getSingle();
+    expect(kept.data['session_remote_identity_public_key'], 'key-old');
+
+    final migratedCache = DriftConversationCacheService(
+      legacy,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+    );
+    expect((await migratedCache.readConversations()).single.id, 'conv-old');
+    expect((await migratedCache.readMessages('conv-old')).single.id, 'msg-old');
+  });
+
+  test('migration from 12 numbers the queued messages by created_at then rowid and keeps the rows', () async {
+    final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
+      for (final statement in [..._schemaVersion8, ..._schemaVersion12Additions]) {
+        raw.execute(statement);
+      }
+      raw.execute('ALTER TABLE cached_conversations ADD COLUMN "session_remote_identity_public_key" TEXT NULL');
+      raw.execute(
+        "INSERT INTO conversation_read_marks (conversation_id, read_through_order, marked_unread) VALUES ('~baseline', NULL, 0)",
+      );
+      // Three queued messages, no queue number yet: one a second earlier,
+      // and two in the same second whose rows stand in the reverse of the
+      // order they were written (a rewrite of the first moved it behind).
+      String queued(String id, int createdAt) => 'INSERT INTO pending_messages (rowid, client_message_id, conversation_id, '
+          'sender_device_id, recipient_user_id, ciphertext, nonce, message_type, created_at, state) VALUES '
+          "(${rowidOf(id)}, '$id', 'conv-old', 'd', 'u', 'ct-$id', 'n-$id', 'text', $createdAt, 'pending')";
+      raw.execute(queued('client-earlier', 1700000000));
+      raw.execute(queued('client-row-9', 1700000001));
+      raw.execute(queued('client-row-5', 1700000001));
+      raw.execute('PRAGMA user_version = 12');
+    }));
+    addTearDown(legacy.close);
+
+    final version = await legacy.customSelect('PRAGMA user_version').getSingle();
+    expect(version.data.values.single, 13);
+    final numbered = await legacy
+        .customSelect('SELECT client_message_id, queue_order, rowid FROM pending_messages ORDER BY queue_order')
+        .get();
+    expect(
+      numbered.map((row) => (row.data['client_message_id'], row.data['queue_order'])),
+      [('client-earlier', 0), ('client-row-5', 1), ('client-row-9', 2)],
+      reason: 'created_at first, then the row that was written first',
+    );
+    expect(numbered.map((row) => row.data['rowid']), [1, 5, 9], reason: 'the rows are the ones written');
+    final baseline = await legacy
+        .customSelect("SELECT read_through_order, marked_unread FROM conversation_read_marks WHERE conversation_id = '~baseline'")
+        .getSingle();
+    expect(baseline.data['read_through_order'], isNull);
+    expect(baseline.data['marked_unread'], 0);
+
+    final migratedCache = DriftConversationCacheService(
+      legacy,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+    );
+    final restored = await migratedCache.readPendingMessages();
+    expect(restored.map((record) => record.clientMessageId), ['client-earlier', 'client-row-5', 'client-row-9']);
+    expect(restored.map((record) => record.queueOrder), [0, 1, 2]);
+    expect(restored.map((record) => record.envelope.ciphertext), ['ct-client-earlier', 'ct-client-row-5', 'ct-client-row-9']);
+    expect(restored.map((record) => record.createdAt.millisecondsSinceEpoch ~/ 1000),
+        [1700000000, 1700000001, 1700000001]);
+  });
+
+  test('deleteConversation runs wal checkpoint', () async {
+    final directory = Directory.systemTemp.createTempSync('veil-wal-');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final databaseFile = File('${directory.path}/cache.sqlite');
+    final walDatabase = AppDatabase(NativeDatabase(
+      databaseFile,
+      setup: (raw) => raw.execute('PRAGMA journal_mode = WAL;'),
+    ));
+    addTearDown(walDatabase.close);
+    final walCache = DriftConversationCacheService(
+      walDatabase,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+    );
+    await walCache.put(_content('srv-wal', 'conv-wal', 'shred me'));
+    await walCache.put(_content('srv-other', 'conv-other', 'keep me'));
+    final wal = File('${databaseFile.path}-wal');
+    expect(wal.lengthSync(), greaterThan(0));
+
+    await walCache.deleteConversation('conv-wal');
+
+    expect(await walCache.get('srv-wal'), isNull);
+    expect((await walCache.get('srv-other'))!.body, 'keep me');
+    // TRUNCATE leaves no copy of the deleted pages in the write-ahead log.
+    expect(wal.lengthSync(), 0);
+  });
+
   test('normalizeArchiveSearchBody compacts whitespace and caps indexed size', () {
     final normalized = normalizeArchiveSearchBody(
       'orbit   relay\n\n${List.filled(1300, 'x').join()}',
@@ -627,3 +1273,98 @@ void main() {
     expect(normalized.length, lessThanOrEqualTo(maxArchiveSearchBodyLength));
   });
 }
+
+MessageContentRecord _content(
+  String messageKey,
+  String conversationId,
+  String body, {
+  MessageKind kind = MessageKind.text,
+  MessageContentStatus status = MessageContentStatus.ok,
+  String? clientMessageId,
+  AttachmentReference? attachment,
+  DateTime? innerExpiresAt,
+}) {
+  return MessageContentRecord(
+    messageKey: messageKey,
+    conversationId: conversationId,
+    clientMessageId: clientMessageId,
+    serverMessageId: messageKey.startsWith('local:') ? null : messageKey,
+    body: body,
+    kind: kind,
+    attachment: attachment,
+    innerExpiresAt: innerExpiresAt,
+    status: status,
+    createdAt: DateTime.utc(2026, 4, 1),
+    updatedAt: DateTime.utc(2026, 4, 1),
+  );
+}
+
+ConversationPreview _conversation(String id) => ConversationPreview(
+      id: id,
+      peerHandle: 'peer',
+      peerDisplayName: 'Peer',
+      recipientBundle: const KeyBundle(
+        userId: 'user-peer',
+        deviceId: 'device-peer',
+        handle: 'peer',
+        identityPublicKey: 'pub-peer',
+        signedPrekeyBundle: 'prekey-peer',
+      ),
+      lastEnvelope: null,
+      updatedAt: DateTime.utc(2026, 4, 1),
+    );
+
+// The explicit rowid a migration-test row is written with: the number in
+// its id, or 1 for a row without one.
+int rowidOf(String id) => int.tryParse(id.split('-').last) ?? 1;
+
+// The tables schema 12 holds beyond the three of schema 8 (with the sender
+// column schema 11 added), as a database created at 12 has them, and the
+// trigger that goes with the content tables. The 8 tables take the one
+// column schema 9 added to cached_conversations by ALTER TABLE.
+const _schemaVersion12Additions = [
+  'CREATE TABLE "message_contents" ("message_key" TEXT NOT NULL, "conversation_id" TEXT NOT NULL, '
+      '"client_message_id" TEXT NULL, "server_message_id" TEXT NULL, "sender_device_id" TEXT NULL, '
+      '"body" TEXT NOT NULL, "attachment_json" TEXT NULL, "kind" TEXT NOT NULL, "inner_expires_at" INTEGER NULL, '
+      '"status" TEXT NOT NULL, "created_at" INTEGER NOT NULL, "updated_at" INTEGER NOT NULL, PRIMARY KEY ("message_key"))',
+  'CREATE TABLE "retired_messages" ("message_key" TEXT NOT NULL, "retired_at" INTEGER NOT NULL, PRIMARY KEY ("message_key"))',
+  'CREATE TABLE "conversation_read_marks" ("conversation_id" TEXT NOT NULL, "read_through_order" INTEGER NULL, '
+      '"marked_unread" INTEGER NOT NULL DEFAULT 0 CHECK ("marked_unread" IN (0, 1)), PRIMARY KEY ("conversation_id"))',
+  'CREATE TABLE "media_blobs" ("file_name" TEXT NOT NULL, "conversation_id" TEXT NOT NULL, "attachment_id" TEXT NOT NULL, '
+      '"digest" TEXT NOT NULL, "size_bytes" INTEGER NOT NULL, "expires_at" INTEGER NULL, "last_used_at" INTEGER NOT NULL, '
+      'PRIMARY KEY ("file_name"), UNIQUE ("conversation_id", "attachment_id", "digest"))',
+  'CREATE TRIGGER message_contents_skip_retired BEFORE INSERT ON message_contents '
+      'WHEN EXISTS (SELECT 1 FROM retired_messages WHERE message_key = NEW.message_key) BEGIN SELECT RAISE(IGNORE); END',
+];
+
+// Tables exactly as schema version 8 created them.
+const _schemaVersion8 = [
+  'CREATE TABLE "cached_conversations" ("id" TEXT NOT NULL, "peer_user_id" TEXT NULL, '
+      '"peer_handle" TEXT NOT NULL, "peer_display_name" TEXT NULL, "peer_device_id" TEXT NULL, '
+      '"peer_identity_public_key" TEXT NULL, "peer_signed_prekey_bundle" TEXT NULL, '
+      '"updated_at" INTEGER NOT NULL, "preview_sender_device_id" TEXT NULL, '
+      '"preview_ciphertext" TEXT NULL, "preview_nonce" TEXT NULL, "preview_message_type" TEXT NULL, '
+      '"preview_attachment_json" TEXT NULL, "preview_envelope_version" TEXT NULL, '
+      '"preview_expires_at" INTEGER NULL, "session_locator" TEXT NULL, '
+      '"session_envelope_version" TEXT NULL, "session_requires_local_persistence" TEXT NULL, '
+      '"session_schema_version" INTEGER NULL, "session_local_device_id" TEXT NULL, '
+      '"session_remote_device_id" TEXT NULL, "session_remote_identity_fingerprint" TEXT NULL, '
+      '"session_audit_hint" TEXT NULL, "session_bootstrapped_at" TEXT NULL, '
+      '"pagination_cursor" TEXT NULL, "has_more_history" INTEGER NOT NULL DEFAULT 1 '
+      'CHECK ("has_more_history" IN (0, 1)), "last_synced_at" INTEGER NULL, PRIMARY KEY ("id"))',
+  'CREATE TABLE "cached_messages" ("id" TEXT NOT NULL, "conversation_id" TEXT NOT NULL '
+      'REFERENCES cached_conversations (id), "client_message_id" TEXT NULL, '
+      '"sender_device_id" TEXT NOT NULL, "ciphertext" TEXT NOT NULL, "nonce" TEXT NOT NULL, '
+      '"message_type" TEXT NOT NULL, "attachment_json" TEXT NULL, "envelope_version" TEXT NULL, '
+      '"search_body" TEXT NULL, "conversation_order" INTEGER NULL, "received_at" INTEGER NOT NULL, '
+      '"expires_at" INTEGER NULL, "delivery_state" TEXT NOT NULL DEFAULT \'sent\', '
+      '"delivered_at" INTEGER NULL, "read_at" INTEGER NULL, PRIMARY KEY ("id"))',
+  'CREATE TABLE "pending_messages" ("client_message_id" TEXT NOT NULL, '
+      '"conversation_id" TEXT NOT NULL, "sender_device_id" TEXT NOT NULL, '
+      '"recipient_user_id" TEXT NOT NULL, "ciphertext" TEXT NOT NULL, "nonce" TEXT NOT NULL, '
+      '"message_type" TEXT NOT NULL, "attachment_json" TEXT NULL, "envelope_version" TEXT NULL, '
+      '"created_at" INTEGER NOT NULL, "expires_at" INTEGER NULL, '
+      '"retry_count" INTEGER NOT NULL DEFAULT 0, "last_attempt_at" INTEGER NULL, '
+      '"next_retry_at" INTEGER NULL, "state" TEXT NOT NULL DEFAULT \'pending\', '
+      '"error_message" TEXT NULL, PRIMARY KEY ("client_message_id"))',
+];

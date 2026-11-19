@@ -1,76 +1,92 @@
-# Veil — App Review Information & Reviewer Guidance
+# App Review information for Veil
 
-This document is intended for the App Store Review team. It explains what Veil is,
-how to test it without a phone number or account, the encryption export-compliance
-posture, and how data is handled. Please read the "No recovery by design" and
-"How to test without an account" sections before testing — Veil intentionally has
-no login, no phone number, and no account recovery, and that is the expected
-behavior, not a bug.
+This document is for the App Store Review team. It explains what Veil is,
+how to test it without a phone number or email, the encryption export-compliance
+posture, and how data is handled. Please read sections (a) and (b) before
+testing. Veil has no password, no phone number, no email and no account
+recovery; that is the expected behavior, not a bug.
 
 ---
 
-## (a) What the app does + "No recovery by design"
+## (a) What the app does, and why there is no recovery
 
-**Veil is a privacy-first, end-to-end encrypted messenger.** Its defining
-property is that identity is **device-bound** rather than tied to a phone number,
-email, or username.
+**Veil is an end-to-end encrypted messenger.** An account lives on the phone
+that created it; it is not tied to a phone number or an email address.
 
 Key behaviors a reviewer should expect:
 
-- **No account, no phone number, no email, no real name.** There is no sign-up
-  form, no SMS/OTP verification, and no password. On first launch the app
-  generates a cryptographic identity locally on the device.
+- **No phone number, no email, no real name.** There is no password, email or
+  SMS sign-up, and no OTP verification. On first launch the app shows a privacy
+  notice and a short **Before you start** page, then the user picks a handle
+  (**Choose a handle**). The app creates the account's keys on the phone and
+  registers only the public keys and the handle.
 - **End-to-end encryption.** Every message is encrypted on-device using a Double
   Ratchet over X25519 (key exchange), AES-256-GCM (symmetric encryption),
   Ed25519 (device signatures), and HKDF-SHA256 (key derivation). The server only
-  ever relays ciphertext and never has access to plaintext.
-- **No recovery path — by design.** Because identity and message history are
-  bound to the device and the keys never leave it, **there is no way to recover
-  an account or restore conversations if the device is lost.** There is no
-  password reset, no "forgot account" flow, no server-side backup of messages,
-  and no administrator who can read or restore content. This is the core safety
-  model of the app, not a defect. The only sanctioned way to move an identity to
-  a new device is the in-app **encrypted device transfer** (possession-proof
-  pairing between two devices the user controls).
+  ever passes on message ciphertext and never has access to message plaintext.
+- **No account recovery.** The account and its message history live on the
+  phone and the keys never leave it, so **there is no way to recover an account
+  or restore chats if the phone is lost.** There is no password reset, no
+  "forgot account" flow, no server-side backup of messages, and no administrator
+  who can read or restore content. The only way to move an account to a new
+  phone is **Move to a new phone** in the app, which needs both phones in the
+  user's hands.
 
 This means the reviewer will **not** encounter (and should not look for) a login
 screen, "forgot password" link, or any way to view messages from a server admin
-console — none of these exist intentionally.
+console. None of these exist.
 
 ---
 
-## (b) How to test WITHOUT a phone number or account
+## (b) How to test WITHOUT a phone number or email
 
 No demo credentials are needed because **there are no credentials.** The flow:
 
-1. **Install and launch the app.** On first launch, Veil generates a device-bound
-   identity automatically (X25519/Ed25519 keypairs created locally). No phone
-   number, email, SMS code, or password is requested. You will be taken directly
-   into the app with a fresh identity.
+1. **Install and launch the app.** Accept the privacy notice ("Agree and
+   continue"), then read Before you start (no backup, no recovery) and tick its
+   checkbox. On **Choose a handle**, pick any free handle (3 to 32 lowercase
+   letters, digits, dots and underscores, for example `reviewer_a`). The app then
+   creates the account's keys on the phone (X25519/Ed25519 key pairs) and
+   registers only the public keys and the handle. No phone number, email, SMS
+   code, or password is requested.
 2. **(Optional) Set the local app lock.** You may be offered a local PIN /
    biometric (Face ID) lock. This is an on-device lock only; it is not an account
    login and does not authenticate to any server.
-3. **Test messaging with two installs.** Because Veil is peer-to-peer encrypted
-   messaging, the realistic way to exercise it is with **two devices or two
-   simulators** (Device A and Device B), each running its own first-launch
-   identity:
-   - On Device A, start a new conversation and pair with Device B (the app
-     surfaces an identity/safety-number exchange so the two devices can establish
-     a session).
+3. **Test messaging with two installs.** Because messages are end-to-end
+   encrypted and pass through the server, the realistic way to exercise it is
+   with **two devices or two simulators** (Device A and Device B), each with its
+   own account created as in step 1:
+   - On Device A, tap **New chat** and enter Device B's handle. The chat offers
+     a safety number the two devices can compare to confirm each other's keys.
    - Send a 1:1 message from A to B and confirm it is received and decrypted on B.
-   - Optionally create a group conversation and send an encrypted attachment to
-     confirm group and media paths.
+   - Optionally create a group (**New group**) and send a message in it to
+     confirm the group path.
+   - On Device A, tap **+** in the chat with B, choose **Photos** and send a
+     photo, then choose **File** and send a PDF (save any PDF to Files first,
+     for example from Safari, since a new simulator's Files app is empty); on
+     B the photo shows in the chat (tap it to open it full screen) and the PDF
+     opens with a tap.
+     Picking uses the system photo and file pickers, so the app asks for no
+     photo access. This build has no voice messages or calls.
+   - To report or block (guideline 1.2): on Device A, open the menu at the top
+     right of the chat with B (**Report**, **Block**), or long-press one of B's
+     messages (**Report**), or add B in **Contacts** (**Add contact** at the
+     top right) and tap B there. A report sends B's account, the reason and
+     which chat or message, not what it says. Blocked accounts are listed under
+     **Settings > Privacy > Blocked accounts**. The same chat menu mutes the
+     chat's notifications.
 4. **Verify the "no recovery" behavior (optional).** Delete and reinstall the app
-   on one device. The previous identity and message history will be gone and a
-   brand-new identity is generated. This demonstrates the intended no-recovery
-   model.
+   on one device. The previous identity and message history will be gone, and the
+   onboarding starts again for a brand-new account. This demonstrates the
+   intended no-recovery model.
 
 If only a single device is available, the app will still launch fully and create
-an identity; a second participant is simply required to observe message exchange,
-exactly as with any peer-to-peer messenger.
+an account; a second participant is simply required to observe message exchange,
+exactly as with any messenger.
 
-There is **no demo account, no demo phone number, and no test login** to provide,
-because the architecture has none. Please contact us (below) if the review team
+There is **no demo account, no demo phone number, and no test password** to
+provide: each install creates its own account in a few seconds, on that
+phone. Please contact us (below) if the review team
 would like a guided walkthrough or a paired second device/identity for testing.
 
 ---
@@ -88,15 +104,15 @@ However, Veil uses **only standard, published cryptographic algorithms**, so it
 qualifies for the U.S. **mass-market self-classification exemption** under
 15 CFR 740.17(b)(1). Consequences:
 
-- **No CCATS / no ITSEncryptionExportComplianceCode is required** — a CCATS is
+- **No CCATS / no ITSEncryptionExportComplianceCode is required:** a CCATS is
   only needed for proprietary/non-standard algorithms, which Veil does not use.
   The `Info.plist` therefore does **not** carry an
   `ITSEncryptionExportComplianceCode` value.
-- An **annual self-classification report** is filed with U.S. BIS
-  (crypt@bis.doc.gov) and the NSA ENC coordinator (enc@nsa.gov) under
-  ECCN 5D992.c.
-- A **French (ANSSI) encryption declaration** is prepared for distribution in
-  France.
+- An **annual self-classification report** will be filed before distribution
+  with U.S. BIS (crypt@bis.doc.gov) and the NSA ENC coordinator (enc@nsa.gov)
+  under ECCN 5D992.c.
+- A **French (ANSSI) encryption declaration** will be filed before distribution
+  in France.
 
 App Store Connect Export Compliance answers used for this submission:
 
@@ -125,9 +141,16 @@ our App Privacy "nutrition label" answers). Summary:
 - **User content** (message payloads): transited as **ciphertext only**. The
   server cannot decrypt it, so it is declared unlinked. Messages, media, and
   attachments are end-to-end encrypted.
-- **Crash diagnostics** (Sentry): **opt-in and disabled by default**; not linked
-  to the user; used only for App Functionality; not for tracking.
-- **Not collected:** contacts, location, health/fitness, financial info, browsing
+- **Contacts:** the in-app contact list (which accounts the user added) is
+  collected and linked to the user, for App Functionality only. The phone's
+  address book is never read.
+- **Other user content, linked:** group and channel names and descriptions and
+  device labels (stored readable), and the metadata needed to deliver
+  messages (conversation membership, message and receipt times, call
+  records), all tied to the account.
+- **Crash diagnostics:** not collected. The app ships no crash-reporting SDK
+  (CI rejects adding one without a privacy review).
+- **Not collected:** location, health/fitness, financial info, browsing
   history, search history, purchases, usage/analytics data, and sensitive info
   (see `app-privacy-answers.md` for the complete "Data Not Collected" list).
 - Privacy policy: https://pppaal.github.io/Veil/

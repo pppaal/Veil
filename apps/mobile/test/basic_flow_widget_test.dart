@@ -10,10 +10,9 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
-import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
+import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
-import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 
 void main() {
   testWidgets('onboarding warning keeps no-recovery copy explicit',
@@ -26,41 +25,29 @@ void main() {
       ),
     );
 
-    expect(find.text('No backup.\nNo recovery.\nNo leaks.'), findsOneWidget);
-    expect(find.text('Unrecoverable by design'), findsOneWidget);
+    expect(find.text('Before you start'), findsOneWidget);
     expect(
       find.textContaining(
-          'If you lose your device, your account and messages are gone.'),
+          'If you lose the phone, your account and messages are gone for good.'),
       findsOneWidget,
     );
-    await tester.scrollUntilVisible(
-      find.text('I understand'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('I understand'), findsOneWidget);
+    expect(find.text("I understand a lost account can't be recovered"), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
   });
 
   testWidgets(
-      'create account screen keeps transfer and no-restore copy visible',
+      'the handle screen creates the account and offers the move from another phone',
       (tester) async {
     await tester.pumpWidget(
       const ProviderScope(
         child: _TestApp(
-          child: CreateAccountScreen(),
+          child: ChooseHandleScreen(),
         ),
       ),
     );
 
-    expect(find.text('This device becomes your identity.'), findsOneWidget);
-    expect(find.text('No restore path'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Continue'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Continue'), findsOneWidget);
-    expect(find.text('Transfer from old device'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Move from another phone'), findsOneWidget);
   });
 
   testWidgets('app lock screen surfaces local-only barrier status',
@@ -92,59 +79,17 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('VEIL never unlocks itself remotely.'), findsOneWidget);
-    expect(find.text('Required'), findsOneWidget);
-    expect(find.text('Available'), findsOneWidget);
+    // No PIN yet: the page where one is chosen.
+    expect(find.text('App lock'), findsOneWidget);
+    expect(find.text('Turn on'), findsOneWidget);
+    // The metric strip that showed "Required" and "Available" draws nothing
+    // any more (design system 7.10): PIN and biometrics are Security rows.
     await tester.scrollUntilVisible(
       find.text('Use biometrics'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('Use biometrics'), findsOneWidget);
-  });
-
-  testWidgets('settings screen shows the trusted device graph', (tester) async {
-    final storage = SecureStorageService(_MemorySecureKeyValueStore());
-    final sessionController = AppSessionController(
-      storage,
-      VeilApiClient(baseUrl: 'http://localhost:3000/v1'),
-      createDefaultCryptoAdapter(),
-      cacheService: _MemoryConversationCache(),
-    );
-    sessionController.state = const AppSessionState(
-      accessToken: 'token',
-      userId: 'user-1',
-      deviceId: 'device-current',
-      handle: 'atlas',
-      displayName: 'Atlas',
-      onboardingAccepted: true,
-      locked: false,
-      initializing: false,
-    );
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          appSessionProvider.overrideWith((ref) => sessionController),
-          apiClientProvider.overrideWithValue(_FakeSettingsApiClient()),
-        ],
-        child: const _TestApp(
-          child: SettingsScreen(),
-        ),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-
-    expect(find.text('TRUSTED DEVICE GRAPH'), findsOneWidget);
-    expect(find.text('Pixel Fold'), findsOneWidget);
-    expect(find.text('Old iPhone'), findsOneWidget);
-    expect(find.text('MacBook Air'), findsOneWidget);
-    expect(find.text('GRAPH SUMMARY'), findsOneWidget);
-    expect(find.textContaining('stale'), findsWidgets);
-    expect(find.text('This device'), findsOneWidget);
-    expect(find.text('Revoked'), findsOneWidget);
-    expect(find.text('Revoke'), findsOneWidget);
   });
 }
 
@@ -202,7 +147,7 @@ class _MemoryConversationCache implements ConversationCacheService {
   Future<void> clearAll() async {}
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<List<ConversationPreview>> readConversations() async => const [];
@@ -261,68 +206,4 @@ class _MemoryConversationCache implements ConversationCacheService {
 
   @override
   Future<void> upsertPendingMessage(PendingMessageRecord pending) async {}
-}
-
-class _FakeSettingsApiClient extends VeilApiClient {
-  _FakeSettingsApiClient() : super(baseUrl: 'http://localhost:3000/v1');
-
-  @override
-  Future<Map<String, dynamic>> listDevices(String accessToken) async {
-    return {
-      'activeDeviceId': 'device-current',
-      'items': [
-        {
-          'id': 'device-current',
-          'deviceName': 'Pixel Fold',
-          'platform': 'android',
-          'isActive': true,
-          'trustState': 'current',
-          'revokedAt': null,
-          'trustedAt': DateTime.utc(2026, 4, 1, 8, 0, 0).toIso8601String(),
-          'joinedFromDeviceId': null,
-          'joinedFromDeviceName': null,
-          'joinedFromPlatform': null,
-          'createdAt': DateTime.utc(2026, 4, 1, 8, 0, 0).toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 2, 8, 0, 0).toIso8601String(),
-          'lastSyncAt': DateTime.utc(2026, 4, 2, 8, 10, 0).toIso8601String(),
-          'lastTrustedActivityAt':
-              DateTime.utc(2026, 4, 2, 8, 10, 0).toIso8601String(),
-        },
-        {
-          'id': 'device-old',
-          'deviceName': 'Old iPhone',
-          'platform': 'ios',
-          'isActive': false,
-          'trustState': 'revoked',
-          'revokedAt': DateTime.utc(2026, 4, 1, 9, 0, 0).toIso8601String(),
-          'trustedAt': DateTime.utc(2026, 3, 10, 8, 0, 0).toIso8601String(),
-          'joinedFromDeviceId': null,
-          'joinedFromDeviceName': null,
-          'joinedFromPlatform': null,
-          'createdAt': DateTime.utc(2026, 3, 10, 8, 0, 0).toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 1, 8, 30, 0).toIso8601String(),
-          'lastSyncAt': null,
-          'lastTrustedActivityAt':
-              DateTime.utc(2026, 4, 1, 8, 30, 0).toIso8601String(),
-        },
-        {
-          'id': 'device-laptop',
-          'deviceName': 'MacBook Air',
-          'platform': 'macos',
-          'isActive': true,
-          'trustState': 'stale',
-          'revokedAt': null,
-          'trustedAt': DateTime.utc(2026, 3, 20, 8, 0, 0).toIso8601String(),
-          'joinedFromDeviceId': 'device-current',
-          'joinedFromDeviceName': 'Pixel Fold',
-          'joinedFromPlatform': 'android',
-          'createdAt': DateTime.utc(2026, 3, 20, 8, 0, 0).toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 1, 7, 45, 0).toIso8601String(),
-          'lastSyncAt': DateTime.utc(2026, 3, 30, 7, 45, 0).toIso8601String(),
-          'lastTrustedActivityAt':
-              DateTime.utc(2026, 4, 1, 7, 45, 0).toIso8601String(),
-        },
-      ],
-    };
-  }
 }

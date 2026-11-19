@@ -62,6 +62,8 @@ App-Store-same-day는 **불가능**합니다. 이유는 단순합니다:
 
 macOS + Xcode 없이는 불가능. 계정/팀이 먼저 마련된 뒤 수행.
 
+- [ ] **실제 툴체인에서 첫 Android 릴리스 빌드와 첫 iOS 아카이브 생성 (first Android release build and first iOS archive produced on a real toolchain)** — 둘 다 아직 한 번도 만들어진 적이 없습니다. CI는 `flutter analyze`·`flutter test`만 돌리고 앱은 빌드하지 않습니다. Android는 Android SDK가 있는 머신에서 `flutter build appbundle --release`(필수 `--dart-define`은 `docs/go-live-today.md` 3장), iOS는 macOS + Xcode에서 아카이브. 기본 빌드에는 libsignal 브리지와 libsignal 의존성이 빠져 있으며 opt-in입니다 (Android `-Pveil.libsignal=true` / `--android-project-arg=veil.libsignal=true`, iOS는 Swift 파일·`LibSignalClient` 패키지·등록 코드 추가; `docs/libsignal-migration-implementation.md`). 두 브리지 모두 앱에 빌드된 적이 없습니다.
+
 - [ ] **첫 빌드: `flutter pub get` + `pod install` + 아카이브** — `Generated.xcconfig` 부재, Podfile/Pods 미설치 상태. macOS에서 최초 빌드 부트스트랩 필요.
 
 - [ ] **배포 서명 설정(인증서 + 프로비저닝 프로파일)** — Runner 타겟에 Automatic signing 활성화(또는 Distribution 인증서 + App Store 프로비저닝 프로파일 임포트) 후 `flutter build ipa` / Xcode Archive.
@@ -136,19 +138,19 @@ macOS + Xcode 없이는 불가능. 계정/팀이 먼저 마련된 뒤 수행.
 
 - [x] **배포 타겟** — `IPHONEOS_DEPLOYMENT_TARGET = 14.0` 전 config 일관(Debug 479, Release 530, Profile 353). `TARGETED_DEVICE_FAMILY='1,2'`(iPhone+iPad).
 
-- [x] **Privacy manifest + usage-description 문자열** — `apps/mobile/ios/Runner/PrivacyInfo.xcprivacy` 존재. Info.plist에 NSCameraUsageDescription, NSMicrophoneUsageDescription, NSPhotoLibraryUsageDescription, NSPhotoLibraryAddUsageDescription, NSFaceIDUsageDescription 모두 존재. 누락 없음.
+- [x] **Privacy manifest + usage-description 문자열** — `apps/mobile/ios/Runner/PrivacyInfo.xcprivacy` 존재. 앱은 시스템 사진 선택기와 문서 선택기로 사진과 파일을 고르므로 카메라·마이크 권한과 `READ_MEDIA_*`, `READ_EXTERNAL_STORAGE`를 선언하지 않으며, 플러그인 자체 매니페스트에도 없습니다(`flutter_local_notifications`는 `POST_NOTIFICATIONS`·`VIBRATE`, `local_auth_android`는 `USE_BIOMETRIC`만 선언하고, `image_picker_android`는 권한 없이 파일 제공자와 비활성화된 사진 선택기 백포트 서비스만 둡니다). iOS에는 `NSFaceIDUsageDescription`과, 사진 선택 플러그인이 요구하는 `NSPhotoLibraryUsageDescription`만 둡니다(시스템 사진 선택기는 접근 권한을 묻지 않으므로 이 문구는 표시되지 않습니다). `NSCameraUsageDescription`, `NSMicrophoneUsageDescription`, `NSPhotoLibraryAddUsageDescription`은 없습니다. App Store Connect 업로드가 카메라 문구를 요구하면 문구를 넣지 말고, 앱 자체 코드에서 PHPicker와 문서 선택기를 부르도록 바꿉니다. CI의 `android-build` 잡이 디버그 빌드의 병합 매니페스트를 매번 출력하며, 여기에는 앱 매니페스트의 다섯 개 권한(`INTERNET`, `USE_BIOMETRIC`, `POST_NOTIFICATIONS`, `VIBRATE`, `WAKE_LOCK`) 외에 `androidx.biometric`의 `USE_FINGERPRINT`(Android 9 이하 지문 API용 일반 권한, 확인 창 없음)와 `androidx.core`가 서명 수준으로 선언하는 `io.veil.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`만 더 들어갑니다. 제출 전에는 릴리스 번들의 병합 매니페스트도 확인합니다(`docs/launch/play-store-listing.md`의 권한 절). 카메라나 마이크를 쓰는 기능을 넣을 때는 그 변경에서 함께 선언합니다.
 
 - [x] **App 아이콘** — `Assets.xcassets/AppIcon.appiconset`에 1024x1024 마케팅 아이콘 포함 21개 PNG. `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon`. `flutter_launcher_icons`에 `remove_alpha_ios:true`(알파 제거, Apple 요구).
 
-- [x] **앱 이름(EN+KO)** — `store/appstore/metadata-en.txt` "VEIL Messenger"(14자), `metadata-ko.txt` "VEIL 메신저"(8자). 30자 한도 내.
+- [x] **앱 이름** — `store/appstore/metadata-en.txt` "Veil: Encrypted Messenger"(25자). 30자 한도 내. 앱과 스토어 문구는 영어 전용이며 한국어 메타데이터 파일은 없습니다.
 
-- [x] **서브타이틀(KO)** — "종단간 암호화 프라이버시 메신저" 17자, 한도 내. (EN은 버킷 1에서 수정 필요.)
+- [x] **서브타이틀** — "Chat without a phone number" 27자, 한도 내.
 
-- [x] **설명/키워드/URL** — 설명(EN+KO) 4000자 내, promo text 170자 내; 키워드 EN 69자/KO 36자(100자 한도 내); Support URL `https://veil.app/support`, Marketing URL `https://veil.app`, Privacy Policy URL `https://veil.app/privacy` 모두 양 언어 존재. (URL이 실제 라이브인지 사람이 확인.)
+- [x] **설명/키워드/URL** — 설명 4000자 내, promo text 131자(170자 한도 내); 키워드 89자(100자 한도 내); Support URL `https://veil.app/support`, Marketing URL `https://veil.app`, Privacy Policy URL `https://pppaal.github.io/Veil/` 존재. (URL이 실제 라이브인지 사람이 확인.)
 
-- [x] **App Privacy 질문지 답변 초안** — `store/appstore/app-privacy-answers.md`에 data collection, 식별자(User ID, Device ID), user content(ciphertext), crash diagnostics, tracking=No, data-not-collected 목록 포함. (ASC UI 전사는 사람이.)
+- [x] **App Privacy 질문지 답변 초안** — `store/appstore/app-privacy-answers.md`에 data collection, 식별자(User ID, Device ID), Contacts(앱 안의 연락처 목록), user content(암호문, 연결 안 됨), Other User Content(그룹·채널 이름과 설명, 기기 이름, 전달 메타데이터, 계정에 연결됨), crash data 미수집, tracking=No, data-not-collected 목록 포함. Play Data safety 답변은 `store/play/data-safety-answers.md`. 다른 문서가 두 답변과 어긋나면 `scripts/store-label-check.mjs`가 CI를 실패시킵니다. (ASC/Play Console UI 전사는 사람이.)
 
-- [x] **handoff 머신러리** — `pnpm audit:handoff`(`scripts/audit-handoff-bundle.mjs`)가 dirty tree 거부, SHA/branch 핀, `pnpm beta:external:bundle` 실행, 15개 문서 + 4개 JSON 아티팩트 + 생성 README를 스테이징하고 tar로 패키징. 펌 shortlist(`docs/external-audit-firm-shortlist.md`), RFP 이메일, OTF 신청서, intake/remediation tracker 모두 작성됨.
+- [x] **handoff 머신러리** — `pnpm audit:handoff`(`scripts/audit-handoff-bundle.mjs`)가 dirty tree 거부, SHA/branch 핀, `pnpm beta:external:bundle` 실행, `scripts/audit-scope.mjs`가 정한 문서 + 4개 JSON 아티팩트 + 생성 README를 스테이징하고 tar로 패키징(범위에 적힌 경로가 하나라도 없으면 중단). 펌 shortlist(`docs/external-audit-firm-shortlist.md`), RFP 이메일, OTF 신청서, intake/remediation tracker 모두 작성됨.
 
 - [x] **정적 품질 게이트 + web-demo 테스트** — 현재 sandbox에서 통과 확인: `pnpm format:check`, `pnpm policy:check`, `pnpm architecture:check`, `pnpm -C apps/web-demo test`(47/47).
 

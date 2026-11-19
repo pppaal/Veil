@@ -5,6 +5,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsInt,
+  IsOptional,
   IsString,
   IsUUID,
   Matches,
@@ -25,6 +26,15 @@ class KeyDistributionDto {
   @ApiProperty({ description: 'Member the blob is encrypted for.' })
   @IsUUID()
   recipientUserId!: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      "One of the recipient's active devices. Omit for the legacy user-scoped path, where any of the recipient's devices may pick the blob up.",
+  })
+  @IsOptional()
+  @IsUUID()
+  recipientDeviceId?: string;
 
   @ApiProperty({
     description: 'Chain key encrypted under the sender↔recipient 1:1 ratchet (opaque to server).',

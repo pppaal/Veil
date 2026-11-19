@@ -1,0 +1,93 @@
+import '../../../../core/crypto/crypto_engine.dart';
+import '../../../../core/storage/conversation_cache_service.dart';
+import '../../../attachments/domain/attachment_rules.dart';
+import 'message_content_service.dart';
+import 'messenger_state_store.dart';
+
+/// The opened content of each conversation's latest message, for the
+/// conversation list. Read through the content store, never by decrypting:
+/// a message's single decrypt belongs to MessageContentService.
+class DecryptedMessageCache {
+  DecryptedMessageCache({required MessageContentService contents, required MessengerStateStore store})
+      : _contents = contents,
+        _store = store;
+
+  // A pass over the conversations that were never loaded ends after this
+  // many fetches in a row failed: the relay is not answering.
+  static const _failuresThatEndAPass = 3;
+
+  final MessageContentService _contents;
+  final MessengerStateStore _store;
+  final Map<String, MessageContentRecord> _latest = {};
+  bool _loadingUnheld = false;
+
+  /// Body of the latest message when it is text that opened; null otherwise.
+  String? previewFor(String conversationId) {
+    final content = _latest[conversationId];
+    return content?.kind == MessageKind.text ? content!.body : null;
+  }
+
+  /// Body of the latest message when it is text, a system line or a file
+  /// (its name, sanitized as a file card shows it) that opened; null
+  /// otherwise, and for a file with no name.
+  String? bodyFor(String conversationId) {
+    final content = _latest[conversationId];
+    return switch (content?.kind) {
+      MessageKind.text || MessageKind.system => content!.body,
+      MessageKind.file => switch (sanitizeFileName(content!.body, fallback: '')) { '' => null, final name => name },
+      _ => null,
+    };
+  }
+
+  /// Decrypted kind of the latest message, or null until it opened. Never
+  /// the envelope's unauthenticated kind.
+  MessageKind? kindFor(String conversationId) => _latest[conversationId]?.kind;
+
+  /// Re-reads the latest message of [conversationId] from the content store.
+  Future<void> refresh(String conversationId) async {
+    final latest = _store.messagesOf(conversationId).lastOrNull;
+    final content = latest == null ? null : (await _contents.storedFor([latest]))[latest.id];
+    // A newer message arrived while this one was read.
+    if (_store.messagesOf(conversationId).lastOrNull?.id != latest?.id) return;
+    final opened = content?.status == MessageContentStatus.ok ? content : null;
+    final previous = _latest[conversationId];
+    if (previous?.kind == opened?.kind && previous?.body == opened?.body) return;
+    opened == null ? _latest.remove(conversationId) : _latest[conversationId] = opened;
+    _store.changed();
+  }
+
+  /// Fetches, with [sync], the history of every listed conversation whose
+  /// last message this device never loaded (one that came while the app was
+  /// closed, in a chat not opened here before), newest first. Its frames are
+  /// then opened in order like any that arrive live, and the list says what
+  /// the last one is without the chat being opened. Nothing is marked read.
+  ///
+  /// Best effort, one pass at a time: a conversation that fails is left for
+  /// the next pass and does not stop the ones after it.
+  Future<void> loadUnheld(
+    Future<void> Function(String conversationId) sync, {
+    required DateTime now,
+    required bool Function() stillWanted,
+  }) async {
+    if (_loadingUnheld) return;
+    _loadingUnheld = true;
+    try {
+      var failuresInARow = 0;
+      for (final conversationId in _store.unloadedWithLastMessage(now)) {
+        if (!stillWanted() || failuresInARow == _failuresThatEndAPass) return;
+        // Opened, or reached by a live frame, since the pass began.
+        if (_store.hasMessagesLoaded(conversationId)) continue;
+        try {
+          await sync(conversationId);
+          failuresInARow = 0;
+        } catch (_) {
+          failuresInARow += 1;
+        }
+      }
+    } finally {
+      _loadingUnheld = false;
+    }
+  }
+
+  void clear() => _latest.clear();
+}

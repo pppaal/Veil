@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type {
@@ -10,6 +10,7 @@ import type {
 } from '@veil/contracts';
 
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
+import { UuidParam } from '../../common/pipes/uuid-param.decorator';
 import { BlockUserDto } from './dto/block-user.dto';
 import { FileAbuseReportDto } from './dto/file-report.dto';
 import { SetConversationMuteDto } from './dto/set-mute.dto';
@@ -37,7 +38,7 @@ export class SafetyController {
   @Delete('blocks/:userId')
   unblock(
     @Req() request: AuthenticatedRequest,
-    @Param('userId') userId: string,
+    @UuidParam('userId') userId: string,
   ): Promise<UnblockUserResponse> {
     return this.safetyService.unblock(request.auth.userId, userId);
   }
@@ -45,7 +46,7 @@ export class SafetyController {
   @Post('mutes/:conversationId')
   setMute(
     @Req() request: AuthenticatedRequest,
-    @Param('conversationId') conversationId: string,
+    @UuidParam('conversationId') conversationId: string,
     @Body() dto: SetConversationMuteDto,
   ): Promise<SetConversationMuteResponse> {
     return this.safetyService.setConversationMute(

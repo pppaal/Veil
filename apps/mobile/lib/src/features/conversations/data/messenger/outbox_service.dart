@@ -27,10 +27,10 @@ import 'retry_policy.dart';
 /// Messages on their way to the relay. A message is encrypted (an
 /// attachment sealed; a timed text that waits behind another, see
 /// OutboundTextSealer, held) and queued at once, shown as pending, and sent
-/// oldest first within its conversation; conversations drain on their own,
-/// so one chat's upload never holds back another chat's texts (D20). A send
-/// that fails is retried on a schedule (see retry_policy.dart) or left for
-/// the user.
+/// in the order it was queued within its conversation (its queue number,
+/// which holds across a restart); conversations drain on their own, so one
+/// chat's upload never holds back another chat's texts (D20). A send that
+/// fails is retried on a schedule (see retry_policy.dart) or left for the user.
 class OutboxService {
   OutboxService({
     required MessengerStateStore store,
@@ -196,7 +196,7 @@ class OutboxService {
       drain(conversationId: conversationId, markFailuresAsRetrying: true, ignoreRetrySchedule: true);
 
   /// Sends what is due: [conversationId]'s messages, or with none every
-  /// conversation's, each conversation on its own and oldest first. A
+  /// conversation's, each conversation on its own, first queued first. A
   /// conversation already draining is left to that drain. A failure is
   /// recorded on its message and the drain moves on, so one stalled send
   /// never holds back the ones after it.
@@ -219,8 +219,8 @@ class OutboxService {
     }
   }
 
-  // One message at a time, the oldest due first, taking in what is queued
-  // while it drains; each message is tried at most once per drain.
+  // One message at a time, the first queued of those due first, taking in
+  // what is queued while it drains; each message is tried at most once per drain.
   Future<void> _drainConversation(
     String conversationId, {
     required bool markFailuresAsRetrying,
@@ -235,7 +235,7 @@ class OutboxService {
             .where((item) => markFailuresAsRetrying || item.state != MessageDeliveryState.failed)
             .where((item) => ignoreRetrySchedule || item.nextRetryAt == null || !item.nextRetryAt!.isAfter(now))
             .toList()
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+          ..sort(_byQueueOrder);
         if (due.isEmpty) return;
         tried.add(due.first.clientMessageId);
         await _sendOne(due.first, now);
@@ -243,6 +243,13 @@ class OutboxService {
     } finally {
       _draining.remove(conversationId);
     }
+  }
+
+  // A total order: queue number, then created time, then id.
+  static int _byQueueOrder(PendingMessageRecord a, PendingMessageRecord b) {
+    if (a.queueOrder != b.queueOrder) return a.queueOrder.compareTo(b.queueOrder);
+    if (a.createdAt != b.createdAt) return a.createdAt.compareTo(b.createdAt);
+    return a.clientMessageId.compareTo(b.clientMessageId);
   }
 
   /// Cancels [clientMessageId]'s attachment, which removes the message
@@ -256,6 +263,9 @@ class OutboxService {
     await _inFlight[clientMessageId];
     await _attachments.discard(clientMessageId);
   }
+
+  /// Moves the queue numbers above [records]' ahead of [restore], so a message queued meanwhile stands behind them.
+  void reserveQueueOrders(Iterable<PendingMessageRecord> records) => _pending.reserve(records);
 
   /// Takes back the queue the cache held and shows each queued message.
   /// Returns the staging files still in use: none (D39), so hydrate's
@@ -399,6 +409,7 @@ class OutboxService {
       state: draft == null ? MessageDeliveryState.pending : MessageDeliveryState.uploading,
       attachmentUploadDraft: draft,
       disappearAfterSeconds: disappearAfterSeconds,
+      queueOrder: _pending.nextQueueOrder(),
     );
     final saving = _pending.save(pending);
     _store.mergeMessages(conversation.id, [_optimisticMessage(pending)]);

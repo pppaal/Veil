@@ -31,6 +31,25 @@ const conv = 'conv-ab';
 
 final _blobName = RegExp(r'^[0-9a-f]{64}$');
 
+// [record] as if queued at [createdAt]: every other field, its queue number
+// included, as it is.
+PendingMessageRecord _queuedAt(PendingMessageRecord record, DateTime createdAt) => PendingMessageRecord(
+      clientMessageId: record.clientMessageId,
+      conversationId: record.conversationId,
+      senderDeviceId: record.senderDeviceId,
+      recipientUserId: record.recipientUserId,
+      envelope: record.envelope,
+      createdAt: createdAt,
+      retryCount: record.retryCount,
+      lastAttemptAt: record.lastAttemptAt,
+      nextRetryAt: record.nextRetryAt,
+      state: record.state,
+      errorMessage: record.errorMessage,
+      attachmentUploadDraft: record.attachmentUploadDraft,
+      disappearAfterSeconds: record.disappearAfterSeconds,
+      queueOrder: record.queueOrder,
+    );
+
 void main() {
   late FakeRelay relay;
   late MessengerParty alice;
@@ -317,6 +336,44 @@ void main() {
       final relayed = relay.conversations[conv]!.messages.singleWhere((message) => message['clientMessageId'] == textId);
       final outer = DateTime.parse(relayed['expiresAt'] as String);
       expect(outer.isAfter(restartedAt.add(const Duration(minutes: 5)).subtract(const Duration(seconds: 2))), isTrue);
+    });
+
+    test('a text queued in the same second as a file ahead of it still goes after the file, after a restart',
+        () async {
+      await deliver(alice, bob, 'order next');
+      holdUploads();
+      await alice.controller.sendAttachment(conversationId: conv, attachment: await file(alice, 'first.pdf', pdfBytes('first')));
+      final fileId = queuedOf(alice)!.clientMessageId!;
+      await uploading(alice, fileId);
+      await alice.controller.sendText(conversationId: conv, body: 'after the file, after a restart');
+      await settle();
+      final textId = queuedText(alice)!.clientMessageId;
+
+      late PendingMessageRecord fileRecord;
+      late PendingMessageRecord textRecord;
+      await alice.restart(whileClosed: () async {
+        relay.uploadGate = null;
+        final records = await alice.cache.readPendingMessages();
+        fileRecord = records.singleWhere((record) => record.clientMessageId == fileId);
+        textRecord = records.singleWhere((record) => record.clientMessageId == textId);
+        // Both were queued within one second on the phone, which is all the
+        // cache keeps of the time; pinned here so the test does not depend
+        // on how fast the file was sealed. A progress write then rewrote
+        // the file's row, which puts it behind the text's in the table.
+        await alice.cache.upsertPendingMessage(_queuedAt(fileRecord, textRecord.createdAt));
+      });
+      await sent(alice);
+      await waitFor(() async => (await bob.bodies(conv)).contains('after the file, after a restart'));
+
+      final relayed = relay.conversations[conv]!.messages;
+      final relayedIds = relayed.map((message) => message['clientMessageId']).toList();
+      expect(relayedIds.indexOf(fileId), lessThan(relayedIds.indexOf(textId)), reason: 'the relay took the file first');
+      final fileServerId = relayed.singleWhere((message) => message['clientMessageId'] == fileId)['id'];
+      final textServerId = relayed.singleWhere((message) => message['clientMessageId'] == textId)['id'];
+      final atBob = bob.controller.messagesFor(conv).map((message) => message.id).toList();
+      expect(atBob.indexOf(fileServerId as String), lessThan(atBob.indexOf(textServerId as String)),
+          reason: 'bob has the file before the text');
+      expect(fileRecord.queueOrder, lessThan(textRecord.queueOrder), reason: 'what decided it: the file was queued first');
     });
 
     test('a timed text with nothing ahead of it is sealed and stamped when it is queued, as before', () async {

@@ -294,6 +294,7 @@ class PendingMessageRecord {
     this.errorMessage,
     this.attachmentUploadDraft,
     this.disappearAfterSeconds,
+    this.queueOrder = 0,
   });
 
   final String clientMessageId;
@@ -302,6 +303,16 @@ class PendingMessageRecord {
   final String recipientUserId;
   final CryptoEnvelope envelope;
   final DateTime createdAt;
+
+  /// Where this message stands in the outbox queue: the outbox hands the
+  /// numbers out as messages are queued, each above the last, and the drain
+  /// sends a chat's messages in this order. It is what keeps the order
+  /// across a restart: [createdAt] comes back from the cache in whole
+  /// seconds (DateTime columns keep whole seconds), so two messages queued
+  /// in the same second would tie on it. Kept through every rewrite of the
+  /// record (see [copyWith]). 0 on a record that was never queued, and on
+  /// the first row the upgrade to schema 13 numbered (its numbers start at 0).
+  final int queueOrder;
   final int retryCount;
   final DateTime? lastAttemptAt;
   final DateTime? nextRetryAt;
@@ -349,6 +360,7 @@ class PendingMessageRecord {
       disappearAfterSeconds: identical(disappearAfterSeconds, _unset)
           ? this.disappearAfterSeconds
           : disappearAfterSeconds as int?,
+      queueOrder: queueOrder,
     );
   }
 
@@ -1106,8 +1118,14 @@ class DriftConversationCacheService
 
   @override
   Future<List<PendingMessageRecord>> readPendingMessages() async {
+    // Queue number first: created_at keeps whole seconds, so messages
+    // queued in the same second tie on it (see PendingMessageRecord.queueOrder).
     final query = _db.select(_db.pendingMessages)
       ..orderBy([
+        (table) => OrderingTerm(
+              expression: table.queueOrder,
+              mode: OrderingMode.asc,
+            ),
         (table) => OrderingTerm(
               expression: table.createdAt,
               mode: OrderingMode.asc,
@@ -1158,6 +1176,7 @@ class DriftConversationCacheService
           errorMessage: errorMessage,
           attachmentUploadDraft: _decodeAttachmentUploadDraft(attachmentJson),
           disappearAfterSeconds: _decodeTextTimer(attachmentJson),
+          queueOrder: row.queueOrder,
         ),
       );
     }
@@ -1190,6 +1209,7 @@ class DriftConversationCacheService
             nextRetryAt: Value(pending.nextRetryAt),
             state: Value(pending.state.name),
             errorMessage: Value(await _encrypt(pending.errorMessage)),
+            queueOrder: Value(pending.queueOrder),
           ),
           mode: InsertMode.insertOrReplace,
         );

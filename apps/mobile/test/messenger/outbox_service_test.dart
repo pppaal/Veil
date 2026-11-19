@@ -1,11 +1,15 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/errors/user_facing_error.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
+import 'package:veil_mobile/src/core/storage/app_database.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_services.dart';
@@ -55,12 +59,13 @@ class _RelayApi extends VeilApiClient {
   }
 }
 
-PendingMessageRecord _pending(String clientMessageId, {required int second}) => PendingMessageRecord(
+PendingMessageRecord _pending(String clientMessageId, {required int second, int queueOrder = 0}) => PendingMessageRecord(
       clientMessageId: clientMessageId,
       conversationId: 'conv-1',
       senderDeviceId: 'dev-atlas',
       recipientUserId: 'user-selene',
       createdAt: DateTime.utc(2026, 4, 1, 12, 0, second),
+      queueOrder: queueOrder,
       envelope: CryptoEnvelope(
         version: 'veil-envelope-v2',
         conversationId: 'conv-1',
@@ -95,6 +100,80 @@ void main() {
     expect(api.sent, ['c-first', 'c-second', 'c-third'], reason: 'oldest first, whatever order they were queued in');
     expect(services.outbox.hasPendingWork, isFalse);
     expect(services.store.messagesOf('conv-1').map((message) => message.id), ['srv-c-first', 'srv-c-second', 'srv-c-third']);
+  });
+
+  test('restored records that tie on the whole second go by queue number, not by the order the cache gave them',
+      () async {
+    // Both come back from the cache at 12:00:05 (DateTime columns keep whole
+    // seconds), the text first: a progress write of the upload rewrote its
+    // row behind the text's. The upload was queued first, so it holds the
+    // lower number.
+    services.outbox.restore([
+      _pending('c-text', second: 5, queueOrder: 2),
+      _pending('c-upload', second: 5, queueOrder: 1),
+    ]);
+
+    await services.outbox.drain();
+
+    expect(api.sent, ['c-upload', 'c-text'], reason: 'the upload was queued before the text');
+    expect(services.outbox.hasPendingWork, isFalse);
+  });
+
+  test('the outbox hands out strictly increasing queue numbers, above every restored one', () async {
+    // A real cache, so the numbers are read back the way a restart reads them.
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    final adapter = createDefaultCryptoAdapter();
+    final cache = DriftConversationCacheService(AppDatabase(NativeDatabase.memory()), envelopeCodec: adapter.envelopeCodec);
+    final cached = messengerServicesFixture(api: api, cache: cache, crypto: adapter);
+    addTearDown(cached.dispose);
+    // A group seals to its own bundle, with no directory lookup to fake.
+    await cached.store.replaceConversations(
+      [
+        ConversationPreview(
+          id: 'group-1',
+          peerHandle: 'moving-day',
+          peerDisplayName: null,
+          recipientBundle:
+              const KeyBundle(userId: '', deviceId: '', handle: 'moving-day', identityPublicKey: 'pub', signedPrekeyBundle: 'spk'),
+          lastEnvelope: null,
+          updatedAt: DateTime.utc(2026, 4, 1, 12),
+          type: ConversationType.group,
+        ),
+      ],
+      bound: const {},
+      pin: (merged) async => (merged, <String>[]),
+    );
+    api.gate = Completer<void>();
+    Future<int> numberOf(String body) async {
+      final before = {for (final record in await cache.readPendingMessages()) record.clientMessageId};
+      expect(await cached.outbox.send(conversationId: 'group-1', body: body, messageKind: MessageKind.text), isTrue);
+      final added = (await cache.readPendingMessages()).where((record) => !before.contains(record.clientMessageId)).single;
+      return added.queueOrder;
+    }
+
+    final first = await numberOf('one');
+    final second = await numberOf('two');
+    expect(first, greaterThan(0));
+    expect(second, greaterThan(first));
+
+    // A restart brings the queue back from the cache, here one of a long-lived
+    // install. Its records are reserved as soon as they are read, so a send
+    // landing before they are restored stands behind them too.
+    final kept = [
+      _pending('c-kept-a', second: 1, queueOrder: second + 40),
+      _pending('c-kept-b', second: 1, queueOrder: second + 41),
+    ];
+    cached.outbox.reserveQueueOrders(kept);
+    final between = await numberOf('between');
+    expect(between, greaterThan(second + 41), reason: 'queued after the cache was read, before it was restored');
+    cached.outbox.restore(kept);
+    final third = await numberOf('three');
+    expect(third, greaterThan(between), reason: 'queued after everything restored');
+
+    // A sign-out forgets the queue, not the numbers already handed out.
+    cached.outbox.clear();
+    expect(await numberOf('four'), greaterThan(third));
+    api.gate!.complete();
   });
 
   test('no double drain', () async {

@@ -27,7 +27,8 @@ void main() {
     await database.close();
   });
 
-  PendingMessageRecord queuedText(String clientMessageId, {int? disappearAfterSeconds}) => PendingMessageRecord(
+  PendingMessageRecord queuedText(String clientMessageId, {int? disappearAfterSeconds, int queueOrder = 0}) =>
+      PendingMessageRecord(
         clientMessageId: clientMessageId,
         conversationId: 'conv-1',
         senderDeviceId: 'device-local',
@@ -43,6 +44,7 @@ void main() {
         ),
         createdAt: DateTime.utc(2026, 3, 30, 10, 6, 0),
         disappearAfterSeconds: disappearAfterSeconds,
+        queueOrder: queueOrder,
       );
 
   MessageContentRecord outbound(String messageKey, {String? clientMessageId}) => MessageContentRecord(
@@ -66,6 +68,23 @@ void main() {
     expect(restored['client-timed']!.envelope.attachment, isNull);
     expect(restored['client-timed']!.attachmentUploadDraft, isNull);
     expect(restored['client-plain']!.disappearAfterSeconds, isNull);
+  });
+
+  test('queued records with the same whole second come back by queue number, whichever row was rewritten last',
+      () async {
+    await cache.upsertPendingMessage(queuedText('client-first', queueOrder: 1));
+    await cache.upsertPendingMessage(queuedText('client-second', queueOrder: 2));
+    // A state write (a retry, upload progress) rewrites the first row, which
+    // insertOrReplace re-inserts behind the second.
+    await cache.upsertPendingMessage(queuedText('client-first', queueOrder: 1).copyWith(retryCount: 1));
+    final rowids = await database.customSelect('SELECT client_message_id FROM pending_messages ORDER BY rowid').get();
+    expect(rowids.map((row) => row.data['client_message_id']), ['client-second', 'client-first'],
+        reason: 'the rewritten row is now the later one in the table');
+
+    final restored = await cache.readPendingMessages();
+    expect(restored.map((record) => record.clientMessageId), ['client-first', 'client-second']);
+    expect(restored.map((record) => record.queueOrder), [1, 2]);
+    expect(restored.first.retryCount, 1, reason: 'the rewrite is what is read back');
   });
 
   test('lists the content stored under a local key that no queued record names, and nothing else', () async {
@@ -1167,6 +1186,57 @@ void main() {
     expect((await migratedCache.readMessages('conv-old')).single.id, 'msg-old');
   });
 
+  test('migration from 12 numbers the queued messages by created_at then rowid and keeps the rows', () async {
+    final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
+      for (final statement in [..._schemaVersion8, ..._schemaVersion12Additions]) {
+        raw.execute(statement);
+      }
+      raw.execute('ALTER TABLE cached_conversations ADD COLUMN "session_remote_identity_public_key" TEXT NULL');
+      raw.execute(
+        "INSERT INTO conversation_read_marks (conversation_id, read_through_order, marked_unread) VALUES ('~baseline', NULL, 0)",
+      );
+      // Three queued messages, no queue number yet: one a second earlier,
+      // and two in the same second whose rows stand in the reverse of the
+      // order they were written (a rewrite of the first moved it behind).
+      String queued(String id, int createdAt) => 'INSERT INTO pending_messages (rowid, client_message_id, conversation_id, '
+          'sender_device_id, recipient_user_id, ciphertext, nonce, message_type, created_at, state) VALUES '
+          "(${rowidOf(id)}, '$id', 'conv-old', 'd', 'u', 'ct-$id', 'n-$id', 'text', $createdAt, 'pending')";
+      raw.execute(queued('client-earlier', 1700000000));
+      raw.execute(queued('client-row-9', 1700000001));
+      raw.execute(queued('client-row-5', 1700000001));
+      raw.execute('PRAGMA user_version = 12');
+    }));
+    addTearDown(legacy.close);
+
+    final version = await legacy.customSelect('PRAGMA user_version').getSingle();
+    expect(version.data.values.single, 13);
+    final numbered = await legacy
+        .customSelect('SELECT client_message_id, queue_order, rowid FROM pending_messages ORDER BY queue_order')
+        .get();
+    expect(
+      numbered.map((row) => (row.data['client_message_id'], row.data['queue_order'])),
+      [('client-earlier', 0), ('client-row-5', 1), ('client-row-9', 2)],
+      reason: 'created_at first, then the row that was written first',
+    );
+    expect(numbered.map((row) => row.data['rowid']), [1, 5, 9], reason: 'the rows are the ones written');
+    final baseline = await legacy
+        .customSelect("SELECT read_through_order, marked_unread FROM conversation_read_marks WHERE conversation_id = '~baseline'")
+        .getSingle();
+    expect(baseline.data['read_through_order'], isNull);
+    expect(baseline.data['marked_unread'], 0);
+
+    final migratedCache = DriftConversationCacheService(
+      legacy,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+    );
+    final restored = await migratedCache.readPendingMessages();
+    expect(restored.map((record) => record.clientMessageId), ['client-earlier', 'client-row-5', 'client-row-9']);
+    expect(restored.map((record) => record.queueOrder), [0, 1, 2]);
+    expect(restored.map((record) => record.envelope.ciphertext), ['ct-client-earlier', 'ct-client-row-5', 'ct-client-row-9']);
+    expect(restored.map((record) => record.createdAt.millisecondsSinceEpoch ~/ 1000),
+        [1700000000, 1700000001, 1700000001]);
+  });
+
   test('deleteConversation runs wal checkpoint', () async {
     final directory = Directory.systemTemp.createTempSync('veil-wal-');
     addTearDown(() => directory.deleteSync(recursive: true));
@@ -1243,6 +1313,29 @@ ConversationPreview _conversation(String id) => ConversationPreview(
       lastEnvelope: null,
       updatedAt: DateTime.utc(2026, 4, 1),
     );
+
+// The explicit rowid a migration-test row is written with: the number in
+// its id, or 1 for a row without one.
+int rowidOf(String id) => int.tryParse(id.split('-').last) ?? 1;
+
+// The tables schema 12 holds beyond the three of schema 8 (with the sender
+// column schema 11 added), as a database created at 12 has them, and the
+// trigger that goes with the content tables. The 8 tables take the one
+// column schema 9 added to cached_conversations by ALTER TABLE.
+const _schemaVersion12Additions = [
+  'CREATE TABLE "message_contents" ("message_key" TEXT NOT NULL, "conversation_id" TEXT NOT NULL, '
+      '"client_message_id" TEXT NULL, "server_message_id" TEXT NULL, "sender_device_id" TEXT NULL, '
+      '"body" TEXT NOT NULL, "attachment_json" TEXT NULL, "kind" TEXT NOT NULL, "inner_expires_at" INTEGER NULL, '
+      '"status" TEXT NOT NULL, "created_at" INTEGER NOT NULL, "updated_at" INTEGER NOT NULL, PRIMARY KEY ("message_key"))',
+  'CREATE TABLE "retired_messages" ("message_key" TEXT NOT NULL, "retired_at" INTEGER NOT NULL, PRIMARY KEY ("message_key"))',
+  'CREATE TABLE "conversation_read_marks" ("conversation_id" TEXT NOT NULL, "read_through_order" INTEGER NULL, '
+      '"marked_unread" INTEGER NOT NULL DEFAULT 0 CHECK ("marked_unread" IN (0, 1)), PRIMARY KEY ("conversation_id"))',
+  'CREATE TABLE "media_blobs" ("file_name" TEXT NOT NULL, "conversation_id" TEXT NOT NULL, "attachment_id" TEXT NOT NULL, '
+      '"digest" TEXT NOT NULL, "size_bytes" INTEGER NOT NULL, "expires_at" INTEGER NULL, "last_used_at" INTEGER NOT NULL, '
+      'PRIMARY KEY ("file_name"), UNIQUE ("conversation_id", "attachment_id", "digest"))',
+  'CREATE TRIGGER message_contents_skip_retired BEFORE INSERT ON message_contents '
+      'WHEN EXISTS (SELECT 1 FROM retired_messages WHERE message_key = NEW.message_key) BEGIN SELECT RAISE(IGNORE); END',
+];
 
 // Tables exactly as schema version 8 created them.
 const _schemaVersion8 = [

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../../../../core/storage/conversation_cache_service.dart';
 import 'messenger_persistence.dart';
 
@@ -7,12 +9,20 @@ import 'messenger_persistence.dart';
 /// A message the user cancelled stays cancelled: [save] and [put] ignore it
 /// from then on, so an upload or a send still settling cannot write it back
 /// after [cancel] (which is what would bring it back as "Not sent").
+///
+/// It also hands out the queue numbers (PendingMessageRecord.queueOrder):
+/// one counter for the process, never lowered, so every message queued
+/// after a restart stands behind every message restored from the cache.
 class PendingMessages {
   PendingMessages(this._persistence);
 
   final MessengerPersistence _persistence;
   final Map<String, PendingMessageRecord> _records = {};
   final Set<String> _canceled = {};
+  // The next queue number to hand out: one for the process, so a queue
+  // rebuilt in the same run (a new sign-in, a new controller) never hands
+  // out a number again.
+  static int _next = 1;
 
   PendingMessageRecord? operator [](String clientMessageId) => _records[clientMessageId];
 
@@ -27,6 +37,10 @@ class PendingMessages {
 
   /// Marks [clientMessageId] cancelled; its record stays until [remove].
   void cancel(String clientMessageId) => _canceled.add(clientMessageId);
+
+  /// The queue number for the message queued next, above every number
+  /// handed out or restored so far.
+  int nextQueueOrder() => _next++;
 
   /// Keeps [record] and writes it to the cache, unless it was cancelled.
   Future<void> save(PendingMessageRecord record) {
@@ -59,13 +73,25 @@ class PendingMessages {
     return _persistence.removePending(clientMessageId);
   }
 
-  /// Replaces everything with the records the cache held.
+  /// Moves the next queue number above every one of [records]'; it never
+  /// moves down. Called with the cache's records before they are restored,
+  /// so a message queued in between stands behind them too.
+  void reserve(Iterable<PendingMessageRecord> records) {
+    for (final record in records) {
+      _next = math.max(_next, record.queueOrder + 1);
+    }
+  }
+
+  /// Replaces everything with the records the cache held, and moves the
+  /// next queue number above every one of theirs (see [reserve]).
   void restore(Iterable<PendingMessageRecord> records) {
     _records
       ..clear()
       ..addAll({for (final record in records) record.clientMessageId: record});
+    reserve(_records.values);
   }
 
+  /// Forgets every record; the numbers handed out so far stay handed out.
   void clear() {
     _records.clear();
     _canceled.clear();

@@ -27,10 +27,11 @@ import 'retry_policy.dart';
 /// Messages on their way to the relay. A message is encrypted (an
 /// attachment sealed; a timed text that waits behind another, see
 /// OutboundTextSealer, held) and queued at once, shown as pending, and sent
-/// oldest first within its conversation; conversations drain on their own,
-/// so one chat's upload never holds back another chat's texts (D20). A send
-/// that fails is retried on a schedule (see retry_policy.dart) or left for
-/// the user.
+/// in the order it was queued within its conversation (each record carries
+/// its queue number, so the order holds across a restart); conversations
+/// drain on their own, so one chat's upload never holds back another chat's
+/// texts (D20). A send that fails is retried on a schedule (see
+/// retry_policy.dart) or left for the user.
 class OutboxService {
   OutboxService({
     required MessengerStateStore store,
@@ -219,8 +220,9 @@ class OutboxService {
     }
   }
 
-  // One message at a time, the oldest due first, taking in what is queued
-  // while it drains; each message is tried at most once per drain.
+  // One message at a time, the first queued of those due first, taking in
+  // what is queued while it drains; each message is tried at most once per
+  // drain.
   Future<void> _drainConversation(
     String conversationId, {
     required bool markFailuresAsRetrying,
@@ -235,7 +237,7 @@ class OutboxService {
             .where((item) => markFailuresAsRetrying || item.state != MessageDeliveryState.failed)
             .where((item) => ignoreRetrySchedule || item.nextRetryAt == null || !item.nextRetryAt!.isAfter(now))
             .toList()
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+          ..sort(_byQueueOrder);
         if (due.isEmpty) return;
         tried.add(due.first.clientMessageId);
         await _sendOne(due.first, now);
@@ -243,6 +245,14 @@ class OutboxService {
     } finally {
       _draining.remove(conversationId);
     }
+  }
+
+  // A total order: queue number, then created time (whole seconds after a
+  // restart), then id.
+  static int _byQueueOrder(PendingMessageRecord a, PendingMessageRecord b) {
+    if (a.queueOrder != b.queueOrder) return a.queueOrder.compareTo(b.queueOrder);
+    if (a.createdAt != b.createdAt) return a.createdAt.compareTo(b.createdAt);
+    return a.clientMessageId.compareTo(b.clientMessageId);
   }
 
   /// Cancels [clientMessageId]'s attachment, which removes the message
@@ -399,6 +409,7 @@ class OutboxService {
       state: draft == null ? MessageDeliveryState.pending : MessageDeliveryState.uploading,
       attachmentUploadDraft: draft,
       disappearAfterSeconds: disappearAfterSeconds,
+      queueOrder: _pending.nextQueueOrder(),
     );
     final saving = _pending.save(pending);
     _store.mergeMessages(conversation.id, [_optimisticMessage(pending)]);

@@ -13,7 +13,8 @@ import 'package:veil_mobile/src/core/storage/media_index.dart';
 const _newTables = ['conversation_read_marks', 'media_blobs'];
 
 /// What a schema 11 database holds: today's schema without the two tables
-/// schema 12 added (and their indexes).
+/// schema 12 added (and their indexes) and without the queue number schema
+/// 13 added to pending_messages.
 Future<List<String>> _schema11() async {
   final current = AppDatabase(NativeDatabase.memory());
   final rows = await current
@@ -23,10 +24,12 @@ Future<List<String>> _schema11() async {
   await current.close();
   final statements = [
     for (final row in rows)
-      if (!_newTables.contains(row.data['tbl_name'])) row.data['sql'] as String,
+      if (!_newTables.contains(row.data['tbl_name']))
+        (row.data['sql'] as String).replaceFirst(RegExp(r'"queue_order" INTEGER NOT NULL DEFAULT 0,\s*'), ''),
   ];
   expect(statements.join(), isNot(contains('conversation_read_marks')));
   expect(statements.join(), isNot(contains('media_blobs')));
+  expect(statements.join(), isNot(contains('queue_order')));
   return statements;
 }
 
@@ -83,6 +86,9 @@ void main() {
         .customSelect("SELECT sql FROM sqlite_master WHERE tbl_name = 'media_blobs' AND type IN ('table', 'index')")
         .get();
     expect(mediaIndexes.map((row) => row.data['sql']).join(), contains('UNIQUE ("conversation_id", "attachment_id", "digest")'));
+    // The upgrade went on to 13: the queue number is there too.
+    final pendingColumns = await legacy.customSelect('PRAGMA table_info(pending_messages)').get();
+    expect(pendingColumns.map((row) => row.data['name']), contains('queue_order'));
     // What was there before still reads.
     final cache = DriftConversationCacheService(legacy, envelopeCodec: createDefaultCryptoAdapter().envelopeCodec);
     expect((await cache.readMessages('conv-sam')).map((message) => message.id), containsAll(['m1', 'm2', 'm3', 'm4']));

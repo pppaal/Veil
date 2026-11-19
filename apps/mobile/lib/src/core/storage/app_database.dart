@@ -79,6 +79,10 @@ class PendingMessages extends Table {
   DateTimeColumn get nextRetryAt => dateTime().nullable()();
   TextColumn get state => text().withDefault(const Constant('pending'))();
   TextColumn get errorMessage => text().nullable()();
+  // The outbox's queue number, one above the last for every message queued:
+  // DateTime columns keep whole seconds, which would let two messages queued
+  // in the same second come back from a restart in either order.
+  IntColumn get queueOrder => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column<Object>> get primaryKey => {clientMessageId};
@@ -184,7 +188,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -292,6 +296,18 @@ class AppDatabase extends _$AppDatabase {
               'WHERE conversation_order IS NOT NULL GROUP BY conversation_id',
             );
             await insertBaselineReadMark();
+          }
+          if (from < 13) {
+            await migrator.addColumn(pendingMessages, pendingMessages.queueOrder);
+            // What is queued keeps its order and gets distinct numbers: by
+            // created_at, then by rowid, the best tiebreak for rows written
+            // before the number existed (0-based).
+            await customStatement(
+              'UPDATE pending_messages SET queue_order = ('
+              'SELECT COUNT(*) FROM pending_messages AS earlier '
+              'WHERE earlier.created_at < pending_messages.created_at '
+              'OR (earlier.created_at = pending_messages.created_at AND earlier.rowid < pending_messages.rowid))',
+            );
           }
           await _createIndexes();
         },

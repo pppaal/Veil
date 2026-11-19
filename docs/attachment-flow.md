@@ -184,7 +184,10 @@ The API's own limit is `VEIL_ATTACHMENT_MAX_BYTES` (50 MiB by default).
 
 ## Order and cancel
 
-- The outbox drains each chat on its own, oldest first. A text sent after a
+- The outbox drains each chat on its own, in the order the messages were
+  queued. Each queued message carries a queue number, so that order survives
+  a restart: the cache's DateTime columns keep whole seconds, and two
+  messages queued in the same second would otherwise tie. A text sent after a
   file in the same chat waits for that file's upload; a text to any other
   chat goes at once. In a disappearing chat, a text that waits behind
   another message starts its timer when it is sent, as the file does, so

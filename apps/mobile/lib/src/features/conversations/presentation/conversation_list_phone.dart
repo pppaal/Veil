@@ -36,6 +36,7 @@ class ConversationListPhone extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final mutes = ref.watch(conversationMutesProvider);
     final blocked = ref.watch(blockedAccountsProvider);
+    final trust = ref.watch(contactTrustProvider);
     final controller = view.controller;
     final reads = controller.reads;
     final conversations = view.conversations;
@@ -105,11 +106,13 @@ class ConversationListPhone extends ConsumerWidget {
                     Builder(builder: (rowContext) {
                       final unreadCount = reads.unreadCount(item.id);
                       final muted = mutes.isMuted(item.id);
+                      final request = trust.isRequest(item.id);
                       final preview = conversationPreview(
                         l10n,
                         item,
                         controller,
                         groupSender: _groupSender(ref, item, controller),
+                        request: request,
                       );
                       final actions = conversationRowActions(
                         rowContext,
@@ -144,6 +147,7 @@ class ConversationListPhone extends ConsumerWidget {
                           // A blocked peer's chat is as quiet as a muted one.
                           greyBadge: item.type == ConversationType.direct &&
                               blocked.isBlocked(item.recipientBundle.userId),
+                          request: request,
                           onTap: () => view.onSelectConversation(item.id),
                           onLongPress: () => _openRowMenu(rowContext, actions),
                           semanticActions: conversationRowSemanticActions(actions),

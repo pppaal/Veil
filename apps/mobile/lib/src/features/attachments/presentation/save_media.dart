@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../chat/presentation/link_confirm_sheet.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/attachment_media_service.dart';
 import '../../conversations/data/messenger_providers.dart';
@@ -46,7 +47,10 @@ Future<bool> confirmSave(BuildContext context) async {
 /// again." (nothing when the user backed out). A [photo] is named by when
 /// it was sent, a file by its own [name]. When the app locked, the screen
 /// that asked went away, or the message expired while the copy was made,
-/// nothing reaches the save screen and nothing is said.
+/// nothing reaches the save screen and nothing is said. An Android app
+/// (.apk, .xapk, .apks), whoever sent it, goes through the strong sheet
+/// (confirmAppFile) before the dialog: every caller of Save, the
+/// long-press menu's included, asks it.
 Future<void> saveAttachment(
   BuildContext context,
   WidgetRef ref, {
@@ -56,6 +60,9 @@ Future<void> saveAttachment(
   bool photo = false,
   DateTime? expiresAt,
 }) async {
+  if (!photo && isAppFileName(name) && (!await confirmAppFile(context, name: name, saving: true) || !context.mounted)) {
+    return;
+  }
   if (!await confirmSave(context) || !context.mounted) return;
   final l10n = AppLocalizations.of(context);
   final media = ref.read(messengerControllerProvider).media;

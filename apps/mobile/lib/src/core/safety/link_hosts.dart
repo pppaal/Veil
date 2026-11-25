@@ -23,8 +23,9 @@ bool _isForbiddenInHost(int c) => c <= 0x20 || c == 0x7F || r'#%/:<>?@[\]^|'.cod
 /// [isHostFullStop] dots and full-width forms read as ASCII, lower case,
 /// no trailing dot, and every label that is still not ASCII in its xn--
 /// form. Null for a host a browser refuses: an escape that does not decode,
-/// or a host that then holds a character no host may hold
-/// (evil.xyz%2F.naver.com, naver.com%40evil.xyz).
+/// a host that then holds a character no host may hold
+/// (evil.xyz%2F.naver.com, naver.com%40evil.xyz), or a label outside ASCII
+/// longer than 63 letters.
 String? browserHost(String written) {
   var host = written;
   if (host.contains('%')) {
@@ -53,8 +54,15 @@ String? browserHost(String written) {
   final lower = plain.toString().toLowerCase();
   if (lower.codeUnits.any(_isForbiddenInHost)) return null;
   final trimmed = lower.endsWith('.') ? lower.substring(0, lower.length - 1) : lower;
-  return trimmed.split('.').map(_asciiLabel).join('.');
+  final labels = trimmed.split('.');
+  // A label outside ASCII longer than a DNS label can be (63) names no
+  // host; refusing it before punycode also keeps one message from
+  // spending seconds on a label of thousands of different letters.
+  if (labels.any((l) => l.length > _maxLabel && l.runes.any((c) => c >= 0x80))) return null;
+  return labels.map(_asciiLabel).join('.');
 }
+
+const _maxLabel = 63;
 
 String _asciiLabel(String label) => label.runes.every((c) => c < 0x80) ? label : 'xn--${punycode(label)}';
 

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/safety/link_hosts.dart';
 import 'package:veil_mobile/src/core/safety/links.dart';
 
 void main() {
@@ -340,6 +341,13 @@ void main() {
     }
     // An escape that decodes to a host a browser opens is still read as it.
     expect(only('https://naver.com%2Elogin-check.xyz/').registrableDomain, 'login-check.xyz');
+
+    // A label outside ASCII longer than a DNS label (63) names no host.
+    expect(browserHost('${'\uD55C' * 63}.com'), startsWith('xn--'));
+    expect(browserHost('${'\uD55C' * 64}.com'), isNull);
+    final long = only('https://naver.com.${'\uD55C' * 64}.com/');
+    expect(long.registrableDomain, isNot('naver.com'));
+    expect(linkRiskOf(long), LinkRisk.hidden);
   });
 
   // A message can be as long as the relay takes; finding its links must not
@@ -353,6 +361,7 @@ void main() {
       'https://a.com/${')' * 100000}',
       'https://a\u3002b${')' * 100000}',
       'https://a${'\u0434' * 100000}',
+      'https://a.${String.fromCharCodes(List.generate(20000, (i) => 0x4E00 + i))}.com/',
     ]) {
       final watch = Stopwatch()..start();
       expect(findLinks(text), hasLength(1), reason: text.substring(0, 12));

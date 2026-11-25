@@ -128,7 +128,13 @@ class _LinkSheet extends StatelessWidget {
           Text(body, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
         ],
         const SizedBox(height: VeilSpace.sm),
-        Text(link.registrableDomain, key: const ValueKey('link-sheet-domain'), style: theme.textTheme.titleMedium),
+        Text(
+          _middleCut(link.registrableDomain, max: 80),
+          key: const ValueKey('link-sheet-domain'),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium,
+        ),
         Text(
           _middleCut(link.uri.toString()),
           key: const ValueKey('link-sheet-address'),

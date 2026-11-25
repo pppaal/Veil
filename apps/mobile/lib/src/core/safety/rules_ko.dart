@@ -91,16 +91,30 @@ const koPinBack = ['핀번호', 'pin번호', '뒷면사진', '뒷면번호'];
 // Pattern 4: codes.
 const koCode = ['인증번호', '인증코드', '보안코드', '문자로온번호', '문자로간번호'];
 
-/// 6자리 or 여섯자리 is a code only beside 번호, 숫자, 코드 or 인증 (문자로 온
-/// 번호 6자리), never a table for six or a lock (식당 6자리 예약, 도어락 번호
-/// 6자리): [koSixDigitsNot] near it rules it out.
-final koSixDigits = RegExp('(?:번호|숫자|코드|인증)(?:6|여섯)자리|(?:6|여섯)자리의?(?:번호|숫자|코드|인증)');
+/// 6자리 or 여섯자리 is a code beside 번호, 숫자, 코드 or 인증 (인증번호 6자리),
+/// after what came by text (문자로 온 6자리, 방금 간 6자리, 본인확인용 6자리),
+/// or near 문자, 카톡 or 발송 (6자리 불러주세요 문자로 갔어요); never a table
+/// for six or a lock (식당 6자리 예약, 도어락 번호 6자리): [koSixDigitsNot]
+/// near it rules it out.
+final koSixDigits = RegExp(
+  '(?:번호|숫자|코드|인증|문자|카톡|발송된|발송|확인용|온|간)(?:6|여섯)자리'
+  '|(?<![0-9])(?:6|여섯)자리의?(?:번호|숫자|코드|인증)'
+  '|(?:문자|카톡|발송).{0,8}(?<![0-9])(?:6|여섯)자리|(?<![0-9])(?:6|여섯)자리.{0,8}(?:문자|카톡|발송)',
+);
 const koSixDigitsNot = ['예약', '좌석', '석', '명', '도어락', '현관', '비밀', '비번', '금고', '자물쇠'];
 
-/// A code that did not arrive: the sender's own trouble, not an ask for the
-/// reader's code, unless it names the reader's side ([koCodeReaderSide]).
+/// A code that did not arrive, asked about with how or why ([koCodeHelp]):
+/// the sender's own trouble, not an ask for the reader's code, unless it
+/// names the reader's side or where the code went instead
+/// ([koCodeReaderSide]: 엄마 폰으로 간 인증번호, 너 번호로 받았어). A code
+/// that did not arrive and an 알려줘 alone is the takeover's own wording.
 const koCodeTrouble = ['안와', '안오', '안옴', '안들어와', '안들어오', '안떠', '못받'];
-const koCodeReaderSide = ['너한테', '니한테', '너폰', '네폰', '니폰', '받은', '온거', '온번호', '간번호', '문자온', '문자로온', '그쪽'];
+const koCodeHelp = ['어떻게', '왜', '뭐가문제', '방법'];
+const koCodeReaderSide = [
+  '너한테', '니한테', '너폰', '네폰', '니폰', '받은', '온거', '온번호', '간번호', '문자온', '문자로온', '그쪽', //
+  '쪽으로', '한테간', '한테갔', '께간', '께갔', '폰으로간', '폰으로갔', '폰으로보냈', '폰으로받', '번호로간',
+  '번호로갔', '번호로보냈', '번호로받', '번호로바꿨', '문자오면', '오면알려',
+];
 const koMistake = ['잘못보냈'];
 
 // Pattern 5: ID and card details.
@@ -167,9 +181,20 @@ const koGov = [
 // 옵션; 코인노래방 and the like are no coin talk.
 const koInvest = ['리딩방', '종목추천', '고수익', '비트코인', '테더', '거래소', '선물거래', '선물옵션', '차익거래'];
 
-/// An invitation or an offer of returns (초대, 수익 드립니다): with one, talk
-/// of returns is a pitch; without, it is news or bragging.
-const koInvite = ['초대', '들어와', '드립니다', '드려요', '드릴게', '드릴께', '해드립', '해드려'];
+/// An invitation or an offer of returns (들어오세요, 입장 가능, 참여하시면,
+/// 안내합니다, 수익 드립니다), read on the compact view: with one, talk of
+/// returns is a pitch; without, it is news or bragging. A present (사
+/// 드릴게), money that did not come in (출금이 안 들어와) and one's own news
+/// are none.
+final koInvite = RegExp(
+  '(?<!안|못)(?:들어오(?:세요|시|십|면됩|면돼)|들어와(?![서야도]))|입장(?:하|가능)|참여(?:하시|하세요|하면|가능)'
+  '|가입하(?:세요|시|면)|안내(?:합니|해드|드립|드려)|문의(?:주|바랍|하세요|해주)|초대(?:합니|해드|드립|드려|링크|코드)'
+  '|드립니다|해드립',
+);
+
+/// Words that are a pitch themselves: with a high return they hook a
+/// stranger (P14).
+const koInvestPitch = ['리딩방', '종목추천', '고수익'];
 final koCoin = RegExp(r'코인(?!노래|빨래|세탁|락커|로커)');
 const koGuarantee = ['원금보장', '수익보장'];
 const koReturnWords = ['수익률', '수익'];

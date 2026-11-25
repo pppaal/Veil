@@ -20,8 +20,10 @@ enum Signal {
   pinBack,
   code,
 
-  /// The sender's own code did not arrive and the reader's side is not
-  /// named ("my verification code isn't coming"): no ask for the reader's.
+  /// The sender's own code did not arrive, asked about with how or why, and
+  /// neither the reader's side nor where the code went instead is named
+  /// ("my verification code isn't coming, how do I fix it?"): no ask for the
+  /// reader's.
   codeTrouble,
   mistake,
   id,
@@ -62,6 +64,10 @@ enum Signal {
 
   /// An invitation or an offer of returns (P14).
   invite,
+
+  /// A word that is a pitch itself (리딩방, trading platform): with a high
+  /// return it hooks a stranger (P14).
+  investPitch,
 
   /// A present or a birthday: secrecy about it is a surprise (P2).
   surprise,
@@ -264,13 +270,17 @@ final _enInvite = englishPattern(enInvite);
 final _enSurprise = englishPattern(enSurprise);
 final _enCodeTrouble = englishPattern(enCodeTrouble);
 final _enCodeReaderSide = englishPattern(enCodeReaderSide);
+final _enCodeHelp = englishPattern(enCodeHelp);
+final _enInvestPitch = englishPattern(enInvestPitch);
 final _enNotAccountNear = englishPattern(enNotAccountNear);
 final _enAccountWord = englishPattern(['account']);
 final _returnWords = '(?:${[...koReturnWords, ...enReturnWords].join('|')})';
 // A loss (-20%, 마이너스 20%) is no high return.
+// "25% monthly returns": a period word may stand between.
 final _highReturn = RegExp(
   '$_returnWords\\D{0,6}(?<![\\d.\\-−]|마이너스 ?|minus )\\d+(?:\\.\\d+)?\\s?%'
-  '|(?<![\\d.\\-−]|마이너스 ?|minus )\\d+(?:\\.\\d+)?\\s?%\\s?(?:의\\s?)?$_returnWords',
+  '|(?<![\\d.\\-−]|마이너스 ?|minus )\\d+(?:\\.\\d+)?\\s?%\\s?(?:의\\s?)?'
+  '(?:(?:daily|weekly|monthly|yearly|annual|a week|a month|per week|per month) )?$_returnWords',
 );
 
 // Amounts.
@@ -482,6 +492,7 @@ RiskSignals detectSignals(String text) {
   mark(
     Signal.codeTrouble,
     (ko(koCodeTrouble) || en(_enCodeTrouble)) &&
+        (ko(koCodeHelp) || en(_enCodeHelp)) &&
         !ko(koCodeReaderSide) &&
         !en(_enCodeReaderSide) &&
         !s.contains(Signal.mistake),
@@ -528,7 +539,8 @@ RiskSignals detectSignals(String text) {
   mark(Signal.guarantee, ko(koGuarantee) || en(_enGuarantee));
   mark(Signal.highReturn, _highReturn.hasMatch(t.spaced));
   mark(Signal.feeFirst, ko(koFeeFirst) || en(_enFeeFirst));
-  mark(Signal.invite, ko(koInvite) || en(_enInvite));
+  mark(Signal.invite, koInvite.hasMatch(compact) || en(_enInvite));
+  mark(Signal.investPitch, ko(koInvestPitch) || en(_enInvestPitch));
 
   final strong = ko(koAuthorityStrong) || _hasAuthorityInWord(t) || en(_enAuthorityStrong);
   mark(Signal.authorityStrong, strong);

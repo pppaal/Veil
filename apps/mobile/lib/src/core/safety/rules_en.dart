@@ -67,7 +67,14 @@ const enCodeTrouble = [
   "isn't coming", 'is not coming', 'not coming', "didn't get", "haven't got", "haven't received", //
   'not receiving', 'never came', "didn't come", "doesn't come", "isn't arriving", 'not arriving',
 ];
-const enCodeReaderSide = ['you got', 'you received', 'you get', 'sent to you', 'your phone', 'your number', 'to you by mistake'];
+const enCodeReaderSide = [
+  'you got', 'you received', 'you get', 'sent to you', 'your phone', 'your number', 'to you by mistake', //
+  'went to you', 'went to your',
+];
+
+/// A how or why question about a code that did not arrive: help with the
+/// sender's own code, not an ask for the reader's.
+const enCodeHelp = ['how', 'why', 'check if', 'what should', 'what do i do', 'any idea'];
 
 // Pattern 5: ID and card details.
 const enId = [
@@ -102,12 +109,19 @@ const enSafeAccount = ['safe account', 'move your money to keep it safe', 'prote
 const enGov = ['tax refund', 'stimulus', 'toll unpaid', 'traffic violation', 'dmv'];
 
 // Pattern 12: investment.
-const enInvest = ['crypto', 'usdt', 'trading platform', 'mentor', 'investment opportunity'];
+const enInvest = ['crypto', 'usdt', 'trading platform', 'trading group', 'mentor', 'investment opportunity'];
 
-/// An invitation or an offer of returns.
+/// An invitation or an offer of returns; "join us" for dinner is none.
 const enInvite = [
-  'join', 'sign up', 'invite', 'opportunity', 'you can earn', "you'll earn", 'you will earn', 'earn up to', //
-  'you can make',
+  'join our', 'join my', 'join the', 'join now', 'join today', 'sign up', 'invite you', 'opportunity', //
+  'you can earn', "you'll earn", 'you will earn', 'earn up to', 'you can make', 'dm me', 'message me',
+  'contact me', 'inbox me', 'whatsapp me',
+];
+
+/// Words that are a pitch themselves (P14, with a high return, from a
+/// stranger).
+const enInvestPitch = [
+  'trading platform', 'trading group', 'investment opportunity', 'crypto mentor', 'trading mentor', //
 ];
 const enGuarantee = ['guaranteed returns'];
 const enReturnWords = ['returns', 'return', 'profits', 'profit'];

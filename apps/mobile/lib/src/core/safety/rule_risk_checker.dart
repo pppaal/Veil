@@ -126,8 +126,8 @@ final _patterns = <_Pattern>[
         : 0,
     (_) => RiskReason.asksForGiftCard,
   ),
-  // P4 code. Someone the user knows asking for help with their own code
-  // that never came asks for nothing of the user's.
+  // P4 code. Someone the user knows asking how to fix their own code that
+  // never came asks for nothing of the user's (codeTrouble).
   _Pattern(
     {Signal.codeAsk},
     (s, who) => s.contains(Signal.codeAsk) && (_notTrusted(who) || !s.contains(Signal.codeTrouble))
@@ -261,18 +261,18 @@ final _patterns = <_Pattern>[
     (_) => RiskReason.fakeGovernment,
   ),
   // P14 investment. Talk of high returns alone (bragging, a loss, the news)
-  // is no pitch: it needs an invitation, an ask, a link or a guarantee, or
-  // pressure from an account the user does not know.
+  // is no pitch: it needs an invitation, an ask, a link or a guarantee, or,
+  // from an account the user does not know, a pitch word (리딩방) or
+  // pressure.
   _Pattern(
     {Signal.link},
     (s, who) {
+      final strangerHook = _notTrusted(who) &&
+          (s.contains(Signal.investPitch) || s.contains(Signal.urgency) || s.contains(Signal.secrecy));
       final hook = s.contains(Signal.guarantee) ||
           s.contains(Signal.feeFirst) ||
           s.contains(Signal.link) ||
-          (s.contains(Signal.highReturn) &&
-              (s.contains(Signal.invite) ||
-                  s.contains(Signal.ask) ||
-                  (_notTrusted(who) && (s.contains(Signal.urgency) || s.contains(Signal.secrecy)))));
+          (s.contains(Signal.highReturn) && (s.contains(Signal.invite) || s.contains(Signal.ask) || strangerHook));
       if (!s.contains(Signal.invest) || !hook) return 0;
       return 5 + _sum(s, const {Signal.guarantee: 2, Signal.highReturn: 2, Signal.feeFirst: 2});
     },

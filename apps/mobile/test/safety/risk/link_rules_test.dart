@@ -386,8 +386,22 @@ void main() {
     expect(findLinks('https://a.co:9223372036854775807').single.port, 9223372036854775807);
   });
 
-  test('addresses that name no host are dropped before their path is read, so a long run of them is linear', () {
-    for (final unit in ['https:///', 'https://@/', 'https://:/', 'https://a@/']) {
+  test('a long run of addresses that open nothing is read in linear time', () {
+    // Some name no host and are dropped before their path is read; others
+    // fail only once their path is read (a bracket that holds no IPv6
+    // address, a port too long for an int before a path with a colon), and
+    // the schemes inside a path read that way start no link.
+    for (final unit in [
+      'https:///',
+      'https://@/',
+      'https://:/',
+      'https://a@/',
+      'https://[/',
+      'https://[]/',
+      'https://[::/',
+      'https://[1]/',
+      'https://a.co:99999999999999999999/',
+    ]) {
       final text = unit * (100000 ~/ unit.length);
       final watch = Stopwatch()..start();
       expect(findLinks(text), isEmpty, reason: unit);
@@ -396,6 +410,8 @@ void main() {
     // A real address right after one is still found.
     expect(findLinks('https:///https://naver.com/a').single.host, 'naver.com');
     expect(findLinks('https://@/ https://evil.xyz/x.apk').single.host, 'evil.xyz');
+    expect(findLinks('https://[/ https://naver.com/a').single.host, 'naver.com');
+    expect(findLinks('https://[::1]/a').single.host, '[::1]');
     // Thousands of links beside thousands of bare domains stay fast too.
     final mixed = 'https://a.co/x b.com ' * 5000;
     final watch = Stopwatch()..start();
@@ -420,6 +436,16 @@ void main() {
         expect(splitsPair(text, link.end), isFalse, reason: text);
       }
     }
+    // Nor inside one emoji made of several code points: a family joined by
+    // U+200D, a flag, a skin tone.
+    for (final emoji in ['\u{1F468}\u200D\u{1F469}\u200D\u{1F467}', '\u{1F1F0}\u{1F1F7}', '\u{1F44D}\u{1F3FD}', '\u2764\uFE0F']) {
+      final text = 'https://$emoji.kr hi';
+      final link = findLinks(text).single;
+      expect(link.text, 'https://$emoji.kr', reason: text);
+      expect(linkRiskOf(link), LinkRisk.hidden, reason: text);
+    }
+    // An emoji glued after a complete domain still ends the link.
+    expect(findLinks('https://naver.com\u{1F44D}\u{1F3FD}').single.text, 'https://naver.com');
   });
 
   test('an app file with an escaped path is an app file', () {
@@ -456,6 +482,14 @@ void main() {
       expect(isLookalikeHost(host), isFalse, reason: host);
       expect(isBrandHost(host), isFalse, reason: host);
       expect(allLinksOfficial('https://$host/a', findLinks('https://$host/a')), isFalse, reason: host);
+      expect(linkRiskOf(findLinks('https://$host/a').single), LinkRisk.none, reason: host);
+    }
+    // A label that is exactly a brand's name is the brand's own page there
+    // as often as not (NAVER's and Kakao's GitHub pages): no look-alike,
+    // and still not the brand's own domain.
+    for (final host in ['naver.github.io', 'kakao.github.io', 'toss.github.io', 'apple.github.io', 'paypal.github.io']) {
+      expect(isLookalikeHost(host), isFalse, reason: host);
+      expect(isBrandHost(host), isFalse, reason: host);
       expect(linkRiskOf(findLinks('https://$host/a').single), LinkRisk.none, reason: host);
     }
     // Amazon's own other domains are its own.

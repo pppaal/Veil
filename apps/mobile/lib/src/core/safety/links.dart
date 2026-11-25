@@ -111,11 +111,16 @@ bool _isHangul(int c) => (c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x3131 && c <= 0x
 /// Every http(s) URL and bare domain in [text], in order.
 List<FoundLink> findLinks(String text) {
   final links = <FoundLink>[];
+  // A scheme inside a link found, or inside an address read to the end of
+  // its path that opens nothing, starts no link: reading each such scheme
+  // again to the end of the text would make a run of them quadratic.
+  var readTo = 0;
   for (final m in _scheme.allMatches(text)) {
-    if (links.isNotEmpty && m.start < links.last.end) continue;
+    if (m.start < readTo) continue;
     if (m.start > 0 && RegExp(r'[A-Za-z0-9]').hasMatch(text[m.start - 1])) continue;
-    final link = _urlAt(text, m.start, m.end);
+    final (link, read) = _urlAt(text, m.start, m.end);
     if (link != null) links.add(link);
+    readTo = link?.end ?? read;
   }
   // The links found so far are in order and never overlap, so one index
   // that only moves forward finds the one a bare domain may overlap.
@@ -304,12 +309,16 @@ bool _endsInDotLetters(String text, int start, int end) {
 
 bool _isAsciiLetter(int c) => (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A);
 
-FoundLink? _urlAt(String text, int start, int afterScheme) {
+// The link at [start], or null; and how far the text was read for it (the
+// end of its path once that was read, else [afterScheme]).
+(FoundLink?, int) _urlAt(String text, int start, int afterScheme) {
   final runes = text.codeUnits;
   // The authority: up to whitespace, '/', '?', '#' or '\\' (which browsers
   // and Uri read as '/').
   var i = afterScheme;
   var nonAscii = false;
+  // The last character read when it is outside ASCII, else 0.
+  var lastNonAscii = 0;
   final rest = _HostRest(text);
   while (i < runes.length) {
     final c = runes[i];
@@ -329,17 +338,25 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
       // A Korean word glued after a complete domain ends the link; a host
       // that holds non-Latin letters itself is the trick. A character
       // outside the Basic Multilingual Plane (an emoji) is read whole, so a
-      // link never ends between the two halves of its surrogate pair.
+      // link never ends between the two halves of its surrogate pair, nor
+      // inside one emoji made of several (a family joined by U+200D, a flag
+      // of two regional letters, a skin tone, a variation selector).
       final pair = _isHighSurrogate(c) && i + 1 < runes.length && _isLowSurrogate(runes[i + 1]);
       final code = pair ? 0x10000 + ((c - 0xD800) << 10) + (runes[i + 1] - 0xDC00) : c;
       if (_isHangul(code) && _endsInDotLetters(text, afterScheme, i)) break;
-      if (i > afterScheme && !_letterOrNumber.hasMatch(String.fromCharCode(code))) break;
+      if (i > afterScheme &&
+          !_continuesGlyph(lastNonAscii, code) &&
+          !_letterOrNumber.hasMatch(String.fromCharCode(code))) {
+        break;
+      }
       nonAscii = true;
+      lastNonAscii = code;
       i += pair ? 2 : 1;
       continue;
     } else if (!_isAsciiUrlCharacter(c)) {
       break;
     }
+    lastNonAscii = 0;
     i++;
   }
   final authorityEnd = i;
@@ -352,13 +369,14 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
   final writtenAuthority = text.substring(afterScheme, authorityEnd);
   if (!_authorityNamesHost(writtenAuthority) &&
       !_authorityNamesHost(writtenAuthority.substring(0, _trimmedLength(writtenAuthority)))) {
-    return null;
+    return (null, afterScheme);
   }
   final backslash = i < runes.length && runes[i] == 0x5C;
   // The path: ASCII URL characters only.
   while (i < runes.length && _isAsciiUrlCharacter(runes[i])) {
     i++;
   }
+  final pathEnd = i;
   final rawPath = text.substring(authorityEnd, i);
   var authority = text.substring(afterScheme, authorityEnd);
   var path = rawPath.substring(0, _trimmedLength(rawPath));
@@ -366,7 +384,7 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     final trimmed = _trimmedLength(authority);
     authority = authority.substring(0, trimmed);
   }
-  if (authority.isEmpty) return null;
+  if (authority.isEmpty) return (null, pathEnd);
   final end = afterScheme + authority.length + path.length;
   final at = authority.lastIndexOf('@');
   final userInfo = at < 0 ? '' : authority.substring(0, at);
@@ -382,22 +400,22 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     hostPort = hostPort.substring(0, portMatch.start);
   }
   final writtenHost = hostPort.toLowerCase().replaceAll(_trailingDot, '');
-  if (writtenHost.isEmpty) return null;
+  if (writtenHost.isEmpty) return (null, pathEnd);
   final escaped = writtenHost.contains('%');
   final written = text.substring(start, end);
   final uri = Uri.tryParse(written);
-  if (uri == null) return null;
+  if (uri == null) return (null, pathEnd);
   // A host a browser refuses is named as the address escapes it, never as
   // it decodes (evil.xyz%2F.naver.com is not naver.com).
   final opened = writtenHost.startsWith('[') ? writtenHost : browserHost(writtenHost);
   final host = opened ?? uri.host;
-  if (host.isEmpty) return null;
+  if (host.isEmpty) return (null, pathEnd);
   // The host that would open must be the host found; any other reading of
   // the address hides where it goes.
   final opens = uri.host.toLowerCase().replaceAll(_trailingDot, '');
   final mismatch =
       !nonAscii && !escaped && opens != (host.startsWith('[') ? host.substring(1, host.length - 1) : host);
-  return FoundLink(
+  final link = FoundLink(
     start: start,
     end: end,
     text: written,
@@ -410,7 +428,22 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     nonAsciiHost: nonAscii,
     hidesHost: backslash || escaped || opened == null || mismatch || portOverflows,
   );
+  return (link, link.end);
 }
+
+bool _isRegionalLetter(int c) => c >= 0x1F1E6 && c <= 0x1F1FF;
+
+// Whether [code] right after [last], a character outside ASCII (0 when the
+// last was ASCII), is part of the same emoji: a joiner or what follows one,
+// a variation selector, a skin tone, or a flag's second regional letter.
+bool _continuesGlyph(int last, int code) =>
+    last != 0 &&
+    (code == 0x200D ||
+        last == 0x200D ||
+        code == 0xFE0F ||
+        code == 0xFE0E ||
+        (code >= 0x1F3FB && code <= 0x1F3FF) ||
+        (_isRegionalLetter(code) && _isRegionalLetter(last)));
 
 bool _isHighSurrogate(int c) => c >= 0xD800 && c <= 0xDBFF;
 bool _isLowSurrogate(int c) => c >= 0xDC00 && c <= 0xDFFF;
@@ -423,7 +456,9 @@ bool _authorityNamesHost(String authority) {
   final hostPort = authority.substring(authority.lastIndexOf('@') + 1).replaceFirst(_portAtEnd, '');
   final written = hostPort.toLowerCase().replaceAll(_trailingDot, '');
   if (written.isEmpty) return false;
-  if (written.startsWith('[') || browserHost(written) != null) return true;
+  // A bracketed host is an IPv6 address only if Uri reads one ("[" and
+  // "[1]" open nothing).
+  if (!written.startsWith('[') && browserHost(written) != null) return true;
   final uri = Uri.tryParse('https://$authority');
   return uri != null && uri.host.isNotEmpty;
 }
@@ -557,6 +592,10 @@ bool isLookalikeHost(String host) {
   for (final first in names) {
     for (final brand in linkBrands) {
       for (final label in brand.labels) {
+        // Under shared hosting a label that is exactly a brand's name is as
+        // often the brand's own page (naver.github.io) as not: only an
+        // affix (L1, L2) or a changed spelling flags it there.
+        if (shared != null && first == label) continue;
         // L3: one or two edits from a long brand name, of a similar length.
         if (label.length >= 6 && (first.length - label.length).abs() <= 2) {
           final allowed = label.length >= 9 ? 2 : 1;

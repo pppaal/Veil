@@ -52,6 +52,9 @@ Future<void> deliver(MessengerParty from, MessengerParty to, String conversation
 Future<void> trustReady(MessengerParty party) =>
     waitFor(() => party.contactTrust.ready, reason: 'the trust document was not read or the baseline did not run');
 
-/// The trust document as [party]'s keystore holds it now.
-Future<ContactTrustDocument?> storedTrust(MessengerParty party) =>
-    ContactTrustStore(party.keystore.scoped(SecureScope.conversationPolicy)).read();
+/// The trust document as [party]'s keystore holds it once the change the
+/// trust layer is holding back for its short write delay has been written.
+Future<ContactTrustDocument?> storedTrust(MessengerParty party) async {
+  await party.contactTrust.flush();
+  return ContactTrustStore(party.keystore.scoped(SecureScope.conversationPolicy)).read();
+}

@@ -79,6 +79,7 @@ class ContactTrust extends ChangeNotifier {
   String? _userId;
   ContactTrustDocument _doc = ContactTrustDocument.empty();
   Timer? _writeTimer;
+  Future<void>? _writing;
   bool _dirty = false;
   bool _disposed = false;
 
@@ -251,18 +252,27 @@ class ContactTrust extends ChangeNotifier {
     await _changed(flush: true);
   }
 
-  /// Writes what is pending now.
+  /// Writes what is pending now, after any write already under way, so
+  /// that once it returns the store holds every change made before it.
   Future<void> flush() async {
     _writeTimer?.cancel();
     _writeTimer = null;
+    while (_writing != null) {
+      await _writing;
+    }
     if (!_dirty || !_writable) return;
     _dirty = false;
     final generation = _generation;
+    final done = Completer<void>();
+    _writing = done.future;
     try {
       await _store.write(_doc);
     } catch (_) {
       // Kept in memory; the next change writes it again.
       if (generation == _generation) _dirty = true;
+    } finally {
+      _writing = null;
+      done.complete();
     }
   }
 

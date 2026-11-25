@@ -19,6 +19,9 @@ export const messageTypes = [
 ] as const;
 export type MessageType = (typeof messageTypes)[number];
 
+export const memberRoles = ['owner', 'admin', 'member', 'subscriber'] as const;
+export type MemberRole = (typeof memberRoles)[number];
+
 export const attachmentUploadStatuses = ['pending', 'uploaded', 'failed'] as const;
 export type AttachmentUploadStatus = (typeof attachmentUploadStatuses)[number];
 

@@ -3,7 +3,9 @@ import { IsUUID } from 'class-validator';
 
 import type { RevokeDeviceRequest } from '@veil/contracts';
 
-export class RevokeDeviceDto implements RevokeDeviceRequest {
+import { DeviceStepUpDto } from '../../auth/dto/device-step-up.dto';
+
+export class RevokeDeviceDto extends DeviceStepUpDto implements RevokeDeviceRequest {
   @ApiProperty()
   @IsUUID()
   deviceId!: string;

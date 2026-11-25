@@ -5,6 +5,9 @@ on:
     branches:
       - main
       - master
+      # Beta branches run too, so the android-build job has a run on the
+      # branch to start or re-run (docs/android-beta-today.md).
+      - 'beta/**'
   pull_request:
   workflow_dispatch:
 
@@ -73,6 +76,14 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Cheap static gates first, so contract drift fails before the Flutter
+      # toolchain is even downloaded.
+      - name: Realtime contract matches the mobile event list
+        run: node scripts/realtime-contract-check.mjs
+
+      - name: Mobile UI text comes from the ARB file
+        run: node scripts/mobile-ui-strings-check.mjs
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -86,8 +97,160 @@ jobs:
       - name: Flutter dependencies
         run: cd apps/mobile && flutter pub get
 
+      # pub get regenerates the tracked l10n output; any diff means an ARB
+      # change was committed without regenerating, which leaves the committed
+      # tree broken for anyone who analyzes it without running pub get.
+      - name: Generated l10n is up to date
+        run: git diff --exit-code apps/mobile/lib/src/l10n/generated
+
       - name: Verify mobile
         run: pnpm ci:mobile
+
+  android-build:
+    # The Flutter suite never compiles the Android side: the Kotlin sources,
+    # the manifest, Gradle and every plugin's native code. This job does, with
+    # no signing key, and keeps the APK it builds for a few days. The merged
+    # manifest is printed and kept so its permissions and providers can be
+    # read.
+    #
+    # Which APK. With the repository variables VEIL_BETA_API_BASE_URL and
+    # VEIL_BETA_REALTIME_URL both set (Settings > Secrets and variables >
+    # Actions > Variables; docs/android-beta-today.md), it is a profile build
+    # that talks to that server, for invited testers. Without them it is the
+    # debug build it always was, against the default http://localhost:3000,
+    # and its artifact name says so.
+    #
+    # Why profile for testers. A release build needs android/keystore.properties
+    # (app/build.gradle.kts refuses the debug key for release) and VEIL_TLS_PINS
+    # (veil_config.dart stops a release build without pins), and neither is
+    # here. Pinning a Cloudflare edge certificate would also stop the app at
+    # Cloudflare's next certificate change, until a new build. A profile build
+    # is compiled ahead of time like a release build, so it runs at full speed
+    # where a debug build runs through the JIT, but kReleaseMode is false: the
+    # app needs no pins and still refuses plain http or ws for any host that is
+    # not local. VEIL_OBJECT_STORAGE_PINS stays empty too: no build mode
+    # requires it, the files hostname sits behind the same rotating Cloudflare
+    # certificates, and empty means the phone's trust store. Flutter signs a
+    # profile build with the runner's debug key, which can differ from run to
+    # run, so a new APK may not install over an older one. Like debug, it is
+    # also debuggable: on a phone with USB debugging on, `adb run-as` can read
+    # the app's private storage.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          channel: stable
+          cache: true
+
+      - name: Flutter dependencies
+        run: cd apps/mobile && flutter pub get --enforce-lockfile
+
+      - name: Generate Drift code
+        run: cd apps/mobile && dart run build_runner build --delete-conflicting-outputs
+
+      # The values reach the scripts through env, never pasted into them.
+      - name: Choose the server the APK talks to
+        id: target
+        env:
+          API_BASE_URL: ${{ vars.VEIL_BETA_API_BASE_URL }}
+          REALTIME_URL: ${{ vars.VEIL_BETA_REALTIME_URL }}
+        run: |
+          if [ -z "$API_BASE_URL" ] && [ -z "$REALTIME_URL" ]; then
+            echo "No beta server set: debug build against http://localhost:3000."
+            echo "mode=debug" >> "$GITHUB_OUTPUT"
+            echo "artifact=veil-android-debug-points-at-localhost" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$API_BASE_URL" ] || [ -z "$REALTIME_URL" ]; then
+            echo "::error::Set both VEIL_BETA_API_BASE_URL and VEIL_BETA_REALTIME_URL, or neither."
+            exit 1
+          fi
+          # The app joins API paths straight onto the base URL, so a slash at
+          # the end breaks every call, and socket.io reads a path in the
+          # realtime URL as a namespace the relay does not serve. Both need
+          # TLS: the app refuses plain http for a host that is not local.
+          label='[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?'
+          host="${label}(\.${label})+"
+          api_pattern="^https://${host}(:[0-9]+)?/v1\$"
+          realtime_pattern="^(https|wss)://${host}(:[0-9]+)?\$"
+          if [[ ! "$API_BASE_URL" =~ $api_pattern ]]; then
+            echo "::error::VEIL_BETA_API_BASE_URL must look like https://veil.example.com/v1 (https, ending in /v1, nothing after it)."
+            exit 1
+          fi
+          if [[ ! "$REALTIME_URL" =~ $realtime_pattern ]]; then
+            echo "::error::VEIL_BETA_REALTIME_URL must look like https://veil.example.com (https, nothing after the host name)."
+            exit 1
+          fi
+          server="${API_BASE_URL#https://}"
+          server="${server%%/*}"
+          server="${server%%:*}"
+          case "$server" in
+            127.0.0.1 | 10.0.2.2)
+              echo "::error::VEIL_BETA_API_BASE_URL names a local address; a phone would talk to itself."
+              exit 1
+              ;;
+          esac
+          echo "Profile build for $API_BASE_URL and $REALTIME_URL."
+          echo "mode=profile" >> "$GITHUB_OUTPUT"
+          echo "artifact=veil-android-profile-${server}" >> "$GITHUB_OUTPUT"
+
+      - name: Build APK
+        env:
+          MODE: ${{ steps.target.outputs.mode }}
+          API_BASE_URL: ${{ vars.VEIL_BETA_API_BASE_URL }}
+          REALTIME_URL: ${{ vars.VEIL_BETA_REALTIME_URL }}
+        run: |
+          cd apps/mobile
+          if [ "$MODE" = profile ]; then
+            flutter build apk --profile \
+              --dart-define=VEIL_API_BASE_URL="$API_BASE_URL" \
+              --dart-define=VEIL_REALTIME_URL="$REALTIME_URL"
+          else
+            flutter build apk --debug
+          fi
+
+      - name: Permissions in the merged manifest
+        env:
+          MODE: ${{ steps.target.outputs.mode }}
+        run: |
+          manifest=$(find apps/mobile/build/app/intermediates -path "*${MODE}*" -name AndroidManifest.xml | grep -i merged | head -1)
+          echo "$manifest"
+          grep -o '<uses-permission[^>]*android:name="[^"]*"' "$manifest" | sed 's/.*android:name=//' | sort -u
+          grep -o '<provider[^>]*android:authorities="[^"]*"' "$manifest" | sed 's/.*android:authorities=//' | sort -u
+          cp "$manifest" merged-AndroidManifest.xml
+
+      - name: Upload merged manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-merged-manifest
+          path: merged-AndroidManifest.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # An APK is already compressed. Downloading the artifact gives a zip
+      # with the APK inside.
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.target.outputs.artifact }}
+          path: apps/mobile/build/app/outputs/flutter-apk/app-${{ steps.target.outputs.mode }}.apk
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
   runtime-smoke:
     # Runs on PRs too (not just main): the web-demo e2e + deploy-preflight gates
@@ -98,7 +261,9 @@ jobs:
     needs:
       - api-and-packages
       - mobile
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which Playwright 1.59 cannot install
+    # browser dependencies for ("does not support chromium on ubuntu26.04-x64").
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     steps:

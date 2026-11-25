@@ -26,34 +26,34 @@
 - On wide desktop or tablet layouts, confirm the conversation list stays visible beside the active chat.
 
 ## Attachment Flow
-- Open the attachment screen and confirm the flow copy matches the encrypted-envelope architecture.
-- Send an attachment placeholder and confirm it stages locally, uploads with visible progress, then resolves into an encrypted attachment card.
-- Cancel an in-flight attachment upload and confirm the message enters a retryable failed state without losing the local draft.
-- Retry the failed attachment upload and confirm the staged blob is reused and the send succeeds.
-- Resolve a download ticket from the attachment card and confirm the dialog returns the opaque ticket URL.
+- Tap + in a chat, choose Photos, pick a photo and send it; confirm the photo shows in the bubble at once, with a ring while it uploads, and on the other phone after its download.
+- Choose File, pick a PDF, confirm the dialog names the file and the chat, and send it; on the other phone, confirm a tap downloads it and opens it (in another app on Android, in Quick Look on iOS).
+- Pick a JPEG or an MP4 as a file and confirm the dialog adds "A photo or video sent as a file keeps any location saved in it."
+- Cancel an upload with the cross and confirm the message is removed and nothing is sent.
+- Go offline during an upload and confirm the ring stays and the photo sends by itself once the phone is back online: a send that gets no answer keeps retrying and does not turn into "Not sent".
+- "Not sent. Tap to retry." shows only when the relay or the object store refuses the upload, or keeps answering with a server error until the five automatic retries run out. When it shows, confirm the cross is still there, then tap the bubble and confirm the photo sends.
+- Open a received photo full screen, tap Save, and confirm the dialog "Save to your phone?" appears before the system save screen.
 
 ## Lock And Session
 - Open App Lock with no PIN set and confirm the screen explains there is no remote reset path.
 - Set a PIN, confirm the second-entry check, and confirm the app unlocks locally.
 - Re-open the lock screen and confirm PIN unlock works.
 - If biometrics are available, verify biometric unlock works and failure states are readable.
-- Background the app and confirm the preview is obscured and the session returns behind the local barrier.
-- Use `Wipe local device state` and confirm session, PIN, and onboarding state are removed locally.
+- Background the app and confirm the preview is obscured and the session returns behind the app lock.
+- Use Settings > `Sign out`, type the handle, and confirm the session, keys and PIN are removed (the onboarding acknowledgement stays). With the network off, confirm nothing is erased and the app says it couldn't sign out: there is no offline wipe.
 
 ## Transfer And Settings
 - Open Device Transfer on the old device and confirm the flow makes the old-device requirement explicit.
-- Run init and approve on the old device and confirm a copyable transfer payload is produced.
-- On a fresh device, open `Transfer from old device`, import the payload, register the claim, and complete the trusted-device join.
-- Let a transfer or claim expire and confirm the UI blocks completion and clearly requires a fresh session.
+- Issue a transfer code on the old device and confirm it can be copied; approve the claim there once the new device shows one.
+- On a fresh device, open `Transfer from old device`, paste the code, register the device, and complete the trusted-device join.
+- Let a transfer or claim expire and confirm the UI no longer offers completion and clearly requires a fresh session: step 1 is marked `Expired` on both devices, the old device issues a new code there and the new device pastes it there. The expired code is refused if it is pasted again.
 - Confirm the new device becomes authenticated and the old device is logged out after completion.
-- Open Settings and confirm the trusted device graph shows current, preferred, trusted, stale, and revoked device states clearly where applicable.
-- If another trusted device is still listed, confirm it can be explicitly revoked without implying any recovery path.
-- Open Settings and confirm revoke and logout copy do not imply recovery.
-- Revoke the current device and confirm the session is cleared locally.
+- Confirm Settings lists no devices: an account is active on one device at a time, and `Move to a new phone` sits in the Account group.
+- With `Move to a new phone` open, lock the app and unlock it: confirm the screen is back, with Settings under it.
+- Open Settings and confirm the Sign out and Delete account dialogs do not imply recovery, and that each asks for the user's own handle typed first. Signing out erases this device's keys: confirm the copy says so.
 
-## Security Status
-- Open Security Status and confirm it accurately reflects device binding, local secret refs, app lock, runtime connectivity, and cache state.
-- Confirm the screen states that the production crypto adapter (`lib-x25519-aes256gcm-v3`) is wired and that external audit attestation is still pending before `VEIL_ENV=production`.
+## Settings > Security
+- Confirm the Security group shows App lock, Lock now, Screenshots, App switcher preview and Notifications with their values, and one footer line: "The encryption hasn't been independently audited yet." (in a development-crypto build: "This build uses test encryption. Don't use it for real chats."). A `VEIL_ENV=production` server refuses to boot until that audit is attested.
 
 ## Private Beta Release Gate
 - Run `pnpm ci:api` and confirm build, lint, policy checks, unit tests, and API e2e all pass.

@@ -31,6 +31,7 @@ class SessionBootstrapRequest {
     required this.remoteDeviceId,
     required this.remoteIdentityPublicKey,
     required this.remoteSignedPrekeyBundle,
+    this.remoteOneTimePrekey,
   });
 
   final String conversationId;
@@ -40,11 +41,225 @@ class SessionBootstrapRequest {
   final String remoteDeviceId;
   final String remoteIdentityPublicKey;
   final String remoteSignedPrekeyBundle;
+  // One-time prekey claimed from the directory for this handshake. Optional:
+  // without it the handshake still authenticates both identities, it only
+  // loses the extra forward secrecy a single-use key provides.
+  final OneTimePrekey? remoteOneTimePrekey;
 }
 
-// Receive-side bootstrap: derives the same symmetric session as the sender
-// using the recipient's stored X25519 private key and the sender's ephemeral
-// public key extracted from the inbound envelope's wire bytes.
+/// Public half of a one-time prekey, as published to (or claimed from) the
+/// key directory. `publicKey` is base64url X25519.
+class OneTimePrekey {
+  const OneTimePrekey({required this.keyId, required this.publicKey});
+
+  final int keyId;
+  final String publicKey;
+}
+
+/// A signed prekey ready to publish: its signed bundle and what it names.
+class SignedPrekeyRotation {
+  const SignedPrekeyRotation({
+    required this.signedPrekeyBundle,
+    required this.spkId,
+    required this.createdAt,
+    this.upgradedIdentityPrivateRef,
+  });
+
+  final String signedPrekeyBundle;
+  final int spkId;
+  final DateTime createdAt;
+  // Set when the local identity ref had to change shape (v1 -> v2); the
+  // caller must persist it in place of the old ref.
+  final String? upgradedIdentityPrivateRef;
+}
+
+/// Optional capability: adapters that publish signed and one-time prekeys.
+/// Callers check `adapter is PrekeyManager` instead of widening
+/// [CryptoAdapter].
+abstract class PrekeyManager {
+  Future<List<OneTimePrekey>> generateOneTimePrekeys({int count = 100});
+
+  /// Draws a new signed prekey under the next id and signs it with
+  /// [createdAt] as its timestamp: the directory's time, which it checks
+  /// the timestamp against (the device clock when omitted).
+  Future<SignedPrekeyRotation> rotateSignedPrekey({DateTime? createdAt});
+
+  /// The newest signed prekey as a bundle to publish, or null when the
+  /// identity has none of its own (a v1 identity). Signing is
+  /// deterministic, so this is byte for byte the bundle that was, or would
+  /// have been, published with it. Carries the upgraded identity ref while
+  /// the stored one is still v1.
+  Future<SignedPrekeyRotation?> currentSignedPrekey();
+
+  /// The signed prekey the directory last accepted from this device; null
+  /// when that is not known.
+  Future<int?> publishedSignedPrekeyId();
+
+  /// Records that the directory accepted signed prekey [spkId].
+  Future<void> markSignedPrekeyPublished(int spkId);
+
+  /// Deletes the signed prekeys older than the published one once it has
+  /// been published for longer than [grace]; returns how many were removed.
+  /// While the published one is not known, every signed prekey is kept.
+  Future<int> pruneSignedPrekeys({Duration grace = const Duration(days: 14)});
+}
+
+/// When the directory accepted a signed prekey: from then on it serves that
+/// one, and older signed prekeys only have to answer handshakes still in
+/// flight.
+class SignedPrekeyPublication {
+  const SignedPrekeyPublication({required this.spkId, required this.publishedAt});
+
+  final int spkId;
+  final DateTime publishedAt;
+}
+
+/// A peer identity a 1:1 session is about to use. Keys are base64url.
+///
+/// [installsSession] claims come from an inbound handshake that proved the
+/// identity and would install a new session for it. The others name the
+/// identity of a session already installed, before a frame is sealed to it
+/// or opened on it: what the pins admitted then may no longer pass.
+class RemoteIdentityClaim {
+  const RemoteIdentityClaim({
+    required this.conversationId,
+    required this.senderDeviceId,
+    required this.identityKeyEd25519,
+    this.identityKeyX25519,
+    this.installsSession = true,
+  });
+
+  final String conversationId;
+  final String senderDeviceId;
+  final String identityKeyEd25519;
+
+  /// Set for an inbound handshake, which proves both identity keys.
+  final String? identityKeyX25519;
+  final bool installsSession;
+}
+
+/// Decides whether a peer identity may be used (identity pinning): asked
+/// before an inbound handshake installs a session, and before every frame
+/// sealed to or opened on a session bound to an identity. Returning false
+/// stores and seals nothing.
+typedef RemoteIdentityVerifier = Future<bool> Function(RemoteIdentityClaim claim);
+
+/// Thrown by an engine asked to encrypt to an identity its sending state no
+/// longer reaches: a peer's handshake moved the session after the caller
+/// chose the recipient, the caller named no identity, or the pins no longer
+/// admit the one the session is bound to. Nothing was encrypted; choose the
+/// recipient again.
+class SessionRecipientChanged implements Exception {
+  const SessionRecipientChanged(this.conversationId);
+
+  final String conversationId;
+
+  @override
+  String toString() => 'The session of $conversationId no longer reaches the identity this message was meant for.';
+}
+
+/// Private half of a published signed prekey, kept so PreKey frames that
+/// name it can still be answered during the rotation grace period.
+class StoredSignedPrekey {
+  const StoredSignedPrekey({
+    required this.keyId,
+    required this.privateKey,
+    required this.createdAt,
+  });
+
+  final int keyId;
+  final List<int> privateKey;
+  final DateTime createdAt;
+}
+
+/// Device-local storage for prekey private halves.
+abstract class LocalPrekeyStore {
+  /// Reserves [count] consecutive one-time prekey ids and returns the first.
+  /// Ids are never handed out twice, so a stale directory entry can never
+  /// alias a fresh key.
+  Future<int> reserveOneTimePrekeyIds(int count);
+
+  Future<void> saveOneTimePrekey(int keyId, List<int> privateKey);
+
+  Future<List<int>?> loadOneTimePrekey(int keyId);
+
+  Future<void> deleteOneTimePrekey(int keyId);
+
+  Future<void> saveSignedPrekey(StoredSignedPrekey prekey);
+
+  Future<List<StoredSignedPrekey>> loadSignedPrekeys();
+
+  Future<SignedPrekeyPublication?> loadSignedPrekeyPublication();
+
+  Future<void> saveSignedPrekeyPublication(SignedPrekeyPublication publication);
+
+  Future<void> deleteSignedPrekey(int keyId);
+}
+
+class InMemoryLocalPrekeyStore implements LocalPrekeyStore {
+  int _nextOneTimePrekeyId = 1;
+  final Map<int, List<int>> _oneTime = {};
+  final Map<int, StoredSignedPrekey> _signed = {};
+  SignedPrekeyPublication? _publication;
+
+  @override
+  Future<int> reserveOneTimePrekeyIds(int count) async {
+    final first = _nextOneTimePrekeyId;
+    _nextOneTimePrekeyId += count;
+    return first;
+  }
+
+  @override
+  Future<void> saveOneTimePrekey(int keyId, List<int> privateKey) async {
+    _oneTime[keyId] = List<int>.of(privateKey);
+  }
+
+  @override
+  Future<List<int>?> loadOneTimePrekey(int keyId) async {
+    final key = _oneTime[keyId];
+    return key == null ? null : List<int>.of(key);
+  }
+
+  @override
+  Future<void> deleteOneTimePrekey(int keyId) async {
+    final key = _oneTime.remove(keyId);
+    key?.fillRange(0, key.length, 0);
+  }
+
+  // Copies on the way in and out so callers may wipe their buffers.
+  @override
+  Future<void> saveSignedPrekey(StoredSignedPrekey prekey) async {
+    _signed[prekey.keyId] = _copy(prekey);
+  }
+
+  @override
+  Future<List<StoredSignedPrekey>> loadSignedPrekeys() async => _signed.values.map(_copy).toList();
+
+  static StoredSignedPrekey _copy(StoredSignedPrekey prekey) => StoredSignedPrekey(
+        keyId: prekey.keyId,
+        privateKey: List<int>.of(prekey.privateKey),
+        createdAt: prekey.createdAt,
+      );
+
+  @override
+  Future<void> deleteSignedPrekey(int keyId) async {
+    _signed.remove(keyId);
+  }
+
+  @override
+  Future<SignedPrekeyPublication?> loadSignedPrekeyPublication() async => _publication;
+
+  @override
+  Future<void> saveSignedPrekeyPublication(SignedPrekeyPublication publication) async {
+    _publication = publication;
+  }
+}
+
+// Legacy receive-side bootstrap: derives the same symmetric session as the
+// sender using the recipient's stored X25519 private key and the sender's
+// ephemeral public key extracted from the inbound envelope's wire bytes.
+// It authenticates nobody; frames decrypted on such a session are reported
+// as legacyUnauthenticated.
 class InboundSessionBootstrapRequest {
   const InboundSessionBootstrapRequest({
     required this.conversationId,
@@ -165,6 +380,7 @@ class CryptoEnvelope {
     required this.messageKind,
     this.expiresAt,
     this.attachment,
+    this.transmittedMessageType,
   });
 
   final String version;
@@ -176,6 +392,24 @@ class CryptoEnvelope {
   final MessageKind messageKind;
   final DateTime? expiresAt;
   final AttachmentReference? attachment;
+
+  /// The messageType string as the relay delivered it ('' when it sent
+  /// none), which the v2 AAD binds: [messageKind] maps an unknown or
+  /// missing value to text, and a relabelled frame must fail its tag. Null
+  /// for an envelope built on this device.
+  final String? transmittedMessageType;
+}
+
+enum DecryptStatus {
+  ok,
+  failed,
+  replayed,
+  sessionMissing,
+  awaitingKey,
+  identityRejected,
+  // Decrypted from a legacy frame whose handshake never authenticated the
+  // sender; the body is genuine ciphertext output but its author is unproven.
+  legacyUnauthenticated,
 }
 
 class DecryptedMessage {
@@ -184,12 +418,21 @@ class DecryptedMessage {
     required this.messageKind,
     this.expiresAt,
     this.attachment,
+    this.status = DecryptStatus.ok,
+    this.failureReason,
   });
 
+  // Empty unless the frame opened (ok or legacyUnauthenticated): a failure
+  // carries no text, so callers branch on [status], never on the body.
   final String body;
   final MessageKind messageKind;
+  // The sender-authenticated expiry from the inner payload, when present.
   final DateTime? expiresAt;
   final AttachmentReference? attachment;
+  final DecryptStatus status;
+  final String? failureReason;
+
+  bool get isOk => status == DecryptStatus.ok;
 }
 
 abstract class DeviceIdentityProvider {
@@ -233,14 +476,11 @@ abstract class CryptoEnvelopeCodec {
   Map<String, dynamic>? encodeAttachmentReference(AttachmentReference? attachment);
 }
 
-// Output of a completed attachment encryption. The `reference` is what goes
-// inside the `CryptoEnvelope` and travels to the peer; `ciphertext` is the
-// opaque blob the caller uploads to attachment storage. Together they give
-// the receiving device everything it needs to decrypt:
-// - the reference's wrapped content-key lets the receiver unwrap the
-//   symmetric blob key via ECDH to its identity x25519 private,
-// - the ciphertext is fed back into `decryptAttachment` with that wrapped
-//   key to produce plaintext bytes.
+// Output of a completed attachment encryption. The `reference` travels to
+// the peer only inside the encrypted message payload (the outer envelope
+// carries just its attachmentId); `ciphertext` is the opaque blob the caller
+// uploads to attachment storage. Together they give the receiving device
+// everything `decryptAttachment` needs.
 class AttachmentCipher {
   const AttachmentCipher({
     required this.reference,
@@ -250,6 +490,13 @@ class AttachmentCipher {
   final AttachmentReference reference;
   final List<int> ciphertext;
 }
+
+/// Runs once a frame has authenticated, with the result decrypt is about to
+/// return, and before the receiver commits the state the frame advanced.
+/// Whatever it stores is durable before the message key is spent; if it
+/// throws, nothing is committed, decrypt reports `persist_failed`, and the
+/// frame can be decrypted again.
+typedef BeforeCommit = Future<void> Function(DecryptedMessage opened);
 
 abstract class MessageCryptoEngine {
   Future<CryptoEnvelope> encryptMessage({
@@ -263,14 +510,16 @@ abstract class MessageCryptoEngine {
     AttachmentReference? attachment,
   });
 
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope);
+  /// Opens [envelope]. An engine that can calls [beforeCommit] with an ok
+  /// result before it commits (see [BeforeCommit]); one that commits inside
+  /// a call it cannot split calls it afterwards.
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit});
 
-  // Encrypts an attachment blob end-to-end: generates a one-shot content key,
-  // encrypts `plaintext` with AES-256-GCM, wraps the content key for the
-  // recipient via ephemeral X25519 ECDH + HKDF, and returns both the wrapped
-  // reference (for the message envelope) and the ciphertext blob (for
-  // attachment storage). `sizeBytes` and `sha256` on the returned reference
-  // describe the ciphertext, not the plaintext — they're what the server sees.
+  // Encrypts an attachment blob end-to-end under a one-shot content key and
+  // returns the reference (to embed in the encrypted message payload) plus
+  // the ciphertext blob (for attachment storage). Adapters whose references
+  // carry the content key inside the ratchet payload ignore
+  // `recipientBundle`; it remains for adapters that still wrap the key.
   Future<AttachmentCipher> encryptAttachment({
     required String attachmentId,
     required String storageKey,
@@ -279,9 +528,8 @@ abstract class MessageCryptoEngine {
     required KeyBundle recipientBundle,
   });
 
-  // Reverses `encryptAttachment`: unwraps the content key using the local
-  // identity's x25519 private (stored under `localIdentityPrivateRef`),
-  // then decrypts `ciphertext` with AES-256-GCM and returns plaintext bytes.
+  // Reverses `encryptAttachment`. `localIdentityPrivateRef` is only needed
+  // for legacy references whose content key was wrapped to the identity.
   // Implementations SHOULD verify `reference.sha256` against the ciphertext
   // before attempting decryption so storage-layer tampering aborts early
   // with a precise error rather than a generic MAC failure.
@@ -306,18 +554,13 @@ abstract class ConversationSessionBootstrapper {
   // inbound-bootstrap on an incoming envelope. Mock/stub adapters may always
   // return true to short-circuit the bootstrap path in tests.
   bool hasSessionFor(String conversationId) => true;
-
-  // Arms a manual DH ratchet rotation on the next outbound message for this
-  // conversation. Implementations that support forward-secret session state
-  // should also drop any pre-rotation skipped keys. Returns true if an
-  // existing session was armed, false if there's no session yet. Stub/mock
-  // adapters without session state may safely return false.
-  Future<bool> forceRekeyNextSend(String conversationId) async => false;
 }
 
 abstract class InboundEnvelopeInspector {
   // Returns the 32-byte sender ephemeral public key carried in an inbound
-  // envelope's wire bytes, or null if the envelope is malformed.
+  // legacy envelope's wire bytes, or null if the envelope is malformed or
+  // carries its own authenticated handshake (decrypt establishes the
+  // session itself, so no explicit inbound bootstrap is needed).
   List<int>? extractSenderEphemeralPublicKey(CryptoEnvelope envelope);
 }
 

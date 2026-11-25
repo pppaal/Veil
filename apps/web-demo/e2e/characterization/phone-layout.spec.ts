@@ -1,0 +1,194 @@
+import { readFileSync } from 'node:fs';
+
+import { expect, test, type Locator } from '@playwright/test';
+
+import { closeAll, expectNoErrors, relay, rowOf, send, stamp, watchErrors, type Device } from './support';
+
+// At phone width the list and the chat take turns on the one screen: the
+// chat that opens must be inside the viewport (it once sat in a second grid
+// column, off the right edge), and the back button must bring the list back.
+// The composer is a narrow box there, and what its placeholder says must
+// still fit in it.
+
+test.describe.configure({ mode: 'serial' });
+
+// Every reason a frozen composer gives (src/ui/views/chat-view.js), from the
+// app's one dictionary.
+function frozenReasons(): string[] {
+  const strings = JSON.parse(readFileSync(new URL('../../i18n/en.json', import.meta.url), 'utf8')) as Record<string, string>;
+  return Object.entries(strings)
+    .filter(([key]) => key.endsWith('.composerFrozen'))
+    .map(([, text]) => text);
+}
+
+// Whether a textarea shows its whole placeholder: the height the text takes
+// when wrapped at the box's inner width, against the box's inner height.
+function placeholderFits(textarea: Locator): Promise<boolean> {
+  return textarea.evaluate((node: HTMLTextAreaElement) => {
+    const style = getComputedStyle(node);
+    const inner = (size: number, before: string, after: string) => size - parseFloat(before) - parseFloat(after);
+    const mirror = document.createElement('div');
+    mirror.textContent = node.placeholder;
+    mirror.style.cssText = 'position:absolute;visibility:hidden;white-space:pre-wrap;overflow-wrap:break-word';
+    mirror.style.font = style.font;
+    mirror.style.lineHeight = style.lineHeight;
+    mirror.style.width = `${inner(node.clientWidth, style.paddingLeft, style.paddingRight)}px`;
+    document.body.append(mirror);
+    const needed = mirror.getBoundingClientRect().height;
+    mirror.remove();
+    return needed <= inner(node.clientHeight, style.paddingTop, style.paddingBottom) + 0.5;
+  });
+}
+
+// Whether a select is as wide as its longest option needs: the width a copy
+// of it takes with nothing holding it in.
+function selectFits(select: Locator): Promise<boolean> {
+  return select.evaluate((node: HTMLSelectElement) => {
+    const copy = node.cloneNode(true) as HTMLSelectElement;
+    copy.style.cssText = 'position:absolute;visibility:hidden;max-width:none;width:auto';
+    node.parentElement?.append(copy);
+    const needed = copy.getBoundingClientRect().width;
+    copy.remove();
+    return node.getBoundingClientRect().width + 0.5 >= needed;
+  });
+}
+
+test.describe('phone-width layout', () => {
+  const id = stamp();
+  let phone: Device;
+
+  test.beforeAll(async ({ browser }) => {
+    await relay('/__test/reset');
+    const peerContext = await browser.newContext({ locale: 'ko-KR' });
+    const peerPage = await peerContext.newPage();
+    await peerPage.goto('./', { waitUntil: 'networkidle' });
+    await peerPage.fill('#reg-handle', `ppeer${id}`);
+    await peerPage.click('#reg-btn');
+    await expect(peerPage.locator('#app')).toBeVisible();
+    await peerContext.close();
+
+    const context = await browser.newContext({ locale: 'ko-KR', viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    phone = { handle: `pphone${id}`, context, page, errors: [] };
+    watchErrors(page, phone.errors);
+    await page.goto('./', { waitUntil: 'networkidle' });
+    await page.fill('#reg-handle', phone.handle);
+    await page.click('#reg-btn');
+    await expect(page.locator('#app')).toBeVisible();
+  });
+
+  test.afterAll(async () => {
+    await closeAll(phone);
+  });
+
+  test('the open chat and its composer are on screen, and back returns to the list', async () => {
+    const { page } = phone;
+    await expect(page.locator('.sidebar')).toBeInViewport();
+
+    await page.click('#new-chat-btn');
+    await page.fill('#new-peer-input', `ppeer${id}`);
+    await page.click('#new-confirm');
+    await expect(page.locator('.panel .panel-title .name')).toHaveText(`@ppeer${id}`);
+    await expect(page.locator('.panel .panel-title .name')).toBeInViewport();
+    await expect(page.locator('.panel-input textarea')).toBeInViewport();
+    // One bar over the chat, its own, led by the way back: the list's bar
+    // would be a second one with a second ⋮.
+    await expect(page.locator('.topbar')).toBeHidden();
+    const back = await page.locator('#back-to-list').boundingBox();
+    const avatar = await page.locator('.panel-header .avatar').boundingBox();
+    expect(back && avatar && back.x < avatar.x).toBe(true);
+
+    await send(phone, 'visible on a phone');
+    await expect(rowOf(phone, 'visible on a phone')).toBeInViewport();
+    await expect(page.locator('.sidebar')).toBeHidden();
+
+    await page.click('#back-to-list');
+    await expect(page.locator('.sidebar')).toBeInViewport();
+    await expect(page.locator('.topbar')).toBeVisible();
+    await expect(page.locator('.conv-item', { hasText: `@ppeer${id}` })).toBeInViewport();
+    expectNoErrors(phone);
+  });
+
+  test('the composer placeholder is never cut off', async () => {
+    const { page } = phone;
+    await page.locator('.conv-item', { hasText: `@ppeer${id}` }).click();
+    const textarea = page.locator('.panel-input textarea');
+    // The panel is still in the page while the list covers it: wait for it
+    // to be shown before measuring it.
+    await expect(textarea).toBeInViewport();
+    // No key hint on a phone: beside the four buttons it took two lines of a
+    // one-line box.
+    await expect(textarea).toHaveAttribute('placeholder', 'Message');
+    expect(await placeholderFits(textarea)).toBe(true);
+
+    // A frozen composer is a disabled one whose placeholder says why.
+    // Reaching one takes a relay that rewrites its lists (relay-lists.spec.ts);
+    // the layout treats every reason alike, so each is put on this composer,
+    // at this width and at the narrowest phones still in use.
+    const reasons = frozenReasons();
+    expect(reasons.length).toBeGreaterThanOrEqual(5);
+    for (const width of [390, 360]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const reason of reasons) {
+        await textarea.evaluate((node: HTMLTextAreaElement, text) => {
+          node.disabled = true;
+          node.placeholder = text;
+        }, reason);
+        expect(await placeholderFits(textarea), `${width}px: ${reason}`).toBe(true);
+      }
+      // The buttons of a composer that sends nothing give their room to it.
+      await expect(page.locator('.panel-input > button:visible')).toHaveCount(0);
+      await expect(textarea).toBeDisabled();
+    }
+    expectNoErrors(phone);
+  });
+
+  test('no Settings choice is cut off', async () => {
+    const { page } = phone;
+    await page.reload({ waitUntil: 'networkidle' });
+    await expect(page.locator('#app')).toBeVisible();
+    for (const width of [390, 360]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.click('#menu-btn');
+      await page.locator('#menu [data-action="open-settings"]').click();
+      const dialog = page.locator('#settings-dialog');
+      await expect(dialog).toBeVisible();
+      const selects = dialog.locator('select');
+      await expect(selects).toHaveCount(2);
+      for (const select of await selects.all()) {
+        for (const value of await select.locator('option').evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))) {
+          await select.selectOption(value);
+          expect(await selectFits(select), `${width}px: ${value}`).toBe(true);
+        }
+      }
+      await dialog.locator('#settings-close').click();
+      await expect(dialog).toHaveCount(0);
+    }
+    expectNoErrors(phone);
+  });
+
+  // As Signal Desktop, WhatsApp Web and Telegram Web: the list's bar heads
+  // the list's column, and the chat's own bar heads the other, on one line.
+  test('on a wide window the list bar heads only the list, beside the chat bar', async () => {
+    const { page } = phone;
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.locator('.conv-item', { hasText: `@ppeer${id}` }).click();
+    // The chat's bar is drawn after the click returns: measure it once it
+    // is there, not while the open is still under way.
+    await expect(page.locator('.panel-header').first()).toBeVisible();
+    const bar = await page.locator('.topbar').boundingBox();
+    const list = await page.locator('.sidebar').boundingBox();
+    const header = await page.locator('.panel-header').first().boundingBox();
+    expect(bar && list && header).toBeTruthy();
+    expect(Math.abs(bar!.width - list!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(bar!.y - header!.y)).toBeLessThanOrEqual(1);
+    expect(header!.x).toBeGreaterThanOrEqual(list!.x + list!.width - 1);
+    await expect(page.locator('#back-to-list')).toBeHidden();
+    // The app menu opens under its own ⋮, in the list's column.
+    await page.click('#menu-btn');
+    const menu = await page.locator('#menu').boundingBox();
+    expect(menu!.x + menu!.width).toBeLessThanOrEqual(list!.x + list!.width + 1);
+    await page.click('#menu-btn');
+    expectNoErrors(phone);
+  });
+});

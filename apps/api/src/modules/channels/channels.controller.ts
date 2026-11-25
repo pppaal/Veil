@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { ChannelSummaryResponse } from '@veil/contracts';
 
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
+import { UuidParam } from '../../common/pipes/uuid-param.decorator';
 import { ChannelsService } from './channels.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -18,26 +20,29 @@ export class ChannelsController {
   }
 
   @Get(':id')
-  getChannel(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  getChannel(
+    @Req() request: AuthenticatedRequest,
+    @UuidParam('id') id: string,
+  ): Promise<ChannelSummaryResponse> {
     return this.channelsService.getChannel(request.auth, id);
   }
 
   @Patch(':id')
   updateChannel(
     @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
+    @UuidParam('id') id: string,
     @Body() dto: UpdateChannelDto,
   ) {
     return this.channelsService.updateChannel(request.auth, id, dto);
   }
 
   @Post(':id/subscribe')
-  subscribe(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  subscribe(@Req() request: AuthenticatedRequest, @UuidParam('id') id: string) {
     return this.channelsService.subscribe(request.auth, id);
   }
 
   @Post(':id/unsubscribe')
-  unsubscribe(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  unsubscribe(@Req() request: AuthenticatedRequest, @UuidParam('id') id: string) {
     return this.channelsService.unsubscribe(request.auth, id);
   }
 }

@@ -10,7 +10,7 @@ Use this build to validate:
 - device-bound registration flow
 - direct conversation creation
 - encrypted-envelope chat flow
-- attachment placeholder flow
+- photo and file send and open
 - disappearing message UX
 - app lock UX
 - device transfer UX
@@ -107,11 +107,17 @@ For a concise click-by-click Windows flow, see [Internal Alpha Desktop QA](inter
 
 ### D. Attachments
 
-1. Open the attachment screen from the chat room.
-2. Confirm the copy states opaque blob upload and encrypted envelope send.
-3. Send the attachment placeholder.
-4. Confirm the chat room renders an encrypted attachment card.
-5. Resolve a download ticket and confirm the ticket dialog appears.
+Steps 3 to 5 need the Android or iOS app. The Windows desktop runtime can send
+and show a photo (its photo picker is a file dialog), but the plugin behind
+File and Save (`flutter_file_dialog`) and the `veil/file_open` channel exist
+only on Android and iOS, so the Windows build offers Photos only under the
+plus, shows no Save, and a received PDF says "Can't open in this version".
+
+1. Tap + in the chat room and choose Photos; pick a photo and send it.
+2. Confirm the photo shows in the bubble at once, with a ring while it uploads.
+3. Choose File, pick a PDF and send it from the confirm dialog.
+4. On the other device, confirm the photo shows by itself and the PDF opens with a tap.
+5. Open the photo full screen and confirm Save asks "Save to your phone?" first.
 
 ### E. App lock
 
@@ -124,12 +130,12 @@ For a concise click-by-click Windows flow, see [Internal Alpha Desktop QA](inter
 ### F. Device transfer
 
 1. On the old device, open Settings -> Device transfer.
-2. Confirm the screen explicitly states that the old device is required.
-3. Run init transfer.
-4. Copy the transfer payload from the old device.
+2. Confirm the screen explicitly states that the old device is required (the `No fallback path` notice under the steps).
+3. Issue a transfer code (step 1).
+4. Copy the transfer code from the old device (step 2).
 5. On the new device, open `Transfer from old device` from the account creation screen.
-6. Paste the transfer payload and import it.
-7. Register the new-device claim and note the claim code.
+6. Paste the transfer code and tap `Use this code`.
+7. Register the new device and note the claim code.
 8. Return to the old device and approve that exact claim code.
 9. Complete the transfer on the new device.
 10. Confirm the new device lands in the authenticated session.
@@ -173,6 +179,5 @@ pnpm mobile:test
 
 - Crypto is still mock-only.
 - The transfer UX is alpha scaffolding, not a full multi-device QR production flow.
-- The attachment flow uses placeholder opaque blobs.
 - Push fallback is metadata-only and the real APNs/FCM provider is not wired yet.
 - Local cache is encrypted at rest for this alpha path, but it is not a production-hardened mobile storage story yet.

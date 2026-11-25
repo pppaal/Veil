@@ -1,8 +1,4 @@
-import {
-  createPrivateKey,
-  generateKeyPairSync,
-  sign,
-} from 'node:crypto';
+import { createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
 
 import { ED25519_SPKI_PREFIX } from '../../src/modules/auth/device-auth-verifier';
 
@@ -21,10 +17,7 @@ export class DeviceAuthTestHelper {
     };
   }
 
-  createProof(params: {
-    challenge: string;
-    authPrivateKey: string;
-  }): string {
+  createProof(params: { challenge: string; authPrivateKey: string }): string {
     const privateKey = createPrivateKey({
       key: Buffer.from(params.authPrivateKey, 'base64url'),
       format: 'der',

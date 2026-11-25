@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
-import '../data/profile_providers.dart';
 
+/// Who the user is to themselves: the avatar, the name this phone keeps for
+/// them and the handle people find them by (a tap copies it, as Telegram's
+/// username), with the name edited in place and saved from the bar. No
+/// profile field is stored on the server.
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
@@ -14,295 +20,124 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  bool _isEditing = false;
-  bool _fieldsHydrated = false;
-
-  final _displayNameController = TextEditingController();
-  final _bioController = TextEditingController();
-  final _statusController = TextEditingController();
+  late final _nickname = TextEditingController(text: ref.read(appSessionProvider).displayName ?? '');
+  final _focus = FocusNode();
+  bool _saving = false;
 
   @override
   void dispose() {
-    _displayNameController.dispose();
-    _bioController.dispose();
-    _statusController.dispose();
+    _nickname.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
-  void _hydrateFromSnapshot(ProfileSnapshot snapshot) {
-    if (_fieldsHydrated) return;
-    _displayNameController.text = snapshot.displayName ?? '';
-    _bioController.text = snapshot.bio ?? '';
-    _statusController.text = snapshot.statusMessage ?? '';
-    _fieldsHydrated = true;
+  bool _changed(String? saved) => _nickname.text.trim() != (saved ?? '');
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final typed = _nickname.text.trim();
+    setState(() => _saving = true);
+    try {
+      await ref.read(appSessionProvider.notifier).updateLocalNickname(typed);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (!mounted) return;
+    _nickname.text = typed;
+    _focus.unfocus();
+    showVeilToast(context, AppLocalizations.of(context).profileNicknameSaved);
   }
 
-  Future<void> _onEditPressed(ProfileController controller) async {
-    VeilHaptics.selection();
-    if (_isEditing) {
-      final snapshot = controller.profile;
-      final currentDisplay = snapshot?.displayName ?? '';
-      final currentBio = snapshot?.bio ?? '';
-      final currentStatus = snapshot?.statusMessage ?? '';
-
-      final nextDisplay = _displayNameController.text.trim();
-      final nextBio = _bioController.text.trim();
-      final nextStatus = _statusController.text.trim();
-
-      final success = await controller.updateProfile(
-        displayName:
-            nextDisplay != currentDisplay.trim() ? nextDisplay : null,
-        bio: nextBio != currentBio.trim() ? nextBio : null,
-        statusMessage:
-            nextStatus != currentStatus.trim() ? nextStatus : null,
-      );
-
-      if (!mounted) return;
-      if (success) {
-        setState(() {
-          _isEditing = false;
-          _fieldsHydrated = false;
-        });
-        VeilToast.show(
-          context,
-          message: 'Profile updated',
-          tone: VeilBannerTone.good,
-        );
-      }
-    } else {
-      setState(() => _isEditing = true);
-    }
+  Future<void> _copyHandle(String handle) async {
+    final copied = AppLocalizations.of(context).profileHandleCopied;
+    await Clipboard.setData(ClipboardData(text: '@$handle'));
+    if (!mounted) return;
+    showVeilToast(context, copied);
   }
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.veilPalette;
     final theme = Theme.of(context);
-    final controller = ref.watch(profileControllerProvider);
-    final profile = controller.profile;
+    final palette = context.veilPalette;
+    final l10n = AppLocalizations.of(context);
+    final session = ref.watch(appSessionProvider);
+    final handle = session.handle ?? '';
+    final nickname = session.displayName;
+    final named = nickname != null && nickname.isNotEmpty;
+    final changed = _changed(nickname);
 
-    if (profile != null && !_isEditing) {
-      _hydrateFromSnapshot(profile);
-    }
+    // The handle, wherever it is drawn: a tap copies it.
+    Widget handleText(TextStyle? style) => Semantics(
+          button: true,
+          child: InkWell(
+            key: const ValueKey('profile-handle'),
+            borderRadius: BorderRadius.circular(VeilRadius.sm),
+            onTap: () => _copyHandle(handle),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xs, vertical: VeilSpace.xxs),
+              child: Text('@$handle', textAlign: TextAlign.center, style: style),
+            ),
+          ),
+        );
 
     return VeilShell(
-      title: 'Profile',
-      child: RefreshIndicator(
-        onRefresh: () => controller.refresh(),
-        child: ListView(
-          children: [
-            if (controller.isLoading && profile == null) ...[
-              const SizedBox(height: VeilSpace.xl),
-              const Center(child: CircularProgressIndicator()),
-            ] else if (profile == null) ...[
-              const SizedBox(height: VeilSpace.md),
-              VeilInlineBanner(
-                title: 'Profile unavailable',
-                message: controller.errorMessage ??
-                    'Unable to load your profile from the relay.',
-                tone: VeilBannerTone.danger,
-              ),
-            ] else ...[
-              Center(
-                child: Stack(
-                  children: [
-                    Container(
-                      width: 96,
-                      height: 96,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: palette.primarySoft,
-                        border: Border.all(
-                          color: palette.strokeStrong,
-                          width: 2,
-                        ),
-                      ),
-                      child: Text(
-                        (profile.displayName?.isNotEmpty == true
-                                ? profile.displayName!
-                                : profile.handle)
-                            .characters
-                            .first
-                            .toUpperCase(),
-                        style: theme.textTheme.displayLarge?.copyWith(
-                          color: palette.primary,
-                          fontSize: 36,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: palette.surfaceRaised,
-                          border: Border.all(color: palette.stroke),
-                        ),
-                        child: Icon(
-                          Icons.camera_alt_outlined,
-                          size: VeilIconSize.sm,
-                          color: palette.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: VeilSpace.xl),
-              VeilFieldBlock(
-                label: 'DISPLAY NAME',
-                child: _isEditing
-                    ? TextField(
-                        controller: _displayNameController,
-                        decoration: const InputDecoration(
-                          hintText: 'Enter display name',
-                        ),
-                      )
-                    : Text(
-                        profile.displayName?.isNotEmpty == true
-                            ? profile.displayName!
-                            : 'Not set',
-                        style: theme.textTheme.bodyLarge,
-                      ),
-              ),
-              const SizedBox(height: VeilSpace.sm),
-              VeilFieldBlock(
-                label: 'HANDLE',
-                caption: 'Your handle cannot be changed.',
-                child: Text(
-                  '@${profile.handle}',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: palette.textMuted,
-                  ),
-                ),
-              ),
-              const SizedBox(height: VeilSpace.sm),
-              VeilFieldBlock(
-                label: 'BIO',
-                child: _isEditing
-                    ? TextField(
-                        controller: _bioController,
-                        maxLines: 3,
-                        decoration: const InputDecoration(
-                          hintText: 'Write something about yourself',
-                        ),
-                      )
-                    : Text(
-                        profile.bio?.isNotEmpty == true
-                            ? profile.bio!
-                            : 'No bio yet.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: palette.textMuted,
-                        ),
-                      ),
-              ),
-              const SizedBox(height: VeilSpace.sm),
-              VeilFieldBlock(
-                label: 'STATUS MESSAGE',
-                child: _isEditing
-                    ? TextField(
-                        controller: _statusController,
-                        decoration: const InputDecoration(
-                          hintText: 'Set a status',
-                        ),
-                      )
-                    : Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: palette.success,
-                            ),
-                          ),
-                          const SizedBox(width: VeilSpace.xs),
-                          Text(
-                            profile.statusMessage?.isNotEmpty == true
-                                ? profile.statusMessage!
-                                : 'Available',
-                            style: theme.textTheme.bodyLarge,
-                          ),
-                        ],
-                      ),
-              ),
-              if (controller.errorMessage != null) ...[
-                const SizedBox(height: VeilSpace.md),
-                VeilInlineBanner(
-                  title: 'Save failed',
-                  message: controller.errorMessage!,
-                  tone: VeilBannerTone.danger,
-                ),
+      title: l10n.profileTitle,
+      grouped: true,
+      maxWidth: 560,
+      actions: [
+        if (changed)
+          TextButton(
+            key: const ValueKey('profile-save'),
+            onPressed: _saving ? null : _save,
+            child: Text(l10n.profileSaveNickname),
+          ),
+      ],
+      child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.only(top: VeilSpace.xl, bottom: VeilSpace.xxl),
+        children: [
+          Center(child: VeilAvatar(name: named ? nickname : handle, seed: handle, size: 72)),
+          const SizedBox(height: VeilSpace.sm),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+            child: Column(
+              children: [
+                // The user's own words: drawn as typed.
+                if (named) ...[
+                  Text(nickname, textAlign: TextAlign.center, style: theme.textTheme.headlineMedium),
+                  handleText(theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
+                ] else
+                  handleText(theme.textTheme.headlineMedium),
               ],
-              const SizedBox(height: VeilSpace.xl),
-              const VeilHeroPanel(
-                eyebrow: 'PRIVACY',
-                title: 'Local-first profile',
-                body:
-                    'Your display name, bio, and status are stored exclusively on this device and relay. Only your handle is shared with other users for routing purposes.',
-              ),
-              const SizedBox(height: VeilSpace.xl),
-              VeilMetricStrip(
-                items: [
-                  const VeilMetricItem(
-                    label: 'Handle',
-                    value: 'Fixed',
+            ),
+          ),
+          const SizedBox(height: VeilSpace.xs),
+          VeilGroup(
+            header: l10n.profileNicknameHeader,
+            footer: l10n.profileNicknameFooter,
+            children: [
+              VeilRow.field(
+                // The group's header names the field on screen; a screen
+                // reader hears it on the field itself.
+                field: Semantics(
+                  label: l10n.profileNicknameHeader,
+                  child: TextField(
+                    key: const ValueKey('profile-nickname'),
+                    controller: _nickname,
+                    focusNode: _focus,
+                    textInputAction: TextInputAction.done,
+                    textCapitalization: TextCapitalization.words,
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) {
+                      if (_changed(ref.read(appSessionProvider).displayName)) _save();
+                    },
+                    decoration: InputDecoration(hintText: l10n.profileNicknameHint),
                   ),
-                  VeilMetricItem(
-                    label: 'Account age',
-                    value: profile.accountAgeLabel,
-                  ),
-                  const VeilMetricItem(
-                    label: 'Storage',
-                    value: 'Local',
-                  ),
-                ],
-              ),
-              const SizedBox(height: VeilSpace.xl),
-              VeilButton(
-                label: controller.isSaving
-                    ? 'Saving\u2026'
-                    : (_isEditing ? 'Save changes' : 'Edit profile'),
-                icon: _isEditing
-                    ? Icons.check_rounded
-                    : Icons.edit_outlined,
-                tone: _isEditing
-                    ? VeilButtonTone.primary
-                    : VeilButtonTone.secondary,
-                onPressed: controller.isSaving
-                    ? null
-                    : () => _onEditPressed(controller),
-              ),
-              if (_isEditing) ...[
-                const SizedBox(height: VeilSpace.sm),
-                VeilButton(
-                  label: 'Cancel',
-                  icon: Icons.close_rounded,
-                  tone: VeilButtonTone.secondary,
-                  onPressed: controller.isSaving
-                      ? null
-                      : () {
-                          setState(() {
-                            _isEditing = false;
-                            _fieldsHydrated = false;
-                          });
-                        },
                 ),
-              ],
-              const SizedBox(height: VeilSpace.lg),
-              const VeilInlineBanner(
-                message:
-                    'Profile data is stored on the relay so your devices stay in sync. Only your handle is visible to peers.',
-                icon: Icons.shield_outlined,
               ),
-              const SizedBox(height: VeilSpace.xxl),
             ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

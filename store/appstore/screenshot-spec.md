@@ -1,31 +1,36 @@
-# VEIL — App Store Screenshot Specification
+# App Store screenshot specification
 
-This document defines the screenshots required to submit **VEIL Messenger**
-to the Apple App Store, the exact device sizes and pixel dimensions Apple
-requires in 2025/2026, the per-locale shot list mapped to VEIL's real
-features, and the localization and capture constraints.
+This document defines the screenshots needed to submit **Veil: Encrypted Messenger**
+to the Apple App Store: the device sizes and pixel dimensions Apple
+requires in 2025/2026, the shot list mapped to what the app really does,
+and how to capture them.
 
-VEIL on iOS is an **iPhone-only Flutter app** (`apps/mobile`, iOS deployment
-target 14.0). There is no iPad-optimized build, so iPad screenshots are
-**not required and should not be supplied** (see "Device scope" below).
+Veil on iOS is the Flutter app in `apps/mobile` (iOS deployment target
+14.0). This spec plans the listing for iPhone alone, but the Xcode project
+does not say so yet: it sets `TARGETED_DEVICE_FAMILY = "1,2"` (iPhone and
+iPad) in all three build configurations, so a build archived from it runs
+on iPad, and App Store Connect then asks for iPad screenshots too (see
+"Device scope" below).
 
 ---
 
 ## 1. Device scope
 
-| Apple device class | Required for VEIL? | Reason |
+| Apple device class | Required for Veil? | Reason |
 |---|---|---|
-| iPhone 6.9" display | **Yes — mandatory** | Primary required iPhone size in App Store Connect (2025/2026). |
-| iPhone 6.5" display | **Yes — fallback set** | Covers older large-display devices; supply if not relying on Apple's automatic up-scaling from 6.9". |
+| iPhone 6.9" display | **Yes, mandatory** | Primary required iPhone size in App Store Connect (2025/2026). |
+| iPhone 6.5" display | **Yes, fallback set** | Covers older large-display devices; supply if not relying on Apple's automatic up-scaling from 6.9". |
 | iPhone 6.3" / 6.1" / 5.5" | Optional | App Store Connect can scale from the 6.9" set; supply only if pixel-perfect framing matters. |
-| iPad 13" display | **No** | VEIL is iPhone-scope only; no iPad-optimized UI is shipped. Do not declare iPad support, so iPad screenshots are not requested. |
+| iPad 13" display | **Only if the build runs on iPad** | The project targets iPad today (`TARGETED_DEVICE_FAMILY = "1,2"`). Set the family to iPhone before archiving and no iPad set is needed; keep it and a 13" set is required. |
 
-> **iOS-only / phone scope note:** VEIL's Flutter project builds an iPhone
-> app and an Android app. It does **not** ship an iPad-optimized layout, so
-> the App Store Connect submission must not declare iPad device support.
-> When iPad is not supported, App Store Connect does not require (and will
-> not show an upload slot for) the 13" iPad screenshot set. Only the iPhone
-> sizes below apply.
+> **Device scope:** whether App Store Connect asks for iPad screenshots
+> depends on the build you upload, not on a setting in App Store Connect:
+> it asks for a 13" iPad set for any build that runs on iPad. This spec
+> plans the listing for iPhone alone, so before archiving, set the Runner
+> target's device family to iPhone (in Xcode: Runner target, General,
+> Supported Destinations, remove iPad; the project then reads
+> `TARGETED_DEVICE_FAMILY = 1`). If the family stays `"1,2"`, also capture
+> the six shots on a 13" iPad simulator (portrait 2064 x 2752).
 
 ---
 
@@ -33,164 +38,162 @@ target 14.0). There is no iPad-optimized build, so iPad screenshots are
 
 App Store Connect requires screenshots at the **native resolution** of a
 representative device in each size class. Provide PNG or JPEG, RGB, no
-alpha/transparency, no rounded corners, full-bleed (the screenshot must
-fill the frame — no device-frame padding baked in unless intentional
-marketing art that still meets the exact pixel size).
+alpha/transparency, no rounded corners, full-bleed: the screenshot fills
+the frame, with no device frame baked in.
 
-### iPhone 6.9" display — **mandatory**
+### iPhone 6.9" display, mandatory
 
 Representative devices: iPhone 16 Pro Max / 15 Pro Max class.
 
-| Orientation | Width × Height (px) |
+| Orientation | Width x Height (px) |
 |---|---|
-| Portrait | **1290 × 2796** |
-| Landscape | 2796 × 1290 |
+| Portrait | **1290 x 2796** |
+| Landscape | 2796 x 1290 |
 
-VEIL is portrait-only in practice; supply **portrait 1290 × 2796**.
+Veil is portrait-only in practice; supply **portrait 1290 x 2796**.
 
-(App Store Connect also accepts the alternate 6.9" pixel size **1320 × 2868**
-from the very newest Max-class hardware. Standardize on **1290 × 2796** for
-VEIL — it is the broadly accepted 6.9" portrait size and avoids per-device
-re-rendering.)
+(App Store Connect also accepts the alternate 6.9" pixel size **1320 x 2868**
+from the newest Max-class hardware. Standardize on **1290 x 2796**: it is
+the broadly accepted 6.9" portrait size and avoids per-device re-rendering.)
 
-### iPhone 6.5" display — **fallback set**
+### iPhone 6.5" display, fallback set
 
 Representative devices: iPhone 14 Plus / 11 Pro Max / XS Max class.
 
-| Orientation | Width × Height (px) |
+| Orientation | Width x Height (px) |
 |---|---|
-| Portrait | **1242 × 2688** |
-| Landscape | 2688 × 1242 |
+| Portrait | **1242 x 2688** |
+| Landscape | 2688 x 1242 |
 
-Supply **portrait 1242 × 2688**.
+Supply **portrait 1242 x 2688**.
 
 > If you choose to rely on Apple's automatic scaling, only the 6.9" set is
 > strictly mandatory and App Store Connect will down-scale it to smaller
 > classes. The 6.5" set is included here as an explicit fallback so older
-> large-display users see correctly framed art rather than scaled art.
+> large-display users see correctly framed screens rather than scaled ones.
 
 ---
 
-## 3. Count per locale
+## 3. Count
 
-VEIL ships two App Store locales: **Korean (ko)** and **English (en)**.
+The app and the listing are English only, so there is one App Store locale:
+**English (en)**.
 
-- **Minimum:** 1 screenshot per size class per locale.
-- **Maximum:** 10 screenshots per size class per locale.
-- **Target for VEIL:** **6 screenshots** per size class per locale
-  (the shot list in §4).
-
-That means the full deliverable is:
+- **Minimum:** 1 screenshot per size class.
+- **Maximum:** 10 screenshots per size class.
+- **Target for Veil:** **6 screenshots** per size class (the shot list in §4).
 
 | Locale | Size class | Screenshots |
 |---|---|---|
-| en | iPhone 6.9" (1290 × 2796) | 6 |
-| en | iPhone 6.5" (1242 × 2688) | 6 |
-| ko | iPhone 6.9" (1290 × 2796) | 6 |
-| ko | iPhone 6.5" (1242 × 2688) | 6 |
+| en | iPhone 6.9" (1290 x 2796) | 6 |
+| en | iPhone 6.5" (1242 x 2688) | 6 |
 
-**Total: 24 image files** (6 shots × 2 sizes × 2 locales).
-
-If you rely on Apple up-scaling from the 6.9" set only, the deliverable is
-6 shots × 1 size × 2 locales = **12 image files**, plus the 6.5" set as an
-optional quality upgrade.
+**Total: 12 image files** (6 shots x 2 sizes). If you rely on Apple
+up-scaling from the 6.9" set only, the deliverable is **6 image files**,
+plus the 6.5" set as an optional quality upgrade. A build that still runs
+on iPad needs 6 more: the 13" iPad set (§1).
 
 ---
 
-## 4. Recommended shot list
+## 4. Shot list
 
-Six screenshots, ordered for the App Store carousel. Each maps to a real,
-shipped VEIL feature. The first 2–3 are the most important — they are what
-most users see without scrolling.
+Six screenshots, in carousel order, the same six screens as the Google Play
+set. Each shows a real screen of the shipped app. The first two or three
+matter most: they are what most people see without scrolling.
 
-| # | Screen | VEIL feature it shows | Caption intent (en) | Caption intent (ko) |
-|---|---|---|---|---|
-| 1 | **Onboarding / sign-up** | No phone number, no email, no real name. Device-bound identity. | "No phone number. No email. No recovery." | "전화번호도, 이메일도, 복구도 없이." |
-| 2 | **Conversation list** | 1:1 and group conversations, presence, unread state. | "Your conversations live only on this device." | "대화는 이 기기에만 존재합니다." |
-| 3 | **Encrypted chat with attachments** | E2EE message thread with image/voice/file attachments, typing indicator, optional read receipts. | "End-to-end encrypted. Servers never see plaintext." | "종단간 암호화. 서버는 평문을 볼 수 없습니다." |
-| 4 | **Encrypted device transfer** | Atomic device transfer — old device must be alive; identity moves, never copied to a server. | "Move to a new phone — securely, with no cloud copy." | "클라우드 복사 없이 새 기기로 안전하게 이전." |
-| 5 | **App lock** | Local app lock with PIN and biometrics (Face ID / Touch ID). | "Lock the app with a PIN or biometrics." | "PIN 또는 생체 인증으로 앱을 잠그세요." |
-| 6 | **Settings / privacy posture** | No ads, no tracking, no third-party analytics; theme + language; the "no recovery" safety model. | "No ads. No tracking. By design." | "광고 없음. 추적 없음. 설계 원칙입니다." |
+| # | Screen | What it shows |
+|---|---|---|
+| 1 | **Choose a handle** | The handle field with "alex" typed, and Create account. |
+| 2 | **Chats** | A group and six one-to-one chats, one with two unread messages and one whose last message is a photo. |
+| 3 | **A chat** | Sam Rivera's chat this morning: the signed lease sent as a PDF, a thumbs-up on his news, a disappearing reply, his last word and a photo he sent, Sam typing. |
+| 4 | **Move to a new phone** | The old phone's start screen: three numbered steps and Get code. |
+| 5 | **App lock** | The lock screen with a PIN typed in. |
+| 6 | **Settings** | The top of Settings as it opens: the profile row, Appearance, Privacy and Security. |
 
-**Mapping notes (from VEIL's actual implementation):**
+Notes:
 
-- Shots 1–3 must reflect the iOS Flutter app (`apps/mobile`), not the web
-  demo. Crypto on mobile is the full Double Ratchet (X25519 + HKDF-SHA256 +
-  AES-256-GCM, Ed25519 device signatures).
-- Shot 3: attachments include image, voice, and generic file messages.
-  Keep any visible message text generic and safe.
-- Shot 4 (device transfer): show the transfer flow as a deliberate,
-  old-device-present action. **Do not** imply backup or recovery — VEIL has
-  none, and that is the product. Misleading "restore/backup" framing risks
-  App Review rejection and contradicts the metadata.
-- Shot 5 (app lock): demonstrate PIN entry and/or the biometric prompt.
-- Shot 6: emphasize the privacy posture already declared in
-  `metadata-en.txt` / `metadata-ko.txt` and `app-privacy-answers.md`.
-
----
-
-## 5. Localization notes
-
-- **Locales:** Korean (`ko`) and English (`en`) only. The mobile UI ships
-  Korean and English; do **not** create a Japanese (`ja`) screenshot set —
-  `ja` exists only in the web demo i18n, not as an App Store locale.
-- **Capture per locale:** Re-capture each shot with the app's UI language
-  set to match the target locale. Do not localize by overlaying translated
-  text onto an English UI screenshot — the in-app chrome (tab labels,
-  buttons, settings rows) must be in the matching language.
-- **Caption text on art:** If overlay captions/marketing text are used, they
-  must be fully translated per locale and must not cover system status-bar
-  elements or core UI.
-- **Status bar:** Use a clean status bar (full signal, full battery, no
-  active call banner). Prefer a consistent time across all shots (e.g.
-  9:41) for visual consistency.
-- **Content safety:** Use placeholder names and neutral sample messages.
-  No real personal data, no real phone numbers (the app does not use phone
-  numbers — do not show one anywhere), no offensive sample content.
-- **Consistency:** Use the same demo accounts, avatar set, and theme
-  (recommend dark theme to match VEIL's "cold, encrypted" brand) across
-  both locales so the only difference is language.
-- **Order parity:** Keep the 6-shot order identical across `ko` and `en`
-  so the carousel narrative is the same in both stores.
+- The shots come from the iOS Flutter app (`apps/mobile`), not the web
+  demo.
+- Shot 2: the Chats list with Jonas Weber's two newest messages unread (a
+  count on his row and on the Chats tab) and Omar Haddad's photo as his
+  last message. Leave out the chat whose last message is a voice message
+  (the app cannot play one) and the chat with no messages yet, so one
+  screen holds the rest.
+- Shot 3: four of this morning's messages, with the PDF the user sent drawn
+  as a file card, and Sam's photo after his last word. The app does not
+  play voice messages and has no calls, so the shot shows neither.
+- Shot 4 (Move to a new phone): show the move as something done with the
+  old phone in hand. **Do not** imply backup or recovery: Veil has
+  neither. Misleading "restore/backup" framing risks App Review rejection
+  and contradicts the metadata.
+- Shot 5 (App lock): show PIN entry or the biometric prompt.
 
 ---
 
-## 6. Capture method — **Mac only**
+## 5. Content and consistency
+
+- **Language:** English only. Do not create screenshot sets for other
+  locales; the app has no other language.
+- **No captions:** like the Google Play set, each shot is the screen alone.
+  No text over or above it, no gradients, no device mock-ups, no badges or
+  pills on the art.
+- **Status bar:** clean (full signal, full battery, no active call banner),
+  with the same time on every shot (for example 9:41).
+- **Content:** the layout gate's demo account
+  (`apps/mobile/test/layout/support/layout_seed.dart`): Alex Kim, Sam
+  Rivera, Priya Nair, Jonas Weber, Mia Chen and tom_walsh, and their short
+  messages. No real personal data and no phone numbers anywhere (the app
+  does not use them).
+- **Consistency:** same demo accounts, same avatars and one theme (light or
+  dark) for the whole set. The Google Play set is light: match its
+  accounts, messages and theme
+  ([`../play/screenshots/`](../play/screenshots/README.md)). Its status
+  bar strip is blank because a test draws it; the iPhone captures keep the
+  clean status bar described above.
+
+
+---
+
+## 6. Capture method: Mac only
+
+The iPhone set is captured, not rendered. The Google Play set is drawn by a
+Flutter test from the app's screens
+([`../play/screenshots/README.md`](../play/screenshots/README.md)), but that
+does not work for iOS: the app draws the platform's font, which on iOS is
+SF Pro, and the test renderer does not have SF Pro. A rendered iPhone shot
+would show Roboto, which no iPhone shows.
 
 iOS App Store screenshots at the exact required pixel dimensions must be
-captured on a **Mac**, because iOS Simulator and Xcode are macOS-only:
+captured on a **Mac**, because the iOS Simulator and Xcode are macOS-only:
 
-1. Build and run the VEIL iOS app on the **iOS Simulator** in Xcode on a
-   Mac (e.g. an iPhone 16 Pro Max simulator for the 6.9" set at
-   1290 × 2796, and an iPhone 14 Plus / 11 Pro Max simulator for the 6.5"
-   set at 1242 × 2688). The simulator renders at exact native resolution,
-   so captures already match Apple's required pixel sizes.
-2. Set the simulator's app language to `en`, capture all 6 shots, then
-   switch to `ko` and capture all 6 again. (Simulator: Settings →
-   General → Language & Region, or relaunch via Flutter with the locale
-   set.)
-3. Capture with **Simulator → File → Save Screen** (or `⌘S`), which writes
-   a PNG at the device's native resolution — do not resize afterward.
-4. Alternatively capture on a physical iPhone of the right display class,
-   but this still requires a Mac + Xcode/Apple Configurator to manage
-   builds and to verify pixel dimensions before upload to App Store
-   Connect.
+1. Build and run the Veil iOS app on the **iOS Simulator** in Xcode on a
+   Mac (for example an iPhone 16 Pro Max simulator for the 6.9" set at
+   1290 x 2796, and an iPhone 14 Plus / 11 Pro Max simulator for the 6.5"
+   set at 1242 x 2688; an iPad Pro 13-inch simulator for the iPad set at
+   2064 x 2752, if the build still runs on iPad). The simulator renders at
+   native resolution, so captures already match Apple's required pixel
+   sizes.
+2. Capture all 6 shots with **Simulator > File > Save Screen** (or `⌘S`),
+   which writes a PNG at the device's native resolution. Do not resize
+   afterward.
+3. Alternatively capture on a physical iPhone of the right display class,
+   but this still requires a Mac with Xcode or Apple Configurator to manage
+   builds and to verify pixel dimensions before upload to App Store Connect.
 
-> **Why Mac-only:** Xcode, the iOS Simulator, and the Flutter iOS
-> toolchain do not run on Windows or Linux. There is no supported way to
-> produce correctly-sized iOS App Store screenshots off macOS. Plan the
-> screenshot pass on a Mac as a hard prerequisite for submission.
+> **Why Mac only:** Xcode, the iOS Simulator and the Flutter iOS toolchain
+> do not run on Windows or Linux. There is no supported way to produce
+> correctly sized iOS App Store screenshots off macOS. Plan the screenshot
+> pass on a Mac as a hard prerequisite for submission.
 
 ---
 
 ## 7. Pre-upload checklist
 
-- [ ] 6.9" portrait shots are exactly **1290 × 2796** px.
-- [ ] 6.5" portrait shots are exactly **1242 × 2688** px.
-- [ ] 6 shots each for `en` and `ko`, in identical order.
-- [ ] UI language in each shot matches its locale (captured, not overlaid).
+- [ ] 6.9" portrait shots are exactly **1290 x 2796** px.
+- [ ] 6.5" portrait shots are exactly **1242 x 2688** px.
+- [ ] 6 shots, in the order of §4.
 - [ ] No phone numbers, no real personal data, clean status bar.
 - [ ] Device-transfer shot does not imply backup/recovery.
 - [ ] PNG/JPEG, RGB, no alpha, no rounded corners, full native resolution.
-- [ ] iPad device support is **not** declared in App Store Connect; no iPad
-      screenshots uploaded.
+- [ ] The archived build's device family is iPhone alone
+      (`TARGETED_DEVICE_FAMILY = 1`), or a 13" iPad set is uploaded too.

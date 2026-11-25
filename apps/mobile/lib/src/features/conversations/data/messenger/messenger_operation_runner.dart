@@ -1,0 +1,80 @@
+import '../../../../core/errors/user_facing_error.dart';
+import '../../../../core/network/veil_api_exception.dart';
+import 'conversation_peer_bindings.dart';
+import 'identity_trust.dart';
+
+const _relayInterruptedMessage = 'Relay connection interrupted. Queued sends will retry after reconnect.';
+
+/// The messenger's busy flag and its one user-facing error line.
+class MessengerOperationRunner {
+  MessengerOperationRunner({
+    required void Function() onChanged,
+    Future<void> Function(Object error)? onSecurityException,
+  })  : _onChanged = onChanged,
+        _onSecurityException = onSecurityException;
+
+  final void Function() _onChanged;
+  final Future<void> Function(Object error)? _onSecurityException;
+  bool _isBusy = false;
+  String? _errorMessage;
+  String? _errorCode;
+
+  bool get isBusy => _isBusy;
+
+  String? get errorMessage => _errorMessage;
+
+  /// The server's error code for the failure of the last [run], when it
+  /// came with one ('handle_not_found', say); null otherwise.
+  String? get errorCode => _errorCode;
+
+  /// Whether [errorMessage] is the note that the relay link dropped while
+  /// sends were queued, which a screen words in the user's language.
+  bool get showsRelayInterruption => _errorMessage == _relayInterruptedMessage;
+
+  /// Runs a user action: busy while it runs, its failure shown afterwards.
+  Future<void> run(Future<void> Function() action) async {
+    _isBusy = true;
+    _errorMessage = null;
+    _errorCode = null;
+    _onChanged();
+    try {
+      await action();
+    } on IdentityChangedException {
+      // Shown in its conversation (pendingIdentityChangeFor), not globally.
+    } on PeerAccountHeldException {
+      // Shown in its conversation (peerAccountHoldFor), not globally.
+    } catch (error) {
+      await handleSecurityException(error);
+      _errorMessage = formatUserFacingError(error);
+      _errorCode = extractVeilApiErrorCode(error);
+    } finally {
+      _isBusy = false;
+      _onChanged();
+    }
+  }
+
+  /// Lets the session owner react to [error] (a revoked device signs out),
+  /// then shows it.
+  Future<void> fail(Object error) async {
+    await handleSecurityException(error);
+    show(error);
+  }
+
+  void show(Object error) => showMessage(formatUserFacingError(error));
+
+  void showMessage(String message) {
+    _errorMessage = message;
+    _onChanged();
+  }
+
+  Future<void> handleSecurityException(Object error) async => _onSecurityException?.call(error);
+
+  /// A dropped relay link matters only while sends are queued.
+  void noteRelayInterrupted({required bool hasQueuedSends}) {
+    if (hasQueuedSends) _errorMessage = _relayInterruptedMessage;
+  }
+
+  void clearRelayInterruption() {
+    if (_errorMessage == _relayInterruptedMessage) _errorMessage = null;
+  }
+}

@@ -4,17 +4,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- No camera, microphone or media-library permission: photos come from
+         the system photo picker and files from the system document picker,
+         which need none. Declare one again only together with a feature that
+         uses it end to end. -->
 
     <application
         android:label="Veil"
@@ -58,6 +51,18 @@
             </intent-filter>
         </activity>
 
+        <!-- Hands one decrypted file in cache/veil_open to the app the user
+             opens it with; nothing else is reachable through it. -->
+        <provider
+            android:name=".VeilOpenFileProvider"
+            android:authorities="${applicationId}.veil_open"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/veil_open_paths" />
+        </provider>
+
         <!-- FCM default notification channel -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
@@ -81,6 +86,12 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- A link in a message opens in the browser (url_launcher); this
+             lets the app see that one is there. No permission. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

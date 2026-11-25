@@ -7,6 +7,14 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// The libsignal bridge (app/src/libsignal) and Signal's prebuilt native
+// libraries are compiled in only when asked for:
+//   flutter build apk --dart-define=VEIL_CRYPTO_ADAPTER=libsignal --android-project-arg=veil.libsignal=true
+// Default builds leave both out; the Dart side then finds no bridge and the
+// libsignal adapter, if selected, reports it unavailable. The bridge has not
+// been built into an app on a real toolchain yet.
+val veilLibsignal = providers.gradleProperty("veil.libsignal").orNull == "true"
+
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 if (keystorePropertiesFile.exists()) {
@@ -19,12 +27,21 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications uses java.time on every API level and
+        // fails the AAR metadata check without library desugaring.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
+    }
+
+    sourceSets {
+        getByName("main") {
+            java.srcDir(if (veilLibsignal) "src/libsignal/kotlin" else "src/nolibsignal/kotlin")
+        }
     }
 
     defaultConfig {
@@ -78,4 +95,19 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Version from flutter_local_notifications' README; bump with that plugin.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // FileProvider, which VeilOpenFileProvider extends to hand one decrypted
+    // file to the app it is opened with: the version image_picker_android
+    // already brings in.
+    implementation("androidx.core:core:1.18.0")
+    if (veilLibsignal) {
+        // Signal's audited protocol implementation (Rust core + JNI, prebuilt
+        // AAR from Maven Central). Pinned exactly; bump together with the iOS
+        // LibSignalClient package and docs/reproducible-builds.md.
+        implementation("org.signal:libsignal-android:0.86.5")
+    }
 }

@@ -1,6 +1,6 @@
-# VEIL — App Store Submission Checklist
+# App Store submission checklist
 
-A step-by-step, executable checklist for shipping VEIL Messenger to the iOS App Store.
+A step-by-step, executable checklist for shipping Veil: Encrypted Messenger to the iOS App Store.
 Audience: an operator with a **Mac running Xcode** and an **Apple Developer Program account**.
 
 Bundle id: `io.veil.mobile` · Flutter project: `apps/mobile` · Listing package: `store/appstore`
@@ -9,7 +9,7 @@ Bundle id: `io.veil.mobile` · Flutter project: `apps/mobile` · Listing package
 
 ## ⛔ Ship-gate notice (read first)
 
-VEIL declares an org-wide non-negotiable: **production must not ship until an external
+Veil has an org-wide non-negotiable: **production must not ship until an external
 cryptographer has audited the `LibCryptoAdapter`** (Double Ratchet over X25519 + AES-256-GCM
 + Ed25519 + HKDF-SHA256).
 
@@ -39,24 +39,22 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
       (the `cydia` entry) from `apps/mobile/ios/Runner/Info.plist` (lines ~29-32). The README
       already claims it was removed; the plist still has it. Apple rejects jailbreak-probe schemes.
 - [ ] **Add the export-compliance key.** Add to `apps/mobile/ios/Runner/Info.plist`:
-      ```xml
-      <key>ITSAppUsesNonExemptEncryption</key>
-      <true/>
-      ```
-      VEIL ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is
-      **YES/true**. This suppresses the per-build export prompt; the *exemption* is claimed via
-      the App Store Connect answers + BIS self-classification report (Step 12), **not** via this
-      boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS —
-      VEIL uses only standard published algorithms, so no CCATS/ERN is required.
-- [ ] **Fix the EN subtitle (30-char limit).** `store/appstore/metadata-en.txt` subtitle
-      "End-to-end encrypted privacy messenger" is 38 chars. Rewrite to ≤30, e.g.
-      "Encrypted privacy messenger" (27) or "E2E encrypted private chat" (26). KO subtitle is fine.
+  ```xml
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <true/>
+  ```
+  Veil ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is
+  **YES/true**. This suppresses the per-build export prompt; the *exemption* is claimed via
+  the App Store Connect answers + BIS self-classification report (Step 12), **not** via this
+  boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS:
+  Veil uses only standard published algorithms, so no CCATS/ERN is required.
+- [x] **Fix the subtitle (30-char limit).** Done: `store/appstore/metadata-en.txt` uses
+      "Chat without a phone number" (27 chars).
 - [ ] **(Optional, cosmetic) Align CFBundleURLName.** `Info.plist` `CFBundleURLName` is
       `app.veil.messenger` but the bundle id is `io.veil.mobile`. Align or leave; not a blocker.
-- [ ] **Author the two missing source docs** referenced by this checklist (they do not exist yet):
-      - `store/appstore/screenshot-spec.md` — required device sizes, per-screen shot list, captions.
-      - `store/appstore/app-review-notes.md` — the no-account / no-recovery reviewer guide
-        (draft content suggested inline in Step 13 below).
+- [x] **Author the two source docs** referenced by this checklist. Done:
+      - `store/appstore/screenshot-spec.md` — required device sizes and the per-screen shot list.
+      - `store/appstore/app-review-notes.md` — the no-account / no-recovery reviewer guide.
 
 ---
 
@@ -92,23 +90,22 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
       stale `iPhone Developer`. Set `DEVELOPMENT_TEAM` to your Team ID; let Xcode manage the identity.
 - [ ] First-build bootstrap on the Mac (the project has never been built — no `Generated.xcconfig`,
       no `Pods/`):
-      ```bash
-      cd apps/mobile
-      flutter pub get
-      cd ios && pod install && cd ..
-      flutter build ios --config-only
-      ```
+  ```bash
+  cd apps/mobile
+  flutter pub get
+  cd ios && pod install && cd ..
+  flutter build ios --config-only
+  ```
 
 ## 4. Create the App Store Connect app record  · owner: human-account
 
 - [ ] In **App Store Connect → Apps → +** → New App:
       - Platform: iOS
-      - Name: **VEIL Messenger** (must be globally unique on the Store)
+      - Name: **Veil: Encrypted Messenger** (must be globally unique on the Store)
       - Primary language: English (U.S.)
       - Bundle ID: **`io.veil.mobile`**
       - SKU: e.g. `veil-mobile-ios`
 - [ ] Set **Primary category: Social Networking**, **Secondary: Utilities** (or Productivity).
-- [ ] Add Korean (한국어) as an additional App Store localization so KO metadata can be entered.
 
 ## 5. Set version + build number  · owner: code-today
 
@@ -151,11 +148,11 @@ Choose Xcode **or** fastlane.
 
 ## 8. Fill metadata  · owner: human-account (text drafted code-today)
 
-Transcribe from `store/appstore/metadata-en.txt` (English) and `store/appstore/metadata-ko.txt`
-(Korean) into App Store Connect → the version's **App Information** / localized fields:
+Transcribe from `store/appstore/metadata-en.txt` into App Store Connect → the version's
+**App Information** fields. The listing is English only; add no other localization:
 
-- [ ] Name, Subtitle (**use the corrected ≤30-char EN subtitle from Pre-flight**), Promotional Text,
-      Description, Keywords (EN 69 / KO 36 chars — both under the 100 limit).
+- [ ] Name, Subtitle (≤30 chars), Promotional Text, Description, Keywords (89 chars, under
+      the 100 limit).
 - [ ] Support URL `https://veil.app/support`, Marketing URL `https://veil.app`,
       Privacy Policy URL `https://pppaal.github.io/Veil/`.
 - [ ] **Verify all three URLs resolve to live pages before submission** — a dead support/privacy
@@ -171,7 +168,7 @@ Transcribe from `store/appstore/metadata-en.txt` (English) and `store/appstore/m
         family and skip iPad shots.
       - Per-screen shot list + captions (onboarding/identity creation, 1:1 chat, group chat,
         app-lock, device-transfer).
-- [ ] Capture from the Simulator/device on the Mac, then upload to each localization.
+- [ ] Capture from the Simulator/device on the Mac, then upload to the English localization.
 - [ ] App preview video is **optional** — skip for beta.
 
 ## 10. App Privacy ("nutrition label")  · owner: human-account (answers drafted)
@@ -179,9 +176,12 @@ Transcribe from `store/appstore/metadata-en.txt` (English) and `store/appstore/m
 Transcribe `store/appstore/app-privacy-answers.md` into App Store Connect → **App Privacy**:
 
 - [ ] Data collected: **User ID** (linked, App Functionality, not tracking), **Device ID**
-      (linked, App Functionality, not tracking), **User Content / encrypted payloads**
-      (NOT linked — server holds only ciphertext, App Functionality, not tracking),
-      **Crash Data** (opt-in Sentry, NOT linked, App Functionality, not tracking).
+      (linked, App Functionality, not tracking), **Contacts** (the in-app contact list,
+      a social graph: linked, App Functionality, not tracking), **User Content / encrypted
+      payloads** (NOT linked — server holds only ciphertext, App Functionality, not
+      tracking), **Other User Content** (group and channel names and descriptions, device
+      labels and delivery metadata: linked, App Functionality, not tracking).
+      **Crash Data: not collected** (no crash-reporting SDK ships).
 - [ ] **Tracking: No.** Mark the long "Data Not Collected" list accordingly.
 
 ## 11. Content rights  · owner: human-account
@@ -208,14 +208,16 @@ In App Store Connect export-compliance flow (or at TestFlight upload):
 ## 13. Review notes  · owner: code-today (draft) → human-account (paste)
 
 - [ ] Author `store/appstore/app-review-notes.md` if missing, then paste into the version's
-      **App Review Information → Notes**. **Critical** because VEIL has no accounts, no phone number,
-      and no recovery, so reviewers cannot "log in." The notes must explain:
-      - No demo credentials are needed and none exist — there is **no login**.
-      - How an identity is created on **first launch** (device-bound, no account/phone/email).
-      - How to test **1:1 and group messaging** using **two devices/simulators** (you exchange
-        the on-screen identity to start a conversation).
+      **App Review Information → Notes**. **Critical** because Veil asks for no phone number, no
+      email and no real name, and has no recovery, so reviewers cannot "log in." The notes must explain:
+      - No demo credentials are needed and none exist — there is **no password login**.
+      - How an account is created on **first launch**: privacy notice, product rules, **Create
+        account**, **Choose handle**; the identity keys are created locally (no phone number,
+        no email, no real name).
+      - How to test **1:1 and group messaging** using **two devices/simulators** (start a
+        conversation with the other device's handle and compare safety numbers).
       - That **no account recovery exists by design** (losing the device loses the chats).
-      - The **opt-in Sentry crash toggle** (off by default).
+      - That **no crash-reporting SDK** ships, so no diagnostics leave the device.
       - Contact: `privacy@veil.app`.
 - [ ] Provide an App Review **contact name + phone + email**.
 

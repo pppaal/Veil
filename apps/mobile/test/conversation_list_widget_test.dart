@@ -1,3 +1,5 @@
+import 'dart:io' show HttpDate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,13 +10,86 @@ import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_phone.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/peer_names.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
+// The names this phone gave the peers in Contacts, which is where every
+// name the screens show comes from: the relay lists none. Each names the
+// account the list shows under its handle, as the app records it
+// (PeerNames.claims).
+final _nicknames = peerNamesProvider.overrideWith((ref) {
+  final messenger = ref.watch(messengerControllerProvider);
+  const saved = {'selene': ContactNickname('Selene'), 'rowan': ContactNickname('Rowan')};
+  final accounts = peerNamesFor(messenger, saved).claims();
+  return peerNamesFor(messenger, {
+    for (final MapEntry(key: handle, value: nickname) in saved.entries)
+      handle: ContactNickname(nickname.name, userId: accounts[handle]),
+  });
+});
+
 void main() {
-  testWidgets('conversation list shows local search banner and archive results', (tester) async {
+  group('ConversationRow', () {
+    Widget row({int unreadCount = 0, String? timerLabel}) => MaterialApp(
+          theme: VeilTheme.light(),
+          home: Scaffold(
+            body: ConversationRow(
+              title: 'Sam Rivera',
+              seed: 'sam',
+              snippet: 'Section 7 is fine.',
+              timestamp: '09:45',
+              semanticLabel: 'Chat with Sam Rivera',
+              unreadCount: unreadCount,
+              unreadLabel: unreadCount == 0 ? null : '$unreadCount unread messages',
+              timerLabel: timerLabel,
+            ),
+          ),
+        );
+
+    testWidgets('an unread chat shows its count in a brand badge, its name bold and its message in the text colour',
+        (tester) async {
+      await tester.pumpWidget(row(unreadCount: 3));
+      final palette = VeilPalette.light;
+      expect(find.text('3'), findsOneWidget);
+      final badge = tester.widget<Container>(
+        find.ancestor(of: find.text('3'), matching: find.byType(Container)).first,
+      );
+      expect((badge.decoration! as BoxDecoration).color, palette.primary);
+      expect(tester.getSize(find.byType(UnreadBadge)).height, greaterThanOrEqualTo(20));
+      expect(tester.widget<Text>(find.text('Sam Rivera')).style?.fontWeight, FontWeight.w700);
+      expect(tester.widget<Text>(find.text('Section 7 is fine.')).style?.color, palette.text);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Semantics && widget.properties.label == 'Chat with Sam Rivera, 3 unread messages',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getSize(find.byType(ConversationRow)).height, greaterThanOrEqualTo(72));
+    });
+
+    testWidgets('a read chat has no badge, and a chat whose messages disappear has the timer glyph', (tester) async {
+      await tester.pumpWidget(row(timerLabel: 'Disappearing: 1 day'));
+      expect(find.byType(UnreadBadge), findsNothing);
+      expect(tester.widget<Text>(find.text('Sam Rivera')).style?.fontWeight, isNot(FontWeight.w700));
+      expect(tester.widget<Text>(find.text('Section 7 is fine.')).style?.color, VeilPalette.light.textMuted);
+      expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Semantics && widget.properties.label == 'Chat with Sam Rivera, Disappearing: 1 day',
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
+  testWidgets('the wide layout shows the list and the open chat, and searches both from the list', (tester) async {
     tester.view.physicalSize = const Size(1400, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -25,8 +100,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final envelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer',
+      senderDeviceId: 'device-peer',
+      recipientUserId: 'user-local',
       body: 'Orbit relay window',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -64,6 +139,7 @@ void main() {
       ProviderScope(
         overrides: [
           messengerControllerProvider.overrideWith((ref) => controller),
+          _nicknames,
         ],
         child: const _TestApp(
           child: ConversationListScreen(),
@@ -73,19 +149,32 @@ void main() {
 
     await tester.pumpAndSettle();
 
+    // Two panes, each with the content a phone shows and nothing above it.
+    expect(find.byType(ConversationListPhone), findsOneWidget);
+    expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).embedded, isTrue);
     expect(find.text('Selene'), findsWidgets);
-    expect(find.text('ACTIVE CONVERSATION'), findsOneWidget);
+    expect(_inChatPane(find.text('Orbit relay window')), findsOneWidget);
+    // The list starts right under its bar, and so do the messages' pane.
+    expect(tester.getTopLeft(find.byType(ConversationListPhone)).dy, ChatPaneBar.height);
+    // The list's bar is titled Chats and has one action, a new chat; the
+    // security status is under Settings. The chat's bar has its own.
+    expect(find.text('Chats'), findsOneWidget);
+    expect(find.byTooltip('New chat'), findsOneWidget);
+    expect(find.byTooltip('Security'), findsNothing);
+    for (final tooltip in ['Safety number', 'Search', 'More options']) {
+      expect(_inChatPane(find.byTooltip(tooltip)), findsOneWidget, reason: tooltip);
+    }
 
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Search conversations and cached messages'),
-      'orbit',
-    );
+    await tester.enterText(find.widgetWithText(TextField, 'Search'), 'orbit');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('Local search active'), findsOneWidget);
-    expect(find.text('MESSAGES'), findsOneWidget);
+    // Nothing on this phone matched: the list says so in one line, and the
+    // open chat stays beside it.
+    expect(find.text('No results for "orbit"'), findsOneWidget);
+    expect(find.text('Messages'), findsNothing);
     expect(find.textContaining('Orbit relay window'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('conversation list shows empty state when no direct conversations exist', (tester) async {
@@ -116,6 +205,7 @@ void main() {
       ProviderScope(
         overrides: [
           messengerControllerProvider.overrideWith((ref) => controller),
+          _nicknames,
         ],
         child: const _TestApp(
           child: ConversationListScreen(),
@@ -125,7 +215,261 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('DIRECT CONVERSATIONS'), findsOneWidget);
+    // Under the wide layout's width the list is the phone's: the empty state
+    // itself, with no hero card before it.
+    expect(find.text('No chats yet'), findsOneWidget);
+    expect(find.text('New chat'), findsOneWidget);
+    // No status line counting the chats or restating that nothing is
+    // backed up: the bar names the connection only while there is none.
+    expect(find.textContaining('0 chats'), findsNothing);
+    expect(find.textContaining('No backup'), findsNothing);
+    expect(find.text('DIRECT CONVERSATIONS'), findsNothing);
+  });
+
+  testWidgets('the Chats bar is titled by the connection only while there is none', (tester) async {
+    final realtime = _HeldRealtimeService();
+    final controller = _buildController(
+      adapter: createDefaultCryptoAdapter(),
+      apiClient: _FakeConversationApiClient(null),
+      realtimeService: realtime,
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [messengerControllerProvider.overrideWith((ref) => controller), _nicknames],
+        child: const _TestApp(child: ConversationListScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final l10n = AppLocalizations.of(tester.element(find.byType(ConversationListScreen)));
+    // The bar is the shell's PreferredSize; nothing else on this page says
+    // either word.
+    Finder inBar(String text) => find.descendant(of: find.byType(PreferredSize), matching: find.text(text));
+    // The title says it in place of "Chats", as Telegram's does.
+    expect(inBar(l10n.navChats), findsNothing);
+    expect(inBar(l10n.conversationsBarConnecting), findsOneWidget, reason: 'no live link yet');
+
+    realtime.setConnected(true);
+    await tester.pumpAndSettle();
+    expect(inBar(l10n.navChats), findsOneWidget);
+    expect(inBar(l10n.conversationsBarConnecting), findsNothing, reason: 'a live link says nothing');
+    expect(inBar(l10n.conversationsBarOffline), findsNothing);
+
+    realtime.setConnected(false);
+    await tester.pumpAndSettle();
+    expect(inBar(l10n.conversationsBarConnecting), findsOneWidget, reason: 'with nothing queued, a lost link reconnects');
+  });
+
+  testWidgets('conversation list previews the latest decrypted text body', (tester) async {
+    // Phone width, tall enough that both cards are laid out.
+    tester.view.physicalSize = const Size(600, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final adapter = createDefaultCryptoAdapter();
+    const peerBundle = KeyBundle(
+      userId: 'user-peer',
+      deviceId: 'device-peer',
+      handle: 'peer',
+      identityPublicKey: 'pub-peer',
+      signedPrekeyBundle: 'bundle-peer',
+    );
+    final textEnvelope = await adapter.messaging.encryptMessage(
+      conversationId: 'conv-1',
+      senderDeviceId: 'device-peer-1',
+      recipientUserId: 'user-local',
+      body: 'Meet at the north gate',
+      messageKind: MessageKind.text,
+      recipientBundle: peerBundle,
+    );
+    final noticeEnvelope = await adapter.messaging.encryptMessage(
+      conversationId: 'conv-2',
+      senderDeviceId: 'device-peer-2',
+      recipientUserId: 'user-local',
+      body: 'Screenshot taken',
+      messageKind: MessageKind.system,
+      recipientBundle: peerBundle,
+    );
+    final controller = _buildController(
+      adapter: adapter,
+      apiClient: _FakeConversationApiClient.multiple(
+        conversations: [
+          _conversationMap(id: 'conv-1', peerHandle: 'selene', envelope: textEnvelope),
+          _conversationMap(id: 'conv-2', peerHandle: 'rowan', envelope: noticeEnvelope),
+        ],
+        messagesByConversation: {
+          'conv-1': [
+            _messageMap(
+              id: 'msg-1',
+              conversationId: 'conv-1',
+              envelope: textEnvelope,
+              conversationOrder: 1,
+              sentAt: DateTime.utc(2026, 4, 7, 9, 30),
+            ),
+          ],
+          'conv-2': [
+            _messageMap(
+              id: 'msg-2',
+              conversationId: 'conv-2',
+              envelope: noticeEnvelope,
+              conversationOrder: 1,
+              sentAt: DateTime.utc(2026, 4, 7, 9, 40),
+            ),
+          ],
+        },
+      ),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+    await controller.loadConversationMessages('conv-1');
+    await controller.loadConversationMessages('conv-2');
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [messengerControllerProvider.overrideWith((ref) => controller), _nicknames],
+        child: const _TestApp(child: ConversationListScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Meet at the north gate'), findsOneWidget);
+    // A system line is previewed by its own words, as the chat shows it.
+    expect(find.text('Screenshot taken'), findsOneWidget);
+    expect(find.text('Security notice'), findsNothing);
+  });
+
+  group('a disappearing last message on a device whose clock runs 15 minutes fast', () {
+    // The preview of one conversation whose last message expires at
+    // [expiresAt]; the relay's Date header put its clock 15 minutes behind
+    // this device's.
+    Future<void> pumpList(WidgetTester tester, DateTime expiresAt) async {
+      tester.view.physicalSize = const Size(600, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final adapter = createDefaultCryptoAdapter();
+      final envelope = await adapter.messaging.encryptMessage(
+        conversationId: 'conv-1',
+        senderDeviceId: 'device-peer-1',
+        recipientUserId: 'user-local',
+        body: 'Meet at the north gate',
+        messageKind: MessageKind.text,
+        recipientBundle: const KeyBundle(
+          userId: 'user-peer',
+          deviceId: 'device-peer',
+          handle: 'peer',
+          identityPublicKey: 'pub-peer',
+          signedPrekeyBundle: 'bundle-peer',
+        ),
+      );
+      final apiClient = _FakeConversationApiClient.multiple(
+        conversations: [
+          _conversationMap(
+            id: 'conv-1',
+            peerHandle: 'selene',
+            envelope: envelope,
+            expiresAt: expiresAt,
+          ),
+        ],
+        messagesByConversation: {
+          'conv-1': [
+            _messageMap(
+              id: 'msg-1',
+              conversationId: 'conv-1',
+              envelope: envelope,
+              conversationOrder: 1,
+              sentAt: DateTime.utc(2026, 4, 7, 9, 30),
+              expiresAt: expiresAt,
+            ),
+          ],
+        },
+      );
+      apiClient.serverClock
+          .observe(HttpDate.format(DateTime.now().toUtc().subtract(const Duration(minutes: 15))));
+      final controller = _buildController(adapter: adapter, apiClient: apiClient);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+      await controller.applySession(
+        const AppSessionState(
+          accessToken: 'token',
+          userId: 'user-local',
+          deviceId: 'device-local',
+          handle: 'atlas',
+          displayName: 'Atlas',
+          onboardingAccepted: true,
+          locked: false,
+          initializing: false,
+        ),
+      );
+      await controller.loadConversationMessages('conv-1');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [messengerControllerProvider.overrideWith((ref) => controller), _nicknames],
+          child: const _TestApp(child: ConversationListScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('is previewed, with the time the relay leaves it, while the relay keeps it', (tester) async {
+      // Past by the device clock; ten minutes left by the relay's.
+      await pumpList(tester, DateTime.now().toUtc().subtract(const Duration(minutes: 5)));
+
+      expect(find.text('Meet at the north gate'), findsOneWidget);
+      expect(find.text('Message expired'), findsNothing);
+      // The row marks it with the timer glyph; a screen reader hears when.
+      expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Semantics && RegExp(r'Expires in (9|10)m$').hasMatch(widget.properties.label ?? ''),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('is not previewed once the relay counts it expired too', (tester) async {
+      await pumpList(tester, DateTime.now().toUtc().subtract(const Duration(minutes: 20)));
+
+      expect(find.text('Meet at the north gate'), findsNothing);
+    });
   });
 
   testWidgets('wide layout selection updates the active conversation pane', (tester) async {
@@ -139,8 +483,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final firstEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-1',
+      senderDeviceId: 'device-peer-1',
+      recipientUserId: 'user-local',
       body: 'Selene relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -153,8 +497,8 @@ void main() {
     );
     final secondEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-2',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-2',
+      senderDeviceId: 'device-peer-2',
+      recipientUserId: 'user-local',
       body: 'Rowan relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -173,13 +517,13 @@ void main() {
           _conversationMap(
             id: 'conv-1',
             peerHandle: 'selene',
-            peerDisplayName: 'Selene',
+            peerUserId: 'user-peer-1',
             envelope: firstEnvelope,
           ),
           _conversationMap(
             id: 'conv-2',
             peerHandle: 'rowan',
-            peerDisplayName: 'Rowan',
+            peerUserId: 'user-peer-2',
             envelope: secondEnvelope,
           ),
         ],
@@ -190,7 +534,7 @@ void main() {
               conversationId: 'conv-1',
               envelope: firstEnvelope,
               conversationOrder: 1,
-              sentAt: DateTime.utc(2026, 4, 7, 9, 30),
+              sentAt: DateTime.utc(2026, 4, 7, 9, 50),
             ),
           ],
           'conv-2': [
@@ -227,6 +571,7 @@ void main() {
       ProviderScope(
         overrides: [
           messengerControllerProvider.overrideWith((ref) => controller),
+          _nicknames,
         ],
         child: const _TestApp(
           child: ConversationListScreen(),
@@ -236,13 +581,13 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Selene relay note'), findsOneWidget);
-    expect(find.text('Rowan relay note'), findsNothing);
+    expect(_inChatPane(find.text('Selene relay note')), findsOneWidget);
+    expect(_inChatPane(find.text('Rowan relay note')), findsNothing);
 
     await tester.tap(find.text('Rowan').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Rowan relay note'), findsOneWidget);
+    expect(_inChatPane(find.text('Rowan relay note')), findsOneWidget);
   });
 
   testWidgets('wide layout search result tap switches the active conversation', (tester) async {
@@ -256,8 +601,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final firstEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-1',
+      senderDeviceId: 'device-peer-1',
+      recipientUserId: 'user-local',
       body: 'Selene relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -270,8 +615,8 @@ void main() {
     );
     final secondEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-2',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-2',
+      senderDeviceId: 'device-peer-2',
+      recipientUserId: 'user-local',
       body: 'Anchor handoff note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -290,13 +635,13 @@ void main() {
           _conversationMap(
             id: 'conv-1',
             peerHandle: 'selene',
-            peerDisplayName: 'Selene',
+            peerUserId: 'user-peer-1',
             envelope: firstEnvelope,
           ),
           _conversationMap(
             id: 'conv-2',
             peerHandle: 'rowan',
-            peerDisplayName: 'Rowan',
+            peerUserId: 'user-peer-2',
             envelope: secondEnvelope,
           ),
         ],
@@ -307,7 +652,7 @@ void main() {
               conversationId: 'conv-1',
               envelope: firstEnvelope,
               conversationOrder: 1,
-              sentAt: DateTime.utc(2026, 4, 7, 9, 30),
+              sentAt: DateTime.utc(2026, 4, 7, 9, 50),
             ),
           ],
           'conv-2': [
@@ -359,6 +704,7 @@ void main() {
       ProviderScope(
         overrides: [
           messengerControllerProvider.overrideWith((ref) => controller),
+          _nicknames,
         ],
         child: const _TestApp(
           child: ConversationListScreen(),
@@ -368,16 +714,13 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Selene relay note'), findsOneWidget);
+    expect(_inChatPane(find.text('Selene relay note')), findsOneWidget);
 
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Search conversations and cached messages'),
-      'anchor',
-    );
+    await tester.enterText(find.widgetWithText(TextField, 'Search'), 'anchor');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('MESSAGES'), findsOneWidget);
+    expect(find.text('Messages'), findsOneWidget);
     expect(find.text('Rowan'), findsOneWidget);
 
     await tester.tap(find.text('Rowan'));
@@ -386,6 +729,11 @@ void main() {
     expect(find.text('Anchor handoff note'), findsWidgets);
   });
 }
+
+// The list also previews each conversation's latest decrypted text, so
+// assertions about the open conversation look inside the chat pane only.
+Finder _inChatPane(Finder finder) =>
+    find.descendant(of: find.byType(ChatRoomScreen), matching: finder);
 
 class _TestApp extends StatelessWidget {
   const _TestApp({required this.child});
@@ -426,10 +774,40 @@ class _FakeRealtimeService extends RealtimeService {
   }
 }
 
+/// A realtime link that connects only when the test says so.
+class _HeldRealtimeService extends RealtimeService {
+  void Function(bool connected)? _onConnectionChanged;
+  bool _connected = false;
+
+  @override
+  bool get isConnected => _connected;
+
+  @override
+  void connect({
+    required String baseUrl,
+    required String accessToken,
+    required void Function(String event, dynamic payload) onEvent,
+    void Function(bool connected)? onConnectionChanged,
+  }) {
+    _onConnectionChanged = onConnectionChanged;
+  }
+
+  void setConnected(bool connected) {
+    _connected = connected;
+    _onConnectionChanged?.call(connected);
+  }
+
+  @override
+  void disconnect() {
+    _connected = false;
+  }
+}
+
 VeilMessengerController _buildController({
   required CryptoAdapter adapter,
   required VeilApiClient apiClient,
   ConversationCacheService? cacheService,
+  RealtimeService? realtimeService,
 }) {
   return VeilMessengerController(
     apiClient: apiClient,
@@ -437,7 +815,7 @@ VeilMessengerController _buildController({
     keyBundleCodec: adapter.keyBundles,
     envelopeCodec: adapter.envelopeCodec,
     sessionBootstrapper: adapter.sessions,
-    realtimeService: _FakeRealtimeService(),
+    realtimeService: realtimeService ?? _FakeRealtimeService(),
     cacheService: cacheService ?? _ConversationListCache(),
   );
 }
@@ -453,7 +831,7 @@ class _ConversationListCache implements ConversationCacheService {
   Future<void> clearAll() async {}
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<List<ConversationPreview>> readConversations() async => const [];
@@ -548,7 +926,6 @@ class _FakeConversationApiClient extends VeilApiClient {
             _conversationMap(
               id: 'conv-1',
               peerHandle: 'selene',
-              peerDisplayName: 'Selene',
               envelope: _envelope,
             ),
           ];
@@ -582,8 +959,8 @@ class _FakeConversationApiClient extends VeilApiClient {
           'id': 'msg-1',
           'clientMessageId': null,
           'conversationId': 'conv-1',
-          'senderDeviceId': 'device-local',
-          'recipientUserId': 'user-peer',
+          'senderDeviceId': envelope.senderDeviceId,
+          'recipientUserId': envelope.recipientUserId,
           'ciphertext': envelope.ciphertext,
           'nonce': envelope.nonce,
           'version': envelope.version,
@@ -607,25 +984,28 @@ class _FakeConversationApiClient extends VeilApiClient {
   }
 }
 
+// [peerUserId] is the peer's account: two chats listed with one account
+// under two handles name neither by a nickname (see PeerNames), and no
+// honest relay lists them so.
 Map<String, dynamic> _conversationMap({
   required String id,
   required String peerHandle,
-  required String peerDisplayName,
+  String peerUserId = 'user-peer',
   CryptoEnvelope? envelope,
+  DateTime? expiresAt,
 }) {
   return {
     'id': id,
     'createdAt': DateTime.utc(2026, 4, 7, 8).toIso8601String(),
     'members': [
+      // As the relay lists a member (ConversationMemberSummary): no name.
       {
         'userId': 'user-local',
         'handle': 'atlas',
-        'displayName': 'Atlas',
       },
       {
-        'userId': 'user-peer',
+        'userId': peerUserId,
         'handle': peerHandle,
-        'displayName': peerDisplayName,
       },
     ],
     'lastMessage': envelope == null
@@ -634,8 +1014,8 @@ Map<String, dynamic> _conversationMap({
             'id': 'msg-1',
             'clientMessageId': null,
             'conversationId': id,
-            'senderDeviceId': 'device-local',
-            'recipientUserId': 'user-peer',
+            'senderDeviceId': envelope.senderDeviceId,
+            'recipientUserId': envelope.recipientUserId,
             'ciphertext': envelope.ciphertext,
             'nonce': envelope.nonce,
             'version': envelope.version,
@@ -644,6 +1024,7 @@ Map<String, dynamic> _conversationMap({
             'conversationOrder': 1,
             'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
             'readAt': null,
+            if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
           },
   };
 }
@@ -654,13 +1035,14 @@ Map<String, dynamic> _messageMap({
   required CryptoEnvelope envelope,
   required int conversationOrder,
   required DateTime sentAt,
+  DateTime? expiresAt,
 }) {
   return {
     'id': id,
     'clientMessageId': null,
     'conversationId': conversationId,
-    'senderDeviceId': 'device-local',
-    'recipientUserId': 'user-peer',
+    'senderDeviceId': envelope.senderDeviceId,
+    'recipientUserId': envelope.recipientUserId,
     'ciphertext': envelope.ciphertext,
     'nonce': envelope.nonce,
     'version': envelope.version,
@@ -669,5 +1051,6 @@ Map<String, dynamic> _messageMap({
     'conversationOrder': conversationOrder,
     'deliveredAt': sentAt.add(const Duration(minutes: 1)).toIso8601String(),
     'readAt': null,
+    if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
   };
 }

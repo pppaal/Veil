@@ -69,9 +69,11 @@ describe('renderMessageInline — markdown', () => {
 
 describe('renderMessageInline — URL auto-link', () => {
   it('linkifies http and https URLs', () => {
+    // href is the URL as parsed by new URL(); the visible text stays as typed.
     expect(renderMessageInline('see https://example.com today')).toContain(
-      '<a href="https://example.com" target="_blank" rel="noopener noreferrer">https://example.com</a>',
+      '<a href="https://example.com/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">https://example.com</a>',
     );
+    expect(renderMessageInline('plain http://example.org/x')).toContain('<a href="http://example.org/x"');
   });
 
   it('does NOT linkify javascript: pseudo-URLs', () => {
@@ -93,6 +95,22 @@ describe('renderMessageInline — mentions', () => {
     expect(renderMessageInline('hi @alice and @bob_42')).toContain(
       '<span class="mention">@bob_42</span>',
     );
+  });
+
+  it('takes a dotted handle whole, and leaves a full stop after one out', () => {
+    expect(renderMessageInline('ask @ann.x first')).toBe(
+      'ask <span class="mention">@ann.x</span> first',
+    );
+    expect(renderMessageInline('ask @sam.rivera.')).toBe(
+      'ask <span class="mention">@sam.rivera</span>.',
+    );
+    expect(renderMessageInline('@a.b_c.d')).toBe('<span class="mention">@a.b_c.d</span>');
+  });
+
+  it('does not chip what no handle can be', () => {
+    for (const text of ['@_bob', '@bob_', '@bo..b', '@b._ob']) {
+      expect(renderMessageInline(text), text).not.toContain('class="mention"');
+    }
   });
 
   it('does not chip handles shorter than 3 chars', () => {

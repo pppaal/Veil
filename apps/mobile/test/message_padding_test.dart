@@ -83,4 +83,28 @@ void main() {
       expect(MessagePadding.unpad(legacy), equals(legacy));
     });
   });
+
+  group('MessagePadding.padmeLength / padTo', () {
+    test('matches the Padmé reference table', () {
+      // Same table as crypto-kat.json protocolV2.padme (node reference).
+      const table = {1: 1, 2: 2, 7: 7, 8: 8, 9: 10, 10: 10, 100: 104, 1000: 1024, 65537: 67584, 1000000: 1015808};
+      table.forEach((n, padded) => expect(MessagePadding.padmeLength(n), padded, reason: 'n=$n'));
+    });
+
+    test('never shrinks and overhead stays under 12%', () {
+      for (var n = 2; n < 300000; n = n * 3 ~/ 2 + 1) {
+        final padded = MessagePadding.padmeLength(n);
+        expect(padded, greaterThanOrEqualTo(n));
+        expect((padded - n) / n, lessThan(0.12), reason: 'n=$n');
+      }
+    });
+
+    test('padTo pads to an exact length and unpads back', () {
+      final original = Uint8List.fromList(List<int>.generate(100, (i) => i));
+      final padded = MessagePadding.padTo(original, MessagePadding.padmeLength(original.length + 1));
+      expect(padded.length, 104);
+      expect(MessagePadding.unpad(padded), equals(original));
+      expect(() => MessagePadding.padTo(original, 100), throwsArgumentError);
+    });
+  });
 }

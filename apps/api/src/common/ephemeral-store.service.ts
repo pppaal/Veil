@@ -34,6 +34,22 @@ export class EphemeralStoreService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * Like setJson, but the key expires at an absolute time (SET .. PXAT,
+   * Redis >= 6.2, already required for GETDEL). Used where a relative TTL
+   * would record the moment of the write in the key's expiry.
+   */
+  async setJsonUntil<T>(key: string, value: T, expiresAtMs: number): Promise<void> {
+    this.purgeExpiredFallbackEntries();
+    const serialized = JSON.stringify(value);
+    if (this.redis) {
+      await this.redis.set(key, serialized, 'PXAT', expiresAtMs);
+      return;
+    }
+
+    this.fallback.set(key, { value: serialized, expiresAt: expiresAtMs });
+  }
+
   async getJson<T>(key: string): Promise<T | null> {
     this.purgeExpiredFallbackEntries();
     if (this.redis) {
@@ -81,6 +97,113 @@ export class EphemeralStoreService implements OnModuleDestroy {
     }
     this.fallback.delete(key);
     return JSON.parse(entry.value) as T;
+  }
+
+  /**
+   * Atomic counter for fixed-window budgets. The window starts at the first
+   * increment and is never extended by later ones, so a caller hammering the
+   * key cannot keep its own window open forever.
+   */
+  async incrementWithTtl(key: string, ttlSeconds: number): Promise<number> {
+    this.purgeExpiredFallbackEntries();
+    if (this.redis) {
+      // The key is created together with its expiry (SET NX EX) and INCR keeps
+      // that TTL, so no failure between two commands can leave a counter that
+      // never expires and locks its subject out for good.
+      const results = await this.redis
+        .multi()
+        .set(key, '0', 'EX', ttlSeconds, 'NX')
+        .incr(key)
+        .exec();
+      const [[createError] = [], [incrementError, count] = []] = results ?? [];
+      if (createError || incrementError || typeof count !== 'number') {
+        throw createError ?? incrementError ?? new Error('Redis INCR returned no count');
+      }
+      return count;
+    }
+
+    const entry = this.fallback.get(key);
+    const next = entry ? Number(entry.value) + 1 : 1;
+    this.fallback.set(key, {
+      value: String(next),
+      expiresAt: entry?.expiresAt ?? Date.now() + ttlSeconds * 1000,
+    });
+    return next;
+  }
+
+  /**
+   * Adds each amount (which may be negative) to its counter in one atomic
+   * step and returns the new totals. The counters are fields of one hash that
+   * expires at an absolute time (PEXPIREAT). Callers pass the same expiry for
+   * every write to a key, such as the end of the UTC day the key counts, so
+   * the expiry records no write time; an expiry already past removes the key.
+   */
+  async incrementFieldsUntil<F extends string>(
+    key: string,
+    amounts: Readonly<Record<F, number>>,
+    expiresAtMs: number,
+  ): Promise<Record<F, number>> {
+    this.purgeExpiredFallbackEntries();
+    const fields = Object.keys(amounts) as F[];
+    const totals = {} as Record<F, number>;
+    if (this.redis) {
+      const transaction = this.redis.multi();
+      for (const field of fields) {
+        transaction.hincrby(key, field, amounts[field]);
+      }
+      transaction.pexpireat(key, expiresAtMs);
+      const results = (await transaction.exec()) ?? [];
+      fields.forEach((field, index) => {
+        const [error, total] = results[index] ?? [new Error('Redis HINCRBY returned no total')];
+        if (error || typeof total !== 'number') {
+          throw error ?? new Error('Redis HINCRBY returned no total');
+        }
+        totals[field] = total;
+      });
+      const [expireError] = results[fields.length] ?? [new Error('Redis PEXPIREAT did not run')];
+      if (expireError) {
+        throw expireError;
+      }
+      return totals;
+    }
+
+    const entry = this.fallback.get(key);
+    const current: Partial<Record<F, number>> =
+      entry && entry.expiresAt > Date.now() ? JSON.parse(entry.value) : {};
+    for (const field of fields) {
+      totals[field] = (current[field] ?? 0) + amounts[field];
+    }
+    if (expiresAtMs > Date.now()) {
+      this.fallback.set(key, {
+        value: JSON.stringify({ ...current, ...totals }),
+        expiresAt: expiresAtMs,
+      });
+    } else {
+      this.fallback.delete(key);
+    }
+    return totals;
+  }
+
+  /**
+   * Writes the value only when the key is absent (SET NX EX). Returns false
+   * when another writer got there first, so concurrent callers race to a
+   * single winner instead of silently overwriting each other.
+   */
+  async setJsonIfAbsent<T>(key: string, value: T, ttlSeconds: number): Promise<boolean> {
+    this.purgeExpiredFallbackEntries();
+    const serialized = JSON.stringify(value);
+    if (this.redis) {
+      return (await this.redis.set(key, serialized, 'EX', ttlSeconds, 'NX')) === 'OK';
+    }
+
+    if (this.fallback.has(key)) {
+      return false;
+    }
+    this.fallback.set(key, {
+      value: serialized,
+      expiresAt: Date.now() + ttlSeconds * 1000,
+    });
+    return true;
   }
 
   private purgeExpiredFallbackEntries(): void {

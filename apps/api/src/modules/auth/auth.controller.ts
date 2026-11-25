@@ -12,7 +12,7 @@ import type { AuthenticatedRequest } from '../../common/guards/authenticated-req
 import { Public } from '../../common/guards/public.decorator';
 import { AuthService } from './auth.service';
 import { ChallengeDto, VerifyDto } from './dto/challenge.dto';
-import { LogoutDto, RefreshDto } from './dto/refresh.dto';
+import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
 
 @ApiTags('auth')
@@ -49,9 +49,11 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  // Takes no body: logout revokes every refresh family of the calling device,
+  // so a client that lost its refresh token can still end its sessions.
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('logout')
-  logout(@Req() request: AuthenticatedRequest, @Body() dto: LogoutDto): Promise<{ ok: true }> {
-    return this.authService.logout(request.auth, dto);
+  logout(@Req() request: AuthenticatedRequest): Promise<{ ok: true }> {
+    return this.authService.logout(request.auth);
   }
 }

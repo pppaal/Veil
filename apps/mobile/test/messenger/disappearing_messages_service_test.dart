@@ -1,0 +1,207 @@
+import 'package:fake_async/fake_async.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/app/app_session_state.dart';
+import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
+import 'package:veil_mobile/src/core/network/veil_api_client.dart';
+import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/disappearing_messages_service.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/message_content_service.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_api_mapper.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_operation_runner.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_persistence.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_session_context.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_state_store.dart';
+
+import '../support/messenger_services_fixture.dart';
+
+final _start = DateTime.utc(2026, 4, 1, 12);
+
+ChatMessage _message(String id, {DateTime? expiresAt}) => ChatMessage(
+      id: id,
+      senderDeviceId: 'dev-selene',
+      sentAt: _start,
+      conversationOrder: int.parse(id.split('-').last),
+      expiresAt: expiresAt,
+      envelope: CryptoEnvelope(
+        version: 'veil-envelope-v2',
+        conversationId: 'conv-1',
+        senderDeviceId: 'dev-selene',
+        recipientUserId: 'user-atlas',
+        ciphertext: 'ct-$id',
+        nonce: 'n-$id',
+        messageKind: MessageKind.text,
+      ),
+    );
+
+/// A store and the service over it, on a clock that follows fake time.
+(MessengerStateStore, DisappearingMessagesService) _service(FakeAsync async) {
+  final store = MessengerStateStore(onChanged: () {});
+  final service = DisappearingMessagesService(
+    store: store,
+    contents: MessageContentService(
+      cache: null,
+      decrypt: (_, {beforeCommit}) => throw StateError('nothing is decrypted here'),
+      onContentStored: (_, __) {},
+    ),
+    persistence: MessengerPersistence(cache: null, store: store),
+    session: MessengerSessionContext(),
+    apiClient: VeilApiClient(baseUrl: 'http://relay.invalid/v1'),
+    mapper: MessengerApiMapper(createDefaultCryptoAdapter().envelopeCodec),
+    ops: MessengerOperationRunner(onChanged: () {}),
+    now: () => _start.add(async.elapsed),
+  );
+  store.addObserver(service);
+  return (store, service);
+}
+
+void main() {
+  // Every change of a chat's timer is a line in it, as Signal and Telegram
+  // write one: "You set …" for this phone's own change, even when the
+  // server's event for it comes back first, and no second line for that
+  // echo; the event alone names no one.
+  test('a timer change is a line in the chat, once, and says who changed it when this phone did', () async {
+    final store = MessengerStateStore(onChanged: () {});
+    final written = <String>[];
+    final service = DisappearingMessagesService(
+      store: store,
+      contents: MessageContentService(
+        cache: null,
+        decrypt: (_, {beforeCommit}) => throw StateError('nothing is decrypted here'),
+        onContentStored: (_, __) {},
+      ),
+      persistence: MessengerPersistence(cache: null, store: store),
+      session: MessengerSessionContext(),
+      apiClient: VeilApiClient(baseUrl: 'http://relay.invalid/v1'),
+      mapper: MessengerApiMapper(createDefaultCryptoAdapter().envelopeCodec),
+      ops: MessengerOperationRunner(onChanged: () {}),
+      writeNotice: (conversationId, LocalNotice notice) async => written.add(notice.code),
+      now: () => _start,
+    );
+    await store.replaceConversations(
+      [
+        ConversationPreview(
+          id: 'conv-1',
+          peerHandle: 'selene',
+          peerDisplayName: null,
+          recipientBundle: const KeyBundle(
+            userId: 'user-selene',
+            deviceId: 'dev-selene',
+            handle: 'selene',
+            identityPublicKey: 'pub',
+            signedPrekeyBundle: 'spk',
+          ),
+          lastEnvelope: null,
+          updatedAt: _start,
+        ),
+      ],
+      bound: const {},
+      pin: (merged) async => (merged, <String>[]),
+    );
+
+    // From the server: no actor.
+    service.applyTimer('conv-1', 86400);
+    // The same timer again changes nothing.
+    service.applyTimer('conv-1', 86400);
+    // This phone, with no server session: its own change.
+    await service.setTimer('conv-1', null);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(written, [
+      '${LocalNoticeCodes.timerSet}:86400',
+      '${LocalNoticeCodes.timerSetByYou}:',
+    ]);
+    service.dispose();
+  });
+
+  test('no periodic timers when nothing expires', () {
+    fakeAsync((async) {
+      final (store, service) = _service(async);
+      store.setMessages('conv-1', [_message('srv-1'), _message('srv-2')]);
+      service.reconcile();
+      async.flushMicrotasks();
+
+      expect(async.periodicTimerCount, 0);
+      expect(async.pendingTimers, isEmpty, reason: 'nothing is due, so nothing waits');
+
+      async.elapse(const Duration(hours: 1));
+      expect(store.messagesOf('conv-1'), hasLength(2));
+      service.dispose();
+    });
+  });
+
+  test('fires at next expiry', () {
+    fakeAsync((async) {
+      final (store, service) = _service(async);
+      store.setMessages('conv-1', [
+        _message('srv-1', expiresAt: _start.add(const Duration(seconds: 10))),
+        _message('srv-2', expiresAt: _start.add(const Duration(seconds: 25))),
+        _message('srv-3'),
+      ]);
+      async.flushMicrotasks();
+      expect(async.pendingTimers, hasLength(1), reason: 'one timer, for the earliest expiry');
+      expect(async.periodicTimerCount, 0);
+
+      async.elapse(const Duration(seconds: 9));
+      expect(store.messagesOf('conv-1').map((message) => message.id), ['srv-1', 'srv-2', 'srv-3']);
+
+      async.elapse(const Duration(seconds: 1));
+      expect(store.messagesOf('conv-1').map((message) => message.id), ['srv-2', 'srv-3']);
+      expect(async.pendingTimers, hasLength(1), reason: 're-armed for the next expiry');
+
+      async.elapse(const Duration(seconds: 15));
+      expect(store.messagesOf('conv-1').map((message) => message.id), ['srv-3']);
+      expect(async.pendingTimers, isEmpty);
+      service.dispose();
+    });
+  });
+
+  test('a sooner expiry arriving later re-arms the timer for it', () {
+    fakeAsync((async) {
+      final (store, service) = _service(async);
+      store.setMessages('conv-1', [_message('srv-1', expiresAt: _start.add(const Duration(minutes: 5)))]);
+      async.flushMicrotasks();
+
+      store.setMessages('conv-1', [
+        ...store.messagesOf('conv-1'),
+        _message('srv-2', expiresAt: _start.add(const Duration(seconds: 3))),
+      ]);
+      async.elapse(const Duration(seconds: 3));
+
+      expect(store.messagesOf('conv-1').map((message) => message.id), ['srv-1']);
+      expect(async.pendingTimers, hasLength(1));
+      service.dispose();
+    });
+  });
+
+  test('arms for the first whole millisecond at or after the expiry', () {
+    fakeAsync((async) {
+      final (store, service) = _service(async);
+      store.setMessages('conv-1', [
+        _message('srv-1', expiresAt: _start.add(const Duration(seconds: 10, microseconds: 400))),
+      ]);
+      async.flushMicrotasks();
+
+      // A real Timer would drop the 400 µs and fire before the expiry.
+      expect(async.pendingTimers.single.duration, const Duration(seconds: 10, milliseconds: 1));
+      service.dispose();
+    });
+  });
+
+  test('resuming the app expires what came due while the device slept', () async {
+    final services = messengerServicesFixture(api: VeilApiClient(baseUrl: 'http://relay.invalid/v1'))
+      ..session.diff(const AppSessionState());
+    addTearDown(services.dispose);
+    // Already past its expiry, as after a sleep the monotonic expiry timer
+    // did not count, and that timer has not fired yet.
+    services.store.setMessages('conv-1', [
+      _message('srv-1', expiresAt: DateTime.now().subtract(const Duration(minutes: 1))),
+      _message('srv-2'),
+    ]);
+
+    final resuming = services.handleAppResumed();
+    expect(services.store.messagesOf('conv-1').map((message) => message.id), ['srv-2']);
+    await resuming;
+  });
+}

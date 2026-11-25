@@ -114,6 +114,7 @@ docker compose -f docker-compose.demo.yml down -v
 - **진짜 E2E 암호화** (X25519 ECDH + AES-GCM, 서버는 ciphertext 만 봄)
 - WebSocket 실시간 (즉시 도착, 타이핑 인디케이터, 온라인 표시)
 - 메시지 그룹핑, 답장, 읽음 표시
+- 사진·파일·음성 메시지 첨부 (브라우저에서 암호화한 뒤 올림)
 - IndexedDB 캐시 (새로고침해도 즉시 보임)
 - 오프라인 큐잉 + 자동 재시도
 - 다중 채팅 탭 + 분할 보기 (와이드 화면)
@@ -122,7 +123,6 @@ docker compose -f docker-compose.demo.yml down -v
 이 데모로 확인되지 **않는** 것:
 
 - Double Ratchet (forward secrecy / post-compromise security) — Flutter 앱에만 있음
-- 첨부 업로드 UI — API 는 동작하지만 데모 UI 미구현
 - 그룹 채팅 / 채널 / 음성·영상 통화 / 스토리 — API 는 동작하지만 데모 UI 미구현
 - 푸시 알림 — `VEIL_PUSH_ENABLE_DELIVERY=false` 고정
 

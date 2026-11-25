@@ -5,39 +5,48 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/network/veil_api_client.dart';
+import 'contact_names.dart';
 
+/// A contact: a handle the relay lists for this account, with when it was
+/// added (the relay keeps no name for it), and the nickname this phone gave
+/// it.
 class ContactEntry {
   const ContactEntry({
     required this.handle,
-    required this.displayName,
     required this.nickname,
     required this.avatarPath,
     required this.addedAt,
   });
 
   final String handle;
-  final String? displayName;
   final String? nickname;
   final String? avatarPath;
   final DateTime addedAt;
+
+  /// Whether there is a name to show above the handle: the nickname this
+  /// device gave them.
+  bool get hasName => nickname?.trim().isNotEmpty ?? false;
+
+  /// The first line of their row: the name, or with none the handle with its
+  /// "@", alone (M26: never the bare handle over the same handle again).
+  String get title => hasName ? label : '@$handle';
+
+  /// The line under it: the handle, when the first line is a name.
+  String? get handleLine => hasName ? '@$handle' : null;
 
   String get label {
     final trimmedNickname = nickname?.trim();
     if (trimmedNickname != null && trimmedNickname.isNotEmpty) {
       return trimmedNickname;
     }
-    final trimmedDisplayName = displayName?.trim();
-    if (trimmedDisplayName != null && trimmedDisplayName.isNotEmpty) {
-      return trimmedDisplayName;
-    }
     return handle;
   }
 
-  static ContactEntry fromJson(Map<String, dynamic> json) {
+  /// A relay contact row with the nickname this device keeps for it.
+  static ContactEntry fromJson(Map<String, dynamic> json, {String? nickname}) {
     return ContactEntry(
       handle: (json['handle'] as String?) ?? '',
-      displayName: json['displayName'] as String?,
-      nickname: json['nickname'] as String?,
+      nickname: nickname,
       avatarPath: json['avatarPath'] as String?,
       addedAt:
           DateTime.tryParse(json['addedAt'] as String? ?? '')?.toLocal() ??
@@ -47,27 +56,38 @@ class ContactEntry {
 }
 
 class ContactsController extends ChangeNotifier {
-  ContactsController({required this.apiClient, required this.ref});
+  ContactsController({required this.apiClient, required this.ref, required this.nicknames});
 
   final VeilApiClient apiClient;
   final Ref ref;
+  final ContactNameBook nicknames;
 
   List<ContactEntry> _contacts = const [];
   bool _loading = false;
   bool _mutating = false;
+  bool _loadFailed = false;
   String? _errorMessage;
+  // Moves on at every refresh: an answer to an earlier one, made for the
+  // account signed in then or overtaken by a later read, is dropped.
+  int _generation = 0;
 
   List<ContactEntry> get contacts => _contacts;
   bool get isLoading => _loading;
   bool get isMutating => _mutating;
+
+  /// Whether the last load of the list from the relay failed. What is
+  /// shown then is the list as it was before.
+  bool get loadFailed => _loadFailed;
   String? get errorMessage => _errorMessage;
 
   String? get _accessToken => ref.read(appSessionProvider).accessToken;
 
   Future<void> refresh() async {
+    final generation = ++_generation;
     final token = _accessToken;
     if (token == null) {
       _contacts = const [];
+      _loading = false;
       notifyListeners();
       return;
     }
@@ -76,30 +96,50 @@ class ContactsController extends ChangeNotifier {
     notifyListeners();
     try {
       final raw = await apiClient.getContacts(token);
-      _contacts = raw
-          .whereType<Map<String, dynamic>>()
-          .map(ContactEntry.fromJson)
-          .toList();
+      final labels = await nicknames.load();
+      if (generation != _generation) return;
+      _contacts = [
+        for (final json in raw.whereType<Map<String, dynamic>>())
+          ContactEntry.fromJson(json, nickname: labels[(json['handle'] as String?)?.toLowerCase()]?.name),
+      ];
+      _loadFailed = false;
     } catch (error) {
+      if (generation != _generation) return;
+      _loadFailed = true;
       _errorMessage = formatUserFacingError(error);
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (generation == _generation) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
+
+  /// Whether the last failure was the server not finding the account.
+  bool get failedAsNotFound => userFacingErrorCodeOf(_errorMessage ?? '') == UserFacingErrorCode.notFound;
 
   Future<bool> addContact({required String handle, String? nickname}) async {
     final token = _accessToken;
     if (token == null) return false;
+    final account = ref.read(appSessionProvider).userId;
+    final storage = ref.read(secureStorageProvider);
+    final wipes = storage.wipesBegun;
     _mutating = true;
     _errorMessage = null;
     notifyListeners();
     try {
-      await apiClient.addContact(token, {
-        'handle': handle.trim(),
-        if (nickname != null && nickname.trim().isNotEmpty)
-          'nickname': nickname.trim(),
-      });
+      await apiClient.addContact(token, {'handle': handle.trim()});
+      // An answer that comes once a sign-out or wipe has begun writes
+      // nothing: the keystore is being wiped, and the next account made on
+      // this phone would find the nickname there. This check and the
+      // write's place in the keystore's queue happen in one step, so a
+      // wipe that begins later clears the write.
+      if (storage.wipesBegun != wipes || ref.read(appSessionProvider).userId != account) return false;
+      // Saved anew, naming no account: PeerNames.claims gives it the
+      // account this phone bound the handle to, even one an earlier
+      // nickname of the handle named, or else the one account the chats
+      // and Blocked accounts show under the handle.
+      await nicknames.write(handle.trim(), nickname ?? '', anew: true);
       await refresh();
       return true;
     } catch (error) {
@@ -119,6 +159,7 @@ class ContactsController extends ChangeNotifier {
     notifyListeners();
     try {
       await apiClient.removeContact(token, handle);
+      await nicknames.remove(handle);
       _contacts =
           _contacts.where((contact) => contact.handle != handle).toList();
       return true;
@@ -131,14 +172,29 @@ class ContactsController extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>?> fetchPublicProfile(String handle) async {
-    final token = _accessToken;
-    if (token == null) return null;
-    try {
-      return await apiClient.getPublicProfile(token, handle);
-    } catch (_) {
-      return null;
-    }
+  /// Changes the name this device calls a contact by; an empty one clears
+  /// it. It names the same account as before. The relay never learns it.
+  /// Nothing is written once a sign-out or wipe has begun since the count
+  /// of wipes was [wipesSeen] (read when the rename was asked for): the
+  /// keystore is being wiped, and the next account made on this phone
+  /// would find the nickname there.
+  Future<void> renameContact(String handle, String nickname, {required int wipesSeen}) async {
+    if (ref.read(secureStorageProvider).wipesBegun != wipesSeen) return;
+    final label = nickname.trim();
+    await nicknames.write(handle, label);
+    _contacts = [
+      for (final contact in _contacts)
+        if (contact.handle == handle)
+          ContactEntry(
+            handle: contact.handle,
+            nickname: label.isEmpty ? null : label,
+            avatarPath: contact.avatarPath,
+            addedAt: contact.addedAt,
+          )
+        else
+          contact,
+    ];
+    notifyListeners();
   }
 
   void clearError() {
@@ -153,6 +209,7 @@ final contactsControllerProvider =
   final controller = ContactsController(
     apiClient: ref.read(apiClientProvider),
     ref: ref,
+    nicknames: ref.read(contactNameBookProvider),
   );
 
   ref.listen(appSessionProvider, (previous, next) {

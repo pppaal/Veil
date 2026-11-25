@@ -1,14 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/security/app_lock_service.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../data/lock_request_provider.dart';
+import 'app_lock_parts.dart';
 
+/// The app's lock. With a PIN it is the lock screen: "Veil is locked", the
+/// PIN and the ways to unlock. Without one (the app locked before a PIN
+/// was ever chosen) it is where the PIN is chosen; when the user opened it
+/// from Settings, back (the bar's button, Android's back) cancels and puts
+/// them where they were, unlocked, since there was nothing to protect.
 class AppLockScreen extends ConsumerStatefulWidget {
   const AppLockScreen({super.key});
+
+  /// The back button of a PIN setup that can be cancelled.
+  static const cancelKey = ValueKey('app-lock-cancel');
 
   @override
   ConsumerState<AppLockScreen> createState() => _AppLockScreenState();
@@ -20,12 +31,14 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
 
   bool _hasPin = false;
   bool _biometricsAvailable = false;
+  BiometricKind _biometricKind = BiometricKind.unknown;
   bool _loading = true;
   bool _submitting = false;
   bool _integrityCompromised = false;
-  bool _screenCaptureProtectionEnabled = false;
-  String? _status;
-  String? _lockoutStatus;
+  AppLockStatus? _status;
+  // What is left of a PIN lockout when it was last asked; null without one.
+  Duration? _lockout;
+  bool _lockedOut = false;
   List<String> _integrityReasons = const <String>[];
 
   @override
@@ -41,6 +54,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       appLock.canUseBiometrics(),
     ]);
     final lockout = await appLock.remainingPinLockout();
+    final kind = values[1] ? await appLock.biometricKind() : BiometricKind.unknown;
     final platformSecurityService = ref.read(platformSecurityServiceProvider);
     await platformSecurityService.applyPrivacyProtections();
     final platformSecurity = await platformSecurityService.getStatus();
@@ -50,13 +64,18 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     setState(() {
       _hasPin = values[0];
       _biometricsAvailable = values[1];
-      _lockoutStatus = lockout == null ? null : _formatLockout(lockout);
+      _biometricKind = kind;
+      _lockout = lockout;
+      _lockedOut = lockout != null;
       _integrityCompromised = platformSecurity.integrityCompromised;
-      _screenCaptureProtectionEnabled =
-          platformSecurity.screenCaptureProtectionEnabled;
       _integrityReasons = platformSecurity.integrityReasons;
       _loading = false;
     });
+    // The phone's own biometric prompt opens by itself, as soon as the
+    // lock shows; the PIN is the fallback.
+    if (_hasPin && _biometricsAvailable && !_integrityCompromised && !_lockedOut) {
+      await _unlockWithBiometrics(reportFailure: false);
+    }
   }
 
   @override
@@ -68,210 +87,235 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appLock = ref.read(appLockServiceProvider);
-    final isSettingPin = !_hasPin;
-    final pin = _pinController.text.trim();
-    final confirmPin = _confirmPinController.text.trim();
-    final pinFormatValid = pin.isEmpty || appLock.isValidPinFormat(pin);
-    final pinLockedOut = _lockoutStatus != null && _hasPin;
-    final canSubmit = !_submitting &&
-        !_integrityCompromised &&
-        pin.isNotEmpty &&
-        (!isSettingPin || confirmPin.isNotEmpty) &&
-        pinFormatValid &&
-        !pinLockedOut;
-
+    final l10n = AppLocalizations.of(context);
+    // The PIN and biometrics are read on this phone in a moment: the page
+    // stays empty until they are, rather than showing one state and then
+    // the other.
+    if (_loading) return const VeilShell(child: SizedBox.shrink());
+    if (!_hasPin) {
+      // Never once a PIN exists, and never for the lock the app engages by
+      // itself (the background, a cold start): that one keeps asking.
+      final cancellable = ref.watch(lockRequestedInSettingsProvider);
+      final setUp = VeilShell(
+        title: l10n.appLockTitle,
+        grouped: true,
+        leading: cancellable
+            ? VeilBackButton(key: AppLockScreen.cancelKey, onPressed: _submitting ? null : _cancelSetUp)
+            : null,
+        child: ListView(
+          padding: const EdgeInsets.only(top: VeilSpace.xl, bottom: VeilSpace.xl),
+          children: _setUp(context, cancellable: cancellable),
+        ),
+      );
+      if (!cancellable) return setUp;
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && !_submitting) _cancelSetUp();
+        },
+        child: setUp,
+      );
+    }
     return VeilShell(
-      title: 'App Lock',
-      child: _loading
-          ? const VeilLoadingBlock(
-              title: 'Checking local barrier',
-              body: 'Looking for a stored PIN and biometric availability.',
-            )
-          : ListView(
-              children: [
-                const VeilHeroPanel(
-                  eyebrow: 'LOCAL BARRIER',
-                  title: 'VEIL never unlocks itself remotely.',
-                  body:
-                      'PIN and biometrics are local only. No remote reset. No recovery fallback. No server override.',
-                  bottom: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      VeilStatusPill(label: 'Local only'),
-                      VeilStatusPill(label: 'No remote reset'),
-                      VeilStatusPill(label: 'No recovery'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: VeilSpace.md),
-                const VeilDestructiveNotice(
-                  title: 'No recovery',
-                  body:
-                      'If you forget the local barrier and lose the active device, VEIL cannot restore access.',
-                ),
-                if (_integrityCompromised) ...[
-                  const SizedBox(height: VeilSpace.md),
-                  VeilInlineBanner(
-                    title: 'Compromised device blocked',
-                    message: _integrityReasons.isEmpty
-                        ? 'This device appears rooted or jailbroken. VEIL blocks local unlock on compromised devices.'
-                        : 'This device appears rooted or jailbroken. ${_integrityReasons.join(' | ')}',
-                    tone: VeilBannerTone.danger,
-                  ),
-                ],
-                if (_lockoutStatus != null) ...[
-                  const SizedBox(height: VeilSpace.md),
-                  VeilInlineBanner(
-                    title: 'PIN temporarily locked',
-                    message:
-                        'Too many failed PIN attempts on this device. $_lockoutStatus',
-                    tone: VeilBannerTone.warn,
-                  ),
-                ],
-                const SizedBox(height: VeilSpace.md),
-                VeilMetricStrip(
-                  items: [
-                    VeilMetricItem(
-                      label: 'PIN',
-                      value: _hasPin ? 'Configured' : 'Required',
-                    ),
-                    VeilMetricItem(
-                      label: 'Biometrics',
-                      value: _biometricsAvailable ? 'Available' : 'Unavailable',
-                    ),
-                    VeilMetricItem(
-                      label: 'Preview',
-                      value: _screenCaptureProtectionEnabled ? 'Protected' : 'Shielded',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: VeilSpace.md),
-                VeilFieldBlock(
-                  label: 'PIN',
-                  trailing: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      VeilStatusPill(
-                        label: _hasPin ? 'PIN configured' : 'PIN required',
-                        tone:
-                            _hasPin ? VeilBannerTone.good : VeilBannerTone.warn,
-                      ),
-                      VeilStatusPill(
-                        label: _biometricsAvailable
-                            ? 'Biometrics available'
-                            : 'Biometrics unavailable',
-                        tone: _biometricsAvailable
-                            ? VeilBannerTone.good
-                            : VeilBannerTone.info,
-                      ),
-                      VeilStatusPill(
-                        label: _screenCaptureProtectionEnabled
-                            ? 'Capture blocked'
-                            : 'Preview shield only',
-                        tone: _screenCaptureProtectionEnabled
-                            ? VeilBannerTone.good
-                            : VeilBannerTone.warn,
-                      ),
-                    ],
-                  ),
-                  caption: isSettingPin
-                      ? 'Set a local numeric barrier before continuing. VEIL cannot reset it for you.'
-                      : 'Unlock with your local PIN or biometrics. This never contacts the server.',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller: _pinController,
-                        obscureText: true,
-                        keyboardType: TextInputType.number,
-                        enableSuggestions: false,
-                        autocorrect: false,
-                        enableInteractiveSelection: false,
-                        onChanged: (_) => setState(() {
-                          _status = null;
-                          _lockoutStatus = null;
-                        }),
-                        decoration: InputDecoration(
-                          labelText: isSettingPin ? 'Set PIN' : 'PIN',
-                          hintText: '6 to 12 digits',
-                          errorText: pin.isEmpty || pinFormatValid
-                              ? null
-                              : 'Use 6 to 12 digits only.',
-                        ),
-                      ),
-                      if (isSettingPin) ...[
-                        const SizedBox(height: VeilSpace.sm),
-                        TextField(
-                          controller: _confirmPinController,
-                          obscureText: true,
-                          keyboardType: TextInputType.number,
-                          enableSuggestions: false,
-                          autocorrect: false,
-                          enableInteractiveSelection: false,
-                          onChanged: (_) => setState(() => _status = null),
-                          decoration: InputDecoration(
-                            labelText: 'Confirm PIN',
-                            hintText: 'Repeat the same PIN',
-                            errorText: confirmPin.isEmpty || pin == confirmPin
-                                ? null
-                                : 'PIN confirmation does not match.',
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (_status != null) ...[
-                  const SizedBox(height: VeilSpace.md),
-                  VeilInlineBanner(
-                    title: _status == 'Unlocked.' ? 'Unlocked' : 'Lock status',
-                    message: _status!,
-                    tone: _status == 'Unlocked.'
-                        ? VeilBannerTone.good
-                        : _status == 'Biometric unlock failed.' ||
-                                _status == 'Enter a PIN first.' ||
-                                _status == 'PIN mismatch.' ||
-                                _status ==
-                                    'Unlock blocked on compromised device.' ||
-                                _status == 'PIN confirmation does not match.' ||
-                                _status == 'PIN must be 6 to 12 digits.'
-                            ? VeilBannerTone.danger
-                            : VeilBannerTone.info,
-                  ),
-                ],
-                const SizedBox(height: VeilSpace.md),
-                VeilActionCluster(
-                  children: [
-                    if (_biometricsAvailable)
-                      VeilButton(
-                        onPressed: _submitting || _integrityCompromised
-                            ? null
-                            : _unlockWithBiometrics,
-                        tone: VeilButtonTone.secondary,
-                        label: 'Use biometrics',
-                        icon: Icons.fingerprint_rounded,
-                      ),
-                    VeilButton(
-                      onPressed: canSubmit ? _submitPin : null,
-                      label:
-                          isSettingPin ? 'Set PIN and unlock' : 'Unlock VEIL',
-                      icon: Icons.lock_open_rounded,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+      child: LayoutBuilder(
+        builder: (context, constraints) => ListView(
+          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+          children: _locked(context, constraints.maxHeight),
+        ),
+      ),
     );
   }
 
-  Future<void> _unlockWithBiometrics() async {
-    if (_integrityCompromised) {
-      setState(() {
-        _status = 'Unlock blocked on compromised device.';
+  bool get _canSubmit {
+    final appLock = ref.read(appLockServiceProvider);
+    final pin = _pinController.text.trim();
+    final confirmPin = _confirmPinController.text.trim();
+    return !_submitting &&
+        !_integrityCompromised &&
+        pin.isNotEmpty &&
+        (_hasPin || confirmPin.isNotEmpty) &&
+        appLock.isValidPinFormat(pin) &&
+        !(_lockedOut && _hasPin);
+  }
+
+  // What went wrong with the last attempt, said under the PIN field.
+  String? _attemptError(AppLocalizations l10n) {
+    final status = _status;
+    if (status == null || !status.isFieldError || _lockedOut) return null;
+    return status.message(l10n);
+  }
+
+  // A device that looks rooted or jailbroken does not unlock: said once,
+  // with why, and nothing to tap.
+  Widget _compromisedNotice(AppLocalizations l10n, {EdgeInsetsGeometry? margin}) => VeilNotice(
+        tone: VeilTone.danger,
+        margin: margin,
+        message: _integrityReasons.isEmpty
+            ? l10n.appLockCompromisedBody
+            : l10n.appLockCompromisedReasons(_integrityReasons.join(' | ')),
+      );
+
+  Widget? _biometricsButton(AppLocalizations l10n) => !_biometricsAvailable
+      ? null
+      : VeilButton(
+          onPressed: _submitting || _integrityCompromised ? null : _unlockWithBiometrics,
+          tone: VeilButtonTone.ghost,
+          label: biometricUnlockLabel(l10n, _biometricKind),
+        );
+
+  void _pinChanged(String _) => setState(() {
+        _status = null;
+        _lockout = null;
+        _lockedOut = false;
       });
+
+  // The app is locked and has a PIN: the headline a quarter of the way
+  // down, the PIN, Unlock, and biometrics when the phone has them. Why the
+  // PIN cannot be entered (a lockout, a compromised device) is said under
+  // the field.
+  List<Widget> _locked(BuildContext context, double height) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final palette = context.veilPalette;
+    final appLock = ref.read(appLockServiceProvider);
+    final pin = _pinController.text.trim();
+    final formatError = pin.isEmpty || appLock.isValidPinFormat(pin) ? null : l10n.appLockFieldPinError;
+    final biometrics = _biometricsButton(l10n);
+    return [
+      SizedBox(height: (height * 0.25 - 40).clamp(VeilSpace.md, double.infinity)),
+      Semantics(
+        header: true,
+        child: Text(l10n.appLockLockedTitle, textAlign: TextAlign.center, style: theme.textTheme.headlineLarge),
+      ),
+      const SizedBox(height: VeilSpace.xl),
+      Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              appLockPinField(
+                controller: _pinController,
+                hint: l10n.appLockPinLabel,
+                textAlign: TextAlign.center,
+                dense: true,
+                underline: (rest: palette.strokeStrong, focused: palette.textMuted, error: palette.danger),
+                errorText: formatError ?? _attemptError(l10n),
+                onChanged: _pinChanged,
+              ),
+              if (_lockedOut) ...[
+                const SizedBox(height: VeilSpace.xs),
+                Text(
+                  l10n.appLockLockoutBody(formatAppLockRetry(l10n, _lockout)),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+                ),
+              ],
+              if (_integrityCompromised) ...[
+                const SizedBox(height: VeilSpace.sm),
+                _compromisedNotice(l10n, margin: EdgeInsets.zero),
+              ],
+              const SizedBox(height: VeilSpace.md),
+              VeilButton(onPressed: _canSubmit ? _submitPin : null, label: l10n.appLockUnlock),
+              if (biometrics != null) ...[const SizedBox(height: VeilSpace.xs), biometrics],
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: VeilSpace.xl),
+    ];
+  }
+
+  // No PIN yet: choose one, enter it again, turn the lock on. What the PIN
+  // is and what forgetting it means is the group's footer. Opened from
+  // Settings ([cancellable]), biometrics are not offered: they would only
+  // unlock, as Cancel does, and leave the lock off. The lock the app engages
+  // by itself offers them as it always has.
+  List<Widget> _setUp(BuildContext context, {required bool cancellable}) {
+    final l10n = AppLocalizations.of(context);
+    final appLock = ref.read(appLockServiceProvider);
+    final pin = _pinController.text.trim();
+    final confirmPin = _confirmPinController.text.trim();
+    final formatError = pin.isEmpty || appLock.isValidPinFormat(pin) ? null : l10n.appLockFieldPinError;
+    final mismatch = confirmPin.isEmpty || pin == confirmPin ? null : l10n.appLockConfirmMismatch;
+    final biometrics = cancellable ? null : _biometricsButton(l10n);
+    final pinError = formatError ?? _attemptError(l10n);
+    // The two labels share one width, so the fields start in one column.
+    // An error line under a field keeps the row's 11 below it, off the
+    // hairline and the group's edge.
+    final labelWidth = MediaQuery.textScalerOf(context).scale(112);
+    Widget labelled(String label, Widget field, {required bool hasError}) => Padding(
+          padding: EdgeInsets.only(bottom: hasError ? 11 : 0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              SizedBox(
+                width: labelWidth,
+                child: Text(label, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w400)),
+              ),
+              Expanded(child: field),
+            ],
+          ),
+        );
+
+    return [
+      if (_integrityCompromised) ...[
+        _compromisedNotice(l10n, margin: const EdgeInsets.symmetric(horizontal: VeilSpace.md)),
+        const SizedBox(height: VeilSpace.md),
+      ],
+      VeilGroup(
+        footer: l10n.appLockSetupFooter,
+        children: [
+          VeilRow.field(
+            field: labelled(
+              l10n.appLockPinLabel,
+              appLockPinField(
+                controller: _pinController,
+                hint: l10n.appLockFieldPinHint,
+                errorText: pinError,
+                onChanged: _pinChanged,
+              ),
+              hasError: pinError != null,
+            ),
+          ),
+          VeilRow.field(
+            field: labelled(
+              l10n.appLockFieldConfirm,
+              appLockPinField(
+                controller: _confirmPinController,
+                hint: l10n.appLockFieldConfirmHint,
+                errorText: mismatch,
+                onChanged: (_) => setState(() => _status = null),
+              ),
+              hasError: mismatch != null,
+            ),
+          ),
+        ],
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: VeilSpace.xs),
+            VeilButton(onPressed: _canSubmit ? _submitPin : null, label: l10n.appLockTurnOn),
+            if (biometrics != null) ...[const SizedBox(height: VeilSpace.xs), biometrics],
+          ],
+        ),
+      ),
+    ];
+  }
+
+  // No PIN was chosen: the app unlocks as it was, and the router's lock
+  // guard puts back the screen the lock replaced.
+  void _cancelSetUp() => ref.read(appSessionProvider.notifier).unlock();
+
+  // [reportFailure] is false for the prompt that opens by itself: closing it
+  // is not a failure worth a line under the PIN.
+  Future<void> _unlockWithBiometrics({bool reportFailure = true}) async {
+    if (_integrityCompromised) {
+      setState(() => _status = const AppLockStatus(AppLockOutcome.blockedCompromised));
       return;
     }
 
@@ -288,18 +332,17 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       }
 
       if (authenticated) {
+        // The router's lock guard navigates back to the interrupted screen.
         ref.read(appSessionProvider.notifier).unlock();
         setState(() {
-          _status = 'Unlocked.';
-          _lockoutStatus = null;
+          _status = const AppLockStatus(AppLockOutcome.unlocked);
+          _lockout = null;
+          _lockedOut = false;
         });
-        if (context.mounted) {
-          context.go('/conversations');
-        }
         return;
       }
 
-      setState(() => _status = 'Biometric unlock failed.');
+      if (reportFailure) setState(() => _status = const AppLockStatus(AppLockOutcome.biometricFailed));
     } finally {
       if (mounted) {
         setState(() {
@@ -311,9 +354,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
 
   Future<void> _submitPin() async {
     if (_integrityCompromised) {
-      setState(() {
-        _status = 'Unlock blocked on compromised device.';
-      });
+      setState(() => _status = const AppLockStatus(AppLockOutcome.blockedCompromised));
       return;
     }
 
@@ -322,11 +363,11 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     final confirmPin = _confirmPinController.text.trim();
 
     if (pin.isEmpty) {
-      setState(() => _status = 'Enter a PIN first.');
+      setState(() => _status = const AppLockStatus(AppLockOutcome.enterPin));
       return;
     }
     if (!appLock.isValidPinFormat(pin)) {
-      setState(() => _status = 'PIN must be 6 to 12 digits.');
+      setState(() => _status = const AppLockStatus(AppLockOutcome.pinFormat));
       return;
     }
 
@@ -338,7 +379,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     try {
       if (!_hasPin) {
         if (pin != confirmPin) {
-          setState(() => _status = 'PIN confirmation does not match.');
+          setState(() => _status = const AppLockStatus(AppLockOutcome.confirmMismatch));
           return;
         }
 
@@ -348,8 +389,9 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
         }
         setState(() {
           _hasPin = true;
-          _status = 'Unlocked.';
-          _lockoutStatus = null;
+          _status = const AppLockStatus(AppLockOutcome.unlocked);
+          _lockout = null;
+          _lockedOut = false;
         });
       } else {
         final result = await appLock.validatePinAttempt(pin);
@@ -358,29 +400,27 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
         }
         if (result.isLockedOut) {
           setState(() {
-            _lockoutStatus = _formatLockout(result.remainingLockout);
-            _status = 'PIN locked temporarily.';
+            _lockout = result.remainingLockout;
+            _lockedOut = true;
+            _status = const AppLockStatus(AppLockOutcome.lockedTemporarily);
           });
           return;
         }
         if (!result.isSuccess) {
           setState(() {
-            _status = result.remainingAttempts == null
-                ? 'PIN mismatch.'
-                : 'PIN mismatch. ${result.remainingAttempts} attempt(s) left before temporary lock.';
+            _status = AppLockStatus(AppLockOutcome.pinMismatch, remainingAttempts: result.remainingAttempts);
           });
           return;
         }
         setState(() {
-          _status = 'Unlocked.';
-          _lockoutStatus = null;
+          _status = const AppLockStatus(AppLockOutcome.unlocked);
+          _lockout = null;
+          _lockedOut = false;
         });
       }
 
+      // The router's lock guard navigates back to the interrupted screen.
       ref.read(appSessionProvider.notifier).unlock();
-      if (context.mounted) {
-        context.go('/conversations');
-      }
     } finally {
       if (mounted) {
         setState(() {
@@ -388,19 +428,5 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
         });
       }
     }
-  }
-
-  String _formatLockout(Duration? remaining) {
-    final safeRemaining =
-        remaining == null || remaining.isNegative ? Duration.zero : remaining;
-    final seconds = safeRemaining.inSeconds;
-    if (seconds <= 0) {
-      return 'Try again now.';
-    }
-    if (seconds < 60) {
-      return 'Try again in ${seconds}s.';
-    }
-    final minutes = (seconds / 60).ceil();
-    return 'Try again in ${minutes}m.';
   }
 }

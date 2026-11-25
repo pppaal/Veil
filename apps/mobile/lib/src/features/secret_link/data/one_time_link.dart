@@ -25,6 +25,10 @@ class SealedSecret {
 
   /// Goes in the link fragment after the id: `#<id>.<fragment>`.
   final String fragment;
+
+  /// Whether the key was derived from a passphrase. The link then carries
+  /// no key, and opens nothing without the passphrase.
+  bool get passphraseLocked => fragment == 'p';
 }
 
 class OneTimeLink {

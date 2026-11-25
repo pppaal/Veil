@@ -1,0 +1,250 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
+import '../../conversations/data/conversation_models.dart';
+import 'chat_bar.dart';
+import 'disappearing_timer_sheet.dart';
+
+/// A chat, content first: the bar (who it is with, the verified mark, the
+/// safety number, search and a menu with the rest), the warnings that ask
+/// for a decision, the messages in all the height that is left, and the
+/// composer.
+///
+/// On a phone this is the whole screen. In the wide layout the same chat
+/// fills the pane beside the conversation list ([pane]): its bar sits at the
+/// top of the pane and has no back button, since the list is still there.
+///
+/// Search opens in the bar and closes with its back button, which drops the
+/// query; while it is open [searchBar] ("1 of 2" and the arrows between the
+/// hits) takes the composer's place, as in Signal and Telegram. [banners],
+/// [messages], [typing], [composer] and [searchBar] are the screen's own
+/// widgets; this only places them.
+class ChatPhoneScaffold extends StatefulWidget {
+  const ChatPhoneScaffold({
+    super.key,
+    required this.conversation,
+    required this.title,
+    required this.connecting,
+    required this.peerVerified,
+    required this.messageTtl,
+    required this.searchController,
+    required this.searching,
+    required this.menu,
+    required this.onOpenSafetyNumbers,
+    required this.banners,
+    required this.messages,
+    required this.typing,
+    required this.composer,
+    required this.searchBar,
+    this.pane = false,
+  });
+
+  final ConversationPreview? conversation;
+
+  /// What the conversation is called (see conversationTitle).
+  final String title;
+
+  /// Whether the app is waiting for its connection to the server.
+  final bool connecting;
+
+  /// Whether every pinned device of the 1:1 peer was verified out of band.
+  final bool peerVerified;
+
+  /// The disappearing timer in force; null when messages stay.
+  final Duration? messageTtl;
+  final TextEditingController searchController;
+
+  /// Whether the lookup for the current query is still running.
+  final bool searching;
+
+  /// The entries of the bar's menu (see ChatBarActions).
+  final List<ChatMenuEntry> menu;
+  final VoidCallback onOpenSafetyNumbers;
+  final Widget banners;
+  final Widget messages;
+  final Widget typing;
+
+  final Widget composer;
+
+  /// What stands in the composer's place while the search is open.
+  final Widget searchBar;
+
+  /// Whether the chat is the second pane of the wide layout, not a screen.
+  final bool pane;
+
+  /// The widest a chat's messages and composer get in a pane: beyond it a
+  /// line of bubbles would leave the middle of the pane empty.
+  static const double paneContentWidth = 760;
+
+  /// The widest they get on a screen of their own (a tablet held upright):
+  /// the shell's usual width.
+  static const double screenContentWidth = 840;
+
+  @override
+  State<ChatPhoneScaffold> createState() => _ChatPhoneScaffoldState();
+}
+
+class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
+  bool _searchOpened = false;
+  final _searchFocus = FocusNode();
+
+  // A query that arrived with the screen (a jump from the archive search)
+  // shows its field too.
+  bool get _searchOpen => _searchOpened || widget.searchController.text.trim().isNotEmpty;
+
+  @override
+  void didUpdateWidget(covariant ChatPhoneScaffold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.conversation?.id != widget.conversation?.id) _searchOpened = false;
+  }
+
+  @override
+  void dispose() {
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  void _openSearch() {
+    setState(() => _searchOpened = true);
+    _searchFocus.requestFocus();
+  }
+
+  void _closeSearch() {
+    widget.searchController.clear();
+    _searchFocus.unfocus();
+    setState(() => _searchOpened = false);
+  }
+
+  void _leave() {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      // Opened as the first screen (a notification, a restored session).
+      GoRouter.maybeOf(context)?.go('/conversations');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final conversation = widget.conversation;
+    final isDirect = conversation?.type == ConversationType.direct;
+    final timerLabel = widget.messageTtl == null ? null : disappearingTimerLabel(l10n, widget.messageTtl);
+    // A 1:1 called by the nickname the user gave its peer has their handle
+    // under it, and one called by the handle nothing; a group says how many
+    // are in it.
+    final handle = conversation == null ? null : '@${conversation.peerHandle}';
+    final detail = conversation == null
+        ? null
+        : isDirect
+            ? (widget.title == handle ? null : handle)
+            : l10n.chatGroupMemberCount(conversation.members.length);
+
+    final Widget? leading = _searchOpen
+        ? VeilBackButton(onPressed: _closeSearch)
+        : widget.pane
+            ? null
+            : VeilBackButton(onPressed: _leave);
+    final Widget title = _searchOpen
+        ? ChatBarSearchField(
+            controller: widget.searchController,
+            focusNode: _searchFocus,
+            searching: widget.searching,
+          )
+        : ChatBarTitle(
+            title: widget.title,
+            detail: detail,
+            verified: isDirect && widget.peerVerified,
+            connecting: widget.connecting,
+            timerLabel: timerLabel,
+            // A group has no handle of its own: its id stands in.
+            avatarSeed: conversation == null ? null : (isDirect ? conversation.peerHandle : conversation.id),
+            group: conversation != null && !isDirect,
+          );
+    final actions = _searchOpen
+        ? null
+        : [
+            ChatBarActions(
+              onOpenSafetyNumbers: widget.onOpenSafetyNumbers,
+              onOpenSearch: _openSearch,
+              menu: widget.menu,
+            ),
+          ];
+
+    // The composer takes what it needs first; the warnings and the messages
+    // share the rest.
+    final warningsAndMessages = Expanded(
+      child: LayoutBuilder(
+        builder: (context, constraints) => Column(
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: _warningsMaxHeight(constraints.maxHeight)),
+              child: widget.banners,
+            ),
+            Expanded(child: widget.messages),
+          ],
+        ),
+      ),
+    );
+
+    final palette = context.veilPalette;
+    // The messages and the field keep to [content]; the composer strip and
+    // its hairline run the whole width, as the bar's do.
+    List<Widget> body(BoxConstraints content) => [
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: content,
+                child: Column(children: [warningsAndMessages, widget.typing]),
+              ),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.canvas,
+              border: Border(top: BorderSide(color: palette.stroke, width: 0.5)),
+            ),
+            child: Center(
+              child: ConstrainedBox(constraints: content, child: _searchOpen ? widget.searchBar : widget.composer),
+            ),
+          ),
+        ];
+
+    if (!widget.pane) {
+      return VeilShell(
+        padding: EdgeInsets.zero,
+        // A tablet held upright is wider than the shell's usual 840: the
+        // shell spans it, so the composer's hairline does not stop short of
+        // the edges, and the messages and the field keep to 840 themselves.
+        maxWidth: null,
+        leading: leading,
+        titleWidget: title,
+        actions: actions,
+        child: Column(children: body(const BoxConstraints(maxWidth: ChatPhoneScaffold.screenContentWidth))),
+      );
+    }
+    // A pane brings its own material for its fields and ink: it does not
+    // count on what it is placed in.
+    return Material(
+      type: MaterialType.transparency,
+      child: Column(
+        children: [
+          ChatPaneBar(leading: leading, titleWidget: title, actions: actions),
+          ...body(const BoxConstraints(maxWidth: ChatPhoneScaffold.paneContentWidth)),
+        ],
+      ),
+    );
+  }
+
+  /// Warnings never push the messages off the screen: the messages keep
+  /// room for a short one (96 px, or most of what is left when even that is
+  /// scarce). Given less than they need, the warnings show as one row each
+  /// (see ChatStatusBanners).
+  static double _warningsMaxHeight(double available) => math.max(available - 96, available * 0.4);
+}

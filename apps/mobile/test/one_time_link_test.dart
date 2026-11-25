@@ -1,7 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:veil_mobile/src/core/network/veil_api_exception.dart';
 import 'package:veil_mobile/src/features/secret_link/data/one_time_link.dart';
+import 'package:veil_mobile/src/features/secret_link/data/one_time_link_service.dart';
 
 void main() {
   const secret = '넷플릭스 비번 Vx9\$kQ2! / 계좌 3333-04 🔐';
@@ -43,5 +48,87 @@ void main() {
     final ctLen =
         base64Url.decode(ctB64.padRight((ctB64.length + 3) & ~3, '=')).length;
     expect(ctLen, 2 + 16); // plaintext + tag
+  });
+
+  group('OneTimeLinkService', () {
+    test('posts only the ciphertext and keeps the key in the fragment', () async {
+      late http.Request posted;
+      final service = OneTimeLinkService(
+        apiBaseUrl: 'https://api.veil.test/v1',
+        client: MockClient((request) async {
+          posted = request;
+          return http.Response(jsonEncode({'id': 'link-1'}), 201);
+        }),
+      );
+
+      final link = await service.createLink(secret);
+
+      expect(posted.url.toString(), 'https://api.veil.test/v1/s');
+      final body = jsonDecode(posted.body) as Map<String, dynamic>;
+      expect(body.keys, ['ciphertext']);
+      final fragment = Uri.parse(link).fragment;
+      expect(link, startsWith('https://api.veil.test/demo/s.html#link-1.k.'));
+      expect(posted.body.contains(fragment.split('.k.').last), isFalse);
+      expect(
+        await OneTimeLink.open(body['ciphertext'] as String, fragment.substring('link-1.'.length)),
+        secret,
+      );
+    });
+
+    // What a screen says about a link (send the passphrase apart, or not)
+    // is read from the link, so it must be true of the link.
+    test('a created link says whether it was sealed with a passphrase', () async {
+      final service = OneTimeLinkService(
+        apiBaseUrl: 'https://api.veil.test/v1',
+        client: MockClient((request) async => http.Response(jsonEncode({'id': 'link-1'}), 201)),
+      );
+
+      final keyed = await service.create(secret);
+      expect(keyed.passphraseLocked, isFalse);
+      expect(Uri.parse(keyed.url).fragment, startsWith('link-1.k.'));
+
+      final locked = await service.create(secret, passphrase: 'open-sesame');
+      expect(locked.passphraseLocked, isTrue);
+      expect(Uri.parse(locked.url).fragment, 'link-1.p');
+
+      // An empty passphrase locks nothing: the key goes into the link, and
+      // the link says so.
+      final empty = await service.create(secret, passphrase: '');
+      expect(empty.passphraseLocked, isFalse);
+      expect(Uri.parse(empty.url).fragment, startsWith('link-1.k.'));
+    });
+
+    test('a stalled request times out instead of hanging the screen', () async {
+      final service = OneTimeLinkService(
+        apiBaseUrl: 'https://api.veil.test/v1',
+        client: MockClient((_) => Completer<http.Response>().future),
+        requestTimeout: const Duration(milliseconds: 50),
+      );
+
+      await expectLater(
+        service.createLink('x'),
+        throwsA(
+          isA<VeilApiException>()
+              .having((e) => e.code, 'code', 'network_timeout'),
+        ),
+      );
+    });
+
+    test('an unreachable relay is reported as network_unavailable', () async {
+      final service = OneTimeLinkService(
+        apiBaseUrl: 'https://api.veil.test/v1',
+        client: MockClient((request) async {
+          throw http.ClientException('Connection refused', request.url);
+        }),
+      );
+
+      await expectLater(
+        service.createLink('x'),
+        throwsA(
+          isA<VeilApiException>()
+              .having((e) => e.code, 'code', 'network_unavailable'),
+        ),
+      );
+    });
   });
 }

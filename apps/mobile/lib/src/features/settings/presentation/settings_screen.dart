@@ -1,858 +1,260 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
-import '../../../core/theme/theme_mode_controller.dart';
+import '../../../app/theme_mode_provider.dart';
+import '../../../core/crypto/crypto_adapter_registry.dart';
+import '../../../core/notifications/remote_push_service.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../app_lock/data/lock_request_provider.dart';
+import '../../safety/presentation/blocked_accounts_screen.dart';
+import 'settings_danger_zone.dart';
 
-class SettingsScreen extends ConsumerStatefulWidget {
+/// The settings tab, as Signal and WhatsApp lay theirs out: the account,
+/// then sections of rows with their values, one line under a row only
+/// where the value needs it, and the two account actions last.
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  Future<_DeviceGraphSnapshot>? _deviceGraphFuture;
-  final _dateFormat = DateFormat('MMM d | HH:mm');
-  final _wipeConfirmController = TextEditingController();
-  final _revokeConfirmController = TextEditingController();
-  final _deleteAccountConfirmController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _deviceGraphFuture = _loadDeviceGraph();
-  }
-
-  @override
-  void dispose() {
-    _wipeConfirmController.dispose();
-    _revokeConfirmController.dispose();
-    _deleteAccountConfirmController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final session = ref.watch(appSessionProvider);
-    final themeMode = ref.watch(themeModeProvider);
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
+    final privacy = ref.watch(privacyPreferencesProvider);
 
     return VeilShell(
       title: l10n.settingsTitle,
+      grouped: true,
+      // On a wide screen one centred column, as on a phone.
+      maxWidth: 600,
       child: ListView(
+        padding: const EdgeInsets.only(top: VeilSpace.md, bottom: VeilSpace.xxl),
         children: [
-          VeilHeroPanel(
-            eyebrow: l10n.settingsEyebrow,
-            title: session.displayName ?? '@${session.handle ?? 'unbound'}',
-            body: session.deviceId == null
-                ? l10n.settingsNoDeviceBound
-                : l10n.settingsCurrentDevice(session.deviceId!),
-            bottom: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                VeilStatusPill(label: l10n.pillNoRecovery),
-                VeilStatusPill(label: l10n.pillDeviceBound),
-                VeilStatusPill(label: l10n.settingsPillPrivateByDesign),
-              ],
-            ),
-          ),
-          const SizedBox(height: VeilSpace.md),
-          VeilSectionLabel(l10n.settingsSectionDeviceGraph),
-          const SizedBox(height: VeilSpace.sm),
-          FutureBuilder<_DeviceGraphSnapshot>(
-            future: _deviceGraphFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return VeilLoadingBlock(
-                  title: l10n.settingsLoadingDeviceGraph,
-                  body: l10n.settingsLoadingDeviceGraphBody,
-                );
-              }
-
-              if (snapshot.hasError) {
-                return VeilSurfaceCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      VeilInlineBanner(
-                        title: l10n.settingsDeviceGraphUnavailable,
-                        message:
-                            'This device could not load the current trust graph. Local security controls remain available.',
-                        tone: VeilBannerTone.warn,
-                      ),
-                      const SizedBox(height: VeilSpace.md),
-                      OutlinedButton(
-                        onPressed: _refreshDeviceGraph,
-                        child: Text(l10n.commonRetry),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              final snapshotValue =
-                  snapshot.data ?? const _DeviceGraphSnapshot.empty();
-              if (snapshotValue.devices.isEmpty) {
-                return VeilEmptyState(
-                  title: l10n.settingsNoTrustedDevices,
-                  body:
-                      'This account has no readable device graph yet. Bound-device controls still remain local and unrecoverable.',
-                  icon: Icons.devices_outlined,
-                );
-              }
-
-              return Column(
-                children: [
-                  _DeviceGraphSummaryCard(
-                    devices: snapshotValue.devices,
-                    currentDeviceId: session.deviceId,
-                  ),
-                  const SizedBox(height: VeilSpace.sm),
-                  for (var index = 0;
-                      index < snapshotValue.devices.length;
-                      index++) ...[
-                    if (index > 0) const SizedBox(height: VeilSpace.sm),
-                    _DeviceRowCard(
-                      device: snapshotValue.devices[index],
-                      dateFormat: _dateFormat,
-                      onRevoke: snapshotValue.devices[index].trustState ==
-                                  _DeviceTrustState.current ||
-                              snapshotValue.devices[index].trustState ==
-                                  _DeviceTrustState.revoked
-                          ? null
-                          : () => _confirmAndRevokeDevice(
-                              snapshotValue.devices[index]),
-                    ),
-                  ],
-                  const SizedBox(height: VeilSpace.sm),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: _refreshDeviceGraph,
-                      child: const Text('Refresh device graph'),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: VeilSpace.md),
-          VeilSectionLabel(l10n.themeModeTitle),
-          const SizedBox(height: VeilSpace.sm),
-          VeilSurfaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.themeModeSubtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: context.veilPalette.textSubtle,
-                      ),
-                ),
-                const SizedBox(height: VeilSpace.md),
-                SizedBox(
-                  width: double.infinity,
-                  child: SegmentedButton<ThemeMode>(
-                    segments: [
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.light,
-                        icon: const Icon(Icons.light_mode_outlined),
-                        label: Text(l10n.themeModeLight),
-                      ),
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.dark,
-                        icon: const Icon(Icons.dark_mode_outlined),
-                        label: Text(l10n.themeModeDark),
-                      ),
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.system,
-                        icon: const Icon(Icons.brightness_auto_outlined),
-                        label: Text(l10n.themeModeSystem),
-                      ),
-                    ],
-                    selected: {themeMode},
-                    showSelectedIcon: false,
-                    onSelectionChanged: (selection) {
-                      VeilHaptics.selection();
-                      ref
-                          .read(themeModeProvider.notifier)
-                          .setThemeMode(selection.first);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: VeilSpace.md),
-          const VeilSectionLabel('SECURITY'),
-          const SizedBox(height: VeilSpace.sm),
-          VeilActionCluster(
+          const VeilGroup(children: [_ProfileRow()]),
+          VeilGroup(header: l10n.settingsSectionAppearance, children: const [_ThemeModeRow()]),
+          VeilGroup(
+            header: l10n.settingsSectionPrivacy,
             children: [
-              VeilListTileCard(
-                title: l10n.settingsAppLockTitle,
-                subtitle: l10n.settingsAppLockSubtitle,
-                leading: const Icon(Icons.lock_outline),
-                onTap: () => context.push('/lock'),
+              VeilRow(
+                title: l10n.settingsReadReceiptsTitle,
+                subtitle: l10n.settingsReadReceiptsCaption,
+                switchValue: privacy.sendReadReceipts,
+                onSwitch: privacy.setSendReadReceipts,
               ),
-              VeilListTileCard(
-                title: l10n.settingsDeviceTransferTitle,
-                subtitle: l10n.settingsDeviceTransferSubtitle,
-                leading: const Icon(Icons.phonelink_lock_outlined),
-                onTap: () => context.push('/device-transfer'),
+              VeilRow(
+                title: l10n.settingsTypingIndicatorsTitle,
+                switchValue: privacy.sendTypingIndicators,
+                onSwitch: privacy.setSendTypingIndicators,
               ),
-              VeilListTileCard(
-                title: l10n.settingsSecurityStatusTitle,
-                subtitle: l10n.settingsSecurityStatusSubtitle,
-                leading: const Icon(Icons.verified_user_outlined),
-                onTap: () => context.push('/security-status'),
-              ),
-              VeilListTileCard(
-                title: '일회성 비밀 링크',
-                subtitle: '한 번 읽히면 사라지는 암호화 메시지 — 받는 사람은 앱 없이 열람',
-                leading: const Icon(Icons.link_outlined),
-                onTap: () => context.push('/secret-link'),
-              ),
+              const BlockedAccountsSettingsRow(),
             ],
           ),
-          const SizedBox(height: VeilSpace.md),
-          const VeilSectionLabel('SESSION'),
-          const SizedBox(height: VeilSpace.sm),
-          VeilDestructiveNotice(
-            title: l10n.settingsNoRecoveryPath,
-            body:
-                'Destructive device actions are permanent on this device. VEIL does not keep a backup or restore authority.',
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          VeilActionCluster(
-            children: [
-              VeilListTileCard(
-                title: l10n.settingsLockNow,
-                subtitle:
-                    'Hide the current session behind the local barrier immediately',
-                leading: const Icon(Icons.visibility_off_outlined),
-                onTap: () {
-                  ref.read(appSessionProvider.notifier).lock();
-                  context.go('/lock');
-                },
-              ),
-              VeilListTileCard(
-                title: l10n.settingsWipeLocal,
-                subtitle:
-                    'Deletes local session state, local secrets, encrypted cache, PIN, and onboarding state on this device only.',
-                leading: Icon(
-                  Icons.layers_clear_outlined,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                destructive: true,
-                onTap: () async {
-                  final confirmed = await _confirmDestructiveAction(
-                    controller: _wipeConfirmController,
-                    context: context,
-                    title: l10n.settingsWipeConfirmTitle,
-                    body:
-                        'This erases local VEIL state on this device. It does not create a recovery path. If this is your only active device, access is gone.',
-                    confirmVerb: 'Wipe local state',
-                    expectedPhrase: 'WIPE',
-                  );
-
-                  if (confirmed != true) {
-                    return;
-                  }
-
-                  await ref
-                      .read(appSessionProvider.notifier)
-                      .wipeLocalDeviceState();
-                  if (context.mounted) {
-                    context.go('/splash');
-                  }
-                },
-              ),
-              VeilListTileCard(
-                title: l10n.settingsRevokeTitle,
-                subtitle:
-                    'Destroys this bound device session and wipes local state on this device. No recovery exists.',
-                leading: Icon(
-                  Icons.phonelink_erase_outlined,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                destructive: true,
-                onTap: () async {
-                  final confirmed = await _confirmDestructiveAction(
-                    controller: _revokeConfirmController,
-                    context: context,
-                    title: l10n.settingsRevokeConfirmTitle,
-                    body:
-                        'This removes the active device binding for this account on this device and wipes local state here. VEIL cannot restore it.',
-                    confirmVerb: 'Revoke device',
-                    expectedPhrase: 'REVOKE',
-                  );
-
-                  if (confirmed != true) {
-                    return;
-                  }
-
-                  await ref
-                      .read(appSessionProvider.notifier)
-                      .revokeCurrentDevice();
-                  if (context.mounted) {
-                    context.go('/create-account');
-                  }
-                },
-              ),
-              VeilListTileCard(
-                title: l10n.settingsLogout,
-                subtitle:
-                    'Clears this local session while leaving the onboarding acknowledgment and local barrier intact.',
-                leading: const Icon(Icons.logout),
-                onTap: () async {
-                  await ref.read(appSessionProvider.notifier).logout();
-                  if (context.mounted) {
-                    context.go('/create-account');
-                  }
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: VeilSpace.md),
-          VeilSectionLabel(l10n.settingsDeleteAccountTitle),
-          const SizedBox(height: VeilSpace.sm),
-          VeilDestructiveNotice(
-            title: l10n.settingsIrreversible,
-            body: l10n.settingsDeleteAccountBody,
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          VeilActionCluster(
-            children: [
-              VeilListTileCard(
-                title: l10n.settingsDeleteAccountAction,
-                subtitle: l10n.settingsDeleteAccountBody,
-                leading: Icon(
-                  Icons.delete_forever_outlined,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                destructive: true,
-                onTap: () async {
-                  final confirmed = await _confirmDestructiveAction(
-                    controller: _deleteAccountConfirmController,
-                    context: context,
-                    title: l10n.settingsDeleteAccountConfirmHeadline,
-                    body: l10n.settingsDeleteAccountBody,
-                    confirmVerb: l10n.settingsDeleteAccountAction,
-                    expectedPhrase: 'DELETE',
-                  );
-
-                  if (confirmed != true) return;
-
-                  try {
-                    await ref
-                        .read(appSessionProvider.notifier)
-                        .deleteAccount();
-                    if (context.mounted) {
-                      context.go('/splash');
-                    }
-                  } catch (_) {
-                    if (!context.mounted) return;
-                    VeilToast.show(
-                      context,
-                      message: l10n.commonError,
-                      tone: VeilBannerTone.warn,
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
+          const _SecurityGroup(),
+          const SettingsDangerZone(),
         ],
       ),
     );
   }
-
-  Future<void> _refreshDeviceGraph() async {
-    setState(() {
-      _deviceGraphFuture = _loadDeviceGraph();
-    });
-    await _deviceGraphFuture;
-  }
-
-  Future<bool?> _confirmDestructiveAction({
-    required BuildContext context,
-    required TextEditingController controller,
-    required String title,
-    required String body,
-    required String confirmVerb,
-    required String expectedPhrase,
-  }) {
-    controller.clear();
-    return showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) {
-          final confirmedPhrase =
-              controller.text.trim().toUpperCase() == expectedPhrase;
-          return AlertDialog(
-            title: Text(title),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(body),
-                const SizedBox(height: VeilSpace.md),
-                Text('Type $expectedPhrase to continue.'),
-                const SizedBox(height: VeilSpace.sm),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  textCapitalization: TextCapitalization.characters,
-                  onChanged: (_) => setDialogState(() {}),
-                  decoration: InputDecoration(
-                    labelText: expectedPhrase,
-                    hintText: expectedPhrase,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: confirmedPhrase
-                    ? () => Navigator.of(dialogContext).pop(true)
-                    : null,
-                child: Text(confirmVerb),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _confirmAndRevokeDevice(_TrustedDevice device) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Revoke ${device.deviceName}?'),
-        content: Text(
-          'This removes ${device.deviceName} from the trusted device graph. VEIL will not create a recovery path for that device.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Revoke device'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
-    try {
-      await ref.read(appSessionProvider.notifier).revokeListedDevice(device.id);
-      await _refreshDeviceGraph();
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text('${device.deviceName} was removed from the trusted graph.'),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      VeilToast.show(
-        context,
-        message: 'The device could not be revoked. Try again.',
-        tone: VeilBannerTone.warn,
-      );
-    }
-  }
-
-  Future<_DeviceGraphSnapshot> _loadDeviceGraph() async {
-    final session = ref.read(appSessionProvider);
-    final accessToken = session.accessToken;
-    if (accessToken == null) {
-      return const _DeviceGraphSnapshot.empty();
-    }
-
-    final response = await ref.read(apiClientProvider).listDevices(accessToken);
-    final items = (response['items'] as List<dynamic>? ?? const <dynamic>[])
-        .cast<Map<String, dynamic>>()
-        .map(_TrustedDevice.fromJson)
-        .toList(growable: false)
-      ..sort(_compareTrustedDevices);
-
-    return _DeviceGraphSnapshot(
-      activeDeviceId: response['activeDeviceId'] as String?,
-      devices: items,
-    );
-  }
 }
 
-int _compareTrustedDevices(_TrustedDevice left, _TrustedDevice right) {
-  final trustOrder = <_DeviceTrustState, int>{
-    _DeviceTrustState.current: 0,
-    _DeviceTrustState.preferred: 1,
-    _DeviceTrustState.trusted: 2,
-    _DeviceTrustState.stale: 3,
-    _DeviceTrustState.revoked: 4,
-  };
-
-  final trustDelta = (trustOrder[left.trustState] ?? 99) -
-      (trustOrder[right.trustState] ?? 99);
-  if (trustDelta != 0) {
-    return trustDelta;
-  }
-
-  return right.lastTrustedActivityAt.compareTo(left.lastTrustedActivityAt);
-}
-
-class _DeviceRowCard extends StatelessWidget {
-  const _DeviceRowCard({
-    required this.device,
-    required this.dateFormat,
-    this.onRevoke,
-  });
-
-  final _TrustedDevice device;
-  final DateFormat dateFormat;
-  final VoidCallback? onRevoke;
+/// Who is signed in, leading to the profile.
+class _ProfileRow extends ConsumerWidget {
+  const _ProfileRow();
 
   @override
-  Widget build(BuildContext context) {
-    final statusTone = switch (device.trustState) {
-      _DeviceTrustState.current => VeilBannerTone.good,
-      _DeviceTrustState.preferred => VeilBannerTone.info,
-      _DeviceTrustState.trusted => VeilBannerTone.info,
-      _DeviceTrustState.stale => VeilBannerTone.warn,
-      _DeviceTrustState.revoked => VeilBannerTone.danger,
-    };
-    final statusLabel = switch (device.trustState) {
-      _DeviceTrustState.current => 'This device',
-      _DeviceTrustState.preferred => 'Preferred',
-      _DeviceTrustState.trusted => 'Trusted',
-      _DeviceTrustState.stale => 'Stale',
-      _DeviceTrustState.revoked => 'Revoked',
-    };
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(appSessionProvider);
+    final handle = session.handle ?? '';
+    final name = session.displayName;
+    final named = name != null && name.isNotEmpty;
 
-    return VeilSurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  device.deviceName,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              if (onRevoke != null) ...[
-                TextButton(
-                  onPressed: onRevoke,
-                  child: const Text('Revoke'),
-                ),
-                const SizedBox(width: VeilSpace.xs),
-              ],
-              VeilStatusPill(label: statusLabel, tone: statusTone),
-            ],
-          ),
-          const SizedBox(height: VeilSpace.xs),
-          Text(
-            _platformLabel(device.platform),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: context.veilPalette.textSubtle,
-                ),
-          ),
-          const SizedBox(height: VeilSpace.md),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              Text(
-                'Created ${dateFormat.format(device.createdAt.toLocal())}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              Text(
-                'Seen ${dateFormat.format(device.lastSeenAt.toLocal())}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              if (device.lastSyncAt != null)
-                Text(
-                  'Synced ${dateFormat.format(device.lastSyncAt!.toLocal())}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              Text(
-                'Activity ${dateFormat.format(device.lastTrustedActivityAt.toLocal())}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              if (device.trustedAt != null)
-                Text(
-                  'Trusted ${dateFormat.format(device.trustedAt!.toLocal())}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              if (device.joinedFromDeviceId != null)
-                Text(
-                  'Joined from ${device.joinedFromDeviceName ?? device.joinedFromDeviceId}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              if (device.revokedAt != null)
-                Text(
-                  'Revoked ${dateFormat.format(device.revokedAt!.toLocal())}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-            ],
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          Text(
-            switch (device.trustState) {
-              _DeviceTrustState.current =>
-                'This is the current trusted device. If every trusted device is lost, VEIL cannot restore access.',
-              _DeviceTrustState.preferred =>
-                'This trusted device is the current preferred routing device. It is not a cloud recovery anchor.',
-              _DeviceTrustState.trusted =>
-                'This device remains trusted and can continue syncing while another trusted device exists.',
-              _DeviceTrustState.stale =>
-                'This device is still trusted but recent trusted activity has gone quiet. Revoke it if it should no longer retain access.',
-              _DeviceTrustState.revoked =>
-                'This device is no longer trusted and cannot resume the session.',
-            },
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _platformLabel(String platform) {
-    switch (platform) {
-      case 'ios':
-        return 'iPhone / iPad';
-      case 'android':
-        return 'Android';
-      case 'windows':
-        return 'Windows';
-      case 'macos':
-        return 'macOS';
-      case 'linux':
-        return 'Linux';
-      default:
-        return platform;
-    }
-  }
-}
-
-class _TrustedDevice {
-  const _TrustedDevice({
-    required this.id,
-    required this.deviceName,
-    required this.platform,
-    required this.isActive,
-    required this.trustState,
-    required this.createdAt,
-    required this.lastSeenAt,
-    this.revokedAt,
-    this.trustedAt,
-    this.joinedFromDeviceId,
-    this.joinedFromDeviceName,
-    this.joinedFromPlatform,
-    this.lastSyncAt,
-    required this.lastTrustedActivityAt,
-  });
-
-  final String id;
-  final String deviceName;
-  final String platform;
-  final bool isActive;
-  final _DeviceTrustState trustState;
-  final DateTime createdAt;
-  final DateTime lastSeenAt;
-  final DateTime? revokedAt;
-  final DateTime? trustedAt;
-  final String? joinedFromDeviceId;
-  final String? joinedFromDeviceName;
-  final String? joinedFromPlatform;
-  final DateTime? lastSyncAt;
-  final DateTime lastTrustedActivityAt;
-
-  factory _TrustedDevice.fromJson(Map<String, dynamic> json) {
-    return _TrustedDevice(
-      id: json['id'] as String,
-      deviceName: json['deviceName'] as String,
-      platform: json['platform'] as String,
-      isActive: json['isActive'] as bool? ?? false,
-      trustState: _parseTrustState(json['trustState'] as String?),
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      lastSeenAt: DateTime.parse(json['lastSeenAt'] as String),
-      revokedAt: json['revokedAt'] == null
-          ? null
-          : DateTime.parse(json['revokedAt'] as String),
-      trustedAt: json['trustedAt'] == null
-          ? null
-          : DateTime.parse(json['trustedAt'] as String),
-      joinedFromDeviceId: json['joinedFromDeviceId'] as String?,
-      joinedFromDeviceName: json['joinedFromDeviceName'] as String?,
-      joinedFromPlatform: json['joinedFromPlatform'] as String?,
-      lastSyncAt: json['lastSyncAt'] == null
-          ? null
-          : DateTime.parse(json['lastSyncAt'] as String),
-      lastTrustedActivityAt: json['lastTrustedActivityAt'] == null
-          ? (json['lastSyncAt'] == null
-              ? DateTime.parse(json['lastSeenAt'] as String)
-              : DateTime.parse(json['lastSyncAt'] as String))
-          : DateTime.parse(json['lastTrustedActivityAt'] as String),
+    return VeilRow(
+      key: const ValueKey('settings-profile'),
+      leading: VeilAvatar(name: named ? name : handle, seed: handle),
+      // A name and a handle are the user's own words: drawn as typed.
+      title: named ? name : '@$handle',
+      subtitle: named ? '@$handle' : null,
+      onTap: () => context.push('/profile'),
     );
   }
 }
 
-class _DeviceGraphSummaryCard extends StatelessWidget {
-  const _DeviceGraphSummaryCard({
-    required this.devices,
-    required this.currentDeviceId,
-  });
+String _themeModeLabel(AppLocalizations l10n, ThemeMode mode) => switch (mode) {
+      ThemeMode.light => l10n.themeModeLight,
+      ThemeMode.dark => l10n.themeModeDark,
+      ThemeMode.system => l10n.themeModeSystem,
+    };
 
-  final List<_TrustedDevice> devices;
-  final String? currentDeviceId;
+/// The theme, with the one in use as the row's value; a tap offers the
+/// three in a sheet with a check on the current one.
+class _ThemeModeRow extends ConsumerWidget {
+  const _ThemeModeRow();
 
   @override
-  Widget build(BuildContext context) {
-    final trustedCount = devices
-        .where((device) => device.trustState == _DeviceTrustState.trusted)
-        .length;
-    final staleCount = devices
-        .where((device) => device.trustState == _DeviceTrustState.stale)
-        .length;
-    final revokedCount = devices
-        .where((device) => device.trustState == _DeviceTrustState.revoked)
-        .length;
-    final mostRecentTrustedActivity = devices
-        .where((device) => device.trustState != _DeviceTrustState.revoked)
-        .map((device) => device.lastTrustedActivityAt)
-        .fold<DateTime?>(null, (latest, candidate) {
-      if (latest == null || candidate.isAfter(latest)) {
-        return candidate;
-      }
-      return latest;
-    });
-    final preferredDevice = devices.cast<_TrustedDevice?>().firstWhere(
-          (device) => device?.trustState == _DeviceTrustState.preferred,
-          orElse: () => null,
-        );
-    final currentDevice = devices.cast<_TrustedDevice?>().firstWhere(
-          (device) => device?.id == currentDeviceId,
-          orElse: () => null,
-        );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final mode = ref.watch(themeModeProvider);
+    return VeilRow(
+      key: const ValueKey('settings-theme'),
+      title: l10n.themeModeTitle,
+      value: _themeModeLabel(l10n, mode),
+      onTap: () async {
+        final chosen = await showThemeModeSheet(context, current: mode);
+        if (chosen != null) ref.read(themeModeProvider.notifier).setThemeMode(chosen);
+      },
+    );
+  }
+}
 
-    return VeilSurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const VeilSectionLabel('GRAPH SUMMARY'),
-          const SizedBox(height: VeilSpace.sm),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              VeilStatusPill(
-                  label: '$trustedCount trusted', tone: VeilBannerTone.info),
-              VeilStatusPill(
-                label: '$staleCount stale',
-                tone:
-                    staleCount > 0 ? VeilBannerTone.warn : VeilBannerTone.good,
-              ),
-              VeilStatusPill(
-                label: '$revokedCount revoked',
-                tone: revokedCount > 0
-                    ? VeilBannerTone.warn
-                    : VeilBannerTone.info,
-              ),
-            ],
-          ),
-          const SizedBox(height: VeilSpace.md),
-          if (mostRecentTrustedActivity != null)
-            Text(
-              'Recent trusted activity ${DateFormat('MMM d | HH:mm').format(mostRecentTrustedActivity.toLocal())}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.veilPalette.textSubtle,
+/// Light, Dark and System, the [current] one ticked. Completes with the
+/// chosen mode, or null when the sheet is dismissed.
+Future<ThemeMode?> showThemeModeSheet(BuildContext context, {required ThemeMode current}) {
+  final l10n = AppLocalizations.of(context);
+  return showModalBottomSheet<ThemeMode>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      final palette = VeilPalette.forBrightness(theme.brightness);
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(VeilSpace.md, 0, VeilSpace.md, VeilSpace.xs),
+              child: Text(l10n.themeModeTitle, style: theme.textTheme.titleLarge),
+            ),
+            VeilGroup(
+              children: [
+                for (final mode in const [ThemeMode.light, ThemeMode.dark, ThemeMode.system])
+                  Semantics(
+                    selected: mode == current,
+                    child: VeilRow(
+                      key: ValueKey('theme-mode-${mode.name}'),
+                      title: _themeModeLabel(l10n, mode),
+                      trailing: mode == current
+                          ? Icon(Icons.check, size: 20, color: palette.text)
+                          : const SizedBox(width: 20),
+                      onTap: () {
+                        VeilHaptics.selection();
+                        Navigator.of(sheetContext).pop(mode);
+                      },
+                    ),
                   ),
+              ],
             ),
-          if (mostRecentTrustedActivity != null)
-            const SizedBox(height: VeilSpace.sm),
-          if (preferredDevice != null &&
-              preferredDevice.id != currentDevice?.id)
-            VeilInlineBanner(
-              title: 'Preferred device differs',
-              message:
-                  '${preferredDevice.deviceName} is currently preferred for routing and directory compatibility. ${currentDevice?.deviceName ?? 'This device'} remains trusted.',
-              tone: VeilBannerTone.info,
-            ),
-          if (staleCount > 0) ...[
-            if (preferredDevice != null &&
-                preferredDevice.id != currentDevice?.id)
-              const SizedBox(height: VeilSpace.sm),
-            const VeilInlineBanner(
-              title: 'Stale trusted devices present',
-              message:
-                  'Some trusted devices have no recent trusted activity. Stale does not mean revoked, but they should be reviewed deliberately.',
-              tone: VeilBannerTone.warn,
-            ),
+            const SizedBox(height: VeilSpace.xs),
           ],
-        ],
-      ),
+        ),
+      );
+    },
+  );
+}
+
+/// Whether this phone has a PIN, which is what turns the app lock on. The
+/// keystore is asked each time Settings opens and again whenever the app
+/// locks or unlocks: the first PIN is chosen on the lock screen (after Lock
+/// now, or the lock that follows the app into the background), and Settings
+/// may still be on screen, or be put back, when the app is unlocked.
+final _appLockOnProvider = FutureProvider.autoDispose<bool>((ref) {
+  ref.watch(appSessionProvider.select((session) => session.locked));
+  return ref.read(appLockServiceProvider).hasPin();
+});
+
+/// The lock, and what this phone does about screenshots, the app switcher
+/// and notifications, each as a value. Only the app lock can be changed;
+/// the others say what this build and phone do. The one footer line says
+/// what the encryption is.
+class _SecurityGroup extends ConsumerWidget {
+  const _SecurityGroup();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final local = ref.watch(localSecuritySnapshotProvider).valueOrNull;
+    // The build's push service: the disabled one never gets a token, so
+    // nothing wakes the app while it is closed.
+    final pushConnected = ref.watch(remotePushServiceProvider) is! DisabledRemotePushService;
+    final testBuild = cryptoAdapterKindOf(ref.watch(cryptoAdapterProvider).adapterId) == CryptoAdapterKind.development;
+
+    // Locking opens the lock screen, which asks for the PIN, or has one
+    // chosen while this phone has none (and then can be cancelled, as the
+    // user asked for it here); unlocking comes back here.
+    void lockNow() {
+      ref.read(lockRequestedInSettingsProvider.notifier).state = true;
+      ref.read(appSessionProvider.notifier).lock();
+      context.go('/lock');
+    }
+
+    // Blocked where the platform can block them (Android); where it can't
+    // (iPhone), the others in a chat are told of one instead.
+    final screenshotsBlocked =
+        local == null ? null : local.screenCaptureProtectionSupported && local.screenCaptureProtectionEnabled;
+
+    return VeilGroup(
+      header: l10n.settingsSectionSecurity,
+      footer: testBuild ? l10n.securityFooterTestBuild : l10n.securityFooterUnaudited,
+      children: [
+        _AppLockRow(onTurnOn: lockNow),
+        VeilRow(
+          key: const ValueKey('settings-lock-now'),
+          title: l10n.settingsLockNow,
+          // An action, not a screen: no chevron.
+          trailing: const SizedBox.shrink(),
+          onTap: lockNow,
+        ),
+        VeilRow(
+          key: const ValueKey('settings-screenshots'),
+          title: l10n.securityStatusScreenCapture,
+          subtitle: local != null && !local.screenCaptureProtectionSupported ? l10n.securityScreenshotsNotice : null,
+          // Nothing until the phone has answered, rather than a guess.
+          value: switch (screenshotsBlocked) {
+            true => l10n.securityStatusBlocked,
+            false => l10n.securityStatusScreenCaptureNotBlocked,
+            null => null,
+          },
+        ),
+        VeilRow(
+          key: const ValueKey('settings-app-preview'),
+          title: l10n.securityStatusAppPreview,
+          value: switch (local?.appPreviewProtectionEnabled) {
+            true => l10n.securityStatusAppPreviewProtected,
+            false => l10n.securityStatusAppPreviewPartial,
+            null => null,
+          },
+        ),
+        VeilRow(
+          key: const ValueKey('settings-notifications'),
+          title: l10n.securityStatusPushDelivery,
+          value: pushConnected ? l10n.securityStatusPushDeliveryOn : l10n.securityNotificationsWhileOpen,
+        ),
+      ],
     );
   }
 }
 
-enum _DeviceTrustState { current, preferred, trusted, stale, revoked }
+/// The app lock, with whether it is on. While it is off the row turns it
+/// on: it locks the app, and the lock screen has a PIN chosen. Once it is
+/// on there is nothing to set here, so the row only says so.
+class _AppLockRow extends ConsumerWidget {
+  const _AppLockRow({required this.onTurnOn});
 
-_DeviceTrustState _parseTrustState(String? raw) {
-  switch (raw) {
-    case 'current':
-      return _DeviceTrustState.current;
-    case 'preferred':
-      return _DeviceTrustState.preferred;
-    case 'stale':
-      return _DeviceTrustState.stale;
-    case 'revoked':
-      return _DeviceTrustState.revoked;
-    case 'trusted':
-    default:
-      return _DeviceTrustState.trusted;
+  final VoidCallback onTurnOn;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final on = ref.watch(_appLockOnProvider).valueOrNull;
+    return VeilRow(
+      key: const ValueKey('settings-app-lock'),
+      title: l10n.settingsAppLockTitle,
+      // Nothing until the keystore has answered, rather than a guess.
+      value: switch (on) { true => l10n.commonOn, false => l10n.commonOff, null => null },
+      onTap: on == false ? onTurnOn : null,
+    );
   }
-}
-
-class _DeviceGraphSnapshot {
-  const _DeviceGraphSnapshot({
-    required this.activeDeviceId,
-    required this.devices,
-  });
-
-  const _DeviceGraphSnapshot.empty()
-      : activeDeviceId = null,
-        devices = const [];
-
-  final String? activeDeviceId;
-  final List<_TrustedDevice> devices;
 }

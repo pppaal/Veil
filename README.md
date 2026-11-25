@@ -1,27 +1,38 @@
-# VEIL
+# Veil
 
-**Open-source, end-to-end encrypted messenger** — no phone number, no
-account, no plaintext on the server.
+Veil is an open-source, end-to-end encrypted messenger for phones and the web; you sign up with a handle, not a phone number or email.
+The server never has the plaintext of your messages or the keys to read them.
+There is no backup, no account recovery, no password reset and no admin override, so a lost phone means a lost account.
 
-[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![End-to-end encrypted](https://img.shields.io/badge/encryption-E2E%20X25519%20%2B%20AES--256--GCM-success.svg)](#cryptography)
-[![Privacy invariants: CI-enforced](https://img.shields.io/badge/privacy%20invariants-CI--enforced-orange.svg)](scripts/policy-check.mjs)
+The code is open source under the AGPL, so anyone can read it, run it and
+check the claims below.
 
-> **No backup. No recovery. No leaks.**
+CI enforces the rule against recovery:
+[`scripts/policy-check.mjs`](scripts/policy-check.mjs) fails the build on any
+commit that adds a recovery flow or table, an admin message viewer,
+plaintext in push payloads, wildcard CORS or ad hoc console logging in
+mobile.
 
-Because the code is open source under the AGPL, the privacy claims below
-are not "trust us" — anyone can read the source, run it, and verify them.
+Four more gates keep the rest of this README honest:
 
-The design premise is the inverse of mainstream messengers: there is no
-backup path, no password reset, no admin override, and no plaintext on
-the server. Lose the device or wipe the browser, and the conversation
-is gone for good. That tradeoff is the product.
-
-The "no recovery" rule is not just documentation — it is encoded in
-[`scripts/policy-check.mjs`](scripts/policy-check.mjs) as a CI gate that
-fails the build on any commit that introduces a recovery flow, an admin
-message viewer, plaintext in push payloads, wildcard CORS, or ad-hoc
-console logging in mobile.
+- [`scripts/schema-privacy-check.mjs`](scripts/schema-privacy-check.mjs)
+  requires a privacy annotation on every database field and publishes the
+  result as [What a seized Veil server reveals](docs/server-data-inventory.md).
+- [`scripts/claims-check.mjs`](scripts/claims-check.mjs) fails CI when a
+  privacy or security claim in this README, the privacy policies, the site
+  or the store listings is not in the [claims ledger](docs/claims.yaml) with
+  the test or gate that backs it.
+- [`scripts/store-label-check.mjs`](scripts/store-label-check.mjs) fails CI
+  when the App Store and Google Play privacy answers
+  ([`store/appstore/app-privacy-answers.md`](store/appstore/app-privacy-answers.md),
+  [`store/play/data-safety-answers.md`](store/play/data-safety-answers.md))
+  leave out data the database stores, disagree with each other, or are
+  contradicted by any other document.
+- [`scripts/doc-facts.mjs`](scripts/doc-facts.mjs) fails CI (through
+  `pnpm scripts:test`) when a document contradicts the code: it names a
+  retired crypto adapter id as the production one, repeats a statement the
+  code makes false, hard-codes a test or migration count, or treats the
+  production boot guard as temporary.
 
 ---
 
@@ -29,29 +40,37 @@ console logging in mobile.
 
 | Path | Description |
 |---|---|
-| `apps/api/` | NestJS backend — 23 modules, 276 unit + 8 e2e tests, 16 Prisma migrations |
-| `apps/mobile/` | Flutter app (iOS + Android) with full Signal-style double ratchet (`LibCryptoAdapter`), 32 test files |
-| `apps/web-demo/` | Vanilla-JS web client — voice/image/file messages, reactions, reply/edit/delete, forward, search, @mentions, KakaoTalk import, block/mute. 47 Vitest unit + 4 Playwright e2e specs |
-| `packages/contracts/` | Typed API + realtime contracts (single source of truth) |
+| `apps/api/` | NestJS backend: 23 modules, Jest unit and supertest e2e suites, Prisma migrations |
+| `apps/mobile/` | Flutter app (iOS and Android): protocol v2 (X3DH and Double Ratchet, `LibCryptoAdapter`), Sender Keys groups, `flutter test` suite |
+| `apps/web-demo/` | Vanilla-JS web client: voice, image and file messages, reactions, reply, edit and delete, forward, search, @mentions, KakaoTalk import, block and mute. Protocol v2 on WebCrypto. Vitest unit and Playwright browser suites |
+| `packages/contracts/` | Typed API and realtime contracts (single source of truth) |
 | `packages/shared/` | Shared envelope versions and protocol constants |
 | `infra/caddy/` | Production TLS reverse proxy |
-| `infra/prometheus/` `grafana/` | Metrics + alerting + 8-panel dashboard, all auto-provisioned |
-| `infra/docker/` | Demo / alpha / production Compose stacks |
-| `docs/` | 60+ documents — architecture, threat model, runbooks, crypto specs, audit handoff, pre-audit review |
+| `infra/prometheus/` `grafana/` | Metrics, alerting and an 8-panel dashboard, all auto-provisioned |
+| `infra/docker/` | Demo, alpha and production Compose stacks |
+| `docs/` | 60+ documents: architecture, threat model, runbooks, crypto specs, audit handoff, pre-audit review |
 | `scripts/` | CI gates, release evidence, audit handoff bundling |
 
 ---
 
 ## Product non-negotiables
 
-These are enforced by `scripts/policy-check.mjs`. A PR that violates any of
-them will fail CI:
+CI guards these with `scripts/policy-check.mjs`,
+`scripts/schema-privacy-check.mjs` and the API tests; a PR that trips one of
+those checks fails the build:
 
-- The server never stores plaintext message bodies
+- The server stores no plaintext message content: messages, reactions and
+  stories are ciphertext, and display names, profile text and contact names
+  are not stored. Group and channel names and descriptions and device labels
+  are still stored in readable form until their encryption ships. They are
+  the only entries on the allowlist of `scripts/schema-privacy-check.mjs`,
+  which fails CI when any other field named like user-written text (body,
+  caption, bio, name, note and the like) is not ciphertext
 - No cloud backup exists
 - No account recovery, password reset, or admin override
-- Identity is device-bound; transfer requires the old device alive
-- Push payloads carry no plaintext or envelope fields
+- An account lives on one device; moving it to a new device needs the old one
+- Push notifications only wake the app: they carry no plaintext and nothing
+  from the encrypted message
 - `VEIL_ENV=production` refuses to boot until `VEIL_AUDITED_CRYPTO_ATTESTED=true`,
   which is set only after external cryptographic review completes
 
@@ -64,89 +83,154 @@ them will fail CI:
 │ Local LAN           │  pnpm demo:up                               │
 │ (laptop + phone)    │  http://<laptop-LAN-IP>:3000/demo/          │
 ├─────────────────────┼─────────────────────────────────────────────┤
-│ Public over Tunnel  │  pnpm demo:tunnel:up                        │
-│ (laptop + Cloudflare│  Browse a real https://… URL anywhere       │
+│ Invited testers     │  pnpm demo:tunnel:up                        │
+│ (laptop + Cloudflare│  https://… URL for testers you invite       │
 │  Zero Trust token)  │  See docs/cloudflare-tunnel-deploy.md       │
 ├─────────────────────┼─────────────────────────────────────────────┤
-│ Production VPS      │  pnpm demo:prod:up                          │
-│ (Hetzner / DO,      │  Caddy + TLS + Prometheus + Grafana         │
+│ Production VPS      │  pnpm demo:prod:up (boots only after the    │
+│ (Hetzner / DO,      │  external crypto audit is attested)         │
 │  ~$5/month)         │  See docs/vps-deploy-runbook.md             │
 └─────────────────────┴─────────────────────────────────────────────┘
 ```
+
+To use the Android app on your own phone and your friends' phones today,
+against a server on your PC behind a Cloudflare Tunnel, follow
+[`docs/android-beta-today.md`](docs/android-beta-today.md). GitHub Actions
+builds the APK, so you need no Flutter install.
 
 ---
 
 ## Current implementation status
 
 ### Cryptography
-- Mobile: full Double Ratchet (DH ratchet + symmetric chain) on
-  X25519 ECDH + HKDF-SHA256 + AES-256-GCM, plus Ed25519 device
-  signing. Session state persisted in OS-level encrypted secure
-  storage. Implementation in `apps/mobile/lib/src/core/crypto/`.
-- Web demo: simpler per-message ECDH (envelope v2). Unified envelope
-  v3 spec written ([`docs/envelope-v3-unified-spec.md`](docs/envelope-v3-unified-spec.md))
-  but implementation deferred to post-audit.
-- Group chats use a shared conversation key today. Sender Keys design
-  in [`docs/group-sender-keys-design.md`](docs/group-sender-keys-design.md).
-- Sealed Sender (metadata reduction) design in
-  [`docs/sealed-sender-design.md`](docs/sealed-sender-design.md).
+- Mobile: protocol v2. X3DH with signed and one-time prekeys
+  authenticates both parties, then a full Double Ratchet (DH ratchet and
+  symmetric chain) on X25519 ECDH, HKDF-SHA256 and AES-256-GCM, with
+  Ed25519 identity keys and device signing. Session state is persisted in
+  OS-level encrypted secure storage. Implementation in `apps/mobile/lib/src/core/crypto/`.
+- Web demo: a WebCrypto port of the same protocol v2
+  (`apps/web-demo/src/crypto/`), specified in
+  [`docs/crypto-envelope-spec.md`](docs/crypto-envelope-spec.md) § Protocol v2.
+  It reproduces every protocol-v2 known-answer vector
+  (`apps/web-demo/__tests__/kat-v2.test.js`), and
+  `apps/mobile/test/interop/web_mobile_interop_test.dart` has the two clients
+  exchange real frames in both directions.
+- Group chats: new mobile groups use **Sender Keys** (per-member HKDF
+  chains, per-epoch Ed25519 authorship, full re-key on every join and leave;
+  `veil-group-v1`). Groups created by older clients stay on the legacy
+  shared conversation key. Design and implementation notes in
+  [`docs/group-sender-keys-design.md`](docs/group-sender-keys-design.md).
+- **libsignal bridge** (`--dart-define=VEIL_CRYPTO_ADAPTER=libsignal`):
+  the Dart adapter and the Kotlin/Swift handlers are in the tree, but default
+  builds leave out the native bridge and the libsignal dependency and use the
+  Dart ratchet. Opting in takes `-Pveil.libsignal=true` (Gradle) or
+  `--android-project-arg=veil.libsignal=true` (Flutter) on Android; on iOS,
+  adding `Runner/Crypto/VeilCryptoBridge.swift` and the `LibSignalClient`
+  package to the Runner target and registering `VeilCryptoBridgePlugin` in
+  `AppDelegate.swift`. Neither bridge has ever been built into an app. See
+  [`docs/libsignal-migration-implementation.md`](docs/libsignal-migration-implementation.md).
+- Sealed sender is under revision: the current design in
+  [`docs/sealed-sender-design.md`](docs/sealed-sender-design.md) does not
+  hide the sender from the server.
 
 ### Backend (`apps/api`)
 - 23 modules: `auth`, `users`, `devices`, `conversations`, `messages`,
   `attachments`, `realtime`, `device-transfer`, `safety`, `metrics`,
   `push`, `calls`, `stories`, `groups`, `channels`, `contacts`,
-  `profile`, `account`, `prekeys`, `recovery`, `retention`, `secret`,
+  `profile`, `account`, `handles`, `prekeys`, `retention`, `secret`,
   `health`
 - JWT with 1-hour TTL, atomic refresh (Redis `GETDEL`), JTI blacklist,
   WS force-disconnect on logout
-- Custom `CfThrottlerGuard` prefers `cf-connecting-ip`, falls back to
-  authenticated `deviceId`, then `x-forwarded-for`
-- Atomic device transfer: serializable transaction creates new device
-  and revokes old in one shot, then disconnects the old WS
-- Reply / edit / delete on messages, with real-time `message.edited`
+- Custom `CfThrottlerGuard` keys a signed-in request by its device ID;
+  any other request is keyed by the client address read from the one
+  source `VEIL_CLIENT_IP_SOURCE` names (`socket`, the default,
+  `cf-connecting-ip` or `x-forwarded-for`), and no other header is consulted
+- Atomic device transfer: a serializable transaction creates the new device
+  and revokes the old one in one step, then disconnects the old WS
+- Reply, edit and delete on messages, with real-time `message.edited`
   and `message.deleted` events
-- Reactions with `message.reaction` real-time fanout
+- Reactions are ordinary encrypted messages (`messageType: 'reaction'`);
+  the server never sees the emoji or its target
+- Stories are ciphertext addressed to an explicit audience of mutual
+  contacts
+- Deleted accounts' handles are quarantined for 90 days (only a peppered
+  HMAC is kept), so nobody can re-register a contact's handle right away
+- Device last-seen and last-sync times are kept to the UTC day
 - Bearer-token-gated `/v1/metrics` (Prometheus format)
 
 ### Web demo (`apps/web-demo`)
-- Full message UI: reactions (long-press / right-click), reply, edit,
+- Full message UI: reactions (long-press or right-click), reply, edit,
   delete, forward, voice messages (push-to-talk MediaRecorder, opus,
-  30s cap), image attachments (drag-drop + preview confirm + zoom),
-  generic file attachments (PDF/video/zip, 25MB), in-conversation
+  30s cap), image attachments (drag-drop, preview confirm, zoom),
+  generic file attachments (PDF, video, zip, 25MB), in-conversation
   search, @mention autocomplete, 5-minute delete-undo
 - Markdown lite in messages: `*bold*`, `_italic_`, `` `code` ``,
   ```` ```fenced code blocks``` ````, auto-linked URLs, @mention chips
-- **KakaoTalk import**: drop a `.txt` export → read-only archive,
-  parsed 100% in-browser, bytes never reach the server
-- Block / mute / report UI wired to the safety endpoints
-- Unified settings dialog: dark/light theme, language, sounds,
-  notifications
-- Browser notifications + tab unread badge, keyboard shortcuts
-  (Ctrl/Cmd+K/N/F/+/), Web Audio send/receive tones (opt-in)
-- IndexedDB-backed session + message cache (encrypted at rest);
-  blob URLs revoked on delete/logout to bound memory
-- `i18n/{ko,en,ja}.json` with `?lang=` switcher, locale-aware time
-- PWA manifest + iconography, CSP meta, themed dialogs
+- **KakaoTalk import**: drop a `.txt` export to get a read-only archive,
+  parsed entirely in the browser; the bytes never reach the server
+- Block, mute and report UI wired to the safety endpoints
+- Unified settings dialog: dark or light theme, sounds, notifications
+- Browser notifications and a tab unread badge, keyboard shortcuts
+  (Ctrl/Cmd+K/N/F/+/), Web Audio send and receive tones (opt-in)
+- IndexedDB-backed session and message cache (encrypted at rest);
+  blob URLs revoked on delete and logout to bound memory
+- `i18n/en.json` as the single string dictionary (English only)
+- PWA manifest and icon, CSP meta, themed dialogs
 - Testable helpers extracted to `lib/{markdown,format,kakao-import}.js`
 
 ### Mobile (`apps/mobile`)
 - Riverpod state, GoRouter navigation, Drift cache
 - Full ratchet with session persistence
-- Voice messages, reactions, reply scaffolding
-- 401 → refresh interceptor on the API client
-- Release builds fail loud when `keystore.properties` is missing
+- Text messages, photos and files in 1:1 and group conversations,
+  reactions, disappearing timers, unread counts, on-device message search,
+  safety numbers, device transfer
+- Block, report and mute: block or report from a 1:1's menu, a contact's
+  sheet or a 1:1 request's bar, report from a message's long-press sheet,
+  mute from a chat's menu or a long press on its Chats row, and unblock in
+  Settings > Privacy > Blocked accounts; a muted chat raises no notification
+  on the phone
+- Message requests and scam warnings, worked out on the phone by fixed rules
+  that send nothing: not the text they read, their result or a link. A chat
+  from an account you haven't talked to waits as a message request: until
+  you accept it, the phone sends no read receipt or typing indicator and
+  downloads no photo or file by itself. A line under a message flags what
+  common scams look like: someone saying they are family or on a new phone,
+  asks for money, gift cards, codes or ID, remote-control apps and app
+  files, hidden or look-alike links, and fake delivery, bank, police,
+  government and investment messages. In a 1:1 or a group of two, a banner
+  warns when the other handle looks like a saved or verified contact's, or
+  when a new account says it is family. A link asks before it opens unless
+  it is your own or from a verified contact, and an app-file, hidden or
+  look-alike link always asks. A message with no warning can still be a
+  scam. The rules and their limits:
+  [apps/mobile/README.md](apps/mobile/README.md#message-requests-and-scam-warnings).
+- Photos come from the system photo picker and are re-encoded on the
+  phone at up to 1600 px, which drops their location and camera details;
+  files up to 25 MB come from the system file picker and go as they are.
+  Received photos show in the chat and open full screen; files open with a
+  tap (in another app on Android, in Quick Look on iOS, in the in-app viewer
+  when they are a JPEG, PNG or WebP) or save to the phone. On the
+  Windows desktop build the plus offers Photos only and there is no Save,
+  and a received file opens only if it is a photo: File, Save and opening
+  other files exist only on Android and iOS
+  ([apps/mobile/README.md](apps/mobile/README.md)).
+- The app has no calls, voice messages, stories, stickers or assistant
+- English only, one design system:
+  [docs/mobile-design-system.md](docs/mobile-design-system.md)
+- Refresh on 401 in the API client
+- Release builds fail loudly when `keystore.properties` is missing
 - iOS deployment target 14.0, R8 proguard rules, removed cydia probe
 
 ### Operations
-- `pnpm demo:status` host + container health probe
-- pg_dump cron snippet (daily, 14-day retention) in tunnel runbook
+- `pnpm demo:status` host and container health probe
+- No database dumps anywhere in the deployment (`no-database-dumps` policy rule; [runbook §6](docs/vps-deploy-runbook.md))
 - [`docs/ops/abuse-triage.md`](docs/ops/abuse-triage.md) operator runbook
-- [`docs/tester-guide-ko.md`](docs/tester-guide-ko.md) tester FAQ
+- [`docs/tester-guide-ko.md`](docs/tester-guide-ko.md) tester FAQ (Korean)
 - [`docs/ops/data-subject-request.md`](docs/ops/data-subject-request.md)
   GDPR/PIPA process
 
 ### Audit handoff
-- `pnpm audit:handoff` bundles every doc + artifact + commit-pinned
+- `pnpm audit:handoff` bundles every doc, artifact and the commit-pinned
   README into a single tarball for an external auditor
 - Outreach templates: [`docs/audit-rfp-email-en.md`](docs/audit-rfp-email-en.md),
   [`docs/otf-application-template.md`](docs/otf-application-template.md)
@@ -159,50 +243,61 @@ them will fail CI:
 1. Node `22.20.0` (see `.nvmrc`).
 2. `cp .env.example .env` and `cp apps/api/.env.example apps/api/.env`.
 3. `pnpm install`.
-4. `pnpm docker:up` (Postgres + Redis + MinIO).
+4. `pnpm docker:up` (Postgres, Redis and MinIO).
 5. `pnpm db:generate`.
 6. `pnpm dev:api`.
 7. Web demo at `http://localhost:3000/demo/`.
-8. For mobile: install Flutter, then `pnpm dev:mobile:api` (Android emu)
+8. For mobile: install Flutter, then `pnpm dev:mobile:api` (Android emulator)
    or `pnpm dev:mobile:desktop` (Windows desktop sanity).
 
 For Windows desktop builds enable Developer Mode so Flutter plugins can
 create symlinks.
 
 Mobile `--dart-define` runtime flags:
-- `VEIL_API_BASE_URL` — default `http://localhost:3000/v1`. Use
+- `VEIL_API_BASE_URL`: default `http://localhost:3000/v1`. Use
   `http://10.0.2.2:3000/v1` for Android emulators.
-- `VEIL_REALTIME_URL` — default `http://localhost:3000`.
+- `VEIL_REALTIME_URL`: default `http://localhost:3000`.
+- `VEIL_TLS_PINS`: comma-separated TLS pins (`spki:<b64>` or `leaf:<b64>`)
+  for the API and the realtime socket. Empty means no pinning; a release
+  build refuses to run without it.
+- `VEIL_OBJECT_STORAGE_HOSTS`: comma-separated hosts that presigned upload
+  and download URLs may point at; when it is set, a ticket naming another
+  host is refused (empty allows any host).
+- `VEIL_OBJECT_STORAGE_PINS`: TLS pins for the object store, same format as
+  `VEIL_TLS_PINS`; empty falls back to the platform trust store.
+
+A release build refuses to run with a local server URL or without
+`VEIL_TLS_PINS`. The app has no `VEIL_ENV` define and ignores one.
 
 ---
 
 ## Useful scripts
 
 ### Daily
-- `pnpm dev:api` — API dev server
-- `pnpm test` — all unit suites (API Jest + web demo Vitest)
+- `pnpm dev:api`: API dev server
+- `pnpm test`: all unit suites (API Jest and web demo Vitest)
 - `pnpm lint`, `pnpm format:check`
-- `pnpm -C apps/api test:e2e` — API e2e (supertest)
-- `pnpm -C apps/web-demo test` — web demo Vitest (markdown / format / kakao-import)
-- `pnpm e2e:web` — Playwright browser e2e (needs a running demo stack;
-  `pnpm e2e:web:install` once for chromium, `pnpm e2e:web:ui` to debug)
+- `pnpm -C apps/api test:e2e`: API e2e (supertest)
+- `pnpm -C apps/web-demo test`: web demo Vitest (markdown, format, kakao-import)
+- `pnpm e2e:web`: Playwright browser e2e (needs a running demo stack;
+  `pnpm e2e:web:install` once for Chromium, `pnpm e2e:web:ui` to debug)
 
-### Demo / Tunnel
+### Demo and tunnel
 - `pnpm demo:up` / `demo:logs` / `demo:down` / `demo:reset`
 - `pnpm demo:tunnel:up` / `demo:tunnel:logs` / `demo:tunnel:down`
-- `pnpm demo:status` — host + container health probe
+- `pnpm demo:status`: host and container health probe
 
-### Production VPS
-- `pnpm demo:prod:up` — full stack with Caddy TLS
-- `pnpm demo:prod:obs` — add Prometheus + Grafana
+### Production VPS (boots only after the external audit is attested)
+- `pnpm demo:prod:up`: full stack with Caddy TLS
+- `pnpm demo:prod:obs`: add Prometheus and Grafana
 - `pnpm demo:prod:logs` / `demo:prod:down`
 
-### Beta + audit gates
+### Beta and audit gates
 - `pnpm beta:release:check`
 - `pnpm beta:release:evidence`
 - `pnpm beta:deploy:preflight -- --env-file apps/api/.env`
 - `pnpm beta:external:bundle`
-- `pnpm audit:handoff` — bundle + tarball for external auditor
+- `pnpm audit:handoff`: bundle and tarball for the external auditor
 - `pnpm beta:production:blockers`
 - `node scripts/policy-check.mjs`
 
@@ -213,11 +308,15 @@ Mobile `--dart-define` runtime flags:
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `pnpm ci:api`
 and `pnpm ci:mobile` on every push and PR. The runtime smoke job runs
 deploy preflight against the CI beta fixture and uploads release
-evidence as workflow artifacts.
+evidence as workflow artifacts. The android-build job keeps the APK it
+builds for 7 days: a debug build for `localhost`, or a profile build for
+your beta server when the repository variables `VEIL_BETA_API_BASE_URL`
+and `VEIL_BETA_REALTIME_URL` are set
+([`docs/android-beta-today.md`](docs/android-beta-today.md)).
 
 ---
 
-## ⚠️ Pre-audit warning
+## Not yet audited
 
 The production crypto adapter is wired and pinned by tests, but
 **has not been externally audited**. Do not ship this code to a
@@ -234,91 +333,96 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 ## Documentation index
 
 ### Start here
-- [사용 설명서 (Korean all-in-one guide)](docs/사용설명서.md) — 한 문서로 보는 VEIL
+- [사용 설명서 (Korean all-in-one guide)](docs/사용설명서.md): 한 문서로 보는 Veil
 - [Architecture](docs/architecture.md)
-- [Threat Model](docs/threat-model.md)
-- [No Recovery rationale](docs/no-recovery.md)
-- [Trusted Device Graph](docs/trusted-device-graph.md)
+- [Threat model](docs/threat-model.md)
+- [Why there is no recovery](docs/no-recovery.md)
+- [Trusted devices](docs/trusted-device-graph.md)
 
 ### Protocol flows
-- [Message Flow](docs/message-flow.md)
-- [Attachment Flow](docs/attachment-flow.md)
-- [Device Transfer Flow](docs/device-transfer-flow.md)
-- [Local Search and History Navigation](docs/local-search-history-navigation.md)
+- [Message flow](docs/message-flow.md)
+- [Attachment flow](docs/attachment-flow.md)
+- [Device transfer flow](docs/device-transfer-flow.md)
+- [Local search and history navigation](docs/local-search-history-navigation.md)
 
 ### Crypto specs
-- [Crypto Envelope Spec](docs/crypto-envelope-spec.md) — current wire format
-- [Forward Secrecy Ratchet Design](docs/forward-secrecy-ratchet-design.md) — implemented mobile ratchet
-- [Internal Pre-Audit Crypto Review](docs/internal-precheck-crypto-review.md) — reading-level review, NOT external audit
-- [Envelope v3 Unified Spec](docs/envelope-v3-unified-spec.md) — design only, not implemented
-- [Group Sender Keys Design](docs/group-sender-keys-design.md) — design only
-- [Sealed Sender Design](docs/sealed-sender-design.md) — design only
-- [Crypto Adapter Architecture](docs/crypto-adapter-architecture.md)
-- [Crypto Mobile Bridge Design](docs/crypto-mobile-bridge-design.md)
-- [Crypto Session State Migration](docs/crypto-session-state-migration.md)
-- [Crypto Interoperability Fixtures](docs/crypto-interoperability-fixtures.md)
-- [Audited Crypto Adapter Execution Plan](docs/audited-crypto-adapter-execution.md)
-- [Audited Crypto Library Decision](docs/audited-crypto-library-decision.md)
-- [Mock Crypto Replacement Status](docs/mock-crypto-replacement.md) — replacement complete; mock adapter is test-only
+- [Crypto envelope spec](docs/crypto-envelope-spec.md): current wire format
+- [Forward secrecy ratchet design](docs/forward-secrecy-ratchet-design.md): implemented mobile ratchet
+- [Internal pre-audit crypto review](docs/internal-precheck-crypto-review.md): reading-level review, not an external audit
+- [Envelope v3 unified spec](docs/envelope-v3-unified-spec.md): superseded by protocol v2, never implemented
+- [Group Sender Keys design](docs/group-sender-keys-design.md): implemented on mobile (new groups), pre-audit
+- [Sealed sender design](docs/sealed-sender-design.md): under revision, the current design does not hide the sender
+- [Crypto adapter architecture](docs/crypto-adapter-architecture.md)
+- [Crypto mobile bridge design](docs/crypto-mobile-bridge-design.md)
+- [Crypto session state migration](docs/crypto-session-state-migration.md)
+- [Crypto interoperability fixtures](docs/crypto-interoperability-fixtures.md)
+- [Audited crypto adapter execution plan](docs/audited-crypto-adapter-execution.md)
+- [Audited crypto library decision](docs/audited-crypto-library-decision.md)
+- [Mock crypto replacement status](docs/mock-crypto-replacement.md): replacement complete; the mock adapter is test-only
 
 ### Deploy runbooks
-- [MVP Demo Runbook](docs/mvp-demo-runbook.md)
-- [Cloudflare Tunnel Deploy](docs/cloudflare-tunnel-deploy.md) — laptop + Cloudflare
-- [VPS Deploy Runbook](docs/vps-deploy-runbook.md) — public-beta-ready VPS
-- [Production Deployment Checklist](docs/production-deployment.md)
-- [Internal Alpha Deployment / Runbook / Test Checklist / Desktop QA](docs/internal-alpha-runbook.md)
-- [Launch Runbook](docs/launch-runbook.md)
-- [Staging Push Enable Runbook](docs/staging-push-enable-runbook.md)
+- [MVP demo runbook](docs/mvp-demo-runbook.md)
+- [Cloudflare tunnel deploy](docs/cloudflare-tunnel-deploy.md): laptop and Cloudflare, invited testers only before the audit
+- [Android beta today](docs/android-beta-today.md): the Android app from a CI build, used with invited friends through a Cloudflare Tunnel to your PC
+- [VPS deploy runbook](docs/vps-deploy-runbook.md): production VPS; refuses to boot until the external audit is attested
+- [Production deployment checklist](docs/production-deployment.md)
+- [Internal alpha deployment, runbook, test checklist and desktop QA](docs/internal-alpha-runbook.md)
+- [Launch runbook](docs/launch-runbook.md)
+- [Staging push enable runbook](docs/staging-push-enable-runbook.md)
 
 ### Operations
-- [Abuse Triage Runbook](docs/ops/abuse-triage.md)
-- [Data Subject Request Process](docs/ops/data-subject-request.md)
-- [JWT Secret Rotation](docs/ops/jwt-secret-rotation.md)
-- [Tester Guide (Korean)](docs/tester-guide-ko.md)
-- [Phone Access Walkthrough](docs/phone-access.md)
-- [Push Privacy Review Checklist](docs/push-privacy-review-checklist.md)
-- [Apple + Firebase Credential Setup](docs/apple-firebase-credential-setup-checklist.md)
+- [Abuse triage runbook](docs/ops/abuse-triage.md)
+- [Data subject request process](docs/ops/data-subject-request.md)
+- [JWT secret rotation](docs/ops/jwt-secret-rotation.md)
+- [Tester guide (Korean)](docs/tester-guide-ko.md)
+- [Phone access walkthrough](docs/phone-access.md)
+- [Push privacy review checklist](docs/push-privacy-review-checklist.md)
+- [Apple and Firebase credential setup](docs/apple-firebase-credential-setup-checklist.md)
 
 ### External audit
-- [External Security Review Packet](docs/external-security-review-packet.md)
-- [External Security Review Request Template](docs/external-security-review-request-template.md)
-- [External Audit Firm Shortlist](docs/external-audit-firm-shortlist.md)
-- [Audit RFP Email Template (English)](docs/audit-rfp-email-en.md)
-- [OTF Application Template](docs/otf-application-template.md)
-- [External Review Intake / Master Checklist / Remediation Tracker](docs/external-review-remediation-tracker.md)
+- [External security review packet](docs/external-security-review-packet.md)
+- [External security review request template](docs/external-security-review-request-template.md)
+- [External audit firm shortlist](docs/external-audit-firm-shortlist.md)
+- [Audit RFP email template (English)](docs/audit-rfp-email-en.md)
+- [OTF application template](docs/otf-application-template.md)
+- [External review intake, master checklist and remediation tracker](docs/external-review-remediation-tracker.md)
 
 ### Status reports
-- [Final Technical Status](docs/final-technical-status.md)
-- [Private Beta Audit](docs/private-beta-audit.md)
-- [Private Beta Readiness Report](docs/private-beta-readiness-report.md)
-- [Private Beta Performance Profile](docs/private-beta-performance-profile.md)
-- [Real-Device Performance Execution / Results / Triage](docs/real-device-performance-execution.md)
-- [Telegram-Grade Private Beta Gap Analysis](docs/telegram-grade-private-beta-gap-analysis.md)
-- [Six-Month Roadmap](docs/six-month-roadmap.md)
+- [Final technical status](docs/final-technical-status.md)
+- [Private beta audit](docs/private-beta-audit.md)
+- [Private beta readiness report](docs/private-beta-readiness-report.md)
+- [Private beta performance profile](docs/private-beta-performance-profile.md)
+- [Real-device performance execution, results and triage](docs/real-device-performance-execution.md)
+- [Telegram-grade private beta gap analysis](docs/telegram-grade-private-beta-gap-analysis.md)
+- [Six-month roadmap](docs/six-month-roadmap.md)
 
-### Privacy + design
-- [Privacy Policy — English](docs/privacy-policy-en.md)
-- [Privacy Policy — Korean](docs/privacy-policy-ko.md)
-- [Mobile Design System](docs/mobile-design-system.md)
-- [Mobile Device Security](docs/mobile-device-security.md)
-- [Observability Hygiene](docs/observability-hygiene.md)
-- [Open Chat Design (draft)](docs/open-chat-design.md)
+### Privacy and design
+- [What a seized Veil server reveals](docs/server-data-inventory.md): generated from the schema in CI
+- [Claims ledger](docs/claims.yaml): every public claim and the test or gate behind it
+- [Server-side metadata retention](docs/metadata-retention.md)
+- [Privacy policy (English)](docs/privacy-policy-en.md)
+- [Privacy policy (Korean)](docs/privacy-policy-ko.md)
+- [Design system](docs/mobile-design-system.md)
+- [Mobile device security](docs/mobile-device-security.md)
+- [Observability hygiene](docs/observability-hygiene.md)
+- [Open chat design (draft)](docs/open-chat-design.md)
 
 ---
 
 ## License
 
-VEIL is free software licensed under the **GNU Affero General Public
+Veil is free software licensed under the **GNU Affero General Public
 License v3.0 only** (AGPL-3.0-only). See [`LICENSE`](LICENSE) for the full
 text.
 
-The AGPL's network clause (§13) is deliberate: if you run a modified VEIL
+We chose the AGPL for its network clause (§13): if you run a modified Veil
 server as a network service, you must offer your users the modified source.
-This keeps the privacy invariants — no plaintext on the server, no recovery
-path, no admin override — from being silently stripped out of a hosted fork.
+This keeps the privacy invariants (no plaintext messages on the server, no
+recovery path, no admin override) from being silently stripped out of a
+hosted fork.
 
-Being open source under a recognized FOSS license is also what makes VEIL
-eligible for a funded external cryptographic review through programs like
-the [Open Technology Fund](https://www.opentech.fund/) — the review that
-gates the public launch (see
+Being open source under a recognized FOSS license also makes Veil eligible
+for a funded external cryptographic review through programs like the
+[Open Technology Fund](https://www.opentech.fund/), and that review gates
+the public launch (see
 [`docs/otf-application-template.md`](docs/otf-application-template.md)).

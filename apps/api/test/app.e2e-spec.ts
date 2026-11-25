@@ -6,7 +6,9 @@ import request from 'supertest';
 import { AppConfigService } from '../src/common/config/app-config.service';
 import { ApiExceptionFilter } from '../src/common/filters/api-exception.filter';
 import { AppLoggerService } from '../src/common/logger/app-logger.service';
+import { ActorRefGenerator } from '../src/common/logger/request-redactor';
 import { EphemeralStoreService } from '../src/common/ephemeral-store.service';
+import { AccountService } from '../src/modules/account/account.service';
 import { Ed25519DeviceAuthVerifier } from '../src/modules/auth/device-auth-verifier';
 import { ATTACHMENT_STORAGE_GATEWAY } from '../src/modules/attachments/attachment-storage.gateway';
 import { PrismaService } from '../src/common/prisma.service';
@@ -75,7 +77,9 @@ describe('VEIL API (e2e)', () => {
         forbidNonWhitelisted: true,
       }),
     );
-    app.useGlobalFilters(new ApiExceptionFilter(moduleRef.get(AppLoggerService)));
+    app.useGlobalFilters(
+      new ApiExceptionFilter(moduleRef.get(AppLoggerService), moduleRef.get(ActorRefGenerator)),
+    );
     await app.init();
   });
 
@@ -84,6 +88,25 @@ describe('VEIL API (e2e)', () => {
       await app.close();
     }
   });
+
+  // A step-up proof (AuthService.verifyDeviceStepUp): a fresh login challenge
+  // for the device, signed over `<purpose>:<challengeId>:<challenge>`.
+  const stepUp = async (
+    api: ReturnType<typeof request>,
+    device: { handle: string; deviceId: string; authPrivateKey: string },
+    purpose: string,
+  ) => {
+    const challenge = await api
+      .post('/v1/auth/challenge')
+      .send({ handle: device.handle, deviceId: device.deviceId });
+    return {
+      challengeId: challenge.body.challengeId,
+      signature: keyHelper.createProof({
+        challenge: `${purpose}:${challenge.body.challengeId}:${challenge.body.challenge}`,
+        authPrivateKey: device.authPrivateKey,
+      }),
+    };
+  };
 
   it('exposes a public health endpoint', async () => {
     const api = request(app.getHttpServer());
@@ -101,9 +124,12 @@ describe('VEIL API (e2e)', () => {
     const readinessUnauthed = await api.get('/v1/health/ready');
     expect(readinessUnauthed.status).toBe(401);
 
-    const missingBundle = await api.get('/v1/users/unknown/key-bundle');
-    expect(missingBundle.status).toBe(404);
-    expect(missingBundle.body.code).toBe('active_device_not_found');
+    // Key material is only served to signed-in devices: the old public
+    // key-bundle route is gone and the directory needs a bearer token.
+    const removedBundleRoute = await api.get('/v1/users/unknown/key-bundle');
+    expect(removedBundleRoute.status).toBe(404);
+    const anonymousDirectory = await api.get('/v1/keys/unknown');
+    expect(anonymousDirectory.status).toBe(401);
   });
 
   it('covers registration, conversations, messages, attachments, and device transfer', async () => {
@@ -149,22 +175,19 @@ describe('VEIL API (e2e)', () => {
     });
     const bearer = `Bearer ${verify.body.accessToken}`;
 
-    const initialDevices = await api
-      .get('/v1/devices')
-      .set('Authorization', bearer);
+    const initialDevices = await api.get('/v1/devices').set('Authorization', bearer);
     expect(initialDevices.status).toBe(200);
     expect(initialDevices.body.activeDeviceId).toBe(registerA.body.deviceId);
     expect(initialDevices.body.items).toHaveLength(1);
     expect(initialDevices.body.items[0].deviceName).toBe('VEIL Desktop');
     expect(initialDevices.body.items[0].trustState).toBe('current');
 
-    const keyBundle = await api.get('/v1/users/icarus/key-bundle');
-    expect(keyBundle.status).toBe(200);
-    expect(keyBundle.body.bundle.identityPublicKey).toBe('pub-a');
-    expect(Array.isArray(keyBundle.body.deviceBundles)).toBe(true);
-    expect(keyBundle.body.deviceBundles.length).toBeGreaterThan(0);
-    expect(keyBundle.body.deviceBundles[0].deviceId).toBeDefined();
-    expect(keyBundle.body.bundle.authPublicKey).toBeUndefined();
+    const directory = await api.get('/v1/keys/icarus?claim=none').set('Authorization', bearer);
+    expect(directory.status).toBe(200);
+    expect(directory.body.user.activeDeviceId).toBe(registerA.body.deviceId);
+    expect(directory.body.devices).toHaveLength(1);
+    expect(directory.body.devices[0].identityPublicKey).toBe('pub-a');
+    expect(directory.body.devices[0].authPublicKey).toBeUndefined();
 
     const conversation = await api
       .post('/v1/conversations/direct')
@@ -175,11 +198,15 @@ describe('VEIL API (e2e)', () => {
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'image/png', sizeBytes: 2048, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
+      .send({
+        contentType: 'image/png',
+        sizeBytes: 2048,
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      });
     expect(upload.status).toBe(201);
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
       sizeBytes: 2048,
-      contentType: 'image/png',
+      contentType: upload.body.upload.headers['Content-Type'],
       metadata: {
         encrypted: 'true',
         sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
@@ -274,12 +301,44 @@ describe('VEIL API (e2e)', () => {
     });
     expect(transferClaim.status).toBe(201);
 
+    // The approval is signed by the old device's auth key; the bearer token
+    // alone, or a signature by any other key, does not approve. This relay
+    // runs without VEIL_ENV=production and still requires the signature.
+    const unsignedApproval = await api
+      .post('/v1/device-transfer/approve')
+      .set('Authorization', bearer)
+      .send({ sessionId: transferInit.body.sessionId, claimId: transferClaim.body.claimId });
+    expect(unsignedApproval.status).toBe(401);
+    expect(unsignedApproval.body.code).toBe('invalid_device_signature');
+    const approvalChallenge = `transfer-approve:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferClaim.body.claimantFingerprint}`;
+    const forgedApproval = await api
+      .post('/v1/device-transfer/approve')
+      .set('Authorization', bearer)
+      .send({
+        sessionId: transferInit.body.sessionId,
+        claimId: transferClaim.body.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: approvalChallenge,
+          authPrivateKey: transferKeyPair.authPrivateKey,
+        }),
+      });
+    expect(forgedApproval.status).toBe(401);
+    expect(forgedApproval.body.code).toBe('invalid_device_signature');
+    const statusAfterForgery = await api
+      .get(`/v1/device-transfer/sessions/${transferInit.body.sessionId}`)
+      .set('Authorization', bearer);
+    expect(statusAfterForgery.body.status).toBe('claimed');
+
     await api
       .post('/v1/device-transfer/approve')
       .set('Authorization', bearer)
       .send({
         sessionId: transferInit.body.sessionId,
         claimId: transferClaim.body.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: approvalChallenge,
+          authPrivateKey: keyPairA.authPrivateKey,
+        }),
       })
       .expect(201);
 
@@ -294,7 +353,7 @@ describe('VEIL API (e2e)', () => {
     });
     expect(transferComplete.status).toBe(201);
     expect(transferComplete.body.handle).toBe('icarus');
-    expect(transferComplete.body.displayName).toBe('Icarus');
+    expect(transferComplete.body).not.toHaveProperty('displayName');
 
     const replayedTransferComplete = await api.post('/v1/device-transfer/complete').send({
       sessionId: transferInit.body.sessionId,
@@ -305,8 +364,24 @@ describe('VEIL API (e2e)', () => {
         authPrivateKey: transferKeyPair.authPrivateKey,
       }),
     });
-    expect(replayedTransferComplete.status).toBe(403);
-    expect(replayedTransferComplete.body.code).toBe('transfer_session_inactive');
+    // A retry whose first response was lost gets the same answer: the old
+    // device is already revoked, so this is the new device's only way to
+    // learn its id. Nothing is created a second time.
+    expect(replayedTransferComplete.status).toBe(201);
+    expect(replayedTransferComplete.body).toEqual(transferComplete.body);
+
+    const strangerKeyPair = keyHelper.createKeyPair();
+    const strangerReplay = await api.post('/v1/device-transfer/complete').send({
+      sessionId: transferInit.body.sessionId,
+      transferToken: transferInit.body.transferToken,
+      claimId: transferClaim.body.claimId,
+      authProof: keyHelper.createProof({
+        challenge: `transfer-complete:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferInit.body.transferToken}`,
+        authPrivateKey: strangerKeyPair.authPrivateKey,
+      }),
+    });
+    expect(strangerReplay.status).toBe(401);
+    expect(strangerReplay.body.code).toBe('transfer_completion_invalid');
 
     const transferredChallenge = await api.post('/v1/auth/challenge').send({
       handle: 'icarus',
@@ -334,7 +409,9 @@ describe('VEIL API (e2e)', () => {
     expect(
       devicesAfterTransfer.body.items.some(
         (item: { id: string; isActive: boolean; trustState: string }) =>
-          item.id === registerA.body.deviceId && item.isActive === false && item.trustState === 'revoked',
+          item.id === registerA.body.deviceId &&
+          item.isActive === false &&
+          item.trustState === 'revoked',
       ),
     ).toBe(true);
     expect(
@@ -348,9 +425,7 @@ describe('VEIL API (e2e)', () => {
 
     // After Phase U.1 the old device's bearer is rejected by the
     // JwtAuthGuard because device.isActive=false.
-    const oldBearerAfterTransfer = await api
-      .get('/v1/conversations')
-      .set('Authorization', bearer);
+    const oldBearerAfterTransfer = await api.get('/v1/conversations').set('Authorization', bearer);
     expect(oldBearerAfterTransfer.status).toBe(401);
 
     // The new device cannot start a transfer claiming the old device id —
@@ -425,7 +500,11 @@ describe('VEIL API (e2e)', () => {
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearerA)
-      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
+      .send({
+        contentType: 'application/octet-stream',
+        sizeBytes: 1024,
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      });
     expect(upload.status).toBe(201);
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
       sizeBytes: 1024,
@@ -447,17 +526,108 @@ describe('VEIL API (e2e)', () => {
       .set('Authorization', bearerB);
     expect(deniedDownload.status).toBe(403);
 
-    const revoked = await api
+    // Revoking the calling device locks it out for good, so the bearer token
+    // alone is refused, on a development relay too.
+    const unsignedRevoke = await api
       .post('/v1/devices/revoke')
       .set('Authorization', bearerA)
       .send({ deviceId: registerA.body.deviceId });
+    expect(unsignedRevoke.status).toBe(401);
+    expect(unsignedRevoke.body.code).toBe('challenge_invalid');
+
+    const revoked = await api
+      .post('/v1/devices/revoke')
+      .set('Authorization', bearerA)
+      .send({
+        deviceId: registerA.body.deviceId,
+        ...(await stepUp(
+          api,
+          {
+            handle: 'atlas',
+            deviceId: registerA.body.deviceId,
+            authPrivateKey: keyPairA.authPrivateKey,
+          },
+          `device-revoke:${registerA.body.deviceId}`,
+        )),
+      });
     expect(revoked.status).toBe(201);
 
-    const revokedBearer = await api
-      .get('/v1/conversations')
-      .set('Authorization', bearerA);
+    const revokedBearer = await api.get('/v1/conversations').set('Authorization', bearerA);
     expect(revokedBearer.status).toBe(401);
     expect(revokedBearer.body.code).toBe('device_not_active');
+  });
+
+  it('deletes an account only with a step-up signed by the device, on a development relay too', async () => {
+    const api = request(app.getHttpServer());
+    const keyPair = keyHelper.createKeyPair();
+    const otherKeyPair = keyHelper.createKeyPair();
+    const register = await api.post('/v1/auth/register').send({
+      handle: 'leaving',
+      displayName: 'Leaving',
+      deviceName: 'Pixel',
+      platform: 'android',
+      publicIdentityKey: 'pub-leaving',
+      signedPrekeyBundle: 'prekey-leaving',
+      authPublicKey: keyPair.authPublicKey,
+    });
+    expect(register.status).toBe(201);
+    const device = {
+      handle: 'leaving',
+      deviceId: register.body.deviceId,
+      authPrivateKey: keyPair.authPrivateKey,
+    };
+    const challenge = await api
+      .post('/v1/auth/challenge')
+      .send({ handle: 'leaving', deviceId: register.body.deviceId });
+    const verify = await api.post('/v1/auth/verify').send({
+      challengeId: challenge.body.challengeId,
+      deviceId: register.body.deviceId,
+      signature: keyHelper.createProof({
+        challenge: challenge.body.challenge,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+    const bearer = `Bearer ${verify.body.accessToken}`;
+    // The in-memory Prisma fake does not model the whole erasure cascade
+    // (account.service.spec and the Postgres suites cover it); this test is
+    // about the gate in front of it.
+    const deleteAccount = jest
+      .spyOn(app.get(AccountService), 'deleteAccount')
+      .mockResolvedValue({ deleted: true });
+
+    const unsigned = await api.delete('/v1/account').set('Authorization', bearer).send({});
+    expect(unsigned.status).toBe(401);
+    expect(unsigned.body.code).toBe('challenge_invalid');
+
+    const byOtherKey = await api
+      .delete('/v1/account')
+      .set('Authorization', bearer)
+      .send(
+        await stepUp(
+          api,
+          { ...device, authPrivateKey: otherKeyPair.authPrivateKey },
+          'account-delete',
+        ),
+      );
+    expect(byOtherKey.status).toBe(401);
+    expect(byOtherKey.body.code).toBe('invalid_device_signature');
+
+    const forAnotherPurpose = await api
+      .delete('/v1/account')
+      .set('Authorization', bearer)
+      .send(await stepUp(api, device, `device-revoke:${register.body.deviceId}`));
+    expect(forAnotherPurpose.status).toBe(401);
+    expect(forAnotherPurpose.body.code).toBe('invalid_device_signature');
+    expect(deleteAccount).not.toHaveBeenCalled();
+
+    const deleted = await api
+      .delete('/v1/account')
+      .set('Authorization', bearer)
+      .send(await stepUp(api, device, 'account-delete'));
+    expect(deleted.status).toBe(200);
+    expect(deleted.body).toEqual({ deleted: true });
+    expect(deleteAccount).toHaveBeenCalledTimes(1);
+    expect(deleteAccount).toHaveBeenCalledWith(register.body.userId);
   });
 
   it('rejects disallowed attachment MIME types and cleans up failed upload sessions', async () => {
@@ -491,14 +661,22 @@ describe('VEIL API (e2e)', () => {
     const rejectedMime = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'text/plain', sizeBytes: 128, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
+      .send({
+        contentType: 'text/plain',
+        sizeBytes: 128,
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      });
     expect(rejectedMime.status).toBe(400);
     expect(rejectedMime.body.code).toBe('attachment_upload_invalid');
 
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
+      .send({
+        contentType: 'application/octet-stream',
+        sizeBytes: 1024,
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      });
     expect(upload.status).toBe(201);
 
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
@@ -565,10 +743,14 @@ describe('VEIL API (e2e)', () => {
       handle: 'replaytest',
       deviceId: register.body.deviceId,
     });
-    const newestChallenge = await api.post('/v1/auth/challenge').send({
-      handle: 'replaytest',
-      deviceId: register.body.deviceId,
-    });
+    // A device keeps its three newest challenges; the fourth evicts the first.
+    let newestChallenge = supersededChallenge;
+    for (let i = 0; i < 3; i += 1) {
+      newestChallenge = await api.post('/v1/auth/challenge').send({
+        handle: 'replaytest',
+        deviceId: register.body.deviceId,
+      });
+    }
 
     const supersededVerify = await api.post('/v1/auth/verify').send({
       challengeId: supersededChallenge.body.challengeId,
@@ -616,6 +798,10 @@ describe('VEIL API (e2e)', () => {
       .send({
         sessionId: transferInit.body.sessionId,
         claimId: transferClaim.body.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: `transfer-approve:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferClaim.body.claimantFingerprint}`,
+          authPrivateKey: keyPair.authPrivateKey,
+        }),
       })
       .expect(201);
 
@@ -749,9 +935,7 @@ describe('VEIL API (e2e)', () => {
       .send({});
     expect(markRead.status).toBe(201);
     const emittedReadCountAfterFirstRead = realtime.emitted.filter(
-      (event) =>
-        event.event === 'message.read' &&
-        event.userId === registerA.body.userId,
+      (event) => event.event === 'message.read' && event.userId === registerA.body.userId,
     ).length;
 
     const repeatedMarkRead = await api
@@ -761,9 +945,7 @@ describe('VEIL API (e2e)', () => {
     expect(repeatedMarkRead.status).toBe(201);
     expect(
       realtime.emitted.filter(
-        (event) =>
-          event.event === 'message.read' &&
-          event.userId === registerA.body.userId,
+        (event) => event.event === 'message.read' && event.userId === registerA.body.userId,
       ).length,
     ).toBe(emittedReadCountAfterFirstRead);
 
@@ -772,12 +954,9 @@ describe('VEIL API (e2e)', () => {
       .set('Authorization', bearerA);
     expect(senderView.status).toBe(200);
     expect(senderView.body.items[1].clientMessageId).toBe('client-msg-1002');
-    expect(
-      senderView.body.items.some(
-        (item: { clientMessageId: string; readAt?: string | null }) =>
-          item.clientMessageId == 'client-msg-1002' && item.readAt,
-      ),
-    ).toBe(true);
+    // Summaries carry only the viewer's own receipt; the sender learns about
+    // the peer's read from the message.read event asserted below.
+    expect(senderView.body.items[1].readAt).toBeNull();
 
     expect(
       realtime.emitted.some(
@@ -796,10 +975,14 @@ describe('VEIL API (e2e)', () => {
     const keyPairA = keyHelper.createKeyPair();
     const keyPairB = keyHelper.createKeyPair();
 
-    const auth = async (handle: string, deviceId: string, kp: {
-      authPublicKey: string;
-      authPrivateKey: string;
-    }): Promise<string> => {
+    const auth = async (
+      handle: string,
+      deviceId: string,
+      kp: {
+        authPublicKey: string;
+        authPrivateKey: string;
+      },
+    ): Promise<string> => {
       const ch = await api.post('/v1/auth/challenge').send({ handle, deviceId });
       const signature = keyHelper.createProof({
         challenge: ch.body.challenge,
@@ -869,14 +1052,11 @@ describe('VEIL API (e2e)', () => {
     expect(sent.body.message.editCount ?? 0).toBe(0);
 
     // Edit by the original sender succeeds.
-    const edited = await api
-      .patch(`/v1/messages/${messageId}`)
-      .set('Authorization', bearerA)
-      .send({
-        ciphertext: 'cipher-edited',
-        nonce: 'nonce-edited',
-        version: 'veil-envelope-v1-dev',
-      });
+    const edited = await api.patch(`/v1/messages/${messageId}`).set('Authorization', bearerA).send({
+      ciphertext: 'cipher-edited',
+      nonce: 'nonce-edited',
+      version: 'veil-envelope-v1-dev',
+    });
     expect(edited.status).toBe(200);
     expect(edited.body.message.ciphertext).toBe('cipher-edited');
     expect(edited.body.message.nonce).toBe('nonce-edited');
@@ -904,17 +1084,13 @@ describe('VEIL API (e2e)', () => {
     expect(editAsPeer.body.code).toBe('message_not_owned');
 
     // Delete by the sender soft-deletes the row.
-    const deleted = await api
-      .delete(`/v1/messages/${messageId}`)
-      .set('Authorization', bearerA);
+    const deleted = await api.delete(`/v1/messages/${messageId}`).set('Authorization', bearerA);
     expect(deleted.status).toBe(200);
     expect(deleted.body.messageId).toBe(messageId);
     expect(deleted.body.deletedAt).toBeTruthy();
 
     // Idempotent retry: same deletedAt, no errors.
-    const deleted2 = await api
-      .delete(`/v1/messages/${messageId}`)
-      .set('Authorization', bearerA);
+    const deleted2 = await api.delete(`/v1/messages/${messageId}`).set('Authorization', bearerA);
     expect(deleted2.status).toBe(200);
     expect(deleted2.body.deletedAt).toBe(deleted.body.deletedAt);
 
@@ -935,9 +1111,7 @@ describe('VEIL API (e2e)', () => {
       .get(`/v1/conversations/${conversationId}/messages?limit=10`)
       .set('Authorization', bearerB);
     expect(listing.status).toBe(200);
-    const tombstone = listing.body.items.find(
-      (item: { id: string }) => item.id === messageId,
-    );
+    const tombstone = listing.body.items.find((item: { id: string }) => item.id === messageId);
     expect(tombstone).toBeDefined();
     expect(tombstone.deletedAt).toBeTruthy();
     expect(tombstone.ciphertext).toBe('deleted');
@@ -951,15 +1125,132 @@ describe('VEIL API (e2e)', () => {
     ).toBe(true);
   });
 
+  // A device signed in twice holds two sessions, each with its own access
+  // token. Logout from one ends both, refresh tokens and access tokens alike.
+  it('logout ends the access tokens of every session of the device', async () => {
+    const api = request(app.getHttpServer());
+    const keyPair = keyHelper.createKeyPair();
+    const registered = await api.post('/v1/auth/register').send({
+      handle: 'twosessions',
+      deviceName: 'Pixel',
+      platform: 'android',
+      publicIdentityKey: 'pub-two',
+      signedPrekeyBundle: 'prekey-two',
+      authPublicKey: keyPair.authPublicKey,
+    });
+    expect(registered.status).toBe(201);
+    const login = async () => {
+      const challenge = await api
+        .post('/v1/auth/challenge')
+        .send({ handle: 'twosessions', deviceId: registered.body.deviceId });
+      const verified = await api.post('/v1/auth/verify').send({
+        challengeId: challenge.body.challengeId,
+        deviceId: registered.body.deviceId,
+        signature: keyHelper.createProof({
+          challenge: challenge.body.challenge,
+          authPrivateKey: keyPair.authPrivateKey,
+        }),
+      });
+      expect(verified.status).toBe(201);
+      return verified.body as { accessToken: string; refreshToken: string };
+    };
+    const first = await login();
+    const second = await login();
+    await api.get('/v1/devices').set('Authorization', `Bearer ${second.accessToken}`).expect(200);
+
+    await api
+      .post('/v1/auth/logout')
+      .set('Authorization', `Bearer ${first.accessToken}`)
+      .send({})
+      .expect(201);
+
+    for (const session of [first, second]) {
+      const refused = await api
+        .get('/v1/devices')
+        .set('Authorization', `Bearer ${session.accessToken}`);
+      expect(refused.status).toBe(401);
+      expect(refused.body.code).toBe('token_revoked');
+    }
+    const refresh = await api.post('/v1/auth/refresh').send({ refreshToken: second.refreshToken });
+    expect(refresh.status).toBe(401);
+  });
+
+  it('refuses a mute longer than ten years and malformed safety ids with 400, not 500', async () => {
+    const api = request(app.getHttpServer());
+    const keyPairA = keyHelper.createKeyPair();
+    const keyPairB = keyHelper.createKeyPair();
+    const register = (handle: string, authPublicKey: string) =>
+      api.post('/v1/auth/register').send({
+        handle,
+        deviceName: 'Pixel',
+        platform: 'android',
+        publicIdentityKey: `pub-${handle}`,
+        signedPrekeyBundle: `prekey-${handle}`,
+        authPublicKey,
+      });
+    const registerA = await register('muter', keyPairA.authPublicKey);
+    await register('mutee', keyPairB.authPublicKey);
+    const challenge = await api
+      .post('/v1/auth/challenge')
+      .send({ handle: 'muter', deviceId: registerA.body.deviceId });
+    const verified = await api.post('/v1/auth/verify').send({
+      challengeId: challenge.body.challengeId,
+      deviceId: registerA.body.deviceId,
+      signature: keyHelper.createProof({
+        challenge: challenge.body.challenge,
+        authPrivateKey: keyPairA.authPrivateKey,
+      }),
+    });
+    const bearer = `Bearer ${verified.body.accessToken}`;
+    const conversation = await api
+      .post('/v1/conversations/direct')
+      .set('Authorization', bearer)
+      .send({ peerHandle: 'mutee' });
+    const conversationId = conversation.body.conversation.id;
+
+    const tenYears = 10 * 365 * 24 * 60 * 60;
+    const longest = await api
+      .post(`/v1/safety/mutes/${conversationId}`)
+      .set('Authorization', bearer)
+      .send({ mutedForSeconds: tenYears });
+    expect(longest.status).toBe(201);
+    expect(longest.body.mute.conversationId).toBe(conversationId);
+
+    for (const mutedForSeconds of [tenYears + 1, 9e15]) {
+      const refused = await api
+        .post(`/v1/safety/mutes/${conversationId}`)
+        .set('Authorization', bearer)
+        .send({ mutedForSeconds });
+      expect(refused.status).toBe(400);
+      expect(refused.body.code).toBe('validation_failed');
+    }
+
+    const badMuteId = await api
+      .post('/v1/safety/mutes/not-a-uuid')
+      .set('Authorization', bearer)
+      .send({ mutedForSeconds: 60 });
+    expect(badMuteId.status).toBe(400);
+    expect(badMuteId.body.code).toBe('validation_failed');
+    const badUnblockId = await api
+      .delete('/v1/safety/blocks/not-a-uuid')
+      .set('Authorization', bearer);
+    expect(badUnblockId.status).toBe(400);
+    expect(badUnblockId.body.code).toBe('validation_failed');
+  });
+
   it('accepts an inline-voice-sized message body over 100KB (body limit)', async () => {
     const api = request(app.getHttpServer());
     const keyPairA = keyHelper.createKeyPair();
     const keyPairB = keyHelper.createKeyPair();
 
-    const auth = async (handle: string, deviceId: string, kp: {
-      authPublicKey: string;
-      authPrivateKey: string;
-    }): Promise<string> => {
+    const auth = async (
+      handle: string,
+      deviceId: string,
+      kp: {
+        authPublicKey: string;
+        authPrivateKey: string;
+      },
+    ): Promise<string> => {
       const ch = await api.post('/v1/auth/challenge').send({ handle, deviceId });
       const signature = keyHelper.createProof({
         challenge: ch.body.challenge,

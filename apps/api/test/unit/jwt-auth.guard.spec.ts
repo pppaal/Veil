@@ -1,5 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 
+import { utcDayStart } from '../../src/common/device-activity';
 import { JwtAuthGuard } from '../../src/common/guards/jwt-auth.guard';
 
 type Req = { headers: Record<string, string | undefined>; auth?: unknown };
@@ -13,11 +14,17 @@ function ctx(request: Req, type: 'http' | 'ws' = 'http') {
   } as never;
 }
 
+// The guard reads the clock itself; a fixed one keeps "seen today" true for
+// the whole run, even one that crosses midnight UTC.
+const NOW = new Date('2026-11-11T12:34:56.789Z');
+const TODAY = utcDayStart(NOW);
+
 const activeDevice = {
   id: 'd1',
   userId: 'u1',
   isActive: true,
   revokedAt: null,
+  lastSeenAt: TODAY,
   user: { status: 'active' },
 };
 
@@ -26,7 +33,9 @@ function build(
     isPublic?: boolean;
     verify?: () => Promise<unknown>;
     blacklisted?: unknown;
+    liveFamilies?: readonly string[];
     device?: unknown;
+    recordSeen?: () => Promise<{ count: number }>;
   } = {},
 ) {
   const reflector = { getAllAndOverride: () => opts.isPublic ?? false } as never;
@@ -35,16 +44,39 @@ function build(
       opts.verify ?? (async () => ({ sub: 'u1', deviceId: 'd1', handle: 'alice', jti: 'j1' })),
   } as never;
   const config = { jwtSecret: 's', jwtAudience: 'a', jwtIssuer: 'i' } as never;
+  const activityWrites: unknown[] = [];
   const prisma = {
-    device: { findUnique: async () => opts.device ?? activeDevice },
+    device: {
+      findUnique: async () => opts.device ?? activeDevice,
+      updateMany: async (args: unknown) => {
+        activityWrites.push(args);
+        return opts.recordSeen ? opts.recordSeen() : { count: 1 };
+      },
+    },
   } as never;
-  const ephemeralStore = { getJson: async () => opts.blacklisted ?? null } as never;
-  return new JwtAuthGuard(reflector, jwtService, config, prisma, ephemeralStore);
+  const ephemeralStore = {
+    getJson: async (key: string) => {
+      if (key.startsWith('auth:blacklist:')) return opts.blacklisted ?? null;
+      const family = /^auth:refresh-family:(.+)$/.exec(key)?.[1];
+      return family && opts.liveFamilies?.includes(family) ? { deviceId: 'd1' } : null;
+    },
+  } as never;
+  return Object.assign(new JwtAuthGuard(reflector, jwtService, config, prisma, ephemeralStore), {
+    activityWrites,
+  });
 }
 
 const authed = () => ctx({ headers: { authorization: 'Bearer t' } });
 
 describe('JwtAuthGuard', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: NOW });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('lets non-http contexts (ws/rpc) through untouched', async () => {
     expect(await build().canActivate(ctx({ headers: {} }, 'ws'))).toBe(true);
   });
@@ -63,6 +95,29 @@ describe('JwtAuthGuard', () => {
     await expect(
       build({ blacklisted: { revoked: true } }).canActivate(authed()),
     ).rejects.toMatchObject({ response: { code: 'token_revoked' } });
+  });
+
+  // Logout revokes every refresh family of the device, and with it every
+  // access token issued under one, not just the token that called logout.
+  it('rejects a token whose session (refresh family) has been revoked', async () => {
+    const token = async () => ({
+      sub: 'u1',
+      deviceId: 'd1',
+      handle: 'alice',
+      jti: 'j2',
+      sid: 'f1',
+    });
+
+    await expect(
+      build({ verify: token, liveFamilies: [] }).canActivate(authed()),
+    ).rejects.toMatchObject({ response: { code: 'token_revoked' } });
+    await expect(
+      build({ verify: token, liveFamilies: ['f1'] }).canActivate(authed()),
+    ).resolves.toBe(true);
+  });
+
+  it('judges a token issued before tokens named their session by the blacklist alone', async () => {
+    await expect(build({ liveFamilies: [] }).canActivate(authed())).resolves.toBe(true);
   });
 
   it('rejects a revoked / inactive device', async () => {
@@ -97,6 +152,31 @@ describe('JwtAuthGuard', () => {
       handle: 'alice',
       jti: 'j1',
     });
+  });
+
+  it('records the day a device was last seen, at most once a day', async () => {
+    const seenToday = build();
+    await seenToday.canActivate(authed());
+    expect(seenToday.activityWrites).toEqual([]);
+
+    const seenYesterday = build({
+      device: { ...activeDevice, lastSeenAt: new Date(TODAY.getTime() - 86_400_000) },
+    });
+    await seenYesterday.canActivate(authed());
+    expect(seenYesterday.activityWrites).toEqual([
+      { where: { id: 'd1', lastSeenAt: { not: TODAY } }, data: { lastSeenAt: TODAY } },
+    ]);
+  });
+
+  it('reports a failed activity write as itself, not as an auth failure', async () => {
+    const outage = new Error('database unavailable');
+    const guard = build({
+      device: { ...activeDevice, lastSeenAt: new Date(0) },
+      recordSeen: async () => {
+        throw outage;
+      },
+    });
+    await expect(guard.canActivate(authed())).rejects.toBe(outage);
   });
 
   it('maps a token-verify failure to a generic unauthorized', async () => {

@@ -1,44 +1,39 @@
 [Name]
-VEIL Messenger
+Veil: Encrypted Messenger
 
 [Subtitle]
-Encrypted privacy messenger
+Chat without a phone number
 
 [Promotional Text]
-A cold, encrypted messenger with no accounts, no phone numbers, and no recovery path. Conversations live only on your device.
+Sign up with a handle, not a phone number. Messages are end-to-end encrypted, so only you and the people you talk to can read them.
 
 [Description]
-VEIL is a messenger designed with privacy as the first principle.
+Veil is a messenger you sign up for with a handle. No phone number, no email, no real name.
 
-Core principles
-• No phone number. No email. No real name required.
-• Every message is end-to-end encrypted on-device. Servers never see plaintext.
-• No recovery path. If you lose the device, the conversations go with it. This is the VEIL safety model.
+Messages are end-to-end encrypted on your phone, so only you and the people you talk to can read them. The server keeps only encrypted copies it can't read, for 30 days at most.
 
-Cryptography
-• X25519 key exchange + AES-256-GCM symmetric encryption
-• Ed25519 device signatures
-• HKDF-SHA256 session key derivation
+• One-to-one and group chats
+• Photos and files
+• Disappearing messages
+• Read receipts and typing indicators you can turn off
+• Safety numbers to check who you're talking to
+• One-time links for a password or a note
+• App lock with a PIN or biometrics
+• Block or report someone, and mute a chat
+• Warns about common scam messages and look-alike accounts, with checks on your phone. Chats from accounts you haven't talked to wait as requests.
+• Move your account to a new phone
 
-Features
-• 1:1 and group conversations with encrypted attachments
-• Typing indicators, presence, optional read receipts
-• Local app lock (PIN, biometrics)
-• Encrypted device transfer
-• Korean and English UI
+There is no backup and no account recovery. If you lose your phone, you lose the account and its messages.
 
-Privacy posture
-• No ads. No tracking. No third-party analytics.
-• Designed to meet Korea's PIPA requirements.
+Veil runs on one phone at a time. Moving to a new phone moves your handle to it and signs the old phone out. Your message history does not move.
 
-Safety note
-VEIL deliberately has no account recovery. If your device is lost, conversations cannot be restored. This is by design.
+No ads, no tracking and no third-party analytics. The code is open source.
 
 Privacy policy: https://pppaal.github.io/Veil/
 Contact: privacy@veil.app
 
 [Keywords]
-messenger,encryption,privacy,e2ee,secure,chat,anonymous,pin,encrypted
+private,secure,e2ee,handle,username,disappearing,one-time link,app lock,safety number,pin
 
 [Support URL]
 https://veil.app/support

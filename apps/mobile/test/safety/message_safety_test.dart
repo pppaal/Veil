@@ -5,6 +5,7 @@ import 'package:veil_mobile/src/core/domain/chat_message.dart';
 import 'package:veil_mobile/src/core/domain/conversation_preview.dart';
 import 'package:veil_mobile/src/core/safety/message_risk.dart';
 import 'package:veil_mobile/src/core/safety/rule_risk_checker.dart';
+import 'package:veil_mobile/src/core/safety/thread_risk.dart';
 import 'package:veil_mobile/src/features/chat/application/message_safety.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
@@ -58,6 +59,56 @@ class _PinsFailing implements VeilMessengerController {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+// Alice's messenger, where the frames whose bodies [kinds] names open with
+// that kind: what a patched client that picks its own kind sends.
+class _KindAs implements VeilMessengerController {
+  _KindAs(this._inner, this.kinds);
+
+  final VeilMessengerController _inner;
+  final Map<String, MessageKind> kinds;
+
+  @override
+  Future<DecryptedMessage> decryptMessage(ChatMessage message) async {
+    final opened = await _inner.decryptMessage(message);
+    final kind = kinds[opened.body];
+    if (kind == null) return opened;
+    return DecryptedMessage(body: opened.body, messageKind: kind, expiresAt: opened.expiresAt, status: opened.status);
+  }
+
+  @override
+  void addListener(VoidCallback listener) => _inner.addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) => _inner.removeListener(listener);
+
+  @override
+  ConversationPreview? conversationById(String conversationId) => _inner.conversationById(conversationId);
+
+  @override
+  List<ChatMessage> messagesFor(String conversationId) => _inner.messagesFor(conversationId);
+
+  @override
+  String? get localUserId => _inner.localUserId;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+// The rules, except that a text reading "boom" throws.
+class _Failing implements MessageRiskChecker {
+  const _Failing();
+
+  @override
+  MessageRisk assess(MessageRiskInput input) {
+    if (input.text == 'boom') throw const FormatException('bad text');
+    return const RuleRiskChecker().assess(input);
+  }
+
+  @override
+  MessageRisk assessFileName(String name, RiskRelationship relationship) =>
+      const RuleRiskChecker().assessFileName(name, relationship);
+}
+
 void main() {
   late FakeRelay relay;
   late MessengerParty alice;
@@ -87,8 +138,8 @@ void main() {
     await bob.dispose();
   });
 
-  MessageSafety watch() =>
-      safety = MessageSafety(conversationId: chat, messenger: alice.controller, trust: alice.contactTrust, checker: const RuleRiskChecker());
+  MessageSafety watch() => safety = MessageSafety(
+      conversationId: chat, messenger: alice.controller, trust: alice.contactTrust, checker: const RuleRiskChecker());
 
   Future<ChatMessage> fromBob(String body) async {
     await deliver(bob, alice, chat, body);
@@ -126,10 +177,12 @@ void main() {
 
     // Verified now: every line of bob's, old ones too, is mild at most.
     await verifyBob();
-    await waitFor(() => safety.riskOf(code).level == RiskLevel.mild, reason: 'the verified sender\'s line stayed strong');
+    await waitFor(() => safety.riskOf(code).level == RiskLevel.mild,
+        reason: 'the verified sender\'s line stayed strong');
     expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.mild, reason: RiskReason.asksForCode));
     for (final message in [code, story, plain]) {
-      expect(safety.riskOf(message).level.index, lessThanOrEqualTo(RiskLevel.mild.index), reason: '${safety.riskOf(message)}');
+      expect(safety.riskOf(message).level.index, lessThanOrEqualTo(RiskLevel.mild.index),
+          reason: '${safety.riskOf(message)}');
     }
     expect(safety.riskOf(story).reason, isNot(RiskReason.newPhoneClaim), reason: 'a verified sender claims nothing');
     expect(safety.linksOpenAtOnce(code), isTrue, reason: 'a verified sender\'s links open without a sheet');
@@ -191,7 +244,10 @@ void main() {
     final code = alice.controller.messagesFor(group).firstWhere((message) => !message.isMine);
     expect((await alice.controller.decryptMessage(code)).status, DecryptStatus.awaitingKey);
     safety = MessageSafety(
-        conversationId: group, messenger: alice.controller, trust: alice.contactTrust, checker: const RuleRiskChecker());
+        conversationId: group,
+        messenger: alice.controller,
+        trust: alice.contactTrust,
+        checker: const RuleRiskChecker());
     await safety.settled;
     expect(safety.riskOf(code), MessageRisk.none, reason: 'nothing to read yet');
 
@@ -235,7 +291,8 @@ void main() {
     expect(await alice.controller.pinnedDeviceOwners(['user-bob']), {'dev-bob': 'user-bob'});
 
     final messenger = _PinsFailing(alice.controller);
-    safety = MessageSafety(conversationId: group, messenger: messenger, trust: alice.contactTrust, checker: const RuleRiskChecker());
+    safety = MessageSafety(
+        conversationId: group, messenger: messenger, trust: alice.contactTrust, checker: const RuleRiskChecker());
     await safety.settled;
     expect(messenger.failed, greaterThanOrEqualTo(1));
     expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.strong, reason: RiskReason.asksForCode),
@@ -248,5 +305,87 @@ void main() {
     await waitFor(() => safety.riskOf(code).level == RiskLevel.warn, reason: 'the pins were not read again');
     await safety.settled;
     expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.warn, reason: RiskReason.asksForCode));
+  });
+
+  test('a scam body sent under another kind is read as the text it is drawn as', () async {
+    const sticker = '엄마 나야 폰 고장나서 새 계정이야 50만원만 보내줘 급해';
+    const system = '엄마 나야 폰 고장나서 새 번호야 인증번호 알려줘';
+    const reaction = '인증번호 알려줘';
+    final asSticker = await fromBob(sticker);
+    final asSystem = await fromBob(system);
+    final asReaction = await fromBob(reaction);
+    final messenger = _KindAs(alice.controller, {
+      sticker: MessageKind.sticker,
+      system: MessageKind.system,
+      reaction: MessageKind.reaction,
+    });
+    safety = MessageSafety(
+        conversationId: chat, messenger: messenger, trust: alice.contactTrust, checker: const RuleRiskChecker());
+    await safety.settled;
+    expect(safety.riskOf(asSticker), const MessageRisk(level: RiskLevel.strong, reason: RiskReason.newPhoneClaim),
+        reason: 'a sticker without a picture is drawn as a text bubble');
+    expect(safety.riskOf(asSystem).level, RiskLevel.strong, reason: 'a system body of bob\'s is drawn as text');
+    expect(safety.riskOf(asReaction), MessageRisk.none, reason: 'a reaction shows on its target, not as text');
+    expect(safety.claims, isTrue, reason: 'the claim banner reads the same lines');
+  });
+
+  test('a new message reads one text, and a text the checker fails on leaves the others their lines', () async {
+    final code = await fromBob('인증번호 알려줘');
+    await fromBob('boom');
+    watch();
+    await waitFor(() => safety.riskOf(code).level != RiskLevel.none, reason: 'the code ask was not flagged');
+    await safety.settled;
+    final reads = safety.signalReads;
+    final next = await fromBob('돈 좀 보내줘');
+    await waitFor(() => safety.riskOf(next).level != RiskLevel.none, reason: 'the new ask was not flagged');
+    await safety.settled;
+    expect(safety.signalReads, reads + 1, reason: 'only the new text is read');
+
+    safety.dispose();
+    safety = MessageSafety(
+        conversationId: chat, messenger: alice.controller, trust: alice.contactTrust, checker: const _Failing());
+    await waitFor(() => safety.riskOf(next).level != RiskLevel.none, reason: 'one bad text stopped the run');
+    expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.strong, reason: RiskReason.asksForCode));
+  });
+
+  test('fifty newer texts do not take away a line already shown, nor the claim it raised', () async {
+    final story = await fromBob('엄마 나야 폰 고장나서 새 계정이야 인증번호 알려줘');
+    final kept = <String, KeptLine>{};
+    safety = MessageSafety(
+        conversationId: chat,
+        messenger: alice.controller,
+        trust: alice.contactTrust,
+        checker: const RuleRiskChecker(),
+        kept: kept);
+    await waitFor(() => safety.riskOf(story).level != RiskLevel.none, reason: 'the story was not flagged');
+    expect(safety.claims, isTrue);
+
+    for (var i = 0; i < threadRiskTexts; i++) {
+      await bob.controller.sendText(conversationId: chat, body: 'ok $i');
+    }
+    await waitFor(() => bob.controller.pendingCountFor(chat) == 0, reason: 'the fillers were not acked');
+    await waitFor(() async => (await alice.bodies(chat)).contains('ok ${threadRiskTexts - 1}'),
+        reason: 'the fillers did not arrive');
+    await safety.settled;
+    expect(safety.riskOf(story), const MessageRisk(level: RiskLevel.strong, reason: RiskReason.newPhoneClaim),
+        reason: 'pushed out of the newest fifty, it keeps its line');
+    expect(safety.claims, isTrue);
+
+    // The chat opens again: the line is still there.
+    safety.dispose();
+    safety = MessageSafety(
+        conversationId: chat,
+        messenger: alice.controller,
+        trust: alice.contactTrust,
+        checker: const RuleRiskChecker(),
+        kept: kept);
+    await safety.settled;
+    expect(safety.riskOf(story).level, RiskLevel.strong);
+
+    // Verified since: the old line is worked out again, as a verified
+    // sender's (mild at most).
+    await verifyBob();
+    await waitFor(() => safety.riskOf(story).level.index <= RiskLevel.mild.index,
+        reason: 'the kept line stayed strong');
   });
 }

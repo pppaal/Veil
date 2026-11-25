@@ -90,4 +90,59 @@ void main() {
     expect(long, hasLength(threadRiskTexts));
     expect(long.last.reason, RiskReason.asksForCode);
   });
+
+  test('signals kept across calls make a new message cost one read, well under 200 ms for 50 long texts', () {
+    const checker = RuleRiskChecker();
+    final t0 = DateTime.utc(2026, 11, 25, 9);
+    String long(int i) => ('send money now mom 12 https://a.co/ $i ' * 200).substring(0, 4000);
+    final texts = [
+      for (var i = 0; i < 50; i++)
+        (text: long(i), at: t0.add(Duration(minutes: i)), relationship: RiskRelationship.unknown),
+    ];
+    final signals = ThreadSignals();
+    final first = assessThread(checker, texts, signals: signals);
+    expect(signals.reads, 50);
+
+    // A new message: the window moves by one, and only the new text is read.
+    texts.add((text: long(50), at: t0.add(const Duration(minutes: 50)), relationship: RiskRelationship.unknown));
+    final watch = Stopwatch()..start();
+    final again = assessThread(checker, texts, signals: signals);
+    watch.stop();
+    expect(signals.reads, 51, reason: 'a new message costs one read');
+    expect(watch.elapsedMilliseconds, lessThan(200), reason: 'checker work for one new message');
+    expect(again.sublist(0, 49), first.sublist(1), reason: 'kept signals give the same lines');
+
+    // Without kept signals every text is read again.
+    final fresh = ThreadSignals();
+    assessThread(checker, texts, signals: fresh);
+    expect(fresh.reads, 50);
+  });
+
+  test('a text the checker fails on gets no line, and the rest of the thread is still checked', () {
+    final t0 = DateTime.utc(2026, 11, 25, 9);
+    final risks = assessThread(const _Failing(), [
+      (text: '인증번호 알려줘', at: t0, relationship: RiskRelationship.unknown),
+      (text: 'boom', at: t0.add(const Duration(minutes: 1)), relationship: RiskRelationship.unknown),
+      (text: '인증번호 알려줘 지금', at: t0.add(const Duration(minutes: 2)), relationship: RiskRelationship.unknown),
+    ]);
+    expect(risks[0].reason, RiskReason.asksForCode);
+    expect(risks[1], MessageRisk.none);
+    expect(risks[2].reason, RiskReason.asksForCode);
+  });
+}
+
+// The rules, except that a text reading "boom" throws, as a bad text did in
+// the link reader.
+class _Failing implements MessageRiskChecker {
+  const _Failing();
+
+  @override
+  MessageRisk assess(MessageRiskInput input) {
+    if (input.text == 'boom') throw const FormatException('Positive input exceeds the limit of integer');
+    return const RuleRiskChecker().assess(input);
+  }
+
+  @override
+  MessageRisk assessFileName(String name, RiskRelationship relationship) =>
+      const RuleRiskChecker().assessFileName(name, relationship);
 }

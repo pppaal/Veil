@@ -69,18 +69,102 @@ void main() {
 
     // Best match: rule order, then a verified anchor, then distance, then
     // the handle.
-    final best = findLookalike('sam2', null, [
-      _anchor('sam', verified: false),
-      _anchor('sam.official', verified: true, userId: 'u-sam-verified'),
-      _anchor('sam22', verified: false),
-    ], peerUserId: 'u-peer');
+    final best = findLookalike(
+        'sam2',
+        null,
+        [
+          _anchor('sam', verified: false),
+          _anchor('sam.official', verified: true, userId: 'u-sam-verified'),
+          _anchor('sam22', verified: false),
+        ],
+        peerUserId: 'u-peer');
     expect(best!.anchor.userId, 'u-sam-verified');
     expect(best.rule, LookalikeRule.skeleton);
-    final byRule = findLookalike('jiwoo.kr', null, [
-      _anchor('jiwoo.k', verified: true),
-      _anchor('jiwoo', verified: false),
-    ], peerUserId: 'u-peer');
+    final byRule = findLookalike(
+        'jiwoo.kr',
+        null,
+        [
+          _anchor('jiwoo.k', verified: true),
+          _anchor('jiwoo', verified: false),
+        ],
+        peerUserId: 'u-peer');
     expect(byRule!.anchor.handle, 'jiwoo');
     expect(byRule.rule, LookalikeRule.skeleton);
+  });
+
+  test('a handle spelling a contact\'s nickname reads as that contact', () {
+    // A verified @k_hj77 saved as "Hyunjin", a saved @jw.park92 as "Jiwoo Park".
+    final anchors = [
+      _anchor('k_hj77', name: 'Hyunjin', userId: 'u-hj'),
+      _anchor('jw.park92', name: 'Jiwoo Park', verified: false, userId: 'u-jw'),
+    ];
+    LookalikeMatch? check(String peer) => findLookalike(peer, null, anchors, peerUserId: 'u-peer');
+    for (final (peer, anchor) in [
+      ('hyunjin', 'u-hj'),
+      ('hyunjin.kim', 'u-hj'),
+      ('hyunjin_new', 'u-hj'),
+      ('hyunjin7', 'u-hj'),
+      ('hyunjln', 'u-hj'),
+      ('jiwoopark', 'u-jw'),
+      ('jiwoo.park', 'u-jw'),
+      ('park.jiwoo', 'u-jw'),
+      ('jiwoo_park92', 'u-jw'),
+    ]) {
+      expect(check(peer)?.anchor.userId, anchor, reason: peer);
+    }
+    expect(check('hyunjin')!.rule, LookalikeRule.skeleton);
+    expect(check('hyunjin.kim')!.rule, LookalikeRule.affix);
+    // Other handles still do not match; a nickname in Hangul is no handle.
+    for (final peer in ['minseo', 'hyunwoo', 'jiwon.lee', 'parkour']) {
+      expect(check(peer), isNull, reason: peer);
+    }
+    expect(findLookalike('eomma.kr', null, [_anchor('jy.kim', name: '엄마 폰')], peerUserId: 'u-peer')?.rule,
+        LookalikeRule.kinName);
+    expect(findLookalike('umma', null, [_anchor('jy.kim', name: '1004')], peerUserId: 'u-peer'), isNull);
+  });
+
+  test('digits after letters, look-alike characters in an affix and a surname after a family word are caught', () {
+    final anchors = [
+      _anchor('jiwoo'),
+      _anchor('minjun'),
+      _anchor('younghee.park', name: '엄마'),
+    ];
+    LookalikeMatch? check(String peer) => findLookalike(peer, null, anchors, peerUserId: 'u-peer');
+    for (final peer in [
+      'jiwoo_k2001', 'jiwoo.x1234', 'jiwoo.lee99', 'jiwoo12345', 'minjun_k1990', //
+      'jiwoo.0fficial', 'jiwoo.m0bile', 'jiwoo.ph0ne', 'jiwoo.k0rea', 'offic1al.jiwoo',
+      'mom.kim', 'eomma.kim', 'mother.kim',
+    ]) {
+      expect(check(peer), isNotNull, reason: peer);
+    }
+    expect(check('jiwoo.0fficial')!.rule, LookalikeRule.skeleton);
+    expect(check('eomma.kim')!.rule, LookalikeRule.kinName);
+    for (final handle in ['mom.kim', 'eomma.kim', 'mother.kim']) {
+      expect(isKinHandle(handle), isTrue, reason: handle);
+    }
+    // A family word after a name, a surname word alone, and two words after
+    // a family word are no family handle.
+    for (final handle in ['kim.mom', 'son.kim', 'nan.lee', 'mom.kim.lee']) {
+      expect(isKinHandle(handle), isFalse, reason: handle);
+    }
+    // Still no match: other names, and a long digit tail on another name.
+    for (final peer in ['jiwon12', 'minja1990', 'jiwoo.2001x']) {
+      expect(check(peer), isNull, reason: peer);
+    }
+  });
+
+  test('a parent\'s handle made of the child\'s and a family word is no copy of the child\'s', () {
+    for (final (anchor, peer) in [
+      ('minji', 'minji_mom'),
+      ('jiwoo', 'jiwoo.appa'),
+      ('jiwoo', 'jiwoomom'),
+      ('jiwoo', 'eomma.jiwoo'),
+      ('daniel', 'daniel.dad'),
+    ]) {
+      expect(findLookalike(peer, null, [_anchor(anchor, name: '민지')], peerUserId: 'u-peer'), isNull,
+          reason: '$peer vs $anchor');
+    }
+    // Any other extra part still reads as a copy.
+    expect(findLookalike('minji_kim', null, [_anchor('minji')], peerUserId: 'u-peer')?.rule, LookalikeRule.affix);
   });
 }

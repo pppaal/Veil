@@ -15,24 +15,49 @@ const threadContextWindow = Duration(hours: 24);
 /// At most this many earlier texts are context for one text.
 const threadContextTexts = 4;
 
+/// The signals of each text, read once and kept: a caller that checks the
+/// same chat again on every change (MessageSafety) keeps one across runs,
+/// so a new message costs one read however many texts are checked with it.
+/// A text whose read throws counts as having no signals, so one bad text
+/// cannot stop the others from being checked.
+class ThreadSignals {
+  final Map<String, RiskSignals> _read = {};
+  int _reads = 0;
+
+  /// How many texts were read so far.
+  int get reads => _reads;
+
+  /// The signals of [text].
+  RiskSignals of(String text) => _read.putIfAbsent(text, () {
+        _reads++;
+        try {
+          return detectSignals(text);
+        } catch (_) {
+          return const RiskSignals({});
+        }
+      });
+
+  /// Forgets every text but [texts].
+  void keepOnly(Set<String> texts) => _read.removeWhere((text, _) => !texts.contains(text));
+}
+
 /// Checks [senderTexts] (one sender, one chat, oldest first). Only the last
 /// [threadRiskTexts] are read; the result has one entry per text read, in
 /// the same order, so it lines up with the end of [senderTexts]. Each text
 /// is checked with its own relationship and with up to
 /// [threadContextTexts] earlier texts of the list from the
-/// [threadContextWindow] before it.
+/// [threadContextWindow] before it. [signals] keeps what was read for the
+/// next call; without it, each text is read once in this call. A text the
+/// checker fails on gets no line, and the others are checked all the same.
 List<MessageRisk> assessThread(
   MessageRiskChecker checker,
   List<({String text, DateTime at, RiskRelationship relationship})> senderTexts, {
   bool startedByMe = false,
+  ThreadSignals? signals,
 }) {
-  final texts = senderTexts.length > threadRiskTexts
-      ? senderTexts.sublist(senderTexts.length - threadRiskTexts)
-      : senderTexts;
-  // Each text is read once in this call, though it is context for up to
-  // four later ones; nothing is kept after it returns.
-  final read = <String, RiskSignals>{};
-  RiskSignals signalsOf(String text) => read.putIfAbsent(text, () => detectSignals(text));
+  final texts =
+      senderTexts.length > threadRiskTexts ? senderTexts.sublist(senderTexts.length - threadRiskTexts) : senderTexts;
+  final read = signals ?? ThreadSignals();
   final risks = <MessageRisk>[];
   for (var i = 0; i < texts.length; i++) {
     final current = texts[i];
@@ -48,7 +73,11 @@ List<MessageRisk> assessThread(
       relationship: current.relationship,
       startedByMe: startedByMe,
     );
-    risks.add(checker is RuleRiskChecker ? checker.assessWith(input, signalsOf) : checker.assess(input));
+    try {
+      risks.add(checker is RuleRiskChecker ? checker.assessWith(input, read.of) : checker.assess(input));
+    } catch (_) {
+      risks.add(MessageRisk.none);
+    }
   }
   return risks;
 }

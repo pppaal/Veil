@@ -6,6 +6,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_request_bar.dart
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_status_banners.dart';
 import 'package:veil_mobile/src/features/contacts/data/contact_names.dart';
+import 'package:veil_mobile/src/features/safety/application/relationship.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
@@ -101,7 +102,8 @@ void main() {
         await tester.tap(verify);
         await pumpFrames(tester, frames: 8);
         expect(find.byType(SafetyNumbersScreen), findsOneWidget);
-        expect(tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen)).conversationId, claimConversationId);
+        expect(
+            tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen)).conversationId, claimConversationId);
       },
     );
   });
@@ -201,6 +203,29 @@ void main() {
         expect(find.text(claimLines.first), findsOneWidget);
         expect(lookalikeTitle(), findsNothing);
         expect(claimTitle(), findsNothing);
+      },
+    );
+  });
+
+  testWidgets('a long-saved contact under a verified contact\'s nickname gets no look-alike warning', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/conversations',
+      afterSession: (world) async {
+        // Priya, saved before trust records began, now under Sam's name too.
+        await world.container.read(contactNameBookProvider).write(noticeChatPeerHandle, sam, anew: true);
+      },
+      body: (world) async {
+        final priya = world.messenger.conversationById(noticeChatConversationId)!;
+        expect(
+          world.contactTrust
+              .relationshipAt(priya.recipientBundle.userId, noticeChatPeerHandle, chat: priya, at: world.now),
+          Relationship.saved,
+        );
+        await open(tester, noticeChatConversationId);
+        expect(find.byType(ChatRoomScreen), findsOneWidget);
+        expect(lookalikeTitle(), findsNothing, reason: 'two long-saved contacts under one name are no impostors');
       },
     );
   });

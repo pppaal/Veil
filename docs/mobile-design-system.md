@@ -442,7 +442,7 @@ On either platform, in any file:
 10. Icons: any `Icons.*_rounded`, `radar_outlined`, `priority_high`, `gpp_maybe`, a padlock in or near the composer, a shield as decoration, emoji as icons or in UI strings, mixed icon families.
 11. Type: a bundled UI font in production, a second type scale, display sizes above 28, tracking tighter than -0.3, Title Case titles, "VEIL".
 12. Copy: em or en dashes, slogans, "not just X, it is Y", "that tradeoff is the product", the words relay, opaque, envelope, payload, binding, barrier, graph, material, discovery, ephemerality, deliberate and charter in UI text, mythological or aristocratic demo names, the brand as the subject of a sentence on a routine screen, "private beta".
-13. Korean or Japanese strings in the app or the web demo, locale switches, `?lang=`, app_ko.arb, ko.json, ja.json, a features line that lists a Korean UI, word-joiner hacks for Hangul wrapping.
+13. Korean or Japanese strings in the app or the web demo, locale switches, `?lang=`, app_ko.arb, ko.json, ja.json, a features line that lists a Korean UI, word-joiner hacks for Hangul wrapping. Korean match data in lib/src/core/safety/, which never shows on screen, is allowed.
 14. Skeleton shimmer, glowing loaders, staggered entrance animations, scale-on-press, spring curves other than `springGentle`, a splash that shows text.
 15. A hand-rolled tab bar with a pill indicator, a frosted bar, `extendBodyBehindAppBar`, a bar taller than 52dp, bar actions on background tiles.
 16. Filled red buttons, danger as a fill, tap targets under 44x44, `textSubtle` for body or placeholder text, `textSubtle` on canvasAlt or surfaceAlt.

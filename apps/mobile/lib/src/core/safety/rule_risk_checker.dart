@@ -92,11 +92,15 @@ final _patterns = <_Pattern>[
         ? RiskReason.newPhoneClaim
         : RiskReason.familyClaim,
   ),
-  // P2 money.
+  // P2 money. Secrecy about a present between people who know each other
+  // is a surprise, not pressure.
   _Pattern(
     {Signal.moneyAsk, Signal.account},
     (s, who) {
       final act = s.contains(Signal.moneyAsk) || s.contains(Signal.account);
+      if (!_notTrusted(who) && s.contains(Signal.secrecy) && s.contains(Signal.surprise)) {
+        s = {...s}..remove(Signal.secrecy);
+      }
       final pressure = _notTrusted(who) ||
           s.contains(Signal.urgency) ||
           s.contains(Signal.secrecy) ||
@@ -122,11 +126,13 @@ final _patterns = <_Pattern>[
         : 0,
     (_) => RiskReason.asksForGiftCard,
   ),
-  // P4 code.
+  // P4 code. Someone the user knows asking for help with their own code
+  // that never came asks for nothing of the user's.
   _Pattern(
     {Signal.codeAsk},
-    (s, who) =>
-        s.contains(Signal.codeAsk) ? _sum(s, const {Signal.codeAsk: 7, Signal.urgency: 1, Signal.mistake: 2}) : 0,
+    (s, who) => s.contains(Signal.codeAsk) && (_notTrusted(who) || !s.contains(Signal.codeTrouble))
+        ? _sum(s, const {Signal.codeAsk: 7, Signal.urgency: 1, Signal.mistake: 2})
+        : 0,
     (_) => RiskReason.asksForCode,
   ),
   // P5 ID.
@@ -142,18 +148,28 @@ final _patterns = <_Pattern>[
     },
     (_) => RiskReason.asksForId,
   ),
-  // P6 remote app.
+  // P6 remote app. From a saved or known account (a child setting up a
+  // parent's laptop) it stays mild unless an agency or a bank is named.
   _Pattern(
     {Signal.remote, Signal.install},
-    (s, who) => s.contains(Signal.remote)
-        ? _sum(s, const {
-            Signal.remote: 6,
-            Signal.install: 1,
-            Signal.ask: 1,
-            Signal.authorityStrong: 2,
-            Signal.bankPretext: 2,
-          })
-        : 0,
+    (s, who) {
+      if (!s.contains(Signal.remote)) return 0;
+      final score = _sum(s, const {
+        Signal.remote: 6,
+        Signal.install: 1,
+        Signal.ask: 1,
+        Signal.authorityStrong: 2,
+        Signal.bankPretext: 2,
+      });
+      final named = s.contains(Signal.authorityStrong) ||
+          s.contains(Signal.authorityCarried) ||
+          s.contains(Signal.bankPretext) ||
+          (s.contains(Signal.remoteName) && s.contains(Signal.bankWord));
+      final trusted = who.relationship == RiskRelationship.known || who.relationship == RiskRelationship.saved;
+      if (!trusted || named) return score;
+      final mildCap = warnScore - 1 - relationshipAdjustment[who.relationship]!;
+      return score < mildCap ? score : mildCap;
+    },
     (_) => RiskReason.asksToInstallApp,
   ),
   // P7 app file.
@@ -190,14 +206,15 @@ final _patterns = <_Pattern>[
         : 0,
     (_) => RiskReason.fakeDelivery,
   ),
-  // P11 bank.
+  // P11 bank. A money ask alone opens it only from an account the user does
+  // not know: family asking for money that mentions a loan is P2's.
   _Pattern(
     {Signal.link, Signal.install, Signal.moneyAsk},
     (s, who) {
       final act = s.contains(Signal.link) ||
           s.contains(Signal.phoneToCall) ||
           s.contains(Signal.install) ||
-          s.contains(Signal.moneyAsk);
+          (s.contains(Signal.moneyAsk) && _notTrusted(who));
       if (!s.contains(Signal.bankPretext) || !act) return 0;
       return 5 +
           _sum(s, const {
@@ -219,7 +236,9 @@ final _patterns = <_Pattern>[
       final strongAct = s.contains(Signal.authorityStrong) &&
           (moneyAct ||
               s.contains(Signal.secrecy) ||
-              (s.contains(Signal.install) && (s.contains(Signal.linkOutsideStores) || s.contains(Signal.apk))));
+              (s.contains(Signal.install) &&
+                  ((s.contains(Signal.linkOutsideStores) && !s.contains(Signal.officialDomain)) ||
+                      s.contains(Signal.apk))));
       final carriedAct = s.contains(Signal.authorityCarried) && moneyAct;
       if (!strongAct && !carriedAct && !s.contains(Signal.safeAccount)) return 0;
       return (strongAct ? 9 : (carriedAct ? 5 : 0)) +
@@ -241,14 +260,19 @@ final _patterns = <_Pattern>[
         : 0,
     (_) => RiskReason.fakeGovernment,
   ),
-  // P14 investment.
+  // P14 investment. Talk of high returns alone (bragging, a loss, the news)
+  // is no pitch: it needs an invitation, an ask, a link or a guarantee, or
+  // pressure from an account the user does not know.
   _Pattern(
     {Signal.link},
     (s, who) {
       final hook = s.contains(Signal.guarantee) ||
-          s.contains(Signal.highReturn) ||
           s.contains(Signal.feeFirst) ||
-          s.contains(Signal.link);
+          s.contains(Signal.link) ||
+          (s.contains(Signal.highReturn) &&
+              (s.contains(Signal.invite) ||
+                  s.contains(Signal.ask) ||
+                  (_notTrusted(who) && (s.contains(Signal.urgency) || s.contains(Signal.secrecy)))));
       if (!s.contains(Signal.invest) || !hook) return 0;
       return 5 + _sum(s, const {Signal.guarantee: 2, Signal.highReturn: 2, Signal.feeFirst: 2});
     },

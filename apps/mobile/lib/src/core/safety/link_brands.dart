@@ -59,8 +59,8 @@ const linkBrands = <LinkBrand>[
       'amazon.com', 'amazon.ca', 'amazon.com.mx', 'amazon.com.br', 'amazon.co.uk', 'amazon.ie', //
       'amazon.de', 'amazon.fr', 'amazon.it', 'amazon.es', 'amazon.nl', 'amazon.se', 'amazon.pl',
       'amazon.com.be', 'amazon.com.tr', 'amazon.ae', 'amazon.sa', 'amazon.eg', 'amazon.in',
-      'amazon.co.jp', 'amazon.sg', 'amazon.com.au', 'amazon.cn', 'amazon.co.za', 'amazonaws.com',
-      'primevideo.com', 'amzn.to', 'amzn.com', 'amzn.eu', 'a.co',
+      'amazon.co.jp', 'amazon.sg', 'amazon.com.au', 'amazon.cn', 'amazon.co.za', 'amazon.jobs',
+      'amazon.science', 'primevideo.com', 'amzn.to', 'amzn.com', 'amzn.eu', 'a.co',
     ],
   ),
   // Banks and payments.
@@ -135,6 +135,16 @@ const linkBrands = <LinkBrand>[
   LinkBrand(tokens: ['irs'], labels: ['irs'], domains: ['irs.gov']),
   LinkBrand(tokens: [], labels: [], domains: ['gov.uk']),
 ];
+
+/// Hosting where anyone may put a site under the ending (name.s3.amazonaws.com,
+/// name.github.io): a host under one is never a brand's own, and its every
+/// label is read as a name a look-alike may use. amazonaws.com is Amazon's
+/// cloud, not Amazon's shop.
+const sharedHostingSuffixes = <String>{
+  'amazonaws.com', 'cloudfront.net', 'blogspot.com', 'github.io', 'netlify.app', 'vercel.app', //
+  'web.app', 'firebaseapp.com', 'herokuapp.com', 'pages.dev', 'workers.dev', 'appspot.com', 'r2.dev',
+  'azurewebsites.net', 'wixsite.com', 'weebly.com', 'glitch.me', 'onrender.com', 'ngrok.io', 'ngrok-free.app',
+};
 
 /// Words that turn a brand name into a fake site's name when put next to it.
 const scamAffixes = <String>{

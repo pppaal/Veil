@@ -142,6 +142,11 @@ mixin ChatTrustNotices<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       _nudgeCounted = true;
       scheduleMicrotask(() => unawaited(trust.nudgeShown(peer.userId)));
     }
+    // A claim is recorded once it is on screen (A11), not while a
+    // look-alike warning stands in its place.
+    if (notice?.kind == ChatTrustNoticeKind.claim && !trust.claimHolds(chat.id)) {
+      scheduleMicrotask(() => unawaited(trust.noteClaim(chat.id)));
+    }
     return notice;
   }
 
@@ -199,10 +204,7 @@ mixin ChatTrustNotices<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final startedByMe = trust.startedByMe(chat.id);
     final open = relationship == Relationship.changed || (relationship == Relationship.newContact && !startedByMe);
     if (!open) return false;
-    if (_claimFound || isKinHandle(peer.handle)) {
-      scheduleMicrotask(() => unawaited(trust.noteClaim(chat.id)));
-      return true;
-    }
+    if (_claimFound || isKinHandle(peer.handle)) return true;
     unawaited(_readClaims(trust, chat, peer, messages, startedByMe: startedByMe));
     return false;
   }

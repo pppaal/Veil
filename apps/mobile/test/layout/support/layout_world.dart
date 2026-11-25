@@ -118,6 +118,7 @@ class ChatAttention {
   /// The peer's identity key changed and the user has not reviewed it.
   /// With [failedSends] the change came during the morning: the chat says
   /// so where it happened, and our messages after it are the failed ones.
+  /// With [trust], the change is in the trust case's 1:1, by its peer.
   final bool identityChanged;
 
   /// Messages of ours that did not go out.
@@ -175,13 +176,18 @@ class ChatAttention {
   /// How many of the chat's warnings come with an action: reviewing the
   /// identity change (in this chat, or the one that waits in the group),
   /// releasing the held account, verifying a new account that says it is
-  /// family, or the nudge to verify Sam. Failed sends are retried from
-  /// their own bubbles, with no banner; the look-alike warning has none.
-  int get warningActionCount =>
-      (identityChanged ? 1 : 0) +
-      (identityChangedInGroup ? 1 : 0) +
-      (accountHeld ? 1 : 0) +
-      (trust == TrustCase.claim || trust == TrustCase.nudge ? 1 : 0);
+  /// family, or the nudge to verify Sam. Under an identity notice, whose
+  /// action is the chat's one, the claim keeps no Verify and the nudge does
+  /// not show (pickTrustNotice). Failed sends are retried from their own
+  /// bubbles, with no banner; the look-alike warning has none.
+  int get warningActionCount {
+    final identityNotice = identityChanged || identityChangedInGroup || accountHeld;
+    final trustAction = (trust == TrustCase.claim || trust == TrustCase.nudge) && !identityNotice;
+    return (identityChanged ? 1 : 0) +
+        (identityChangedInGroup ? 1 : 0) +
+        (accountHeld ? 1 : 0) +
+        (trustAction ? 1 : 0);
+  }
 }
 
 class LayoutWorld {
@@ -378,6 +384,8 @@ class LayoutWorld {
       trust: trust,
       attention: attention,
       peer: peer,
+      attentionChat: trustCase == null ? chatConversationId : trustChatOf(trustCase),
+      attentionPeer: trustCase == null ? peer : relay.partiesByHandle[trustPeerHandleOf(trustCase)] ?? peer,
       changedKey: identities.self.identityPublicKey,
       attachmentPaths: attachmentPaths,
       mediaIndex: mediaIndex,
@@ -573,6 +581,8 @@ class _LayoutMessenger extends VeilMessengerController {
     required IdentityTrust trust,
     required this.attention,
     required this.peer,
+    required this.attentionChat,
+    required this.attentionPeer,
     required this.changedKey,
     required AttachmentStoragePaths attachmentPaths,
     required MediaIndex mediaIndex,
@@ -595,6 +605,11 @@ class _LayoutMessenger extends VeilMessengerController {
 
   final ChatAttention attention;
   final RelayParty peer;
+
+  /// The 1:1 an identity change of [attention] is in, and its peer: Sam's
+  /// chat, or the trust case's.
+  final String attentionChat;
+  final RelayParty attentionPeer;
 
   /// The key the peer's device presents in a case whose identity changed:
   /// another key than the pinned one, so the safety number page shows two
@@ -620,13 +635,13 @@ class _LayoutMessenger extends VeilMessengerController {
 
   @override
   PendingIdentityChange? pendingIdentityChangeFor(String conversationId) =>
-      attention.identityChanged && conversationId == chatConversationId
+      attention.identityChanged && conversationId == attentionChat
           ? PendingIdentityChange(
               conversationId: conversationId,
-              userId: peer.userId,
-              deviceId: peer.deviceId,
+              userId: attentionPeer.userId,
+              deviceId: attentionPeer.deviceId,
               presentedKey: changedKey,
-              previousKey: peer.identity.identityPublicKey,
+              previousKey: attentionPeer.identity.identityPublicKey,
               requiresReverification: true,
             )
           : super.pendingIdentityChangeFor(conversationId);

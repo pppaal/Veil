@@ -20,9 +20,11 @@ import 'chat_room_labels.dart';
 /// What a message request offers and holds back (spec A5, A6). Until the
 /// user accepts the chat, the request bar takes the composer's place, and
 /// nothing that tells the other side what happened here goes out: no
-/// screenshot notice, no reaction, no timer change (read receipts and
-/// typing are held back by the messenger itself). Block, Report and Leave
-/// use the routes they always use, with the fields they always send.
+/// screenshot notice, no reaction, no timer change. The screen offers none
+/// of them; read receipts, typing and reactions (from the long press or a
+/// chip under a message alike) are also held back by the messenger itself
+/// (ReactionService). Block, Report and Leave use the routes they always
+/// use, with the fields they always send.
 mixin ChatRequestActions<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   String get conversationId;
 
@@ -38,12 +40,15 @@ mixin ChatRequestActions<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     if (conversation == null || !trust.isRequest(conversationId)) return null;
     final l10n = AppLocalizations.of(context);
     final names = ref.watch(peerNamesProvider);
+    // Read above the screen's shell, which keeps the slot out of the inset.
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
     if (conversation.type == ConversationType.group) {
       final localUserId = ref.read(messengerControllerProvider).localUserId;
       final title = conversationTitle(l10n, conversation, names, localUserId: localUserId);
       return ChatRequestBar(
         body: l10n.chatRequestGroupBody,
         acceptPrimary: !plainAccept,
+        bottomInset: bottomInset,
         onLeave: () => unawaited(_leaveGroup(title)),
         onAccept: _accept,
       );
@@ -55,6 +60,7 @@ mixin ChatRequestActions<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     return ChatRequestBar(
       body: l10n.chatRequestDirectBody(name),
       acceptPrimary: !plainAccept,
+      bottomInset: bottomInset,
       onBlock: !known ? null : () => unawaited(confirmAndBlock(context, userId: userId, handle: handle, name: name)),
       onReport: !known
           ? null

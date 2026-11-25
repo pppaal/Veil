@@ -56,7 +56,8 @@ void main() {
       tester,
       identities,
       location: '/conversations',
-      afterSession: (world) => strangerWrites(world, lookalikeHandle, lookalikeLines),
+      // It also says it is family, which the look-alike warning stands for.
+      afterSession: (world) => strangerWrites(world, lookalikeHandle, [...lookalikeLines, claimLines.first]),
       body: (world) async {
         await open(tester, lookalikeConversationId);
         expect(world.contactTrust.isRequest(lookalikeConversationId), isTrue);
@@ -72,6 +73,8 @@ void main() {
         expect(find.byType(ChatComposerBar), findsOneWidget, reason: 'accepted');
         expect(lookalikeTitle(), findsOneWidget, reason: 'Accept does not end the warning');
         expect(find.text(en.chatClaimTitle), findsNothing, reason: 'one trust banner at a time');
+        expect(world.contactTrust.claimHolds(lookalikeConversationId), isFalse,
+            reason: 'a claim is recorded once on screen, and this one never was');
 
         // Sam's own chat, which he is, has none.
         await open(tester, chatConversationId);

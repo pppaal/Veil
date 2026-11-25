@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
+import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/security/platform_security_service.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_request_bar.dart';
+import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/reactions.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_widget.dart';
@@ -195,6 +198,57 @@ void main() {
         expect(find.byKey(const ValueKey('chat-menu-timer')), findsOneWidget);
         await tester.tapAt(const Offset(20, 300));
         await pumpFrames(tester, frames: 3);
+      },
+    );
+  });
+
+  // The stranger's own reaction puts a chip under their line, and a chip
+  // takes a tap: in a request that tap sends nothing either.
+  testWidgets('a reaction chip in a request sends nothing, and reactions come back after Accept', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/chat/$strangerConversationId',
+      attention: const ChatAttention(trust: TrustCase.request),
+      prepare: (world) async {
+        final theirLast = world.relay.conversations[strangerConversationId]!.messages.last['id'] as String;
+        await sealLines(
+          world.relay,
+          strangerConversationId,
+          strangerHandle,
+          [ReactionPayload(target: theirLast, emoji: '\u{1F44D}', add: true).encode()],
+          firstAt: DateTime.utc(2026, 4, 7, 10, 9),
+          kind: MessageKind.reaction,
+        );
+        return null;
+      },
+      body: (world) async {
+        await pumpFrames(tester, frames: 6);
+        int relayed() => world.relay.conversations[strangerConversationId]!.messages.length;
+        final chip = find.descendant(of: find.byType(ReactionChipsRow), matching: find.byType(InkWell));
+        expect(chip, findsOneWidget, reason: "the stranger's reaction has no chip");
+        expect(world.contactTrust.isRequest(strangerConversationId), isTrue);
+        final before = relayed();
+
+        await tester.tap(chip);
+        await pumpFrames(tester, frames: 6);
+        expect(relayed(), before, reason: 'a reaction would tell the stranger the chat was seen');
+        expect(world.messenger.pendingCountFor(strangerConversationId), 0);
+        expect(world.contactTrust.isRequest(strangerConversationId), isTrue);
+
+        // Accepted, the long press offers reactions again and a chip tap
+        // sends one.
+        await tester.tap(barButton('accept'));
+        await pumpFrames(tester, frames: 4);
+        await tester.longPress(find.text(strangerLines.last));
+        await pumpFrames(tester, frames: 4);
+        expect(find.byType(ReactionPickerWidget), findsOneWidget, reason: 'an accepted chat takes reactions');
+        await tester.tapAt(const Offset(20, 120));
+        await pumpFrames(tester, frames: 4);
+        await tester.tap(chip);
+        await pumpFrames(tester, frames: 8);
+        expect(relayed(), before + 1, reason: 'an accepted chat sends the reaction');
+        expect(tester.takeException(), isNull);
       },
     );
   });

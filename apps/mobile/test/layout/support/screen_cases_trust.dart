@@ -14,10 +14,12 @@ import 'trust_seed.dart';
 
 // The layout cases of message requests and trust banners (trust_seed.dart):
 // a stranger's 1:1 request in Chats and open, a group request, a look-alike
-// of Sam's verified handle after Accept, a new account that says it is
-// family with its Verify, each of those two with the keyboard up too, and
-// the nudge to verify in Sam's busy chat while his number was never
-// compared. The seeds are English, as every layout seed is.
+// of Sam's verified handle after Accept and before it (over the request
+// bar), a new account that says it is family with its Verify, each of those
+// two with the keyboard up too, the claim under a "Safety number changed"
+// notice with the keyboard, and the nudge to verify in Sam's busy chat while
+// his number was never compared. The seeds are English, as every layout
+// seed is.
 
 final _en = lookupAppLocalizations(const Locale('en'));
 
@@ -85,6 +87,16 @@ const List<ScreenCase> trustScreenCases = [
     settle: _expectLookalike,
   ),
   ScreenCase(
+    'chat-lookalike-request',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$lookalikeConversationId',
+    attention: ChatAttention(trust: TrustCase.lookalikeRequest),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryExtent: minSqueezedMessagesExtent,
+    settle: _expectLookalikeRequest,
+  ),
+  ScreenCase(
     'chat-claim',
     screen: ChatRoomScreen,
     file: 'chat_room_screen.dart',
@@ -104,6 +116,17 @@ const List<ScreenCase> trustScreenCases = [
     primaryExtent: chatMessagesExtent,
     minPrimaryExtent: minSqueezedMessagesExtent,
     settle: _expectClaim,
+  ),
+  ScreenCase(
+    'chat-claim-identity-keyboard',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$claimConversationId',
+    attention: ChatAttention(trust: TrustCase.claim, identityChanged: true),
+    keyboardHeight: 300,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryExtent: minSqueezedMessagesExtent,
+    settle: _expectClaimUnderIdentity,
   ),
   ScreenCase(
     'chat-verify-nudge',
@@ -147,10 +170,30 @@ Future<void> _expectLookalike(WidgetTester tester) async {
   expect(find.byType(ChatComposerBar), findsOneWidget, reason: 'the chat was accepted');
 }
 
+// Before Accept: the warning, and under it the request bar, whose Accept is
+// as plain as Block and Report.
+Future<void> _expectLookalikeRequest(WidgetTester tester) async {
+  await pumpFrames(tester, frames: 8);
+  expect(find.text(_en.chatLookalikeTitle('Sam Rivera')), findsOneWidget, reason: 'the look-alike warning is not up');
+  expect(find.byType(ChatRequestBar), findsOneWidget, reason: 'the request bar is not in the composer\'s place');
+  expect(tester.widget(find.byKey(const ValueKey('request-accept'))), isA<TextButton>(),
+      reason: 'Accept is filled under the warning');
+}
+
 Future<void> _expectClaim(WidgetTester tester) async {
   await pumpFrames(tester, frames: 8);
   expect(find.text(_en.chatClaimTitle), findsOneWidget, reason: 'the claim banner is not up');
   expect(chatWarningActions(), findsOneWidget, reason: 'the claim banner has no Verify');
+}
+
+// Under the identity notice, whose Review is the chat's one action, the
+// claim keeps its title and loses its Verify.
+Future<void> _expectClaimUnderIdentity(WidgetTester tester) async {
+  await pumpFrames(tester, frames: 8);
+  expect(find.text(_en.chatClaimTitle), findsOneWidget, reason: 'the claim banner is not up');
+  expect(find.text(_en.chatIdentityChangedTitle), findsOneWidget, reason: 'the identity notice is not up');
+  expect(find.widgetWithText(TextButton, _en.chatIdentityChangedReview), findsOneWidget);
+  expect(find.widgetWithText(TextButton, _en.chatVerifyAction), findsNothing, reason: 'two banner actions');
 }
 
 Future<void> _expectNudge(WidgetTester tester) async {

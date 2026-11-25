@@ -18,8 +18,9 @@ import 'layout_world.dart';
 // this phone kept trust records (the baseline), and every nickname alex
 // gave is that old too: the old cases show no request and no trust banner.
 // The trust cases add a stranger's chat on top: a 1:1 request, a group
-// request, a look-alike of Sam's handle, a new account that says it is
-// family, or Sam's own chat with his number never compared (the nudge).
+// request, a look-alike of Sam's handle (accepted, or still a request), a
+// new account that says it is family, or Sam's own chat with his number
+// never compared (the nudge).
 
 /// Which trust state a chat of the cases is in (ChatAttention.trust).
 enum TrustCase {
@@ -32,6 +33,9 @@ enum TrustCase {
   /// sam.official, which imitates Sam's verified handle, wrote, and alex
   /// accepted the chat.
   lookalike,
+
+  /// sam.official wrote, and alex has not accepted the chat yet.
+  lookalikeRequest,
 
   /// jess.kim, a new account, wrote "Hi mum, this is my new number", and
   /// alex accepted the chat.
@@ -66,9 +70,18 @@ const claimLines = ['Hi mum, this is my new number', 'my old phone fell in the r
 String trustChatOf(TrustCase trustCase) => switch (trustCase) {
       TrustCase.request => strangerConversationId,
       TrustCase.groupRequest => strangerGroupId,
-      TrustCase.lookalike => lookalikeConversationId,
+      TrustCase.lookalike || TrustCase.lookalikeRequest => lookalikeConversationId,
       TrustCase.claim => claimConversationId,
       TrustCase.nudge => chatConversationId,
+    };
+
+/// The other party of the chat each case opens (for a group, the stranger
+/// who added alex).
+String trustPeerHandleOf(TrustCase trustCase) => switch (trustCase) {
+      TrustCase.request || TrustCase.groupRequest => strangerHandle,
+      TrustCase.lookalike || TrustCase.lookalikeRequest => lookalikeHandle,
+      TrustCase.claim => claimHandle,
+      TrustCase.nudge => peerHandle,
     };
 
 /// A party the relay knows, as user-[handle] on dev-[handle].
@@ -81,13 +94,15 @@ RelayParty trustParty(FakeRelay relay, LayoutIdentities identities, String handl
 }
 
 /// Seals [lines] from [from] into [conversationId] as the relay stores
-/// them, one minute apart from [firstAt], before this phone lists anything.
+/// them, one minute apart from [firstAt], as messages of [kind] (a reaction
+/// line is an encoded ReactionPayload).
 Future<void> sealLines(
   FakeRelay relay,
   String conversationId,
   String from,
   List<String> lines, {
   required DateTime firstAt,
+  MessageKind kind = MessageKind.text,
 }) async {
   final sealer = createDefaultCryptoAdapter();
   for (final (index, body) in lines.indexed) {
@@ -96,7 +111,7 @@ Future<void> sealLines(
       senderDeviceId: 'dev-$from',
       recipientUserId: 'user-$selfHandle',
       body: body,
-      messageKind: MessageKind.text,
+      messageKind: kind,
       recipientBundle: const KeyBundle(
         userId: 'user-$selfHandle',
         deviceId: 'dev-$selfHandle',
@@ -128,7 +143,7 @@ Future<void> seedTrustChat(FakeRelay relay, LayoutIdentities identities, TrustCa
       relay.addGroup(strangerGroupId, [strangerHandle, selfHandle, strangerGroupMember],
           useSenderKeys: false, name: strangerGroupName);
       await sealLines(relay, strangerGroupId, strangerHandle, strangerGroupLines, firstAt: at);
-    case TrustCase.lookalike:
+    case TrustCase.lookalike || TrustCase.lookalikeRequest:
       trustParty(relay, identities, lookalikeHandle);
       relay.addDirect(lookalikeConversationId, selfHandle, lookalikeHandle);
       await sealLines(relay, lookalikeConversationId, lookalikeHandle, lookalikeLines, firstAt: at);
@@ -194,6 +209,7 @@ Future<void> writeTrustDocument(
     TrustCase.request => (requests: {strangerConversationId}, acceptedAt: const {}),
     TrustCase.groupRequest => (requests: {strangerGroupId}, acceptedAt: const {}),
     TrustCase.lookalike => (requests: const {}, acceptedAt: {lookalikeConversationId: accepted}),
+    TrustCase.lookalikeRequest => (requests: {lookalikeConversationId}, acceptedAt: const {}),
     TrustCase.claim => (requests: const {}, acceptedAt: {claimConversationId: accepted}),
     TrustCase.nudge || null => (requests: const {}, acceptedAt: const {}),
   };

@@ -10,7 +10,8 @@ import '../../../shared/presentation/veil_ui.dart';
 /// Block (in red), Report and Accept; in a group Leave and Accept. Accept
 /// is the filled one unless a warning about the account is up, when it is
 /// as plain as the others. Nothing here can be dismissed: the chat stays a
-/// request until the user accepts it.
+/// request until the user accepts it. It is a panel set off the chat in
+/// both themes, whose fill runs on under it through [bottomInset].
 class ChatRequestBar extends StatelessWidget {
   const ChatRequestBar({
     super.key,
@@ -20,6 +21,7 @@ class ChatRequestBar extends StatelessWidget {
     this.onBlock,
     this.onReport,
     this.onLeave,
+    this.bottomInset = 0,
   });
 
   /// The line under the title: what the other side will not know until
@@ -36,6 +38,11 @@ class ChatRequestBar extends StatelessWidget {
 
   /// Set in a group.
   final VoidCallback? onLeave;
+
+  /// The screen's bottom inset (the home indicator's strip) under the
+  /// composer slot, which the panel's fill covers too, so the panel does
+  /// not stop short above a strip of the page's colour.
+  final double bottomInset;
 
   static const double _buttonHeight = 44;
 
@@ -68,8 +75,11 @@ class ChatRequestBar extends StatelessWidget {
       if (onLeave case final onLeave?) plain('request-leave', l10n.chatRequestLeave, onLeave),
       accept,
     ];
-    return ColoredBox(
-      color: palette.surface,
+    // The light theme's surface is its page, so there the panel takes the
+    // grouped pages' grey.
+    final fill = theme.brightness == Brightness.light ? palette.canvasAlt : palette.surface;
+    return CustomPaint(
+      painter: _PanelFill(fill, below: bottomInset),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.sm, VeilSpace.md, VeilSpace.sm),
         child: Column(
@@ -98,4 +108,19 @@ class ChatRequestBar extends StatelessWidget {
       ),
     );
   }
+}
+
+// The panel's fill, carried [below] its bottom edge into the inset.
+class _PanelFill extends CustomPainter {
+  const _PanelFill(this.color, {required this.below});
+
+  final Color color;
+  final double below;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height + below), Paint()..color = color);
+
+  @override
+  bool shouldRepaint(_PanelFill old) => old.color != color || old.below != below;
 }

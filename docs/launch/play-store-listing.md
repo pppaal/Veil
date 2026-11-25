@@ -58,10 +58,10 @@ IARC rating questionnaire should be answered honestly:
 
 - User-generated content: YES (we ship a messenger)
 - Encrypted UGC not visible to the developer: YES
-- In-app reporting: YES. A chat's menu, a message's long-press sheet, a
+- In-app reporting: YES. A 1:1's menu, a message's long-press sheet, a
   contact's sheet and the bar of a 1:1 message request file a report
   (`POST /safety/reports`): the account, the reason and which chat or
-  message, never its text. The same chat menu, contact sheet and request bar
+  message, never its text. The same 1:1 menu, contact sheet and request bar
   block an account, and Settings > Privacy > Blocked accounts lists them.
   Google Play expects both in an app with user-generated content.
 - Interactive features: chat only; no live video to strangers, no

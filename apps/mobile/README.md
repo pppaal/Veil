@@ -262,19 +262,20 @@ first with a sheet that shows the domain and the whole address: the plain
 sheet (Open, Copy link), or the strong one (Don't open, then Open anyway in
 red, and Copy link) for a link to an app file, a short link or hidden host,
 or a domain that only looks like a known site's. A host with a %-escape, a
-non-Latin letter, a full stop other than "." or an `xn--` label gets the
-strong sheet from anyone, and every sheet names the domain a browser would
-open (escapes decoded, other full stops read as dots, a non-Latin label in
-its `xn--` form). naver.me, kko.to and me2.do get the plain sheet, unless
-the link is an app download, hidden or a look-alike, which `linkRiskOf`
-checks first. Open hands that exact address to another app through
-`url_launcher` 6.3.2, for http and https only. It adds no permission: its
-Android plugin brings one activity, `WebViewActivity`, which is not
-exported and which the app does not use, and the app's manifest gains a
-`<queries>` entry for https links. Opening a link leaves Veil, so with App
-lock on, coming back locks it. The phone never fetches, previews or expands
-a link. Opening or saving a received app file asks first through the strong
-sheet.
+character outside ASCII (a full stop other than "." included) or an `xn--`
+label gets the strong sheet from anyone, and every sheet names the domain a
+browser would open (escapes decoded, other full stops read as dots,
+full-width letters and digits read as plain ones, any label still outside
+ASCII in its `xn--` form). naver.me, kko.to and me2.do get the plain sheet,
+unless the link is an app download, hidden or a look-alike, which
+`linkRiskOf` checks first. Open hands that exact address to another app
+through `url_launcher` 6.3.2, for http and https only. It adds no
+permission: its Android plugin brings one activity, `WebViewActivity`,
+which is not exported and which the app does not use, and the app's
+manifest gains a `<queries>` entry for https links. Opening a link leaves
+Veil, so with App lock on, coming back locks it. The phone never fetches,
+previews or expands a link. Opening or saving a received app file asks
+first through the strong sheet.
 
 **Known limits.**
 

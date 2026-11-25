@@ -369,10 +369,16 @@ const declaresTest = (source, name) =>
 // A test that does not run backs nothing. A skipped or focused block can stop
 // the named test from running without touching its line, so any such marker
 // in the file disqualifies the whole file as evidence: Node's and Vitest's
-// .skip, .only and x/f prefixes, and flutter_test's skip: argument (any value
-// but false, on a test, a testWidgets or a group) and @Skip library mark.
+// .skip, .only and x/f prefixes, and in a Dart file flutter_test's skip:
+// argument (any value but false, on a test, a testWidgets or a group) and
+// @Skip library mark. Only Dart files are read for skip:, which a JavaScript
+// or TypeScript test may pass for other reasons (a query's { skip: 20 }).
 const SKIPS_TESTS =
-  /\b(?:describe|context|suite|it|test)\.(?:skip|only|todo)\b|\bx(?:describe|it|test)\(|\bf(?:describe|it)\(|\bskip\s*:(?!\s*false\b)|@Skip\b/;
+  /\b(?:describe|context|suite|it|test)\.(?:skip|only|todo)\b|\bx(?:describe|it|test)\(|\bf(?:describe|it)\(/;
+const DART_SKIPS_TESTS = /\bskip\s*:(?!\s*false\b)|@Skip\b/;
+
+const skipsTests = (path, source) =>
+  SKIPS_TESTS.test(source) || (path.endsWith('.dart') && DART_SKIPS_TESTS.test(source));
 
 function evidenceProblems(rootDir, evidence, ciScripts) {
   if (evidence.test !== undefined) {
@@ -385,7 +391,7 @@ function evidenceProblems(rootDir, evidence, ciScripts) {
     if (!declaresTest(source, evidence.name)) {
       return [`${evidence.test} has no test named "${evidence.name}"`];
     }
-    return SKIPS_TESTS.test(source)
+    return skipsTests(evidence.test, source)
       ? [`${evidence.test} skips or focuses tests, so "${evidence.name}" may not run`]
       : [];
   }

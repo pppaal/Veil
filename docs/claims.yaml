@@ -426,7 +426,7 @@ claims:
     text: "The mobile app reports and blocks accounts and mutes chats. A report holds the reporter's account, the reported account, the reason and which chat or message, never what it says; the server refuses a 1:1 send across a block in either direction; a muted chat raises no notification on the phone, and the server is told so it wakes no device for it."
     sources:
       - file: README.md
-        quote: "Block, report and mute: from a chat's menu, a message's long-press sheet, a contact's sheet and a 1:1 request's bar, with Settings > Privacy > Blocked accounts; a muted chat raises no notification on the phone"
+        quote: "Block, report and mute: block or report from a 1:1's menu, a contact's sheet or a 1:1 request's bar, report from a message's long-press sheet, mute from a chat's menu or a long press on its Chats row, and unblock in Settings > Privacy > Blocked accounts; a muted chat raises no notification on the phone"
       - file: store/play/full-en.txt
         quote: "Block or report someone, and mute a chat"
       - file: store/appstore/metadata-en.txt
@@ -434,7 +434,7 @@ claims:
       - file: docs/launch/play-store-listing.md
         quote: "Block or report someone, and mute a chat"
       - file: docs/launch/play-store-listing.md
-        quote: "A chat's menu, a message's long-press sheet, a contact's sheet and the bar of a 1:1 message request file a report (POST /safety/reports): the account, the reason and which chat or message, never its text."
+        quote: "A 1:1's menu, a message's long-press sheet, a contact's sheet and the bar of a 1:1 message request file a report (POST /safety/reports): the account, the reason and which chat or message, never its text."
       - file: docs/launch/app-store-listing.md
         quote: "Block or report someone, and mute a chat"
       - file: docs/launch/app-store-listing.md
@@ -582,7 +582,7 @@ claims:
       - test: apps/mobile/test/chat/chat_trust_notice_test.dart
         name: "the checks look at the one other party of a 1:1 or a two-person group only"
   - id: link-confirm
-    text: "Links in messages open only after a sheet that shows the real domain and the exact address the phone will open, unless the message is the user's own or from a verified contact in an accepted chat and the link looks ordinary; a link to an app file, a short link, an IP address or other hidden host (an escape, a non-Latin letter or punycode in it included), or a domain that imitates a known site gets a stronger sheet from anyone. A company's own short link (naver.me, kko.to, me2.do) gets the plain sheet, not a stronger one, unless it is also an app file, hidden or a look-alike. The phone never fetches, previews or expands a link; it hands the exact address to another app (url_launcher, http and https only) once Open is tapped."
+    text: "Links in messages open only after a sheet that shows the real domain and the exact address the phone will open, unless the message is the user's own or from a verified contact in an accepted chat and the link looks ordinary; a link to an app file, a short link, an IP address or other hidden host (an escape, a character outside ASCII or punycode in it included), or a domain that imitates a known site gets a stronger sheet from anyone. A company's own short link (naver.me, kko.to, me2.do) gets the plain sheet, not a stronger one, unless it is also an app file, hidden or a look-alike. The phone never fetches, previews or expands a link; it hands the exact address to another app (url_launcher, http and https only) once Open is tapped."
     sources:
       - file: README.md
         quote: "A link asks before it opens unless it is your own or from a verified contact, and an app-file, hidden or look-alike link always asks."

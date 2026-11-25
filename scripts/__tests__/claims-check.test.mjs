@@ -101,28 +101,34 @@ test('a Dart test marked with a skip argument is not evidence', () => {
   // flutter_test skips a test, a testWidgets or a whole group given any
   // skip: other than false, or a library marked @Skip, without touching
   // the line that names the test.
+  const ledger = LEDGER.replace('tests/crypto.test.mjs', 'test/crypto_test.dart');
+  const dart = (source) =>
+    checkClaims(tree({ 'docs/claims.yaml': ledger, 'test/crypto_test.dart': source }));
   for (const source of [
     "test('encrypts on the device', () {}, skip: true);\n",
     "testWidgets('encrypts on the device', (tester) async {}, skip: 'flaky');\n",
     "group('crypto', () {\n  test('encrypts on the device', () {});\n}, skip: isCi);\n",
     "@Skip('needs a device')\nlibrary;\n\nvoid main() {\n  test('encrypts on the device', () {});\n}\n",
   ]) {
-    assert.deepEqual(checkClaims(tree({ 'tests/crypto.test.mjs': source })), [
-      'e2e: tests/crypto.test.mjs skips or focuses tests, so "encrypts on the device" may not run',
+    assert.deepEqual(dart(source), [
+      'e2e: test/crypto_test.dart skips or focuses tests, so "encrypts on the device" may not run',
     ]);
   }
   // skip: false runs the test, and a finder's skipOffstage: is no skip.
+  assert.deepEqual(dart("test('encrypts on the device', () {}, skip: false);\n"), []);
   assert.deepEqual(
-    checkClaims(
-      tree({ 'tests/crypto.test.mjs': "test('encrypts on the device', () {}, skip: false);\n" }),
-    ),
+    dart("test('encrypts on the device', () {\n  find.byType(Text, skipOffstage: false);\n});\n"),
     [],
   );
+});
+
+test('a skip: in a JavaScript test is not read as a skipped test', () => {
+  // Outside Dart, skip: is an ordinary key: a query's page offset, say.
   assert.deepEqual(
     checkClaims(
       tree({
         'tests/crypto.test.mjs':
-          "test('encrypts on the device', () {\n  find.byType(Text, skipOffstage: false);\n});\n",
+          "test('encrypts on the device', async () => {\n  await rows.findMany({ skip: 20 });\n});\n",
       }),
     ),
     [],

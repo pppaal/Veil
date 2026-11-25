@@ -79,9 +79,9 @@ privacy policy needed no change. The code is in
   verified, saved, known or new from facts a stranger cannot create in
   minutes: a verified safety number, a nickname at least a week old, or a
   chat accepted at least a week ago in which this phone sent a text or file.
-  An identity key check that read the directory before a newer "safety
-  number changed" event can no longer clear that event, so a slow or cached
-  answer cannot hide a change (`identity_trust.dart`).
+  In a 1:1 chat, an identity key check that read the directory before a
+  newer "safety number changed" event can no longer clear that event
+  (`identity_trust.dart`, `peer_session_resolver.dart`).
 - **Warnings.** Fixed rules (not a model) put one line under a message that
   looks like a common scam, more readily from a new or changed account. A
   banner warns, until the account is verified, when a handle looks like a

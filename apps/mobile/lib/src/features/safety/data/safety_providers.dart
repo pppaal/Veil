@@ -74,12 +74,15 @@ final verifiedAccountsProvider = ChangeNotifierProvider<VerifiedAccounts>((ref) 
 /// messengerControllerProvider wires its receipts, typing, fetches, sends
 /// and notifications to, and attaches. Read [contactTrustProvider] instead.
 final unattachedContactTrustProvider = Provider<ContactTrust>((ref) {
+  final storage = ref.read(secureStorageProvider);
   final trust = ContactTrust(
-    store: ContactTrustStore(ref.read(secureStorageProvider).scoped(SecureScope.conversationPolicy)),
+    store: ContactTrustStore(storage.scoped(SecureScope.conversationPolicy), wipesBegun: () => storage.wipesBegun),
     verified: ref.read(verifiedAccountsProvider),
   );
-  // Forgotten at once on sign-out, before the wipe clears the stored document,
-  // so no write still pending puts it back.
+  // The wipe runs before the session reads signed out: from its start the
+  // store drops every write, and at the flip forget() deletes the stored
+  // document behind any write queued before the wipe, so the next account
+  // on this phone does not inherit it.
   ref.listen<AppSessionState>(appSessionProvider, (previous, next) {
     if ((previous?.isAuthenticated ?? false) && !next.isAuthenticated) trust.forget();
   });

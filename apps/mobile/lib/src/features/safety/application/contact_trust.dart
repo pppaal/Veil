@@ -78,6 +78,12 @@ class ContactTrust extends ChangeNotifier {
   int _generation = 0;
   String? _userId;
   ContactTrustDocument _doc = ContactTrustDocument.empty();
+  // The store's count of wipes when the document was read: a write once a
+  // wipe began since is dropped (ContactTrustStore.write).
+  int? _wipesSeen;
+  // New devices admitted while the document is read or between retries,
+  // by account: recorded once it is read.
+  final Map<String, int> _changedWhileLoading = {};
   Timer? _writeTimer;
   Future<void>? _writing;
   bool _dirty = false;
@@ -199,14 +205,22 @@ class ContactTrust extends ChangeNotifier {
   /// sends the read receipt held back for what was read.
   Future<void> accept(String conversationId) => _accept(conversationId);
 
-  /// Opens the 1:1 with the handle the user typed and accepts it, as
-  /// started by me. Null when the messenger could not open it.
+  /// Opens the 1:1 with the handle the user typed and accepts it. It is
+  /// started by me only when it is new: the relay hands back a chat that
+  /// already exists, and one whose record is older than this call, or in
+  /// which the peer already wrote, was started by them (a stranger who
+  /// wrote first and then gave the handle). Null when the messenger could
+  /// not open it.
   Future<String?> startDirect(String handle) async {
     final facade = _facade;
     if (facade == null) return null;
+    final generation = _generation;
+    // Null while the document is not read: then no chat counts as new.
+    final before = _writable ? _doc.chats.keys.toSet() : null;
     final id = await facade.startConversationByHandle(handle);
-    if (id == null || !_writable) return id;
-    _recordFor(id).typed = true;
+    if (id == null || !_writable || generation != _generation) return id;
+    final theyWrote = facade.messagesFor(id).any((message) => !message.isMine && !message.isLocalNotice);
+    if (before != null && !before.contains(id) && !theyWrote) _recordFor(id).typed = true;
     await _accept(id, changed: true);
     return id;
   }
@@ -266,7 +280,9 @@ class ContactTrust extends ChangeNotifier {
     final done = Completer<void>();
     _writing = done.future;
     try {
-      await _store.write(_doc);
+      // False once a sign-out or wipe began: nothing more is written for
+      // this account.
+      await _store.write(_doc, wipesSeen: _wipesSeen);
     } catch (_) {
       // Kept in memory; the next change writes it again.
       if (generation == _generation) _dirty = true;
@@ -320,10 +336,16 @@ class ContactTrust extends ChangeNotifier {
   }
 
   /// Forgets what was read for the account that signed out; nothing still
-  /// pending is written. The next sign-in reads the document again.
+  /// pending is written, and the stored document is deleted behind any
+  /// write already queued (the wipe before the sign-out cleared it, but a
+  /// write may have been queued since). The next sign-in reads the
+  /// document again.
   void forget() {
     _signedOut();
     _userId = null;
+    unawaited(_store.forget().catchError((Object _) {
+      // The wipe that signed the account out cleared the keystore already.
+    }));
   }
 
   void _signedOut() {
@@ -336,6 +358,8 @@ class ContactTrust extends ChangeNotifier {
     _failures = 0;
     _retryNotBefore = null;
     _doc = ContactTrustDocument.empty();
+    _wipesSeen = null;
+    _changedWhileLoading.clear();
     verified.clear();
     _notify();
   }
@@ -345,6 +369,7 @@ class ContactTrust extends ChangeNotifier {
   Future<void> _read() async {
     final generation = _generation;
     _phase = _Phase.loading;
+    final wipes = _store.wipesBegun;
     ContactTrustDocument? stored;
     try {
       stored = await _store.read();
@@ -354,6 +379,7 @@ class ContactTrust extends ChangeNotifier {
       _failures += 1;
       if (_failures > _retryDelays.length) {
         _phase = _Phase.degraded;
+        _changedWhileLoading.clear();
         _log('The contact trust document could not be read; message requests are off until the next sign-in.');
         _notify();
         return;
@@ -364,7 +390,13 @@ class ContactTrust extends ChangeNotifier {
     }
     if (generation != _generation || _disposed) return;
     _doc = stored ?? ContactTrustDocument.empty();
+    _wipesSeen = wipes;
     _phase = _Phase.loaded;
+    if (_changedWhileLoading.isNotEmpty) {
+      _doc.changed.addAll(_changedWhileLoading);
+      _changedWhileLoading.clear();
+      unawaited(_changed());
+    }
     _noteNicknames();
     _sync();
     // A receipt the wait for the document held back in the open chat.
@@ -513,7 +545,14 @@ class ContactTrust extends ChangeNotifier {
   }
 
   void _onTrustEvent(IdentityTrustEvent event) {
-    if (event is! NewDeviceAdmitted || !_writable) return;
+    if (event is! NewDeviceAdmitted) return;
+    // While the document is read or a read waits for its retry, kept for
+    // when it is read: nothing replays the event.
+    if (_phase == _Phase.loading || _phase == _Phase.failed) {
+      _changedWhileLoading[event.userId] = _nowMs();
+      return;
+    }
+    if (!_writable) return;
     _doc.changed[event.userId] = _nowMs();
     unawaited(_changed());
   }
@@ -553,10 +592,13 @@ class ContactTrust extends ChangeNotifier {
           chat.type == ConversationType.direct && chat.recipientBundle.userId == userId && _directKnown(chat.id, at)) ??
       false;
 
+  // A text or file this phone sent counts only from when it was sent: a
+  // reply to a stranger's ask does not make the ask a known sender's.
   bool _directKnown(String conversationId, DateTime at) {
     final record = _doc.chats[conversationId];
     if (record == null) return false;
-    return record.mine0 || (record.sent != null && _acceptedWeekBefore(record, at));
+    final sent = record.sent;
+    return record.mine0 || (sent != null && sent <= at.millisecondsSinceEpoch && _acceptedWeekBefore(record, at));
   }
 
   static bool _acceptedWeekBefore(ChatTrustRecord record, DateTime at) {
@@ -589,7 +631,8 @@ class ContactTrust extends ChangeNotifier {
   }
 
   // The handle this phone knows [userId] by: the one a 1:1 is bound under,
-  // else the one a 1:1 is listed under.
+  // else the one a 1:1 is listed under, else the one a listed group lists
+  // the member under (a contact verified from a group's member page).
   String? _handleOf(String userId) {
     final facade = _facade;
     if (facade == null) return null;
@@ -598,6 +641,12 @@ class ContactTrust extends ChangeNotifier {
     }
     for (final chat in facade.conversations) {
       if (chat.type == ConversationType.direct && chat.recipientBundle.userId == userId) return chat.peerHandle;
+    }
+    for (final chat in facade.conversations) {
+      if (chat.type == ConversationType.direct) continue;
+      for (final member in chat.members) {
+        if (member.userId == userId && member.handle.isNotEmpty) return member.handle;
+      }
     }
     return null;
   }

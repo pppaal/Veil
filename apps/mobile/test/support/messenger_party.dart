@@ -323,7 +323,10 @@ class MessengerParty {
     if (requests) {
       verifiedAccounts = VerifiedAccounts(trust);
       contactTrust = ContactTrust(
-        store: ContactTrustStore(_RefusingReads(keystore.scoped(SecureScope.conversationPolicy), this)),
+        store: ContactTrustStore(
+          _RefusingReads(keystore.scoped(SecureScope.conversationPolicy), this),
+          wipesBegun: () => keystore.wipesBegun,
+        ),
         verified: verifiedAccounts,
         clock: () => clock(),
         retryDelays: trustRetryDelays,

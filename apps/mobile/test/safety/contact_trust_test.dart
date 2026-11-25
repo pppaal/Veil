@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
+import 'package:veil_mobile/src/features/safety/application/relationship.dart';
 import 'package:veil_mobile/src/features/safety/data/contact_trust_store.dart';
 
 import '../support/async_wait.dart';
@@ -216,5 +217,44 @@ void main() {
     // Nothing is written over what the keystore may still hold.
     await alice.contactTrust.flush();
     expect(await alice.keystore.scoped(SecureScope.conversationPolicy).read(ContactTrustStore.documentKey), isNull);
+  });
+
+  test('a new device admitted while the trust document waits for a retry is recorded once it is read', () async {
+    var now = DateTime.utc(2026, 11, 20, 9);
+    alice.clock = () => now;
+    await alice.signIn();
+    await bob.signIn();
+    await trustReady(alice);
+    await deliver(bob, alice, 'conv-bob', 'hi from my phone');
+
+    // The next start cannot read the document at first.
+    alice.failTrustReads = 1;
+    await alice.restart();
+    await settle();
+    expect(alice.failTrustReads, 0, reason: 'the first read was not made');
+    expect(alice.contactTrust.ready, isFalse);
+
+    // Meanwhile a device bob never had opens a message to alice: bob is
+    // not verified, so it is admitted, and the trust layer hears of it once.
+    final newPhone = await MessengerParty.join(relay, handle: 'bob', userId: 'user-bob', deviceId: 'dev-bob-2');
+    addTearDown(newPhone.dispose);
+    await newPhone.signIn();
+    await newPhone.controller.refreshConversations();
+    await newPhone.controller.sendText(conversationId: 'conv-bob', body: 'new phone, same bob');
+    await waitFor(() => newPhone.controller.pendingCountFor('conv-bob') == 0, reason: 'the new phone did not send');
+    await waitFor(() async => (await alice.bodies('conv-bob')).contains('new phone, same bob'),
+        reason: 'the new phone\'s message did not open');
+    final admittedAt = now;
+
+    // The retry reads the document, and the admission is in it.
+    now = now.add(const Duration(seconds: 1));
+    await alice.controller.refreshConversations();
+    await trustReady(alice);
+    final stored = await storedTrust(alice);
+    expect(stored!.changed['user-bob'], admittedAt.millisecondsSinceEpoch, reason: 'the new device was lost');
+    expect(
+      alice.contactTrust.relationshipAt('user-bob', 'bob', chat: alice.controller.conversationById('conv-bob')!, at: now),
+      Relationship.changed,
+    );
   });
 }

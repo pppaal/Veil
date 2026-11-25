@@ -78,7 +78,12 @@ privacy policy needed no change. The code is in
 - **Who each account is.** The phone ranks every account as changed,
   verified, saved, known or new from facts a stranger cannot create in
   minutes: a verified safety number, a nickname at least a week old, or a
-  chat accepted at least a week ago in which this phone sent a text or file.
+  1:1 accepted at least a week before the message in which this phone had
+  sent a text or file by then (a reply sent after the message does not
+  count). In a group, a member also counts as known through that group
+  when the user created it, when it was accepted at least a week before
+  the message, or when it was listed at the first run, members added
+  later included; otherwise only through the user's own 1:1 with them.
   In a 1:1 chat, an identity key check that read the directory before a
   newer "safety number changed" event can no longer clear that event
   (`identity_trust.dart`, `peer_session_resolver.dart`).
@@ -119,6 +124,9 @@ Limits that stay in this version:
   phone: the server marks delivery when the phone fetches the message
 - in a group with more than one other member there is no look-alike or
   family-claim banner
+- in a group listed at the first run, or accepted a week or more ago,
+  every member counts as known, one added to it later included: a scammer
+  added to such a group gets a known sender's lines, not a stranger's
 - the lock-screen notification for a request says only "Message request",
   but the Android beta has no push notifications, so this applies only
   where the app raises notifications

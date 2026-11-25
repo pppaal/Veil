@@ -426,7 +426,7 @@ claims:
     text: "The mobile app reports and blocks accounts and mutes chats. A report holds the reporter's account, the reported account, the reason and which chat or message, never what it says; the server refuses a 1:1 send across a block in either direction; a muted chat raises no notification on the phone, and the server is told so it wakes no device for it."
     sources:
       - file: README.md
-        quote: "Block, report and mute: from a chat's menu, a message's long-press sheet and a contact's sheet, with Settings > Privacy > Blocked accounts; a muted chat raises no notification on the phone"
+        quote: "Block, report and mute: from a chat's menu, a message's long-press sheet, a contact's sheet and a 1:1 request's bar, with Settings > Privacy > Blocked accounts; a muted chat raises no notification on the phone"
       - file: store/play/full-en.txt
         quote: "Block or report someone, and mute a chat"
       - file: store/appstore/metadata-en.txt
@@ -434,7 +434,7 @@ claims:
       - file: docs/launch/play-store-listing.md
         quote: "Block or report someone, and mute a chat"
       - file: docs/launch/play-store-listing.md
-        quote: "A chat's menu, a message's long-press sheet and a contact's sheet file a report (POST /safety/reports): the account, the reason and which chat or message, never its text."
+        quote: "A chat's menu, a message's long-press sheet, a contact's sheet and the bar of a 1:1 message request file a report (POST /safety/reports): the account, the reason and which chat or message, never its text."
       - file: docs/launch/app-store-listing.md
         quote: "Block or report someone, and mute a chat"
       - file: docs/launch/app-store-listing.md
@@ -448,6 +448,10 @@ claims:
         name: "a report carries the account, the reason and where it was filed from, nothing else"
       - test: apps/mobile/test/safety/safety_relay_test.dart
         name: "a block refuses sends both ways until it is lifted"
+      - test: apps/mobile/test/phone/message_request_phone_test.dart
+        name: "a request shows Block, Report and Accept in place of the composer"
+      - test: apps/mobile/test/safety/message_request_relay_test.dart
+        name: "a report from a request carries the same fields as any report"
       - test: apps/mobile/test/safety/safety_relay_test.dart
         name: "a muted chat raises no notification until the mute ends"
       - test: apps/mobile/test/safety/app_notification_filter_test.dart
@@ -479,6 +483,8 @@ claims:
         quote: "Chats from accounts you haven't talked to wait as requests."
       - file: store/appstore/app-review-notes.md
         quote: 'On B, the chat from A waits as a message request: Chats shows "Message request" in place of the text, and the chat shows Block, Report and Accept where the text field would be.'
+      - file: store/appstore/app-review-notes.md
+        quote: "On B the group waits as a request too, with Leave and Accept, unless B has verified A; tap Accept."
     evidence:
       - test: apps/mobile/test/safety/contact_trust_test.dart
         name: "chats on the phone before the update are accepted, a new stranger's chat is a request"
@@ -509,7 +515,7 @@ claims:
       - test: apps/mobile/test/integration/hostile_relay_test.dart
         name: "a frame the relay labels as mine does not accept a stranger's chat"
   - id: on-device-scam-warnings
-    text: "Scam warnings are fixed rules that run on the phone, not a model and not a server: a line under someone else's message names one reason (a family or new-phone claim, a money, gift card, code or ID ask, a remote-control app, an app file, a hidden or look-alike link, a fake delivery, bank, police, government or investment message), and a file named .apk, .xapk or .apks gets the app-file line from any sender and asks before it opens or saves. The checker imports nothing that can reach the network, and neither the text, the result nor the matched words go anywhere; a report from a flagged message carries the same fields as any report. Rules can be dodged, so a message with no warning can still be a scam."
+    text: "Scam warnings are fixed rules that run on the phone, not a model and not a server: a line under someone else's message names one reason (a family or new-phone claim, a money, gift card, code or ID ask, a remote-control app, an app file, a hidden or look-alike link, a fake delivery, bank, police, government or investment message), and a file named .apk, .xapk or .apks gets the app-file line from any sender and asks before it opens or saves. The checker imports nothing that can reach the network, and neither the text, the result nor the matched words go anywhere; a report from a message request carries the same fields as any report and none of the message's text. Rules can be dodged, so a message with no warning can still be a scam."
     sources:
       - file: README.md
         quote: "Message requests and scam warnings, worked out on the phone by fixed rules that send nothing: not the text they read, their result or a link."
@@ -576,7 +582,7 @@ claims:
       - test: apps/mobile/test/chat/chat_trust_notice_test.dart
         name: "the checks look at the one other party of a 1:1 or a two-person group only"
   - id: link-confirm
-    text: "Links in messages open only after a sheet that shows the real domain and the address as written, unless the message is the user's own or from a verified contact in an accepted chat; a link to an app file, a short link, an IP address or other hidden host, or a domain that imitates a known site gets a stronger sheet from anyone. The phone never fetches, previews or expands a link; it hands the exact address to another app (url_launcher, http and https only) once Open is tapped."
+    text: "Links in messages open only after a sheet that shows the real domain and the exact address the phone will open, unless the message is the user's own or from a verified contact in an accepted chat and the link looks ordinary; a link to an app file, a short link, an IP address or other hidden host (an escape, a non-Latin letter or punycode in it included), or a domain that imitates a known site gets a stronger sheet from anyone. A company's own short link (naver.me, kko.to, me2.do) gets the plain sheet, not a stronger one, unless it is also an app file, hidden or a look-alike. The phone never fetches, previews or expands a link; it hands the exact address to another app (url_launcher, http and https only) once Open is tapped."
     sources:
       - file: README.md
         quote: "A link asks before it opens unless it is your own or from a verified contact, and an app-file, hidden or look-alike link always asks."
@@ -589,3 +595,7 @@ claims:
         name: "the phone opens nothing and fetches nothing until Open is tapped, then opens that exact link once"
       - test: apps/mobile/test/safety/risk/link_rules_test.dart
         name: "app files, short links and look-alike domains are risky; everyday domains are not"
+      - test: apps/mobile/test/safety/risk/link_rules_test.dart
+        name: "a host is read the way a browser reads it, and any escape or non-Latin letter in it hides the link"
+      - test: apps/mobile/test/chat/link_confirm_test.dart
+        name: "a host written to look like another gets the strong sheet with the domain a browser would open"

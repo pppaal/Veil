@@ -31,10 +31,9 @@ Studio. Plan for about an hour. There is no iPhone build yet.
 
 - A PC with Docker (Docker Desktop on Windows or Mac) and Git. On Windows, run
   the commands below in Git Bash, which comes with Git.
-- This repository on GitHub with the `beta/apk` branch pushed, and a copy of
-  it on the PC. If these changes live on another branch by now (for example
-  merged into `main`), use that branch name wherever this guide says
-  `beta/apk`.
+- This repository on GitHub, and a copy of it on the PC. The work lives on the
+  branch `ccr-1c581661-1oin16` (pull request #65). If it has been merged into
+  `main` by now, use `main` wherever this guide says `ccr-1c581661-1oin16`.
 - A free Cloudflare account with a domain name on it. Any cheap domain works.
   A domain bought through Cloudflare is ready at once. Moving a domain you
   already own to Cloudflare means changing its nameservers, which can take
@@ -72,7 +71,8 @@ In your copy of this repository:
 
 ```bash
 git fetch origin
-git checkout beta/apk
+git checkout ccr-1c581661-1oin16
+git pull
 cp .env.beta.example .env.beta
 ```
 
@@ -114,10 +114,10 @@ curl -fsS -o /dev/null -w '%{http_code}\n' https://veil-files.example.com/minio/
 
    No slash at the end. The build stops with an error if either one looks
    wrong.
-2. Build the `beta/apk` branch: go to **Actions > private-beta-ci > Run
-   workflow**, pick the branch `beta/apk` and press **Run workflow**. A push to
-   `beta/apk` also starts a build. A run that started before you added the
-   variables builds for localhost: start a new one with **Run workflow**.
+2. Build the branch: go to **Actions > private-beta-ci > Run workflow**, pick
+   the branch `ccr-1c581661-1oin16` and press **Run workflow**. A run that
+   started before you added the variables builds for localhost: start a new
+   one with **Run workflow**.
 3. Open the run and wait for the **android-build** job (10 to 20 minutes). The
    other jobs do not matter for the app.
 4. At the bottom of the run page, under **Artifacts**, the name must be

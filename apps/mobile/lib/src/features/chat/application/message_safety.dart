@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/crypto/crypto_engine.dart';
+import '../../../core/di/core_providers.dart';
 import '../../../core/safety/message_risk.dart';
 import '../../../core/safety/rule_risk_checker.dart';
 import '../../../core/safety/thread_risk.dart';
@@ -29,17 +30,27 @@ final messageSafetyProvider = ChangeNotifierProvider.autoDispose.family<MessageS
     messenger: messenger,
     trust: ref.read(contactTrustProvider),
     checker: ref.read(messageRiskCheckerProvider),
-    kept: ref.read(_keptLinesProvider('${messenger.localUserId}:$conversationId')),
+    kept: keptLinesOf(ref.read(keptRiskLinesProvider), messenger.localUserId, conversationId),
   );
 });
 
 /// A line a message was shown with, and what it was worked out from.
 typedef KeptLine = ({int relationship, bool startedByMe, MessageRisk risk});
 
-// The lines of each chat's messages, kept in memory while the app runs, so
-// one that falls out of the newest texts stays when the chat opens again.
-// Message ids and levels only; nothing of what a message says.
-final _keptLinesProvider = Provider.family<Map<String, KeptLine>, String>((ref, key) => {});
+/// The lines of each chat's messages by account and chat, kept in memory
+/// while the app runs, so one that falls out of the newest texts stays when
+/// the chat opens again. Message ids and levels only; nothing of what a
+/// message says. Dropped with the local cache (sign-out, wipe, account
+/// deletion all move [cacheEpochProvider]).
+final keptRiskLinesProvider = Provider<Map<String, Map<String, KeptLine>>>((ref) {
+  ref.watch(cacheEpochProvider);
+  return {};
+});
+
+/// The kept lines of [conversationId] for [userId], or null (nothing kept)
+/// while no account is signed in.
+Map<String, KeptLine>? keptLinesOf(Map<String, Map<String, KeptLine>> all, String? userId, String conversationId) =>
+    userId == null ? null : all.putIfAbsent('$userId:$conversationId', () => {});
 
 /// The risk line each message of one chat gets, and whether its links open
 /// without asking.
@@ -202,8 +213,8 @@ class MessageSafety extends ChangeNotifier {
       if (decrypted.messageKind == MessageKind.reaction || decrypted.body.isEmpty) continue;
       final key = sender?.userId ?? 'device:${message.senderDeviceId}';
       texts.putIfAbsent(key, () => []).add(
-        (id: message.id, text: decrypted.body, at: message.sentAt, relationship: relationship),
-      );
+            (id: message.id, text: decrypted.body, at: message.sentAt, relationship: relationship),
+          );
     }
     for (final MapEntry(key: sender, value: all) in texts.entries) {
       final start = math.max(0, all.length - threadRiskTexts);

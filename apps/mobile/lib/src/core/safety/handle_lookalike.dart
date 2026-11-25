@@ -168,11 +168,14 @@ Set<String> _kinClassesOfHandle(String handle) {
   };
 }
 
-// Whether [part] (what a handle adds to a contact's) is a family word:
-// minji_mom or jiwoo.appa is a parent's handle, not a copy of the child's.
-bool _isKinWord(String part) {
+// The kin classes [part] (what a handle adds to a contact's) spells as a
+// family word: minji_mom or jiwoo.appa is a parent's handle.
+Set<String> _kinClassesOfWord(String part) {
   final skeleton = handleSkeleton(part);
-  return _kinHandleSkeletons.values.any((skeletons) => skeletons.contains(skeleton));
+  return {
+    for (final MapEntry(key: kin, value: skeletons) in _kinHandleSkeletons.entries)
+      if (skeletons.contains(skeleton)) kin,
+  };
 }
 
 /// Whether the handle spells a family word in Latin letters (mom_new,
@@ -207,39 +210,18 @@ int editDistance(String a, String b, {int limit = 1 << 30}) {
   return prev[m];
 }
 
-const _confusable = <String>{
-  'o0',
-  '0o',
-  'l1',
-  '1l',
-  'li',
-  'il',
-  '1i',
-  'i1',
-  'e3',
-  '3e',
-  'a4',
-  '4a',
-  's5',
-  '5s',
-  't7',
-  '7t',
-  'b8',
-  '8b',
-  'g9',
-  '9g'
-};
+const _confusable = <String>{'o0', '0o', 'l1', '1l', 'li', 'il', '1i', 'i1', 'e3', '3e', 'a4', '4a', 's5', '5s', 't7', '7t', 'b8', '8b', 'g9', '9g'};
 
 // R2 for a short anchor: exactly one adjacent swap, one confusable
 // substitution, or one repeated character added or dropped.
 bool _oneLookalikeEdit(String h, String a) {
   if (h.length == a.length) {
-    final diffs = [
-      for (var i = 0; i < h.length; i++)
-        if (h[i] != a[i]) i
-    ];
+    final diffs = [for (var i = 0; i < h.length; i++) if (h[i] != a[i]) i];
     if (diffs.length == 1) return _confusable.contains('${h[diffs[0]]}${a[diffs[0]]}');
-    return diffs.length == 2 && diffs[1] == diffs[0] + 1 && h[diffs[0]] == a[diffs[1]] && h[diffs[1]] == a[diffs[0]];
+    return diffs.length == 2 &&
+        diffs[1] == diffs[0] + 1 &&
+        h[diffs[0]] == a[diffs[1]] &&
+        h[diffs[1]] == a[diffs[0]];
   }
   final longer = h.length > a.length ? h : a;
   final shorter = h.length > a.length ? a : h;
@@ -284,11 +266,18 @@ bool _oneEditOf(String h, String a) {
 }
 
 // R3: [a] with up to four characters before or after it, unless what is
-// added is a family word (minji_mom is the parent of minji).
-bool _affixOf(String h, String a) {
+// added is a family word the anchor's nickname does not name ([anchorKin]):
+// minji_mom is the parent of minji, but younghee_mom beside mom @younghee
+// saved as "엄마" is a copy of mom.
+bool _affixOf(String h, String a, Set<String> anchorKin) {
   if (a.length < 4 || h.length <= a.length || h.length - a.length > 4) return false;
-  if (h.startsWith(a)) return !_isKinWord(h.substring(a.length));
-  if (h.endsWith(a)) return !_isKinWord(h.substring(0, h.length - a.length));
+  bool copies(String extra) {
+    final kin = _kinClassesOfWord(extra);
+    return kin.isEmpty || kin.any(anchorKin.contains);
+  }
+
+  if (h.startsWith(a)) return copies(h.substring(a.length));
+  if (h.endsWith(a)) return copies(h.substring(0, h.length - a.length));
   return false;
 }
 
@@ -324,16 +313,17 @@ LookalikeMatch? findLookalike(
     final targets = {normHandle(aHandle), ...names};
     final skeletons = {handleSkeleton(aHandle), for (final name in names) handleSkeleton(name)};
     final distance = targets.map((target) => editDistance(hNorm, target)).reduce(math.min);
+    final aKin = a.name == null ? const <String>{} : kinClassesOfName(a.name!);
     LookalikeRule? rule;
     if (peerName != null && a.name != null && _fold(peerName).isNotEmpty && _fold(peerName) == _fold(a.name!)) {
       rule = LookalikeRule.sameName;
     } else if (hSkeleton.length >= 3 && skeletons.contains(hSkeleton)) {
       rule = LookalikeRule.skeleton;
-    } else if (a.name != null && kinClassesOfName(a.name!).any(hKin.contains)) {
+    } else if (aKin.any(hKin.contains)) {
       rule = LookalikeRule.kinName;
     } else if (targets.any((target) => hForms.any((form) => _oneEditOf(form, target)))) {
       rule = LookalikeRule.oneEdit;
-    } else if (targets.any((target) => hForms.any((form) => _affixOf(form, target)))) {
+    } else if (targets.any((target) => hForms.any((form) => _affixOf(form, target, aKin)))) {
       rule = LookalikeRule.affix;
     }
     if (rule != null) matches.add(LookalikeMatch(a, rule, distance));

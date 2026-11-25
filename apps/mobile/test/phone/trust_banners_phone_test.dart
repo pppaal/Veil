@@ -102,8 +102,7 @@ void main() {
         await tester.tap(verify);
         await pumpFrames(tester, frames: 8);
         expect(find.byType(SafetyNumbersScreen), findsOneWidget);
-        expect(
-            tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen)).conversationId, claimConversationId);
+        expect(tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen)).conversationId, claimConversationId);
       },
     );
   });
@@ -229,6 +228,35 @@ void main() {
       },
     );
   });
+
+  // Two long-saved contacts saved under one nickname: both grandmothers, or
+  // two team leads.
+  for (final shared in ['할머니', '팀장님']) {
+    testWidgets('two long-saved contacts both saved as $shared get no look-alike warning', (tester) async {
+      await withPhoneApp(
+        tester,
+        identities,
+        location: '/conversations',
+        afterSession: (world) async {
+          final names = world.container.read(contactNameBookProvider);
+          await names.write(peerHandle, shared);
+          await names.write(noticeChatPeerHandle, shared, anew: true);
+        },
+        body: (world) async {
+          final priya = world.messenger.conversationById(noticeChatConversationId)!;
+          expect(
+            world.contactTrust
+                .relationshipAt(priya.recipientBundle.userId, noticeChatPeerHandle, chat: priya, at: world.now),
+            Relationship.saved,
+          );
+          await open(tester, noticeChatConversationId);
+          expect(find.byType(ChatRoomScreen), findsOneWidget);
+          expect(find.text(en.chatLookalikeTitle(shared)), findsNothing, reason: 'both are long-saved contacts');
+          expect(inBanners(find.byType(Text)), findsNothing, reason: 'no trust banner at all');
+        },
+      );
+    });
+  }
 
   testWidgets('the verify nudge shows in a busy saved chat and stops after three openings', (tester) async {
     await withPhoneApp(

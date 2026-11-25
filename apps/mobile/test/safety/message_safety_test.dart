@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/di/core_providers.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/domain/chat_message.dart';
 import 'package:veil_mobile/src/core/domain/conversation_preview.dart';
@@ -138,8 +140,8 @@ void main() {
     await bob.dispose();
   });
 
-  MessageSafety watch() => safety = MessageSafety(
-      conversationId: chat, messenger: alice.controller, trust: alice.contactTrust, checker: const RuleRiskChecker());
+  MessageSafety watch() =>
+      safety = MessageSafety(conversationId: chat, messenger: alice.controller, trust: alice.contactTrust, checker: const RuleRiskChecker());
 
   Future<ChatMessage> fromBob(String body) async {
     await deliver(bob, alice, chat, body);
@@ -177,12 +179,10 @@ void main() {
 
     // Verified now: every line of bob's, old ones too, is mild at most.
     await verifyBob();
-    await waitFor(() => safety.riskOf(code).level == RiskLevel.mild,
-        reason: 'the verified sender\'s line stayed strong');
+    await waitFor(() => safety.riskOf(code).level == RiskLevel.mild, reason: 'the verified sender\'s line stayed strong');
     expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.mild, reason: RiskReason.asksForCode));
     for (final message in [code, story, plain]) {
-      expect(safety.riskOf(message).level.index, lessThanOrEqualTo(RiskLevel.mild.index),
-          reason: '${safety.riskOf(message)}');
+      expect(safety.riskOf(message).level.index, lessThanOrEqualTo(RiskLevel.mild.index), reason: '${safety.riskOf(message)}');
     }
     expect(safety.riskOf(story).reason, isNot(RiskReason.newPhoneClaim), reason: 'a verified sender claims nothing');
     expect(safety.linksOpenAtOnce(code), isTrue, reason: 'a verified sender\'s links open without a sheet');
@@ -244,10 +244,7 @@ void main() {
     final code = alice.controller.messagesFor(group).firstWhere((message) => !message.isMine);
     expect((await alice.controller.decryptMessage(code)).status, DecryptStatus.awaitingKey);
     safety = MessageSafety(
-        conversationId: group,
-        messenger: alice.controller,
-        trust: alice.contactTrust,
-        checker: const RuleRiskChecker());
+        conversationId: group, messenger: alice.controller, trust: alice.contactTrust, checker: const RuleRiskChecker());
     await safety.settled;
     expect(safety.riskOf(code), MessageRisk.none, reason: 'nothing to read yet');
 
@@ -291,8 +288,7 @@ void main() {
     expect(await alice.controller.pinnedDeviceOwners(['user-bob']), {'dev-bob': 'user-bob'});
 
     final messenger = _PinsFailing(alice.controller);
-    safety = MessageSafety(
-        conversationId: group, messenger: messenger, trust: alice.contactTrust, checker: const RuleRiskChecker());
+    safety = MessageSafety(conversationId: group, messenger: messenger, trust: alice.contactTrust, checker: const RuleRiskChecker());
     await safety.settled;
     expect(messenger.failed, greaterThanOrEqualTo(1));
     expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.strong, reason: RiskReason.asksForCode),
@@ -387,5 +383,26 @@ void main() {
     await verifyBob();
     await waitFor(() => safety.riskOf(story).level.index <= RiskLevel.mild.index,
         reason: 'the kept line stayed strong');
+  });
+
+  test('kept lines go with the local cache, and nothing is kept while no one is signed in', () {
+    watch(); // what tearDown disposes
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final lines = keptLinesOf(container.read(keptRiskLinesProvider), 'user-alice', chat)!;
+    lines['m-1'] = (
+      relationship: 0,
+      startedByMe: false,
+      risk: const MessageRisk(level: RiskLevel.strong, reason: RiskReason.asksForCode),
+    );
+    expect(keptLinesOf(container.read(keptRiskLinesProvider), 'user-alice', chat), same(lines));
+    expect(keptLinesOf(container.read(keptRiskLinesProvider), 'user-carol', chat), isEmpty);
+    expect(keptLinesOf(container.read(keptRiskLinesProvider), null, chat), isNull);
+    expect(container.read(keptRiskLinesProvider).keys, isNot(contains('null:$chat')));
+
+    // Sign-out, wipe and account deletion move the cache epoch.
+    container.read(cacheEpochProvider.notifier).state++;
+    expect(container.read(keptRiskLinesProvider), isEmpty);
+    expect(keptLinesOf(container.read(keptRiskLinesProvider), 'user-alice', chat), isEmpty);
   });
 }

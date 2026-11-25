@@ -69,25 +69,17 @@ void main() {
 
     // Best match: rule order, then a verified anchor, then distance, then
     // the handle.
-    final best = findLookalike(
-        'sam2',
-        null,
-        [
-          _anchor('sam', verified: false),
-          _anchor('sam.official', verified: true, userId: 'u-sam-verified'),
-          _anchor('sam22', verified: false),
-        ],
-        peerUserId: 'u-peer');
+    final best = findLookalike('sam2', null, [
+      _anchor('sam', verified: false),
+      _anchor('sam.official', verified: true, userId: 'u-sam-verified'),
+      _anchor('sam22', verified: false),
+    ], peerUserId: 'u-peer');
     expect(best!.anchor.userId, 'u-sam-verified');
     expect(best.rule, LookalikeRule.skeleton);
-    final byRule = findLookalike(
-        'jiwoo.kr',
-        null,
-        [
-          _anchor('jiwoo.k', verified: true),
-          _anchor('jiwoo', verified: false),
-        ],
-        peerUserId: 'u-peer');
+    final byRule = findLookalike('jiwoo.kr', null, [
+      _anchor('jiwoo.k', verified: true),
+      _anchor('jiwoo', verified: false),
+    ], peerUserId: 'u-peer');
     expect(byRule!.anchor.handle, 'jiwoo');
     expect(byRule.rule, LookalikeRule.skeleton);
   });
@@ -160,8 +152,24 @@ void main() {
       ('jiwoo', 'jiwoomom'),
       ('jiwoo', 'eomma.jiwoo'),
       ('daniel', 'daniel.dad'),
+      ('hajun', 'hajun_umma'),
+      ('seoah', 'seoah.mama'),
     ]) {
       expect(findLookalike(peer, null, [_anchor(anchor, name: '민지')], peerUserId: 'u-peer'), isNull,
+          reason: '$peer vs $anchor');
+    }
+    // Also when the child is saved under a family word of another kind.
+    expect(findLookalike('minji_mom', null, [_anchor('minji', name: '딸')], peerUserId: 'u-peer'), isNull);
+    // A family word the contact's nickname names is a copy of that relative:
+    // mom @younghee saved as "엄마" and a new @younghee_mom.
+    for (final (anchor, name, peer, distance) in [
+      ('younghee', '엄마', 'younghee_mom', 3),
+      ('younghee', '엄마', 'younghee.mom', 3),
+      ('minsoo', '아빠', 'minsoo.dad', 3),
+      ('jisoo', '언니', 'jisoo.unni', 4),
+    ]) {
+      final match = findLookalike(peer, null, [_anchor(anchor, name: name, verified: false)], peerUserId: 'u-peer');
+      expect((match?.anchor.handle, match?.rule, match?.distance), (anchor, LookalikeRule.affix, distance),
           reason: '$peer vs $anchor');
     }
     // Any other extra part still reads as a copy.

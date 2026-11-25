@@ -285,10 +285,7 @@ mixin ChatTrustNotices<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     if (!_nudgeCounted && !trust.nudgeAllowed(peer.userId)) return null;
     final now = ref.read(wallClockProvider)();
     if (trust.relationshipAt(peer.userId, peer.handle, chat: chat, at: now) != Relationship.saved) return null;
-    final shown = [
-      for (final message in messages)
-        if (!message.isLocalNotice) message
-    ];
+    final shown = [for (final message in messages) if (!message.isLocalNotice) message];
     if (shown.length < 20 || shown.where((message) => message.isMine).length < 5) return null;
     return ChatTrustNotice.nudge(name: names.peerName(chat) ?? '@${peer.handle}');
   }

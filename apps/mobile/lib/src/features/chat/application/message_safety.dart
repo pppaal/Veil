@@ -73,6 +73,8 @@ class MessageSafety extends ChangeNotifier {
   // A group frame names the device that sealed it: the member is the one
   // this phone pinned that device for, as the chat names its sender.
   Map<String, String> _ownerByDevice = const {};
+  // The opened messages from devices not named yet when the pins were last
+  // read.
   Set<String> _ownersAskedFor = const {};
 
   bool _scheduled = false;
@@ -143,7 +145,7 @@ class MessageSafety extends ChangeNotifier {
     ];
     final opened = await Future.wait(messages.map(_read));
     if (_disposed) return;
-    if (chat.type == ConversationType.group) await _readOwners(chat, messages);
+    if (chat.type == ConversationType.group) await _readOwners(chat, messages, opened);
     if (_disposed || !_trust.ready) return _publish(const {});
 
     final startedByMe = _trust.startedByMe(conversationId);
@@ -200,15 +202,18 @@ class MessageSafety extends ChangeNotifier {
     }
   }
 
-  // The members' pinned devices, read again while a message comes from a
-  // device not named yet (its pin appears once its first frame opened).
-  Future<void> _readOwners(ConversationPreview chat, List<ChatMessage> messages) async {
-    final unknown = {
-      for (final message in messages)
-        if (!_ownerByDevice.containsKey(message.senderDeviceId)) message.senderDeviceId,
+  // The members' pinned devices, read again whenever a message from a
+  // device not named yet has opened since the last read: a device's pin
+  // appears once its first frame opened (a Sender Keys frame, once its
+  // chain key came), which can be after the chat was first read. A message
+  // that has not opened gets no line, so it asks for nothing.
+  Future<void> _readOwners(ConversationPreview chat, List<ChatMessage> messages, List<DecryptedMessage?> opened) async {
+    final unnamed = {
+      for (final (index, message) in messages.indexed)
+        if (opened[index] != null && !_ownerByDevice.containsKey(message.senderDeviceId)) message.id,
     };
-    if (unknown.isEmpty || setEquals(unknown, _ownersAskedFor)) return;
-    _ownersAskedFor = unknown;
+    if (unnamed.isEmpty || _ownersAskedFor.containsAll(unnamed)) return;
+    _ownersAskedFor = unnamed;
     final localUserId = _messenger.localUserId;
     try {
       _ownerByDevice = await _messenger.pinnedDeviceOwners([

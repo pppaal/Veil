@@ -181,8 +181,9 @@ that holds:
 2. verified: every key this phone pinned for it is verified;
 3. saved: a nickname names it, and has for at least 7 days (or since before
    this version);
-4. known: a 1:1 with it was accepted at least 7 days before and holds a text
-   or file this phone sent, or, when this version first ran, held a message
+4. known: a 1:1 with it was accepted at least 7 days before the message and
+   this phone had sent a text or file in it by then (a reply sent after the
+   message does not count), or, when this version first ran, held a message
    the server labels as the user's own; in a group, also a group this phone
    created or accepted at least 7 days before;
 5. new.
@@ -236,13 +237,15 @@ call. A verified sender gets at most the muted line. A file named `.apk`,
 on your own messages, the app's notices, or a message that did not open.
 The rules read Korean and English text; the app's screens stay English.
 
-**Banners.** In a 1:1, or a group with one other member, at most one trust
+**Banners.** In a 1:1, or a group with one other member (or a two-person
+group that grew, about the member who was there first), at most one trust
 banner shows, after the safety number notices:
 
-- look-alike: the other account's handle imitates a verified contact's or
-  one saved for a week: a swapped or look-alike character, a suffix such as
-  `_new` or `2`, the same nickname, or a handle like `mom_new` when a
-  contact is saved as Mum. It has no action and cannot be dismissed.
+- look-alike: the other account, new or changed when it first wrote, has a
+  handle that imitates a verified contact's or one saved for a week: a
+  swapped or look-alike character, a suffix such as `_new` or `2`, the same
+  nickname, the contact's nickname spelled as a handle (`jiwoo.park` for
+  Jiwoo Park), or a handle like `mom_new` when a contact is saved as Mum. It has no action and cannot be dismissed.
 - family claim: a new account the user did not start the chat with (or a
   changed one) has a family-word handle, or one of its last 50 texts says it
   is family or on a new phone. It says to call the number you already have,
@@ -297,8 +300,10 @@ first through the strong sheet.
   seconds before the first chat list loads can still go out. A reaction is
   refused then too.
 - The delivered tick still shows for a request.
-- A group with more than one other member gets no look-alike or
-  family-claim check.
+- A group with more than one other member from the start gets no
+  look-alike or family-claim check. A two-person group that grows keeps
+  the banner about the member who was there first, until that member is
+  verified or leaves.
 - The Android beta has no push notifications, so the "Message request"
   notification text applies only where the app raises notifications.
 

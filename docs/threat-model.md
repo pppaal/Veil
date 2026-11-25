@@ -80,7 +80,8 @@ privacy policy needed no change. The code is in
   minutes: a verified safety number, a nickname at least a week old, or a
   1:1 accepted at least a week before the message in which this phone had
   sent a text or file by then (a reply sent after the message does not
-  count). In a group, a member also counts as known through that group
+  count; history from before the first run that holds a message the
+  server labels as this account's counts as known, see the limits below). In a group, a member also counts as known through that group
   when the user created it, when it was accepted at least a week before
   the message, or when it was listed at the first run, members added
   later included; otherwise only through the user's own 1:1 with them.
@@ -122,10 +123,11 @@ Limits that stay in this version:
   refused then too
 - the delivered tick still shows the sender that a request reached the
   phone: the server marks delivery when the phone fetches the message
-- in a group with more than one other member there is no look-alike or
-  family-claim banner
-- in a group listed at the first run, or accepted a week or more ago,
-  every member counts as known, one added to it later included: a scammer
+- in a group with more than one other member from the start there is no
+  look-alike or family-claim banner (a two-person group that grows keeps
+  the banner about the member who was there first)
+- in a group the user created, listed at the first run, or accepted a
+  week or more ago, every member counts as known, one added to it later included: a scammer
   added to such a group gets a known sender's lines, not a stranger's
 - the lock-screen notification for a request says only "Message request",
   but the Android beta has no push notifications, so this applies only

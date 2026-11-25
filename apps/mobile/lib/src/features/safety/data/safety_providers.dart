@@ -78,6 +78,10 @@ final unattachedContactTrustProvider = Provider<ContactTrust>((ref) {
   final trust = ContactTrust(
     store: ContactTrustStore(storage.scoped(SecureScope.conversationPolicy), wipesBegun: () => storage.wipesBegun),
     verified: ref.read(verifiedAccountsProvider),
+    // The relay's clock, which stamps message times: a reply this phone
+    // sends is compared with the relay's time for the message it answers,
+    // so a phone clock running behind does not date the reply before it.
+    clock: ref.read(apiClientProvider).serverClock.boundedNow,
   );
   // The wipe runs before the session reads signed out: from its start the
   // store drops every write, and at the flip forget() deletes the stored

@@ -323,8 +323,8 @@ bool isShortLink(FoundLink link) => _hostIn(link.host, shortenerHosts);
 bool isSoftShortLink(FoundLink link) => _hostIn(link.host, softShortenerHosts);
 
 /// The risk of one link: appFile; then hidden for a host written to read
-/// as another (a %-escape, a character outside ASCII, punycode); then
-/// lookalike, any other hidden host, soft, none.
+/// as another (a backslash after it, a %-escape, a character outside
+/// ASCII, punycode); then lookalike, any other hidden host, soft, none.
 LinkRisk linkRiskOf(FoundLink link) {
   if (isAppFileLink(link)) return LinkRisk.appFile;
   if (link.nonAsciiHost || link.hidesHost || link.host.split('.').any((label) => label.startsWith('xn--'))) {

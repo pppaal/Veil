@@ -140,5 +140,8 @@
   {"id": "en-everyday-x-42", "set": "everyday", "pattern": null, "relationship": "unknown", "startedByMe": false, "earlier": [], "text": "https://www.google.com。1234", "level": "none", "reason": null, "source": null},
   {"id": "en-everyday-x-43", "set": "everyday", "pattern": null, "relationship": "unknown", "startedByMe": false, "earlier": [], "text": "https://www.google.com｡Do you have it?", "level": "none", "reason": null, "source": null},
   {"id": "en-edge-p8-01", "set": "edge", "pattern": "P8", "relationship": "unknown", "startedByMe": false, "earlier": [], "text": "Log in at https://naver.com。login-check.xyz/ today", "level": "strong", "reason": "lookalikeLink", "source": null},
-  {"id": "en-edge-p8-02", "set": "edge", "pattern": "P8", "relationship": "known", "startedByMe": false, "earlier": [], "text": "https://naver.com%E3%80%82login-check.xyz/", "level": "warn", "reason": "lookalikeLink", "source": null}
+  {"id": "en-edge-p8-02", "set": "edge", "pattern": "P8", "relationship": "known", "startedByMe": false, "earlier": [], "text": "https://naver.com%E3%80%82login-check.xyz/", "level": "warn", "reason": "lookalikeLink", "source": null},
+  {"id": "en-edge-p8-03", "set": "edge", "pattern": "P8", "relationship": "unknown", "startedByMe": false, "earlier": [], "text": "https://naver.com。login%2Dcheck.xyz/", "level": "strong", "reason": "lookalikeLink", "source": null},
+  {"id": "en-edge-p8-04", "set": "edge", "pattern": "P8", "relationship": "unknown", "startedByMe": false, "earlier": [], "text": "Log in at https://naver.com。login-check.xyz。Thanks", "level": "strong", "reason": "lookalikeLink", "source": null},
+  {"id": "en-edge-p8-05", "set": "edge", "pattern": "P8", "relationship": "known", "startedByMe": false, "earlier": [], "text": "https://naver%2Ecom。evil.xyz/", "level": "warn", "reason": "lookalikeLink", "source": null}
 ]

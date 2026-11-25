@@ -249,6 +249,11 @@ void main() {
       ('https://b\u00FCcher.de/x', 'xn--bcher-kva.de'),
       ('https://xn--pple-43d.com/login', 'xn--pple-43d.com'),
       ('https://nav%65r.com/x', 'naver.com'),
+      // An escape beside a letter written outside ASCII: the escape is
+      // decoded and the letter kept, as a browser does.
+      ('https://naver%2Ecom\u3002evil.xyz/', 'evil.xyz'),
+      ('https://naver.com\u3002login%2Dcheck.xyz/', 'login-check.xyz'),
+      ('https://naver.com%2E\uB85C\uADF8\uC778.xyz/', 'xn--2i0b10rutm.xyz'),
     ]) {
       final link = only(text);
       expect(linkRiskOf(link), LinkRisk.hidden, reason: text);
@@ -293,6 +298,7 @@ void main() {
       'https://naver.com\u3002login-check.xyz:8443/a',
       '(https://naver.com\u3002login-check.xyz)',
       'https://naver.com\u3002Login-check.Shop/',
+      'https://naver.com\u3002login-check.xyz\u3002Thanks',
     ]) {
       final link = only(text);
       expect(link.host, startsWith('naver.com.login'), reason: text);
@@ -334,5 +340,23 @@ void main() {
     }
     // An escape that decodes to a host a browser opens is still read as it.
     expect(only('https://naver.com%2Elogin-check.xyz/').registrableDomain, 'login-check.xyz');
+  });
+
+  // A message can be as long as the relay takes; finding its links must not
+  // stall the chat however many full stops, brackets or letters outside
+  // ASCII its address holds.
+  test('an address with thousands of full stops or brackets is read in linear time', () {
+    for (final text in [
+      'https://a${'\u3002com' * 20000}',
+      'https://a${'\u3002Thanks' * 15000}',
+      'https://a\u3002b${'.\u3002' * 40000}',
+      'https://a.com/${')' * 100000}',
+      'https://a\u3002b${')' * 100000}',
+      'https://a${'\u0434' * 100000}',
+    ]) {
+      final watch = Stopwatch()..start();
+      expect(findLinks(text), hasLength(1), reason: text.substring(0, 12));
+      expect(watch.elapsed, lessThan(const Duration(seconds: 2)), reason: text.substring(0, 12));
+    }
   });
 }

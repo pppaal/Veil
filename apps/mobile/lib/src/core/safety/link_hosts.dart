@@ -15,6 +15,8 @@ bool isHostFullStop(int c) => c == 0x3002 || c == 0xFF0E || c == 0xFF61;
 /// Characters a browser refuses in a host (the URL Standard's forbidden
 /// domain code points): controls, space, # % / : < > ? @ [ \ ] ^ | and
 /// delete.
+final _nonAscii = RegExp(r'[^\x00-\x7F]+');
+
 bool _isForbiddenInHost(int c) => c <= 0x20 || c == 0x7F || r'#%/:<>?@[\]^|'.codeUnits.contains(c);
 
 /// [written] (no login, no port) as a browser opens it: %-escapes decoded,
@@ -27,7 +29,11 @@ String? browserHost(String written) {
   var host = written;
   if (host.contains('%')) {
     try {
-      host = Uri.decodeComponent(host);
+      // Letters outside ASCII written as they are stay as they are; only
+      // the escapes are decoded (naver%2Ecom。evil.xyz opens
+      // naver.com.evil.xyz). Uri.decodeComponent refuses any such letter,
+      // so each run of them is escaped first and comes back unchanged.
+      host = Uri.decodeComponent(host.replaceAllMapped(_nonAscii, (m) => Uri.encodeComponent(m[0]!)));
     } on ArgumentError {
       return null; // Not a valid escape.
     } on FormatException {

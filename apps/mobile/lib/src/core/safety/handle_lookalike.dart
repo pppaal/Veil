@@ -56,23 +56,44 @@ const _letterFolds = {
   '0': 'o', '1': 'l', 'i': 'l', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '9': 'g', //
 };
 
-/// The handle reduced to what a reader sees: affix words and short number
-/// suffixes dropped, look-alike letters folded.
-String handleSkeleton(String handle) {
-  // 1. Lower case, split on separators.
+// Lower case, split on separators, affix words dropped at either end and
+// short number tokens at the end (steps 1-2 of [handleSkeleton]).
+List<String> _coreTokens(String handle) {
   final tokens = handle.toLowerCase().split(RegExp(r'[._]')).where((t) => t.isNotEmpty).toList();
-  // 2. Drop affix words at either end, and trailing short numbers.
   var changed = true;
   while (changed && tokens.length > 1) {
     changed = false;
-    if (_affixTokens.contains(tokens.first)) {
+    if (_isAffix(tokens.first)) {
       tokens.removeAt(0);
       changed = true;
-    } else if (_affixTokens.contains(tokens.last) || _shortDigits.hasMatch(tokens.last)) {
+    } else if (_isAffix(tokens.last) || _shortDigits.hasMatch(tokens.last)) {
       tokens.removeLast();
       changed = true;
     }
   }
+  return tokens;
+}
+
+String _foldLetters(String s) {
+  final out = StringBuffer();
+  for (final ch in s.split('')) {
+    out.write(_letterFolds[ch] ?? ch);
+  }
+  return out.toString();
+}
+
+final _foldedAffixes = {for (final token in _affixTokens) _foldLetters(token)};
+
+// An affix word, also when spelled with look-alike characters (0fficial,
+// m0bile, ph0ne, k0rea).
+bool _isAffix(String token) => _affixTokens.contains(token) || _foldedAffixes.contains(_foldLetters(token));
+
+/// The handle reduced to what a reader sees: affix words and short number
+/// suffixes dropped, look-alike letters folded.
+String handleSkeleton(String handle) {
+  // 1-2. Lower case, split on separators; drop affix words at either end,
+  // and trailing short numbers.
+  final tokens = _coreTokens(handle);
   // 3. Join; strip a trailing digit run, then a glued new/official/real,
   // while three or more characters remain.
   var joined = tokens.join();
@@ -86,11 +107,7 @@ String handleSkeleton(String handle) {
   }
   // 4. Letter pairs that read as one letter, then look-alike characters.
   joined = joined.replaceAll('rn', 'm').replaceAll('vv', 'w').replaceAll('cl', 'd');
-  final out = StringBuffer();
-  for (final ch in joined.split('')) {
-    out.write(_letterFolds[ch] ?? ch);
-  }
-  return out.toString();
+  return _foldLetters(joined);
 }
 
 // Family words in a nickname, by kin class, and how each class is spelled
@@ -138,13 +155,33 @@ Set<String> kinClassesOfName(String name) {
   return classes;
 }
 
-/// Whether the handle spells a family word in Latin letters (mom_new,
-/// eomma2). "son" and "nan" are left out: 손 is a common surname and Nan a
-/// common name.
-bool isKinHandle(String handle) {
+// The kin classes a handle spells in Latin letters: its skeleton is a
+// family word (mom_new, eomma2), or a family word comes first and one other
+// word that is no affix follows it (mom.kim, eomma.kim, mother.kim).
+Set<String> _kinClassesOfHandle(String handle) {
   final skeleton = handleSkeleton(handle);
-  return _kinHandleSkeletons.values.any((set) => set.contains(skeleton));
+  final tokens = _coreTokens(handle);
+  final first = tokens.length == 2 && !_isAffix(tokens.last) ? handleSkeleton(tokens.first) : null;
+  return {
+    for (final MapEntry(key: kin, value: skeletons) in _kinHandleSkeletons.entries)
+      if (skeletons.contains(skeleton) || (first != null && skeletons.contains(first))) kin,
+  };
 }
+
+// The kin classes [part] (what a handle adds to a contact's) spells as a
+// family word: minji_mom or jiwoo.appa is a parent's handle.
+Set<String> _kinClassesOfWord(String part) {
+  final skeleton = handleSkeleton(part);
+  return {
+    for (final MapEntry(key: kin, value: skeletons) in _kinHandleSkeletons.entries)
+      if (skeletons.contains(skeleton)) kin,
+  };
+}
+
+/// Whether the handle spells a family word in Latin letters (mom_new,
+/// eomma2), alone or followed by one other word (eomma.kim). "son" and
+/// "nan" are left out: 손 is a common surname and Nan a common name.
+bool isKinHandle(String handle) => _kinClassesOfHandle(handle).isNotEmpty;
 
 /// Optimal string alignment distance (insertions, deletions, substitutions
 /// and swaps of two adjacent characters), stopping early above [limit].
@@ -199,10 +236,60 @@ bool _oneLookalikeEdit(String h, String a) {
 
 String _fold(String s) => s.trim().toLowerCase();
 
+// The forms a nickname takes when spelled as a handle: lower case with
+// spaces, dots, underscores and hyphens removed, in its word order and
+// reversed ("Jiwoo Park": jiwoopark, parkjiwoo). Only a nickname of plain
+// Latin letters and digits has any.
+List<String> _nameForms(String? name) {
+  if (name == null) return const [];
+  final words = name.toLowerCase().split(RegExp(r'[\s._\-]+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty || !words.every((w) => RegExp(r'^[a-z0-9]+$').hasMatch(w))) return const [];
+  if (!words.any((w) => RegExp('[a-z]').hasMatch(w))) return const [];
+  return {words.join(), words.reversed.join()}.toList();
+}
+
+final _trailingRun = RegExp(r'\d{1,4}$');
+
+// [norm] without its last one to four digits, while three or more
+// characters remain (jiwoo.lee99: jiwoolee; jiwoo12345: jiwoo1).
+String _withoutTrailingDigits(String norm) {
+  final digits = _trailingRun.firstMatch(norm);
+  return digits != null && digits.start >= 3 ? norm.substring(0, digits.start) : norm;
+}
+
+// R2: one edit away from [a] (two for a long one), or one look-alike edit
+// for a short one.
+bool _oneEditOf(String h, String a) {
+  if (a.length < 4) return false;
+  final distance = editDistance(h, a, limit: 2);
+  return (a.length >= 12 && distance <= 2) || (a.length >= 8 && distance <= 1) || _oneLookalikeEdit(h, a);
+}
+
+// R3: [a] with up to four characters before or after it, unless what is
+// added is a family word the anchor's nickname does not name ([anchorKin]):
+// minji_mom is the parent of minji, but younghee_mom beside mom @younghee
+// saved as "엄마" is a copy of mom.
+bool _affixOf(String h, String a, Set<String> anchorKin) {
+  if (a.length < 4 || h.length <= a.length || h.length - a.length > 4) return false;
+  bool copies(String extra) {
+    final kin = _kinClassesOfWord(extra);
+    return kin.isEmpty || kin.any(anchorKin.contains);
+  }
+
+  if (h.startsWith(a)) return copies(h.substring(a.length));
+  if (h.endsWith(a)) return copies(h.substring(0, h.length - a.length));
+  return false;
+}
+
 /// The strongest way [handle] imitates one of [anchors], or null. Anchors
 /// with the peer's own user id or with exactly [handle] are skipped (one
 /// handle on two accounts is the existing hold path). Nothing is checked for
 /// a verified peer.
+///
+/// R1 to R3 compare the handle with each anchor's handle and with the
+/// anchor's nickname spelled as a handle (a stranger @hyunjin beside a
+/// contact saved as "Hyunjin"). R2 and R3 also read the handle without a
+/// trailing run of digits (jiwoo_k2001 reads as jiwoo_k).
 LookalikeMatch? findLookalike(
   String handle,
   String? peerName,
@@ -213,30 +300,30 @@ LookalikeMatch? findLookalike(
   if (peerVerified) return null;
   final h = handle.toLowerCase();
   final hNorm = normHandle(h);
+  final hForms = {hNorm, _withoutTrailingDigits(hNorm)};
   final hSkeleton = handleSkeleton(h);
+  final hKin = _kinClassesOfHandle(h);
   final matches = <LookalikeMatch>[];
   for (final a in anchors) {
     if (peerUserId != null && a.userId == peerUserId) continue;
     final aHandle = a.handle.toLowerCase();
     if (aHandle == h) continue;
-    final aNorm = normHandle(aHandle);
-    final distance = editDistance(hNorm, aNorm);
+    // The anchor's handle, then its nickname as a handle would spell it.
+    final names = _nameForms(a.name);
+    final targets = {normHandle(aHandle), ...names};
+    final skeletons = {handleSkeleton(aHandle), for (final name in names) handleSkeleton(name)};
+    final distance = targets.map((target) => editDistance(hNorm, target)).reduce(math.min);
+    final aKin = a.name == null ? const <String>{} : kinClassesOfName(a.name!);
     LookalikeRule? rule;
     if (peerName != null && a.name != null && _fold(peerName).isNotEmpty && _fold(peerName) == _fold(a.name!)) {
       rule = LookalikeRule.sameName;
-    } else if (hSkeleton.length >= 3 && hSkeleton == handleSkeleton(aHandle)) {
+    } else if (hSkeleton.length >= 3 && skeletons.contains(hSkeleton)) {
       rule = LookalikeRule.skeleton;
-    } else if (a.name != null && kinClassesOfName(a.name!).any((c) => _kinHandleSkeletons[c]!.contains(hSkeleton))) {
+    } else if (aKin.any(hKin.contains)) {
       rule = LookalikeRule.kinName;
-    } else if (aNorm.length >= 4 &&
-        ((aNorm.length >= 12 && distance <= 2) ||
-            (aNorm.length >= 8 && distance <= 1) ||
-            _oneLookalikeEdit(hNorm, aNorm))) {
+    } else if (targets.any((target) => hForms.any((form) => _oneEditOf(form, target)))) {
       rule = LookalikeRule.oneEdit;
-    } else if (aNorm.length >= 4 &&
-        hNorm.length > aNorm.length &&
-        hNorm.length - aNorm.length <= 4 &&
-        (hNorm.startsWith(aNorm) || hNorm.endsWith(aNorm))) {
+    } else if (targets.any((target) => hForms.any((form) => _affixOf(form, target, aKin)))) {
       rule = LookalikeRule.affix;
     }
     if (rule != null) matches.add(LookalikeMatch(a, rule, distance));

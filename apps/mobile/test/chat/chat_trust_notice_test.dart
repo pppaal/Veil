@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/domain/chat_message.dart';
 import 'package:veil_mobile/src/core/domain/conversation_preview.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_trust_notice.dart';
 
@@ -62,5 +63,55 @@ void main() {
     expect(trustPeerOf(group(['alex', 'sam.official']), localUserId: 'user-alex'),
         (userId: 'user-sam.official', handle: 'sam.official'));
     expect(trustPeerOf(group(['alex', 'sam.official', 'ines.v']), localUserId: 'user-alex'), isNull);
+  });
+
+  test('a group grown past two keeps its banner about the member who was there first, until that member leaves', () {
+    ConversationPreview group(List<String> handles) => ConversationPreview(
+          id: 'g',
+          peerHandle: '',
+          peerDisplayName: null,
+          recipientBundle: const KeyBundle(
+            userId: '',
+            deviceId: '',
+            handle: '',
+            identityPublicKey: '',
+            signedPrekeyBundle: '',
+          ),
+          lastEnvelope: null,
+          updatedAt: DateTime.utc(2026, 4, 7),
+          type: ConversationType.group,
+          members: [for (final handle in handles) GroupMember(userId: 'user-$handle', handle: handle)],
+        );
+    ChatMessage notice(String code, String userId, int change) => ChatMessage(
+          id: 'notice:$code:g:$userId:n$change',
+          senderDeviceId: '',
+          sentAt: DateTime.utc(2026, 4, 7),
+          envelope: const CryptoEnvelope(
+            version: '',
+            conversationId: 'g',
+            senderDeviceId: '',
+            recipientUserId: '',
+            ciphertext: '',
+            nonce: '',
+            messageKind: MessageKind.system,
+          ),
+          isMine: false,
+        );
+    final joined = [notice('group.member_added', 'user-ines.v', 1)];
+    final grown = group(['alex', 'jess.kim', 'ines.v']);
+    // Before: a group of three had no banner peer at all.
+    expect(trustPeerOf(grown, localUserId: 'user-alex'), isNull);
+    expect(keptTrustPeerOf(grown, joined, localUserId: 'user-alex'), (userId: 'user-jess.kim', handle: 'jess.kim'));
+    // A group of three from the start, or one where the first member left.
+    expect(keptTrustPeerOf(grown, const [], localUserId: 'user-alex'), isNull);
+    final laterAdded = [
+      ...joined,
+      notice('group.member_removed', 'user-jess.kim', 2),
+      notice('group.member_added', 'user-omar_h', 3)
+    ];
+    expect(keptTrustPeerOf(group(['alex', 'ines.v', 'omar_h']), laterAdded, localUserId: 'user-alex'), isNull,
+        reason: 'jess.kim left');
+    expect(keptTrustPeerOf(group(['alex', 'jess.kim', 'ines.v', 'omar_h']), joined, localUserId: 'user-alex'), isNull,
+        reason: 'two members were there before the notices');
   });
 }

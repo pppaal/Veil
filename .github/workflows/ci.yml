@@ -132,7 +132,9 @@ jobs:
     # requires it, the files hostname sits behind the same rotating Cloudflare
     # certificates, and empty means the phone's trust store. Flutter signs a
     # profile build with the runner's debug key, which can differ from run to
-    # run, so a new APK may not install over an older one.
+    # run, so a new APK may not install over an older one. Like debug, it is
+    # also debuggable: on a phone with USB debugging on, `adb run-as` can read
+    # the app's private storage.
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

@@ -19,7 +19,11 @@ Studio. Plan for about an hour. There is no iPhone build yet.
 - **Keep the address to yourselves.** Anyone who has your tunnel address can
   make an account on your server. Give the address and the app only to the
   testers you invited, never in public. If your GitHub repository is public,
-  anyone can see the address in the build log and the artifact name.
+  anyone signed in to GitHub can see the address in the build log and
+  download the APK itself for 7 days.
+- **The app is a test build.** Android treats it as debuggable: someone with
+  a tester's unlocked phone, a cable and developer tools can copy the app's
+  keys and messages. Keep **USB debugging** (in Developer options) off.
 - **There is no account recovery.** If a tester loses the phone, resets it,
   uninstalls the app or clears its storage, that account is gone.
 
@@ -28,9 +32,13 @@ Studio. Plan for about an hour. There is no iPhone build yet.
 - A PC with Docker (Docker Desktop on Windows or Mac) and Git. On Windows, run
   the commands below in Git Bash, which comes with Git.
 - This repository on GitHub with the `beta/apk` branch pushed, and a copy of
-  it on the PC.
+  it on the PC. If these changes live on another branch by now (for example
+  merged into `main`), use that branch name wherever this guide says
+  `beta/apk`.
 - A free Cloudflare account with a domain name on it. Any cheap domain works.
-  No domain? See [No domain](#no-domain-quick-tunnel) at the end.
+  A domain bought through Cloudflare is ready at once. Moving a domain you
+  already own to Cloudflare means changing its nameservers, which can take
+  hours. No domain? See [No domain](#no-domain-quick-tunnel) at the end.
 - An Android phone for you and one for each friend.
 - Admin access to this repository on GitHub.
 
@@ -40,7 +48,8 @@ addresses. Use your own domain everywhere you see them.
 ## 1. Make the tunnel (Cloudflare)
 
 1. Open the Cloudflare Zero Trust dashboard (one.dash.cloudflare.com) and go
-   to **Networks > Tunnels > Create a tunnel > Cloudflared**. Name it
+   to **Networks > Tunnels** (newer dashboards: **Networks > Connectors >
+   Cloudflare Tunnels**), then **Create a tunnel > Cloudflared**. Name it
    `veil-beta`.
 2. On the install screen choose **Docker** and copy the token: the long text
    after `--token`, starting with `eyJ`. You need it in step 2.
@@ -76,7 +85,7 @@ Open `.env.beta` in a text editor and replace every `replace`:
   twice and paste one result into each.
 - `VEIL_MINIO_ROOT_PASSWORD`: the result of `openssl rand -hex 24`.
 
-`grep replace .env.beta` must print nothing. Then start everything:
+`grep -n '=replace' .env.beta` must print nothing. Then start everything:
 
 ```bash
 docker compose --env-file .env.beta -f docker-compose.demo.yml --profile tunnel up -d --build
@@ -108,8 +117,7 @@ curl -fsS -o /dev/null -w '%{http_code}\n' https://veil-files.example.com/minio/
 2. Build the `beta/apk` branch: go to **Actions > private-beta-ci > Run
    workflow**, pick the branch `beta/apk` and press **Run workflow**. A push to
    `beta/apk` also starts a build. A run that started before you added the
-   variables builds for localhost: use **Re-run jobs** on it, or start a new
-   one.
+   variables builds for localhost: start a new one with **Run workflow**.
 3. Open the run and wait for the **android-build** job (10 to 20 minutes). The
    other jobs do not matter for the app.
 4. At the bottom of the run page, under **Artifacts**, the name must be
@@ -131,8 +139,9 @@ curl -fsS -o /dev/null -w '%{http_code}\n' https://veil-files.example.com/minio/
 
 Everyone should install the same APK and keep it. GitHub's build machine signs
 each build with a throwaway debug key that can change between runs, so a newer
-APK may fail with "App not installed". Then the old app has to be uninstalled first, which
-deletes that phone's account for good.
+APK may fail with "App not installed". Then the old app has to be uninstalled
+first, which deletes that phone's account for good. The old account stays on
+the server and keeps its handle, so signing up again needs a new handle.
 
 ## 5. Sign up and add a friend
 
@@ -176,30 +185,62 @@ After a reboot the containers start again once Docker is running. Adding
 after that, every tester has to clear the app's storage (Android **Settings >
 Apps > Veil > Storage**) and sign up again.
 
+When the test is over, delete the two GitHub variables from step 3. While
+they are set, every build of this repository, pull requests and `main`
+included, makes an APK for your server.
+
 ## No domain (quick tunnel)
 
 Cloudflare can give you a random `trycloudflare.com` address without a domain
 or a token. It works for a one-day test, with a big catch: the address changes
 every time the tunnel restarts (a closed terminal, a reboot). A new address
 means new GitHub variables, a new APK, and every tester uninstalling and
-signing up again.
+signing up again with a new handle (the old accounts stay on your server, so
+their handles stay taken).
 
-```bash
-# 1. Start the server without the tunnel container.
-docker compose --env-file .env.beta -f docker-compose.demo.yml up -d --build
-# 2. Find the network: the one whose name ends in _default.
-docker network ls
-# 3. In two separate terminals, leave these running.
-docker run --rm --network veil_default cloudflare/cloudflared:2024.12.2 tunnel --url http://api:3000
-docker run --rm --network veil_default cloudflare/cloudflared:2024.12.2 tunnel --url http://minio:9000
-```
+Skip step 1. Do this in place of step 2:
 
-Use your network's name in place of `veil_default`. Each command prints an
-address like `https://some-random-words.trycloudflare.com`. Put the second one
-in `VEIL_S3_PUBLIC_ENDPOINT` and the first in `VEIL_ALLOWED_ORIGINS`, run the
-first command again, and use the first one for the GitHub variables in
-[step 3](#3-build-the-app-github). Until then the API keeps restarting, which
-is expected. `CLOUDFLARE_TUNNEL_TOKEN` is not used here.
+1. Run the three commands at the top of step 2 to make `.env.beta`. In it,
+   fill in `VEIL_JWT_SECRET`, `VEIL_RETIRED_HANDLE_PEPPER` and
+   `VEIL_MINIO_ROOT_PASSWORD` as step 2 says, and set
+   `CLOUDFLARE_TUNNEL_TOKEN` to `unused`. Leave the two addresses as
+   `replace` for now.
+2. Start the server without the tunnel container, and find its network:
+
+   ```bash
+   docker compose --env-file .env.beta -f docker-compose.demo.yml up -d --build
+   docker network ls
+   ```
+
+   The network is the one whose name ends in `_default`, for example
+   `veil_default`. Until step 5 the API keeps restarting, which is expected.
+3. Open two more terminals and run one of these in each, with your network's
+   name in place of `veil_default`. Leave both running the whole time:
+
+   ```bash
+   docker run --rm --network veil_default cloudflare/cloudflared:2024.12.2 tunnel --url http://api:3000
+   docker run --rm --network veil_default cloudflare/cloudflared:2024.12.2 tunnel --url http://minio:9000
+   ```
+
+   Each prints an address like `https://some-random-words.trycloudflare.com`.
+   The first one is the app's server, the second one is for photos and files.
+4. In `.env.beta`, set `VEIL_ALLOWED_ORIGINS` to the first address and
+   `VEIL_S3_PUBLIC_ENDPOINT` to the second, with no slash at the end. Now
+   `grep -n '=replace' .env.beta` must print nothing.
+5. Back in your first terminal (not a tunnel terminal), start the server again
+   so the API reads the new settings:
+
+   ```bash
+   docker compose --env-file .env.beta -f docker-compose.demo.yml up -d
+   ```
+
+   Check it with the two `curl` lines from step 2, using your two addresses.
+6. Go on with [step 3](#3-build-the-app-github). The GitHub variables use the
+   first address: `https://some-random-words.trycloudflare.com/v1` and
+   `https://some-random-words.trycloudflare.com`.
+
+Leave out `--profile tunnel` from the commands in
+[Stop, restart, reset](#stop-restart-reset).
 
 ## If something is wrong
 
@@ -213,10 +254,9 @@ is expected. `CLOUDFLARE_TUNNEL_TOKEN` is not used here.
 - **Photos don't send:** run the last `curl` from step 2, check
   `VEIL_S3_PUBLIC_ENDPOINT` is exactly your files address, and run the start
   command again after any change.
-- **The server doesn't start:** `grep replace .env.beta` must print nothing.
-  Then read `docker compose --env-file .env.beta -f docker-compose.demo.yml logs api --tail=50`.
-  If you ran the demo before with its default MinIO password, the old data
-  may not accept the new one: reset with `-v` as above.
+- **The server doesn't start:** `grep -n '=replace' .env.beta` must print
+  nothing. Then read
+  `docker compose --env-file .env.beta -f docker-compose.demo.yml logs api --tail=50`.
 
 More about the tunnel itself: [cloudflare-tunnel-deploy.md](cloudflare-tunnel-deploy.md)
 (in Korean).

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/domain/chat_message.dart';
 import 'package:veil_mobile/src/core/safety/message_risk.dart';
 import 'package:veil_mobile/src/core/safety/rule_risk_checker.dart';
@@ -117,5 +118,51 @@ void main() {
     await safety.settled;
     expect(safety.riskOf(first), const MessageRisk(level: RiskLevel.warn, reason: RiskReason.asksForMoney));
     expect(safety.riskOf(second), MessageRisk.none);
+  });
+
+  // A Sender Keys frame opens only once its chain key is picked up, and
+  // that is when this phone pins the sender's device. Bob is known in the
+  // family group (alice accepted it well before he wrote), so his code ask
+  // reads as a known sender's, not a stranger's, as soon as it opens.
+  test('a group member whose device is named only once their message opens is not read as a stranger', () async {
+    const group = 'grp-family';
+    final carol = await phone(relay, 'carol');
+    addTearDown(carol.dispose);
+    await carol.signIn();
+    relay.addGroup(group, ['bob', 'alice', 'carol'], name: 'Family');
+    await alice.controller.refreshConversations();
+    await bob.controller.refreshConversations();
+    final latest = now;
+    now = DateTime.utc(2026, 3, 1);
+    await alice.contactTrust.accept(group);
+    now = latest;
+    expect(await alice.controller.pinnedDeviceOwners(['user-bob']), isEmpty, reason: 'alice never talked to bob');
+
+    // Bob's frame reaches alice while his chain key cannot be picked up.
+    alice.api.failGroupKeyPickups = true;
+    await bob.controller.sendText(conversationId: group, body: '인증번호 알려줘');
+    await waitFor(() => bob.controller.pendingCountFor(group) == 0, reason: 'bob\'s text was not acked');
+    await alice.controller.loadConversationMessages(group);
+    await waitFor(() => alice.controller.messagesFor(group).any((message) => !message.isMine),
+        reason: 'bob\'s text did not arrive');
+    final code = alice.controller.messagesFor(group).firstWhere((message) => !message.isMine);
+    expect((await alice.controller.decryptMessage(code)).status, DecryptStatus.awaitingKey);
+    safety = MessageSafety(
+        conversationId: group, messenger: alice.controller, trust: alice.contactTrust, checker: const RuleRiskChecker());
+    await safety.settled;
+    expect(safety.riskOf(code), MessageRisk.none, reason: 'nothing to read yet');
+
+    // The key comes: the frame opens and bob's device is pinned. His line is
+    // a known sender's (warn), not a stranger's (strong), while the chat
+    // stays open.
+    alice.api.failGroupKeyPickups = false;
+    alice.controller.onGroupKeysChanged(group);
+    await waitFor(() async => (await alice.controller.decryptMessage(code)).status == DecryptStatus.ok,
+        reason: 'bob\'s text did not open');
+    expect(await alice.controller.pinnedDeviceOwners(['user-bob']), {'dev-bob': 'user-bob'});
+    await waitFor(() => safety.riskOf(code).level != RiskLevel.none, reason: 'the opened text got no line');
+    await safety.settled;
+    expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.warn, reason: RiskReason.asksForCode),
+        reason: 'read as a stranger\'s');
   });
 }

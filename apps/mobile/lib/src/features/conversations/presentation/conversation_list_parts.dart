@@ -6,6 +6,7 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../chat/presentation/message_time.dart';
+import '../../safety/data/safety_providers.dart';
 import '../data/conversation_models.dart';
 import '../data/veil_messenger_controller.dart';
 import 'conversation_list_labels.dart';
@@ -94,6 +95,8 @@ class ConversationListHeader extends StatelessWidget {
 /// message with the query in bold. The avatar and the name are the ones the
 /// chat's own row shows: a group's neutral disc and its name, never the
 /// letter or the name of the member the search result happens to carry.
+/// A hit in a message request quotes nothing: it says "Message request",
+/// as the request's own row does.
 class MessageSearchResultTile extends ConsumerWidget {
   const MessageSearchResultTile({
     super.key,
@@ -141,7 +144,9 @@ class MessageSearchResultTile extends ConsumerWidget {
     final snippetStyle = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted);
     final chat = conversation;
     final group = chat?.type == ConversationType.group;
-    final sender = group ? _groupSender(ref) : null;
+    // No word of a stranger's text outside the chat, a search hit's either.
+    final request = ref.watch(contactTrustProvider).isRequest(result.conversationId);
+    final sender = group && !request ? _groupSender(ref) : null;
     // Bare, as on a chat's row, also for a chat this device lists no more.
     final title = chat == null
         ? names.directName(result.conversationId, result.peerHandle) ?? result.peerHandle
@@ -196,16 +201,20 @@ class MessageSearchResultTile extends ConsumerWidget {
                         text: TextSpan(
                           style: snippetStyle,
                           children: [
-                            if (result.isMine)
+                            if (request)
+                              TextSpan(text: l10n.conversationsRequestPreview)
+                            else if (result.isMine)
                               TextSpan(text: l10n.conversationsPreviewYou(''))
                             else if (sender != null)
                               TextSpan(text: l10n.conversationsPreviewSender(sender, '')),
-                            ...buildSearchHighlightTextSpans(
-                              text: result.bodySnippet,
-                              query: query,
-                              highlightStyle: snippetStyle?.copyWith(color: palette.text, fontWeight: FontWeight.w600),
-                              baseStyle: snippetStyle,
-                            ),
+                            if (!request)
+                              ...buildSearchHighlightTextSpans(
+                                text: result.bodySnippet,
+                                query: query,
+                                highlightStyle:
+                                    snippetStyle?.copyWith(color: palette.text, fontWeight: FontWeight.w600),
+                                baseStyle: snippetStyle,
+                              ),
                           ],
                         ),
                         textScaler: MediaQuery.textScalerOf(context),

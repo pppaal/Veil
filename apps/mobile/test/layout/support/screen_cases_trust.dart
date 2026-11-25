@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/safety/message_risk.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_request_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_risk_line.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -18,8 +20,9 @@ import 'trust_seed.dart';
 // bar), a new account that says it is family with its Verify, each of those
 // two with the keyboard up too, the claim under a "Safety number changed"
 // notice with the keyboard, and the nudge to verify in Sam's busy chat while
-// his number was never compared. The seeds are English, as every layout
-// seed is.
+// his number was never compared; and a stranger's request holding a warn
+// line (a money ask) and a strong one (a code ask) under an everyday line
+// that has none. The seeds are English, as every layout seed is.
 
 final _en = lookupAppLocalizations(const Locale('en'));
 
@@ -54,6 +57,16 @@ const List<ScreenCase> trustScreenCases = [
     primaryExtent: chatMessagesExtent,
     minPrimaryExtent: minSqueezedMessagesExtent,
     settle: _expectDirectRequest,
+  ),
+  ScreenCase(
+    'chat-request-risk-lines',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$riskStrangerConversationId',
+    attention: ChatAttention(trust: TrustCase.riskLines),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectRiskLines,
   ),
   ScreenCase(
     'chat-request-group',
@@ -154,6 +167,22 @@ Future<void> _expectDirectRequest(WidgetTester tester) async {
   for (final label in [_en.blockAction, _en.reportAction, _en.chatRequestAccept]) {
     expect(find.descendant(of: find.byType(ChatRequestBar), matching: find.text(label)), findsOneWidget);
   }
+}
+
+// The request frame with the message body's lines: one warn, one strong,
+// each under its own bubble, and none under the everyday line.
+Future<void> _expectRiskLines(WidgetTester tester) async {
+  await pumpFrames(tester, frames: 10);
+  expect(find.byType(ChatRequestBar), findsOneWidget, reason: 'the request bar is not in the composer\'s place');
+  final lines = find.byType(MessageRiskLine);
+  expect(lines, findsNWidgets(2), reason: 'a warn and a strong line, nothing under the everyday line');
+  final levels = tester.widgetList<MessageRiskLine>(lines).map((line) => line.risk);
+  expect(levels, unorderedEquals(const [
+    MessageRisk(level: RiskLevel.warn, reason: RiskReason.asksForMoney),
+    MessageRisk(level: RiskLevel.strong, reason: RiskReason.asksForCode),
+  ]));
+  expect(find.text(_en.riskLineMoney), findsOneWidget);
+  expect(find.text(_en.riskLineCode), findsOneWidget);
 }
 
 Future<void> _expectGroupRequest(WidgetTester tester) async {

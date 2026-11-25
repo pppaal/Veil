@@ -549,6 +549,12 @@ class FakeRelayClient extends VeilApiClient {
   bool unreachable = false;
   // While set, history fetches wait for it to complete.
   Completer<void>? messageFetchGate;
+  // While set, picking up group chain keys fails as an unreachable relay
+  // makes it, so a Sender Keys frame waits for its key.
+  bool failGroupKeyPickups = false;
+  // While set, a directory answer is held after the relay worked it out,
+  // as a slow network holds it, until this completes.
+  Completer<void>? directoryGate;
   final Map<String, int> directoryLookups = {};
   final List<String> markReadCalls = [];
   final List<String> signedPrekeyUploads = [];
@@ -658,6 +664,7 @@ class FakeRelayClient extends VeilApiClient {
     _stampDate();
     if (path.startsWith('/keys/group/')) {
       groupKeyRequests += 1;
+      if (failGroupKeyPickups) throw VeilApiException('Service unavailable', statusCode: 503);
       return relay._groupKeys(me, Uri.decodeComponent(path.substring('/keys/group/'.length)));
     }
     if (path.startsWith('/keys/')) {
@@ -669,7 +676,9 @@ class FakeRelayClient extends VeilApiClient {
       if (party != null && relay.blockedEitherWay(me.userId, party.userId)) {
         throw VeilApiException('User not found', statusCode: 404, code: 'handle_not_found');
       }
-      return relay._lookup(me, handle, query?['claim'] ?? 'active');
+      final answer = relay._lookup(me, handle, query?['claim'] ?? 'active');
+      if (directoryGate case final gate?) await gate.future;
+      return answer;
     }
     if (path == '/prekeys/count') {
       return {'available': relay.oneTimePrekeys[me.deviceId]?.length ?? 0};

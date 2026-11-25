@@ -8,6 +8,8 @@ import 'messenger_state_store.dart';
 import 'peer_bundle_cache.dart';
 import 'session_policy.dart';
 
+typedef _DirectoryRead = ({DirectoryDevice device, int checkMark});
+
 /// Decides whom a 1:1 conversation's next frame is sealed to: its
 /// established session while the identity pins accept it, otherwise the
 /// key directory's answer once the pins accept that, bootstrapping a
@@ -80,8 +82,8 @@ class PeerSessionResolver {
       recheck = true;
     }
     final handle = conversation.peerHandle;
-    final served = (recheck ? null : _peerBundles.fresh(handle)) ?? await _fetchPeerBundle(handle, KeyClaim.active);
-    final bundle = await _applyDirectoryAnswer(conversation.id, served, mustBootstrap: sessionMoved);
+    final read = (recheck ? null : _peerBundles.freshRead(handle)) ?? await _fetchPeerBundle(handle, KeyClaim.active);
+    final bundle = await _applyDirectoryAnswer(conversation.id, read, mustBootstrap: sessionMoved);
     _directoryRecheck.remove(conversation.id);
     return bundle;
   }
@@ -97,8 +99,8 @@ class PeerSessionResolver {
         !_sessions.hasSessionFor(conversationId)) {
       return false;
     }
-    final served = await _fetchPeerBundle(conversation.peerHandle, KeyClaim.active);
-    await _applyDirectoryAnswer(conversationId, served, mustBootstrap: true);
+    final read = await _fetchPeerBundle(conversation.peerHandle, KeyClaim.active);
+    await _applyDirectoryAnswer(conversationId, read, mustBootstrap: true);
     _directoryRecheck.remove(conversationId);
     return true;
   }
@@ -114,8 +116,8 @@ class PeerSessionResolver {
   // the session the peer just opened, and claims no prekey it would not use.
   Future<void> learnPeerIdentity(ConversationPreview conversation) async {
     final handle = conversation.peerHandle;
-    final served = _peerBundles.fresh(handle) ?? await _fetchPeerBundle(handle, KeyClaim.none);
-    await _applyDirectoryAnswer(conversation.id, served, mayBootstrap: false);
+    final read = _peerBundles.freshRead(handle) ?? await _fetchPeerBundle(handle, KeyClaim.none);
+    await _applyDirectoryAnswer(conversation.id, read, mayBootstrap: false);
   }
 
   // A conversation listed under a handle this device knows as another
@@ -130,10 +132,14 @@ class PeerSessionResolver {
     return listed;
   }
 
-  Future<DirectoryDevice> _fetchPeerBundle(String handle, KeyClaim claim) async {
+  // The answer, with the identity check mark of when it was asked for: by
+  // the time it is applied, a newer identity change may have been raised,
+  // which an answer to the older question must not withdraw.
+  Future<_DirectoryRead> _fetchPeerBundle(String handle, KeyClaim claim) async {
+    final checkMark = _trust.checkMark;
     final active = await _activeDeviceOf(handle, claim);
-    _peerBundles.remember(handle, active);
-    return active;
+    _peerBundles.remember(handle, active, checkMark: checkMark);
+    return (device: active, checkMark: checkMark);
   }
 
   Future<DirectoryDevice> _activeDeviceOf(String handle, KeyClaim claim) async {
@@ -147,11 +153,12 @@ class PeerSessionResolver {
   // pins accept it. Returns the bundle the conversation now holds.
   Future<KeyBundle> _applyDirectoryAnswer(
     String conversationId,
-    DirectoryDevice served, {
+    _DirectoryRead read, {
     bool mayBootstrap = true,
     bool mustBootstrap = false,
   }) async {
     final conversation = _store.conversationById(conversationId);
+    final served = read.device;
     final bundle = served.bundle;
     final session = _session.signedIn;
     if (conversation == null || session == null) {
@@ -162,7 +169,7 @@ class PeerSessionResolver {
     if (bundle.userId != peerUserId) {
       throw StateError('The directory answered @${conversation.peerHandle} with another user.');
     }
-    await _trust.require(conversationId, peerUserId, bundle.deviceId, bundle.identityPublicKey);
+    await _trust.require(conversationId, peerUserId, bundle.deviceId, bundle.identityPublicKey, since: read.checkMark);
     // The first identity the pins admit binds the conversation to the peer
     // it is listed with (see ConversationPeerBindings).
     await _bindings.bindAll({conversationId: listed});

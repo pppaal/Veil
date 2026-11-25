@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 const _expected = [
   'handle_lookalike.dart',
   'link_brands.dart',
+  'link_hosts.dart',
   'links.dart',
   'message_risk.dart',
   'rule_risk_checker.dart',

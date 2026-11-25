@@ -12,23 +12,27 @@ class PeerBundleCache {
 
   final Duration ttl;
   final DateTime Function() _clock;
-  final Map<String, (DirectoryDevice, DateTime)> _entries = {};
+  final Map<String, (DirectoryDevice, DateTime, int)> _entries = {};
 
-  DirectoryDevice? fresh(String handle) {
+  DirectoryDevice? fresh(String handle) => freshRead(handle)?.device;
+
+  /// A recent answer for [handle], with the identity check mark taken when
+  /// it was asked for (IdentityTrust.checkMark).
+  ({DirectoryDevice device, int checkMark})? freshRead(String handle) {
     final entry = _entries[handle];
     if (entry == null) {
       return null;
     }
-    final (device, fetchedAt) = entry;
+    final (device, fetchedAt, checkMark) = entry;
     if (_clock().difference(fetchedAt) >= ttl) {
       _entries.remove(handle);
       return null;
     }
-    return device;
+    return (device: device, checkMark: checkMark);
   }
 
-  void remember(String handle, DirectoryDevice device) {
-    _entries[handle] = (device, _clock());
+  void remember(String handle, DirectoryDevice device, {int checkMark = 0}) {
+    _entries[handle] = (device, _clock(), checkMark);
   }
 
   /// A one-time prekey opens one session only; a later bootstrap from the
@@ -36,8 +40,8 @@ class PeerBundleCache {
   void spendOneTimePrekey(String handle) {
     final entry = _entries[handle];
     if (entry == null) return;
-    final (device, fetchedAt) = entry;
-    _entries[handle] = (DirectoryDevice(bundle: device.bundle, isActive: device.isActive), fetchedAt);
+    final (device, fetchedAt, checkMark) = entry;
+    _entries[handle] = (DirectoryDevice(bundle: device.bundle, isActive: device.isActive), fetchedAt, checkMark);
   }
 
   void clear() => _entries.clear();

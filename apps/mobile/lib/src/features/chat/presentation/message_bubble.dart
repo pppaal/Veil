@@ -142,7 +142,7 @@ class MessageBubble extends StatelessWidget {
           DecryptStatus.ok || DecryptStatus.legacyUnauthenticated => MessageText(
               text: decrypted!.body,
               style: bodyStyle,
-              linkColor: onBrand ? Colors.white : palette.primary,
+              linkColor: onBrand ? Colors.white : palette.primaryStrong,
               searchQuery: query,
               onLinkTap: switch (onLinkTap) {
                 final onTap? => (link) => onTap(link, proven: status == DecryptStatus.ok),

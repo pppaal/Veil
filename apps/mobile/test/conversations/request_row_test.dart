@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/domain/message_search.dart';
+import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_parts.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/unread_chats.dart';
 import 'package:veil_mobile/src/features/safety/application/contact_trust.dart';
@@ -64,6 +67,55 @@ void main() {
         final accepted = tester.widget<UnreadBadge>(find.descendant(of: rowOf('mallory'), matching: find.byType(UnreadBadge)));
         expect(accepted.muted, isFalse);
         expect(world.container.read(unreadChatsProvider), counted + 1);
+      },
+    );
+  });
+
+  // The search of Chats finds words in messages on the phone. A hit in a
+  // request quotes none of them either: it says "Message request", as the
+  // row does, until the chat is accepted.
+  testWidgets('a search hit in a request quotes no text', (tester) async {
+    late ContactTrust trust;
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/conversations',
+      beforeSession: (relay) => addStranger(relay, identities, 'mallory'),
+      afterSession: (world) async => trust = await attachContactTrust(world),
+      body: (world) async {
+        final stranger = await strangerWrites(world, 'mallory', ['can you send me the code you just got?']);
+        world.cache.archiveHits = [
+          MessageSearchResult(
+            conversationId: stranger,
+            messageId: 'mallory-hit',
+            peerHandle: 'mallory',
+            peerDisplayName: null,
+            sentAt: world.now.subtract(const Duration(minutes: 1)),
+            messageKind: MessageKind.text,
+            isMine: false,
+            bodySnippet: 'can you send me the code you just got?',
+          ),
+        ];
+        await pumpFrames(tester, frames: 4);
+        expect(trust.isRequest(stranger), isTrue);
+        await tester.enterText(find.byType(TextField), 'code');
+        // The archive search waits 180 ms for the typing to stop.
+        await pumpFrames(tester, frames: 4);
+        final tile = find.byType(MessageSearchResultTile);
+        await tester.dragUntilVisible(tile, find.byType(ListView), const Offset(0, -200));
+        await pumpFrames(tester, frames: 2);
+        expect(find.descendant(of: tile, matching: find.textContaining(en.conversationsRequestPreview, findRichText: true)),
+            findsOneWidget);
+        expect(find.textContaining('the code you just got', findRichText: true), findsNothing,
+            reason: 'no word of it outside the chat');
+
+        // Accepted: the hit quotes the message, the query in bold.
+        await trust.accept(stranger);
+        await pumpFrames(tester, frames: 4);
+        expect(find.descendant(of: tile, matching: find.textContaining('the code you just got', findRichText: true)),
+            findsOneWidget);
+        expect(find.descendant(of: tile, matching: find.textContaining(en.conversationsRequestPreview, findRichText: true)),
+            findsNothing);
       },
     );
   });

@@ -4,26 +4,34 @@
 // turns every label that is not plain ASCII into its punycode (xn--) form,
 // which is how its address bar shows such a host. The link sheet names
 // that host, so a host written to look like another one is shown as what
-// it opens.
+// it opens. A browser refuses a host with an escape that does not decode,
+// or with a character no host may hold once decoded; such a host opens
+// nothing, and browserHost gives it no name.
 
 /// Full stops a browser reads as '.' in a host: ideographic (U+3002), full
 /// width (U+FF0E) and half-width ideographic (U+FF61).
 bool isHostFullStop(int c) => c == 0x3002 || c == 0xFF0E || c == 0xFF61;
 
+/// Characters a browser refuses in a host (the URL Standard's forbidden
+/// domain code points): controls, space, # % / : < > ? @ [ \ ] ^ | and
+/// delete.
+bool _isForbiddenInHost(int c) => c <= 0x20 || c == 0x7F || r'#%/:<>?@[\]^|'.codeUnits.contains(c);
+
 /// [written] (no login, no port) as a browser opens it: %-escapes decoded,
 /// [isHostFullStop] dots and full-width forms read as ASCII, lower case,
 /// no trailing dot, and every label that is still not ASCII in its xn--
-/// form. An escape that does not decode is left as written.
-String browserHost(String written) {
+/// form. Null for a host a browser refuses: an escape that does not decode,
+/// or a host that then holds a character no host may hold
+/// (evil.xyz%2F.naver.com, naver.com%40evil.xyz).
+String? browserHost(String written) {
   var host = written;
   if (host.contains('%')) {
     try {
       host = Uri.decodeComponent(host);
     } on ArgumentError {
-      // Not a valid escape, or not UTF-8: a browser refuses such a host;
-      // it is shown as written.
+      return null; // Not a valid escape.
     } on FormatException {
-      // As above.
+      return null; // Not UTF-8.
     }
   }
   final plain = StringBuffer();
@@ -37,6 +45,7 @@ String browserHost(String written) {
     }
   }
   final lower = plain.toString().toLowerCase();
+  if (lower.codeUnits.any(_isForbiddenInHost)) return null;
   final trimmed = lower.endsWith('.') ? lower.substring(0, lower.length - 1) : lower;
   return trimmed.split('.').map(_asciiLabel).join('.');
 }

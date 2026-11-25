@@ -52,10 +52,14 @@ class FoundLink {
 
   /// The host a browser opens (browserHost): %-escapes decoded, other
   /// full stops read as dots, lower case, and any label that is not plain
-  /// ASCII in its xn-- form, as an address bar shows it.
+  /// ASCII in its xn-- form, as an address bar shows it. A host a browser
+  /// refuses (an escape that does not decode, or a character no host may
+  /// hold once decoded) is the host of [uri], escaped as there.
   final String host;
 
-  /// The last two labels of [host], or three under an ending such as co.kr.
+  /// The last two labels of [host], or three under an ending such as co.kr;
+  /// all of [host] when a browser refuses it, so no decoded part of it reads
+  /// as the domain.
   final String registrableDomain;
 
   /// Everything after the host, query included.
@@ -69,7 +73,8 @@ class FoundLink {
 
   /// The address as written seems to name another host than the one it
   /// opens: a backslash right after the host (browsers read it as '/'), any
-  /// %-escape in the host, or a host that opens as another name.
+  /// %-escape in the host, a host a browser refuses, or a host that opens
+  /// as another name.
   final bool hidesHost;
 
   @override
@@ -172,6 +177,40 @@ bool _takesBareDomain(String written, String host, String path) {
   return isBrandHost(host) || _hostIn(host, shortenerHosts) || _hostIn(host, softShortenerHosts) || isLookalikeHost(host);
 }
 
+// Whether the authority from [from], just after an ideographic or
+// full-width full stop, is the rest of a host: '.'-separated labels whose
+// last is a known ending (login-check.xyz), not the next sentence's first
+// word or number (Thanks, OK, 1234). A lone Title-case word that is also
+// an ending (Do, Me, At) starts a sentence, as after a bare domain.
+bool _hostGoesOnAfter(String text, int from) {
+  var end = from;
+  while (end < text.length) {
+    final c = text.codeUnitAt(end);
+    if (c == 0x2F || c == 0x3F || c == 0x23 || c == 0x5C) break;
+    if (!isHostFullStop(c) && !_isAsciiUrlCharacter(c)) break;
+    end++;
+  }
+  var rest = text.substring(from, end);
+  // Less what ends the sentence: punctuation, closing brackets, full stops.
+  while (rest.isNotEmpty) {
+    final cut = _trimmedLength(rest);
+    if (cut < rest.length) {
+      rest = rest.substring(0, cut);
+    } else if (isHostFullStop(rest.codeUnitAt(rest.length - 1))) {
+      rest = rest.substring(0, rest.length - 1);
+    } else {
+      break;
+    }
+  }
+  final labels = rest.replaceFirst(_portAtEnd, '').split(_anyFullStop);
+  final ending = labels.last.toLowerCase();
+  if (labels.length == 1 && _wordLikeEndings.contains(ending) && _isTitleCase(labels.last)) return false;
+  return bareDomainEndings.contains(ending);
+}
+
+final _portAtEnd = RegExp(r':\d*$');
+final _anyFullStop = RegExp('[.\u3002\uFF0E\uFF61]');
+
 // The length of [path] once trailing punctuation and unbalanced closing
 // brackets are trimmed.
 int _trimmedLength(String path) {
@@ -208,10 +247,11 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     if (_isSpace(c) || c == 0x2F || c == 0x3F || c == 0x23 || c == 0x5C) break;
     // An ideographic or full-width full stop between two parts of a host
     // is a dot to a browser (naver.com。login-check.xyz opens
-    // naver.com.login-check.xyz); one that ends a sentence ends the link.
+    // naver.com.login-check.xyz); one that ends a sentence ends the link
+    // (naver.com。Thanks, example.org。OK, google.com。1234).
     if (isHostFullStop(c)) {
       final next = i + 1 < runes.length ? runes[i + 1] : 0;
-      if (!_isAsciiLetterOrDigit(next)) break;
+      if (!_isAsciiLetterOrDigit(next) || !_hostGoesOnAfter(text, i + 1)) break;
       nonAscii = true;
       i++;
       continue;
@@ -255,11 +295,14 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
   final writtenHost = hostPort.toLowerCase().replaceAll(_trailingDot, '');
   if (writtenHost.isEmpty) return null;
   final escaped = writtenHost.contains('%');
-  final host = writtenHost.startsWith('[') ? writtenHost : browserHost(writtenHost);
-  if (host.isEmpty) return null;
   final written = text.substring(start, end);
   final uri = Uri.tryParse(written);
   if (uri == null) return null;
+  // A host a browser refuses is named as the address escapes it, never as
+  // it decodes (evil.xyz%2F.naver.com is not naver.com).
+  final opened = writtenHost.startsWith('[') ? writtenHost : browserHost(writtenHost);
+  final host = opened ?? uri.host;
+  if (host.isEmpty) return null;
   // The host that would open must be the host found; any other reading of
   // the address hides where it goes.
   final opens = uri.host.toLowerCase().replaceAll(_trailingDot, '');
@@ -271,12 +314,12 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     text: written,
     uri: uri,
     host: host,
-    registrableDomain: registrableDomainOf(host),
+    registrableDomain: opened == null ? host : registrableDomainOf(host),
     path: path,
     userInfo: userInfo,
     port: port,
     nonAsciiHost: nonAscii,
-    hidesHost: backslash || escaped || mismatch,
+    hidesHost: backslash || escaped || opened == null || mismatch,
   );
 }
 

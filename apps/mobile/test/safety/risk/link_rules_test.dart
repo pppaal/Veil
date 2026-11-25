@@ -270,5 +270,69 @@ void main() {
       expect(link.text, 'https://naver.com', reason: text);
       expect(linkRiskOf(link), LinkRisk.none, reason: text);
     }
+
+    // So does one before the next sentence's first word or number: only a
+    // rest that ends in a known ending (login-check.xyz) is more host.
+    for (final (text, link) in [
+      ('see https://naver.com\u3002Thanks', 'https://naver.com'),
+      ('see https://naver.com\uFF61Thanks', 'https://naver.com'),
+      ('menu at https://flats.example.org\u3002OK see you', 'https://flats.example.org'),
+      ('https://www.google.com\u30021234', 'https://www.google.com'),
+      ('https://www.google.com\uFF0E1234', 'https://www.google.com'),
+      ('https://www.google.com\u3002Do you have it?', 'https://www.google.com'),
+      ('https://naver.com\u3002Thanks\u3002See you', 'https://naver.com'),
+    ]) {
+      final found = only(text);
+      expect(found.text, link, reason: text);
+      expect(linkRiskOf(found), LinkRisk.none, reason: text);
+    }
+    for (final text in [
+      'Log in at https://naver.com\u3002login-check.xyz/ today',
+      'https://naver.com\u3002login-check.xyz\u3002',
+      'https://naver.com\uFF61login\u3002check.xyz',
+      'https://naver.com\u3002login-check.xyz:8443/a',
+      '(https://naver.com\u3002login-check.xyz)',
+      'https://naver.com\u3002Login-check.Shop/',
+    ]) {
+      final link = only(text);
+      expect(link.host, startsWith('naver.com.login'), reason: text);
+      expect(link.registrableDomain, anyOf('login-check.xyz', 'check.xyz', 'login-check.shop'), reason: text);
+      expect(linkRiskOf(link), LinkRisk.hidden, reason: text);
+    }
+  });
+
+  // A browser refuses a host that, once decoded, holds a character no host
+  // may hold, or whose escape does not decode. The sheet names such a host
+  // as the address escapes it, never by a decoded part of it.
+  test('a host a browser would refuse is named as escaped, and still hides the link', () {
+    FoundLink only(String text) {
+      final links = findLinks(text);
+      expect(links, hasLength(1), reason: text);
+      return links.single;
+    }
+
+    for (final (text, domain) in [
+      ('https://evil.xyz%2F.naver.com/', 'evil.xyz%2F.naver.com'),
+      ('https://naver.com%40evil.xyz/', 'naver.com%40evil.xyz'),
+      ('https://evil.xyz%5C.naver.com/', 'evil.xyz%5C.naver.com'),
+      ('https://evil.xyz%20.naver.com/', 'evil.xyz%20.naver.com'),
+      ('https://evil.xyz%09.naver.com/', 'evil.xyz%09.naver.com'),
+      ('https://evil.xyz%00.naver.com/', 'evil.xyz%00.naver.com'),
+      ('https://evil.xyz%2525.naver.com/', 'evil.xyz%2525.naver.com'),
+      ('https://evil.xyz%23.naver.com/', 'evil.xyz%23.naver.com'),
+      ('https://evil.xyz%3F.naver.com/', 'evil.xyz%3F.naver.com'),
+      ('https://naver.com%3A443.evil.xyz/', 'naver.com%3A443.evil.xyz'),
+      ('https://evil%zz.naver.com/', 'evil%25zz.naver.com'),
+      ('https://evil%FF.naver.com/', 'evil%FF.naver.com'),
+    ]) {
+      final link = only(text);
+      expect(link.registrableDomain, domain, reason: text);
+      expect(link.host, domain, reason: text);
+      expect(link.uri.toString(), 'https://$domain/', reason: text);
+      expect(linkRiskOf(link), LinkRisk.hidden, reason: text);
+      expect(allLinksOfficial(text, [link]), isFalse, reason: text);
+    }
+    // An escape that decodes to a host a browser opens is still read as it.
+    expect(only('https://naver.com%2Elogin-check.xyz/').registrableDomain, 'login-check.xyz');
   });
 }

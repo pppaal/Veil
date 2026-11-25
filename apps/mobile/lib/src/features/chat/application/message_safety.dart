@@ -206,22 +206,24 @@ class MessageSafety extends ChangeNotifier {
   // device not named yet has opened since the last read: a device's pin
   // appears once its first frame opened (a Sender Keys frame, once its
   // chain key came), which can be after the chat was first read. A message
-  // that has not opened gets no line, so it asks for nothing.
+  // that has not opened gets no line, so it asks for nothing. A read that
+  // fails counts as no read: the next run asks again.
   Future<void> _readOwners(ConversationPreview chat, List<ChatMessage> messages, List<DecryptedMessage?> opened) async {
     final unnamed = {
       for (final (index, message) in messages.indexed)
         if (opened[index] != null && !_ownerByDevice.containsKey(message.senderDeviceId)) message.id,
     };
     if (unnamed.isEmpty || _ownersAskedFor.containsAll(unnamed)) return;
-    _ownersAskedFor = unnamed;
     final localUserId = _messenger.localUserId;
     try {
       _ownerByDevice = await _messenger.pinnedDeviceOwners([
         for (final member in chat.members)
           if (member.userId != localUserId) member.userId,
       ]);
+      _ownersAskedFor = unnamed;
     } catch (_) {
-      // Unnamed devices stay unnamed: their texts are read as a stranger's.
+      // Unnamed devices stay unnamed until a later run reads the pins:
+      // their texts are read as a stranger's until then.
     }
   }
 

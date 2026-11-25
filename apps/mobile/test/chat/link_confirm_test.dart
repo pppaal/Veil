@@ -10,6 +10,7 @@ import 'package:veil_mobile/src/app/system_sheet_grace.dart';
 import 'package:veil_mobile/src/app/veil_app.dart';
 import 'package:veil_mobile/src/core/notifications/local_notification_service.dart';
 import 'package:veil_mobile/src/core/platform/link_opener.dart';
+import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/safety/application/contact_trust.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -229,6 +230,56 @@ void main() {
       expect(browser.opened, hasLength(1));
       expect(browser.opened.single.toString(), link);
       expect(http.clients, clientsBefore, reason: 'the phone fetched, previewed or expanded the link');
+    });
+  });
+
+  // A link is text, so on someone else's bubble it takes the brand's text
+  // colour (primaryStrong), which reads on the dark grey bubble; the brand
+  // fill (primary) is too dark there. The user's own bubble draws it white.
+  testWidgets('a link on someone else\'s bubble is drawn in the brand\'s text colour', (tester) async {
+    await withLinks(tester, from: 'sam', texts: ['the flat is here https://flats.example.org/listing/42'],
+        body: (world, trust) async {
+      final paragraph = tester
+          .renderObjectList<RenderParagraph>(find.byType(RichText))
+          .firstWhere((paragraph) => paragraph.text.toPlainText(includeSemanticsLabels: false).contains('flats.example.org'));
+      TextSpan? link;
+      paragraph.text.visitChildren((span) {
+        if (span is TextSpan && (span.text ?? '').contains('flats.example.org')) link = span;
+        return link == null;
+      });
+      expect(link, isNotNull);
+      expect(link!.style?.color, VeilPalette.dark.primaryStrong);
+      expect(link!.style?.color, isNot(VeilPalette.dark.primary));
+      expect(link!.style?.decoration, TextDecoration.underline);
+    });
+  });
+
+  // A host written to read as another: an escaped or ideographic full
+  // stop, or a Cyrillic letter. The sheet is the strong one even from a
+  // verified contact, its bold domain is the one the browser would open
+  // (in its xn-- form when it is not plain ASCII), and its address line is
+  // exactly the link that opens.
+  testWidgets('a host written to look like another gets the strong sheet with the domain a browser would open',
+      (tester) async {
+    const escaped = 'https://naver.com%2Elogin-check.xyz/pay';
+    const ideographic = 'https://naver.com\u3002secure-check.xyz/';
+    const cyrillic = 'https://\u0430pple.com/login';
+    await withLinks(tester, from: 'sam', texts: ['pay here $escaped', 'or $ideographic', cyrillic], body: (world, trust) async {
+      for (final (part, domain) in [
+        ('login-check.xyz/pay', 'login-check.xyz'),
+        ('secure-check.xyz', 'secure-check.xyz'),
+        ('pple.com/login', 'xn--pple-43d.com'),
+      ]) {
+        await tapLink(tester, part);
+        expect(inSheet(find.text(en.linkRiskHiddenTitle)), findsOneWidget, reason: part);
+        expect(tester.widget<Text>(find.byKey(const ValueKey('link-sheet-domain'))).data, domain, reason: part);
+        final address = tester.widget<Text>(find.byKey(const ValueKey('link-sheet-address'))).data;
+        await tester.tap(find.byKey(const ValueKey('link-sheet-open')));
+        await pumpFrames(tester, frames: 4);
+        expect(browser.opened.last.toString(), address, reason: 'the address shown is the link that opened');
+      }
+      expect(browser.opened, hasLength(3));
+      expect(browser.opened.last.host, '%D0%B0pple.com', reason: 'opened as written; the browser names it xn--pple-43d');
     });
   });
 

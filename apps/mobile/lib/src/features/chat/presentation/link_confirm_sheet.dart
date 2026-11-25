@@ -13,13 +13,16 @@ import '../../../shared/presentation/veil_ui.dart';
 
 /// What a tap on [link] in a message does. A link that downloads an app,
 /// hides where it goes (a short link, an IP address, a login before the
-/// host, an odd port, punycode) or only looks like a known site asks
+/// host, an odd port, an escape or a non-Latin letter in the host,
+/// punycode) or only looks like a known site asks
 /// through the strong sheet, whoever sent it. Any other link asks through
 /// the plain sheet unless [openAtOnce] (the user's own message, or a
 /// verified sender in an accepted chat); a company's own short link
 /// (naver.me, kko.to, me2.do) always asks through the plain one. Both
-/// sheets show the real domain and the address as written; nothing about
-/// the link is fetched, previewed or expanded, before or after.
+/// sheets show the domain a browser would open (escapes decoded, other
+/// full stops read as dots, a non-Latin host in its xn-- form) and the
+/// address that opens; nothing about the link is fetched, previewed or
+/// expanded, before or after.
 Future<void> openMessageLink(
   BuildContext context,
   FoundLink link, {

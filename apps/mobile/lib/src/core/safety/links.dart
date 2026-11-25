@@ -3,6 +3,7 @@
 
 import 'handle_lookalike.dart';
 import 'link_brands.dart';
+import 'link_hosts.dart';
 
 /// How risky a link looks, in rising order.
 enum LinkRisk {
@@ -49,21 +50,26 @@ class FoundLink {
   /// domain.
   final Uri uri;
 
-  /// Lower case, as written (non-Latin letters kept).
+  /// The host a browser opens (browserHost): %-escapes decoded, other
+  /// full stops read as dots, lower case, and any label that is not plain
+  /// ASCII in its xn-- form, as an address bar shows it.
   final String host;
 
-  /// The last two labels of the host, or three under an ending such as co.kr.
+  /// The last two labels of [host], or three under an ending such as co.kr.
   final String registrableDomain;
 
   /// Everything after the host, query included.
   final String path;
   final String userInfo;
   final int? port;
+
+  /// The host as written holds a character outside ASCII: a non-Latin
+  /// letter, or a full stop other than '.'.
   final bool nonAsciiHost;
 
   /// The address as written seems to name another host than the one it
-  /// opens: a backslash right after the host (browsers read it as '/'), or a
-  /// host written with escapes that opens as another name.
+  /// opens: a backslash right after the host (browsers read it as '/'), any
+  /// %-escape in the host, or a host that opens as another name.
   final bool hidesHost;
 
   @override
@@ -92,6 +98,7 @@ final _trailingDot = RegExp(r'\.$');
 const _trailing = '.,!?;:\'"';
 const _closers = {')': '(', ']': '[', '}': '{'};
 
+bool _isAsciiLetterOrDigit(int c) => (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A);
 bool _isAsciiUrlCharacter(int c) => c > 0x20 && c < 0x7F && c != 0x3C && c != 0x3E;
 bool _isSpace(int c) => c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0D || c == 0x3000 || c == 0xA0;
 bool _isHangul(int c) => (c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x3131 && c <= 0x318E) || (c >= 0x1100 && c <= 0x11FF);
@@ -199,6 +206,16 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
   while (i < runes.length) {
     final c = runes[i];
     if (_isSpace(c) || c == 0x2F || c == 0x3F || c == 0x23 || c == 0x5C) break;
+    // An ideographic or full-width full stop between two parts of a host
+    // is a dot to a browser (naver.com。login-check.xyz opens
+    // naver.com.login-check.xyz); one that ends a sentence ends the link.
+    if (isHostFullStop(c)) {
+      final next = i + 1 < runes.length ? runes[i + 1] : 0;
+      if (!_isAsciiLetterOrDigit(next)) break;
+      nonAscii = true;
+      i++;
+      continue;
+    }
     if (c >= 0x80) {
       final asciiHost = text.substring(afterScheme, i);
       // A Korean word glued after a complete domain ends the link; a host
@@ -235,7 +252,10 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     port = int.parse(portMatch[1]!);
     hostPort = hostPort.substring(0, portMatch.start);
   }
-  final host = hostPort.toLowerCase().replaceAll(_trailingDot, '');
+  final writtenHost = hostPort.toLowerCase().replaceAll(_trailingDot, '');
+  if (writtenHost.isEmpty) return null;
+  final escaped = writtenHost.contains('%');
+  final host = writtenHost.startsWith('[') ? writtenHost : browserHost(writtenHost);
   if (host.isEmpty) return null;
   final written = text.substring(start, end);
   final uri = Uri.tryParse(written);
@@ -243,7 +263,8 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
   // The host that would open must be the host found; any other reading of
   // the address hides where it goes.
   final opens = uri.host.toLowerCase().replaceAll(_trailingDot, '');
-  final mismatch = !nonAscii && opens != (host.startsWith('[') ? host.substring(1, host.length - 1) : host);
+  final mismatch =
+      !nonAscii && !escaped && opens != (host.startsWith('[') ? host.substring(1, host.length - 1) : host);
   return FoundLink(
     start: start,
     end: end,
@@ -255,7 +276,7 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     userInfo: userInfo,
     port: port,
     nonAsciiHost: nonAscii,
-    hidesHost: backslash || mismatch,
+    hidesHost: backslash || escaped || mismatch,
   );
 }
 
@@ -283,7 +304,8 @@ bool _hostIn(String host, Set<String> hosts) =>
 bool isAppStoreLink(FoundLink link) => appStoreHosts.contains(link.host);
 
 /// Whether the host itself is hidden or odd: an IP address, a login before
-/// it, a port other than 80 or 443, punycode, or non-Latin letters.
+/// it, a port other than 80 or 443, a %-escape, punycode, or a character
+/// outside ASCII.
 bool hasRiskyHost(FoundLink link) =>
     link.nonAsciiHost ||
     link.hidesHost ||
@@ -300,9 +322,14 @@ bool isAppFileLink(FoundLink link) {
 bool isShortLink(FoundLink link) => _hostIn(link.host, shortenerHosts);
 bool isSoftShortLink(FoundLink link) => _hostIn(link.host, softShortenerHosts);
 
-/// The risk of one link: appFile, then lookalike, hidden, soft, none.
+/// The risk of one link: appFile; then hidden for a host written to read
+/// as another (a %-escape, a character outside ASCII, punycode); then
+/// lookalike, any other hidden host, soft, none.
 LinkRisk linkRiskOf(FoundLink link) {
   if (isAppFileLink(link)) return LinkRisk.appFile;
+  if (link.nonAsciiHost || link.hidesHost || link.host.split('.').any((label) => label.startsWith('xn--'))) {
+    return LinkRisk.hidden;
+  }
   if (isLookalikeHost(link.host)) return LinkRisk.lookalike;
   if (isShortLink(link) || hasRiskyHost(link)) return LinkRisk.hidden;
   if (isSoftShortLink(link)) return LinkRisk.soft;

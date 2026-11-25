@@ -226,4 +226,49 @@ void main() {
     expect(only('naver.com').registrableDomain, 'naver.com');
     expect(findLinks('3.5kg, a.m. and e.g. are not links'), isEmpty);
   });
+
+  // A browser decodes %-escapes in a host, reads the ideographic and
+  // full-width full stops as dots and opens a non-Latin host by its xn--
+  // name. Each of those tricks makes a link hidden whoever sends it, and
+  // the domain the sheet names is the one the browser would open.
+  test('a host is read the way a browser reads it, and any escape or non-Latin letter in it hides the link', () {
+    FoundLink only(String text) {
+      final links = findLinks(text);
+      expect(links, hasLength(1), reason: text);
+      return links.single;
+    }
+
+    for (final (text, domain) in [
+      ('https://naver.com%E3%80%82login-check.xyz/', 'login-check.xyz'),
+      ('https://naver.com%2Elogin-check.xyz/', 'login-check.xyz'),
+      ('https://naver.com%2elogin-check.xyz/login', 'login-check.xyz'),
+      ('https://naver.com\u3002login-check.xyz/', 'login-check.xyz'),
+      ('https://naver.com\uFF0Elogin-check.xyz/', 'login-check.xyz'),
+      ('https://naver.com\uFF61login-check.xyz/', 'login-check.xyz'),
+      ('https://\u0430pple.com/login', 'xn--pple-43d.com'),
+      ('https://b\u00FCcher.de/x', 'xn--bcher-kva.de'),
+      ('https://xn--pple-43d.com/login', 'xn--pple-43d.com'),
+      ('https://nav%65r.com/x', 'naver.com'),
+    ]) {
+      final link = only(text);
+      expect(linkRiskOf(link), LinkRisk.hidden, reason: text);
+      expect(link.registrableDomain, domain, reason: text);
+      expect(hasRiskyHost(link), isTrue, reason: text);
+    }
+    expect(only('https://naver.com%2Elogin-check.xyz/').host, 'naver.com.login-check.xyz');
+    expect(only('https://\u0430pple.com/login').host, 'xn--pple-43d.com');
+    expect(only('https://\uC608\uC2DC.\uD55C\uAD6D/').host, 'xn--vv4b11d.xn--3e0b707e');
+    expect(only('https://\uFF4E\uFF41\uFF56\uFF45\uFF52.com/').host, 'naver.com', reason: 'full-width letters');
+
+    // Not a brand's own domain because it decodes to one.
+    expect(allLinksOfficial('https://nav%65r.com/x', findLinks('https://nav%65r.com/x')), isFalse);
+
+    // A full stop that ends a sentence, or one before a Korean word, ends
+    // the link as before.
+    for (final text in ['\u898B\u3066 https://naver.com\u3002', 'https://naver.com\u3002\uD655\uC778\uD574']) {
+      final link = only(text);
+      expect(link.text, 'https://naver.com', reason: text);
+      expect(linkRiskOf(link), LinkRisk.none, reason: text);
+    }
+  });
 }

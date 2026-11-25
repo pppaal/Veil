@@ -1,16 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
+import '../../../core/platform/link_opener.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/read_state_service.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
+import '../application/message_safety.dart';
 import 'chat_message_runs.dart';
 import 'chat_unread_divider.dart';
+import 'link_confirm_sheet.dart';
 import 'message_bubble.dart';
 import 'message_time.dart';
 import 'reaction_chips_row.dart';
@@ -34,7 +39,9 @@ import 'system_notice_bubble.dart';
 /// (ChatOpeningPosition). The divider breaks a group as a day does: the
 /// first unread message opens a group of its own, with its sender's name in
 /// a group chat. Away from the bottom, the round button brings the newest
-/// message back (ScrollToBottomButton).
+/// message back (ScrollToBottomButton). Under a message the checks on this
+/// phone flagged is its risk line, and its links ask before they open
+/// (MessageSafety).
 class ChatMessageList extends ConsumerWidget {
   const ChatMessageList({
     super.key,
@@ -166,6 +173,7 @@ class ChatMessageList extends ConsumerWidget {
       );
     }
 
+    final safety = ref.watch(messageSafetyProvider(conversationId));
     final validIds = filteredMessages.map((message) => message.id).toSet();
     messageKeys.removeWhere((messageId, _) => !validIds.contains(messageId) && messageId != ChatUnreadDivider.rowId);
 
@@ -191,7 +199,7 @@ class ChatMessageList extends ConsumerWidget {
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               itemCount: count,
               padding: padding,
-              itemBuilder: (context, index) => _buildMessageEntry(context, ref, count - 1 - index),
+              itemBuilder: (context, index) => _buildMessageEntry(context, ref, safety, count - 1 - index),
             ),
           ),
           ScrollToBottomButton(
@@ -208,7 +216,7 @@ class ChatMessageList extends ConsumerWidget {
   bool _dividerAbove(ChatMessage? message) =>
       message != null && !hasSearchQuery && unreadDivider?.firstMessageId == message.id;
 
-  Widget _buildMessageEntry(BuildContext context, WidgetRef ref, int index) {
+  Widget _buildMessageEntry(BuildContext context, WidgetRef ref, MessageSafety safety, int index) {
     final l10n = AppLocalizations.of(context);
     final message = filteredMessages[index];
     // A reaction shows on its target, not as a row: the bubbles around it
@@ -262,7 +270,7 @@ class ChatMessageList extends ConsumerWidget {
               ),
             _ => Padding(
                 padding: EdgeInsets.only(bottom: gapBelow),
-                child: _buildBubbleRow(ref, message, decryptFuture, position),
+                child: _buildBubbleRow(ref, safety, message, decryptFuture, position),
               ),
           },
         ),
@@ -307,6 +315,7 @@ class ChatMessageList extends ConsumerWidget {
   /// the last bubble of a group shows.
   Widget _buildBubbleRow(
     WidgetRef ref,
+    MessageSafety safety,
     ChatMessage message,
     Future<DecryptedMessage> decryptFuture,
     VeilBubblePosition position,
@@ -318,6 +327,7 @@ class ChatMessageList extends ConsumerWidget {
     final handle = message.isMine ? null : senderHandleOf?.call(message);
     final bubble = _buildBubbleWithReactions(
       ref,
+      safety,
       message,
       decryptFuture,
       senderName: opensRun ? name : null,
@@ -351,6 +361,7 @@ class ChatMessageList extends ConsumerWidget {
 
   Widget _buildBubbleWithReactions(
     WidgetRef ref,
+    MessageSafety safety,
     ChatMessage message,
     Future<DecryptedMessage> decryptFuture, {
     required String? senderName,
@@ -367,6 +378,13 @@ class ChatMessageList extends ConsumerWidget {
       highlighted: message.id == highlightedMessageId,
       searchQuery: searchQuery,
       heldAccount: controller.peerAccountHoldFor(conversationId) != null,
+      risk: safety.riskOf(message),
+      onLinkTap: (link, {required proven}) => unawaited(openMessageLink(
+            ref.context,
+            link,
+            opener: ref.read(linkOpenerProvider),
+            openAtOnce: proven && safety.linksOpenAtOnce(message),
+          )),
       reactions: message.reactions.isEmpty
           ? null
           : ReactionChipsRow(

@@ -133,8 +133,8 @@ table of the encrypted database: the order of the newest message read here,
 and whether the chat was marked unread. The count is worked out from the
 mark and the messages, never stored, and the server learns nothing new. It
 counts other people's messages above the mark, leaving out reactions, system
-lines, the app's own notices and expired messages. Muted chats and 1:1s with
-a blocked account count too, in grey.
+lines, the app's own notices and expired messages. Muted chats, message
+requests and 1:1s with a blocked account count too, in grey.
 
 The mark moves to the newest message whenever a chat is on screen: when it
 opens, when the app comes back to it from the background, the lock screen, a
@@ -144,20 +144,163 @@ receipt, for the newest message from someone else that opened (none with read
 receipts off). A chat that waits on a safety number change or an account
 hold, a 1:1 whose account has a safety number change waiting in another
 chat, and a 1:1 with a blocked account send no receipt at all: the mark
-still moves, and what was read then is never receipted later.
+still moves, and what was read then is never receipted later. A message
+request sends none either until it is accepted; Accept then sends one, for
+the newest message read (next section).
 
 An unread row in Chats has its name in bold and a count, or a dot when the
 chat was only marked unread. A long press offers Mark as read or Mark as
 unread, and muting. The Chats tab shows how many chats are unread, leaving
-out muted chats and blocked 1:1s. A chat opens with an "unread messages" line
-above the first new one, and a button takes the list back to the newest
-message.
+out muted chats, message requests and blocked 1:1s. A chat opens with an
+"unread messages" line above the first new one, and a button takes the list
+back to the newest message.
 
 A new database holds a marker row (`~baseline`). The first chat list after
 it marks every listed chat read, so an account that was just created or
 moved to this phone starts without badges for messages it already had.
 `clearAll` (sign-out and wipe) and the upgrade to schema 12 write the marker
 again.
+
+## Message requests and scam warnings
+
+All of this is worked out on the phone, and nothing about it is sent: not
+the text, not a warning or its reason, not the words that matched, not who
+an account is to this phone, not whether a chat is a request, not a link.
+Block, Report and Leave use the routes and fields they always use. The
+checks are fixed rules in `lib/src/core/safety/`, which may import only
+`dart:core`, `dart:collection`, `dart:math` and its own files
+(`scripts/crypto-architecture-check.mjs`). What the phone records lives in
+one keystore document, `contact_trust.v1`, in the conversation policy
+scope, which sign-out erases. The privacy policy needed no change.
+
+**Who an account is.** The phone puts each account in the first of these
+that holds:
+
+1. changed: a safety number change about it is waiting, a 1:1 with it is
+   held, or a new device of its was admitted in the last 7 days;
+2. verified: every key this phone pinned for it is verified;
+3. saved: a nickname names it, and has for at least 7 days (or since before
+   this version);
+4. known: a 1:1 with it was accepted at least 7 days before and holds a text
+   or file this phone sent, or, when this version first ran, held a message
+   the server labels as the user's own; in a group, also a group this phone
+   created or accepted at least 7 days before;
+5. new.
+
+**Message requests.** A chat is a request until it is accepted, and an
+accepted chat stays accepted. It is accepted by Accept; by starting it from
+a typed handle (New chat, or Message on a contact); by creating the group;
+by a text or file this phone sends in it (never a system line, a reaction
+or a timer change, nor a message the server labels as the user's own); by
+verifying the other side; for a 1:1, by a nickname saved for its handle
+before the chat first appeared; and for a group, when every other member is
+verified, saved or known. The first chat list after install, upgrade or a
+move accepts every chat in it. Until a chat is accepted:
+
+- the request bar takes the text field's place: Block, Report and Accept in
+  a 1:1, Leave and Accept in a group. Accept is a plain button, not a filled
+  one, while a look-alike or family-claim banner shows;
+- no read receipt, typing indicator or reaction goes out, and a photo or
+  file is fetched only when tapped. With read receipts on, Accept sends one
+  receipt, for the newest message read;
+- a screenshot sends no notice (the phone still buzzes), a long press
+  offers no reactions, and the chat menu has no Disappearing messages;
+- the Chats row says "Message request" instead of the text, its badge is
+  grey, and the Chats tab count leaves it out. A Chats search hit in it
+  quotes no text either: it says "Message request". A notification for it
+  says "Message request" too, where the app raises one (the Android beta has
+  no push notifications);
+- every link asks first.
+
+The delivered tick is not withheld: the server marks a message delivered
+when this phone fetches it, so the sender sees that it reached the phone.
+
+Until the document is read and the first chat list has been taken in, no
+chat shows as a request, but every chat holds back receipts, typing and
+automatic fetches. If the document cannot be read, the phone tries again
+with the next change after 1, 5 and 30 seconds; if the last try fails too,
+requests, risk lines, the family-claim banner and the verify nudge are off
+until the next sign-in, while look-alike checks against verified contacts
+and the link sheets still work. A document that is there but cannot be
+parsed counts as missing, so the first list accepts every chat again.
+
+**Risk lines.** Each text from someone else is read with up to four
+earlier texts from the same sender in the last 24 hours. A line under the
+bubble names one reason, in one of three tones: muted, warn or danger. A
+family or new-phone claim counts only from a new account the user did not
+start the chat with, or a changed one. A money ask from a known, saved or
+verified sender needs urgency, secrecy, someone else's account or an excuse
+not to call to count, and an ID ask urgency, secrecy or an excuse not to
+call. A verified sender gets at most the muted line. A file named `.apk`,
+`.xapk` or `.apks` gets the app-file line from any sender. There is no line
+on your own messages, the app's notices, or a message that did not open.
+The rules read Korean and English text; the app's screens stay English.
+
+**Banners.** In a 1:1, or a group with one other member, at most one trust
+banner shows, after the safety number notices:
+
+- look-alike: the other account's handle imitates a verified contact's or
+  one saved for a week: a swapped or look-alike character, a suffix such as
+  `_new` or `2`, the same nickname, or a handle like `mom_new` when a
+  contact is saved as Mum. It has no action and cannot be dismissed.
+- family claim: a new account the user did not start the chat with (or a
+  changed one) has a family-word handle, or one of its last 50 texts says it
+  is family or on a new phone. It says to call the number you already have,
+  with Verify (the safety number page) when no other notice is up.
+- verify nudge: in a 1:1 with a saved contact who is not verified, once the
+  loaded history holds at least 20 messages, 5 of them yours, "Check
+  {name}'s safety number" with Verify, on at most three chat openings.
+
+Saving a nickname or waiting ends neither warning; verifying the account
+does. A group with more members gets no trust banner.
+
+**Links and app files.** Links in a text are underlined and can be tapped
+(while a search runs, its hits win and links are plain). A tap opens a link
+at once only in an accepted chat, on your own message or one from a
+verified contact, and only when the link looks ordinary. Anything else asks
+first with a sheet that shows the domain and the whole address: the plain
+sheet (Open, Copy link), or the strong one (Don't open, then Open anyway in
+red, and Copy link) for a link to an app file, a short link or hidden host,
+or a domain that only looks like a known site's. A host with a %-escape, a
+character outside ASCII (a full stop other than "." included) or an `xn--`
+label gets the strong sheet from anyone, and every sheet names the domain a
+browser would open (escapes decoded, other full stops read as dots,
+full-width letters and digits read as plain ones, any label still outside
+ASCII in its `xn--` form). naver.me, kko.to and me2.do get the plain sheet,
+unless the link is an app download, hidden or a look-alike, which
+`linkRiskOf` checks first. Open hands that exact address to another app
+through `url_launcher` 6.3.2, for http and https only. It adds no
+permission: its Android plugin brings one activity, `WebViewActivity`,
+which is not exported and which the app does not use, and the app's
+manifest gains a `<queries>` entry for https links. Opening a link leaves
+Veil, so with App lock on, coming back locks it. The phone never fetches,
+previews or expands a link. Opening or saving a received app file asks
+first through the strong sheet.
+
+**Known limits.**
+
+- A long con passes the week rule: after weeks of small talk the account is
+  known, and a money ask from it is flagged only with urgency, secrecy,
+  someone else's account or an excuse not to call.
+- A handle the user typed (New chat) or saved (Contacts) because a scammer
+  gave it outside Veil makes the chat one the user started: it is no request
+  and gets no family-claim line or banner. Money, code, link and app-file
+  warnings still apply.
+- The first run after install, upgrade or a move to a new phone accepts
+  every chat the server lists then: the phone trusts that listing once.
+- Rules can be dodged: text in a photo, new spellings, a whole message in
+  English with a space between every letter. No warning does not mean a
+  message is safe.
+- A few real company domains (for example epost.kr) can get the strong link
+  sheet.
+- A screenshot notice or a timer change made in a stranger's chat in the
+  seconds before the first chat list loads can still go out. A reaction is
+  refused then too.
+- The delivered tick still shows for a request.
+- A group with more than one other member gets no look-alike or
+  family-claim check.
+- The Android beta has no push notifications, so the "Message request"
+  notification text applies only where the app raises notifications.
 
 ## Layout gate
 

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/crypto/crypto_engine.dart';
+import '../../../core/safety/links.dart';
+import '../../../core/safety/message_risk.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
@@ -8,13 +10,14 @@ import '../../attachments/domain/attachment_rules.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/attachment_media_service.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
-import '../../conversations/presentation/conversation_list_logic.dart';
 import 'chat_room_labels.dart';
 import 'decrypt_status_view.dart';
 import 'message_attachment_views.dart';
 import 'message_expiration.dart';
 import 'message_file_card.dart';
 import 'message_photo.dart';
+import 'message_risk_line.dart';
+import 'message_text.dart';
 import 'message_time.dart';
 import 'message_read_glyph.dart';
 
@@ -28,7 +31,9 @@ import 'message_read_glyph.dart';
 /// A send that failed keeps its bubble, with a red glyph beside it and
 /// "Not sent. Tap to retry." under it, and a tap on it retries. A message
 /// from an older version, whose sender is not proven, says so in a line
-/// under the bubble.
+/// under the bubble; a message the checks on this phone flagged has its
+/// [risk] line there too, after it. Links in the text are drawn as links
+/// and a tap goes to [onLinkTap].
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
@@ -48,6 +53,8 @@ class MessageBubble extends StatelessWidget {
     this.reactions,
     this.searchQuery,
     this.heldAccount = false,
+    this.risk = MessageRisk.none,
+    this.onLinkTap,
   });
 
   final ChatMessage message;
@@ -89,6 +96,13 @@ class MessageBubble extends StatelessWidget {
   /// (see DecryptFailureLine.heldAccount).
   final bool heldAccount;
 
+  /// The line under the message (MessageRiskLine); none on the user's own.
+  final MessageRisk risk;
+
+  /// A tap on [link] in the text; [proven] is false for a message whose
+  /// sender is not proven (an older version's), whose links always ask.
+  final void Function(FoundLink link, {required bool proven})? onLinkTap;
+
   /// How far the reactions overlap the bubble's foot.
   static const double reactionOverlap = 6;
 
@@ -125,17 +139,16 @@ class MessageBubble extends StatelessWidget {
           null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle?.copyWith(color: metaColor)),
           // An attachment's text is its name, which the card holds.
           DecryptStatus.ok || DecryptStatus.legacyUnauthenticated when attachment != null => null,
-          DecryptStatus.ok || DecryptStatus.legacyUnauthenticated when query.isNotEmpty => Text.rich(
-              TextSpan(
-                children: buildSearchHighlightTextSpans(
-                  text: decrypted!.body,
-                  query: query,
-                  baseStyle: bodyStyle,
-                  highlightStyle: bodyStyle?.copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
+          DecryptStatus.ok || DecryptStatus.legacyUnauthenticated => MessageText(
+              text: decrypted!.body,
+              style: bodyStyle,
+              linkColor: onBrand ? Colors.white : palette.primaryStrong,
+              searchQuery: query,
+              onLinkTap: switch (onLinkTap) {
+                final onTap? => (link) => onTap(link, proven: status == DecryptStatus.ok),
+                null => null,
+              },
             ),
-          DecryptStatus.ok || DecryptStatus.legacyUnauthenticated => Text(decrypted!.body, style: bodyStyle),
           _ => DecryptFailureLine(status: status, heldAccount: heldAccount, color: metaColor),
         };
         final meta = _Meta(
@@ -233,19 +246,29 @@ class MessageBubble extends StatelessWidget {
                   ),
                 ],
               );
-        if (status != DecryptStatus.legacyUnauthenticated) return withReactions;
+        final legacy = status == DecryptStatus.legacyUnauthenticated;
+        // Never on the user's own messages, whatever was passed.
+        final flagged = !message.isMine && opened && risk.level != RiskLevel.none;
+        if (!legacy && !flagged) return withReactions;
+        const linePadding = EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xxs, VeilSpace.sm, 0);
         return Column(
           crossAxisAlignment: message.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             withReactions,
-            Padding(
-              padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xxs, VeilSpace.sm, 0),
-              child: Text(
-                l10n.chatLegacySenderLine,
-                style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
+            if (legacy)
+              Padding(
+                padding: linePadding,
+                child: Text(
+                  l10n.chatLegacySenderLine,
+                  style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                ),
               ),
-            ),
+            if (flagged)
+              Padding(
+                padding: linePadding,
+                child: MessageRiskLine(risk: risk, file: attachment != null),
+              ),
           ],
         );
       },

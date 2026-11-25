@@ -135,6 +135,9 @@ class TrustedIdentityResolver {
   Future<List<TrustedIdentity>> pinsForUser(String userId) =>
       _locked((pins) async => pins.where((p) => p.userId == userId).toList(growable: false));
 
+  /// Every pin on this device, in one keystore read (VerifiedAccounts).
+  Future<List<TrustedIdentity>> allPins() => _locked((pins) async => List.unmodifiable(pins));
+
   /// Runs [body] on the current pin table with every other operation held off.
   Future<T> _locked<T>(Future<T> Function(List<TrustedIdentity> pins) body) =>
       _lock.synchronized(TrustedIdentityStore.storageKey, () async => body(await _store.load()));

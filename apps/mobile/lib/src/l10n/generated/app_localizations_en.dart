@@ -1367,7 +1367,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String safetyNumbersDetailBody(String name) {
-    return 'Check these numbers match $name\'s phone, in person or on a call.';
+    return 'Check these numbers match $name\'s phone, in person or on a call. Once verified, you\'ll see a warning if an account with a similar handle writes to you.';
   }
 
   @override
@@ -1885,4 +1885,181 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get errorRequestRejected => 'The server didn\'t accept that.';
+
+  @override
+  String get chatRequestTitle => 'Message request';
+
+  @override
+  String chatRequestDirectBody(String name) {
+    return '$name won\'t know you\'ve read their messages until you accept.';
+  }
+
+  @override
+  String get chatRequestGroupBody =>
+      'You were added to this group. No one will know you\'ve read it until you accept.';
+
+  @override
+  String get chatRequestAccept => 'Accept';
+
+  @override
+  String get chatRequestLeave => 'Leave';
+
+  @override
+  String chatLeaveGroupTitle(String name) {
+    return 'Leave $name?';
+  }
+
+  @override
+  String get chatLeaveGroupBody => 'You\'ll stop getting its messages.';
+
+  @override
+  String get chatLeaveGroupConfirm => 'Leave';
+
+  @override
+  String get chatLeaveGroupFailed => 'Couldn\'t leave the group. Try again.';
+
+  @override
+  String get conversationsRequestPreview => 'Message request';
+
+  @override
+  String get notificationMessageRequest => 'Message request';
+
+  @override
+  String chatLookalikeTitle(String name) {
+    return 'Not the $name you know';
+  }
+
+  @override
+  String chatLookalikeBody(String handle, String name) {
+    return '@$handle is a different account. Check with $name another way, like a call.';
+  }
+
+  @override
+  String get chatClaimTitle => 'Make sure it\'s really them';
+
+  @override
+  String get chatClaimBody =>
+      'Call the number you already have before you reply or send anything.';
+
+  @override
+  String chatVerifyNudge(String name) {
+    return 'Check $name\'s safety number';
+  }
+
+  @override
+  String get chatVerifyAction => 'Verify';
+
+  @override
+  String get riskLineFamilyClaim =>
+      'Says it\'s family. Call the number you already have.';
+
+  @override
+  String get riskLineNewPhoneClaim =>
+      'Says it\'s a new phone or account. Call the number you already have.';
+
+  @override
+  String get riskLineMoney =>
+      'Asks for money. Call them before you send anything.';
+
+  @override
+  String get riskLineGiftCard => 'Asks for gift card codes. Don\'t send them.';
+
+  @override
+  String get riskLineCode => 'Asks for a verification code. Don\'t share it.';
+
+  @override
+  String get riskLineId => 'Asks for ID or card details. Don\'t send them.';
+
+  @override
+  String get riskLineRemoteApp =>
+      'Asks you to install a remote-control app. Don\'t install it.';
+
+  @override
+  String get riskLineAppFile =>
+      'Links to an app file. Don\'t install apps from a chat.';
+
+  @override
+  String get riskLineAppFileAttached =>
+      'This is an app file. Don\'t install apps from a chat.';
+
+  @override
+  String get riskLineLookalikeLink => 'The link only looks like a known site.';
+
+  @override
+  String get riskLineHiddenLink => 'The link hides where it goes.';
+
+  @override
+  String get riskLineDelivery =>
+      'Delivery message with a link. Check in the courier\'s own app.';
+
+  @override
+  String get riskLineBank =>
+      'Says it\'s a bank or card company. Call the number on your card.';
+
+  @override
+  String get riskLineAuthority =>
+      'Police and prosecutors never ask for money or apps in a chat.';
+
+  @override
+  String get riskLineGovernment =>
+      'Check refunds and fines on the agency\'s own site or app.';
+
+  @override
+  String get riskLineInvestment =>
+      'Promises sure profit. That\'s a common scam.';
+
+  @override
+  String get linkConfirmTitle => 'Open this link?';
+
+  @override
+  String get linkConfirmOpen => 'Open';
+
+  @override
+  String get linkConfirmCopy => 'Copy link';
+
+  @override
+  String get linkCopied => 'Link copied';
+
+  @override
+  String get linkOpenFailed => 'Couldn\'t open the link';
+
+  @override
+  String get linkRiskAppTitle => 'This link downloads an app';
+
+  @override
+  String get linkRiskAppBody => 'An app from a chat can take over your phone.';
+
+  @override
+  String get linkRiskHiddenTitle => 'You can\'t see where this link goes';
+
+  @override
+  String get linkRiskHiddenBody =>
+      'Short links and unusual addresses can hide a fake site.';
+
+  @override
+  String get linkRiskLookalikeTitle => 'This isn\'t the site it looks like';
+
+  @override
+  String get linkRiskLookalikeBody =>
+      'The address is close to a known site\'s, but different.';
+
+  @override
+  String get linkRiskKeepClosed => 'Don\'t open';
+
+  @override
+  String get linkRiskOpenAnyway => 'Open anyway';
+
+  @override
+  String get fileRiskAppTitle => 'This file is an app';
+
+  @override
+  String get fileRiskDontSave => 'Don\'t save';
+
+  @override
+  String get fileRiskSaveAnyway => 'Save anyway';
+
+  @override
+  String linkSemanticsLabel(String domain) {
+    return 'Link, $domain';
+  }
 }

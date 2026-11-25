@@ -319,8 +319,12 @@ class FakeRelay {
     );
   }
 
-  FakeRelayClient clientFor(String handle) =>
-      _clientsByHandle.putIfAbsent(handle, () => FakeRelayClient(this, partiesByHandle[handle]!));
+  /// Builds the client a party talks through, when a test needs a route
+  /// this one does not answer.
+  FakeRelayClient Function(FakeRelay relay, RelayParty party)? newClient;
+
+  FakeRelayClient clientFor(String handle) => _clientsByHandle.putIfAbsent(
+      handle, () => newClient?.call(this, partiesByHandle[handle]!) ?? FakeRelayClient(this, partiesByHandle[handle]!));
 
   FakeRelayRealtime realtimeFor(String handle) =>
       _realtimeByHandle.putIfAbsent(handle, FakeRelayRealtime.new);
@@ -545,6 +549,12 @@ class FakeRelayClient extends VeilApiClient {
   bool unreachable = false;
   // While set, history fetches wait for it to complete.
   Completer<void>? messageFetchGate;
+  // While set, picking up group chain keys fails as an unreachable relay
+  // makes it, so a Sender Keys frame waits for its key.
+  bool failGroupKeyPickups = false;
+  // While set, a directory answer is held after the relay worked it out,
+  // as a slow network holds it, until this completes.
+  Completer<void>? directoryGate;
   final Map<String, int> directoryLookups = {};
   final List<String> markReadCalls = [];
   final List<String> signedPrekeyUploads = [];
@@ -654,6 +664,7 @@ class FakeRelayClient extends VeilApiClient {
     _stampDate();
     if (path.startsWith('/keys/group/')) {
       groupKeyRequests += 1;
+      if (failGroupKeyPickups) throw VeilApiException('Service unavailable', statusCode: 503);
       return relay._groupKeys(me, Uri.decodeComponent(path.substring('/keys/group/'.length)));
     }
     if (path.startsWith('/keys/')) {
@@ -665,7 +676,9 @@ class FakeRelayClient extends VeilApiClient {
       if (party != null && relay.blockedEitherWay(me.userId, party.userId)) {
         throw VeilApiException('User not found', statusCode: 404, code: 'handle_not_found');
       }
-      return relay._lookup(me, handle, query?['claim'] ?? 'active');
+      final answer = relay._lookup(me, handle, query?['claim'] ?? 'active');
+      if (directoryGate case final gate?) await gate.future;
+      return answer;
     }
     if (path == '/prekeys/count') {
       return {'available': relay.oneTimePrekeys[me.deviceId]?.length ?? 0};
@@ -783,6 +796,41 @@ class FakeRelayClient extends VeilApiClient {
     return {
       'blocked': {'userId': userId, 'handle': _listed(target.handle), 'blockedAt': at.toIso8601String()},
     };
+  }
+
+  /// The groups this party created, in order.
+  final List<String> createdGroupIds = [];
+
+  /// Every leave this party posted, by conversation id.
+  final List<String> leaveCalls = [];
+
+  /// Runs just before a group this party creates is stored: what the relay
+  /// lists meanwhile (a stranger's group, say) shows up in the same list.
+  void Function()? beforeGroupCreated;
+
+  // GroupsService.createGroup: the creator and every member it names; the
+  // answer carries the new group's id.
+  @override
+  Future<Map<String, dynamic>> createGroup(String accessToken, Map<String, dynamic> body) async {
+    beforeGroupCreated?.call();
+    final id = 'group-${me.handle}-${createdGroupIds.length + 1}';
+    final handles = [me.handle, ...((body['memberHandles'] as List?) ?? const []).cast<String>()];
+    relay.addGroup(id, handles, useSenderKeys: body['useSenderKeys'] == true, name: body['name'] as String? ?? 'Group');
+    createdGroupIds.add(id);
+    return {'id': id, 'type': 'group', 'name': body['name'], 'useSenderKeys': body['useSenderKeys'] == true};
+  }
+
+  // GroupsService.leaveGroup: a member leaves; the group drops out of their
+  // list.
+  @override
+  Future<Map<String, dynamic>> leaveGroup(String accessToken, String conversationId) async {
+    leaveCalls.add(conversationId);
+    final conversation = relay.conversations[conversationId];
+    if (conversation == null || conversation.type != 'group' || !conversation.memberHandles.contains(me.handle)) {
+      throw VeilApiException('Group not found', statusCode: 404, code: 'group_not_found');
+    }
+    conversation.memberHandles.remove(me.handle);
+    return {'conversationId': conversationId, 'left': true};
   }
 
   @override

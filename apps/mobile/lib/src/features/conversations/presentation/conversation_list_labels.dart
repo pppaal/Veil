@@ -45,14 +45,16 @@ String conversationRowSemantics(
 /// a system line by its own words and a file by its sanitized name; every
 /// other kind is named by its decrypted kind, never by the envelope's
 /// unauthenticated one. In a group the text is led by who wrote it: "You:
-/// …", or [groupSender] when this device knows the member.
+/// …", or [groupSender] when this device knows the member. A message
+/// [request] (a chat not accepted yet) quotes nothing: "Message request".
 String conversationPreviewLine(
   AppLocalizations l10n,
   ConversationPreview item,
   VeilMessengerController controller, {
   String? groupSender,
+  bool request = false,
 }) =>
-    conversationPreview(l10n, item, controller, groupSender: groupSender).text;
+    conversationPreview(l10n, item, controller, groupSender: groupSender, request: request).text;
 
 /// [conversationPreviewLine], with the glyph a photo or a file shows in it
 /// ([icon], before the character at [iconAt]: after any "Omar: " that leads
@@ -62,8 +64,11 @@ String conversationPreviewLine(
   ConversationPreview item,
   VeilMessengerController controller, {
   String? groupSender,
+  bool request = false,
 }) {
   ({String text, IconData? icon, int iconAt}) plain(String text) => (text: text, icon: null, iconAt: 0);
+  // No word of a stranger's text outside the chat.
+  if (request) return plain(l10n.conversationsRequestPreview);
   final pendingCount = controller.pendingCountFor(item.id);
   if (pendingCount > 0) {
     final failedCount = controller.messagesFor(item.id).where((message) => message.hasFailed).length;

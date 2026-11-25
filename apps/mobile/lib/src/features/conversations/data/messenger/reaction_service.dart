@@ -15,18 +15,24 @@ typedef EnvelopeSender = Future<bool> Function({
 /// Reactions travel end to end as messages of kind reaction; the relay sees
 /// neither the target nor the emoji. They live only in those messages, so
 /// the ledger is rebuilt from them and shown on the messages they target.
+/// None goes where the user withholds what would tell the other side the
+/// chat was seen ([withheld]: a message request, a 1:1 with someone blocked),
+/// whichever control asked for it.
 class ReactionService {
   ReactionService({
     required MessengerStateStore store,
     required MessengerSessionContext session,
     required EnvelopeSender send,
+    bool Function(String conversationId)? withheld,
   })  : _store = store,
         _session = session,
-        _send = send;
+        _send = send,
+        _withheld = withheld ?? ((_) => false);
 
   final MessengerStateStore _store;
   final MessengerSessionContext _session;
   final EnvelopeSender _send;
+  final bool Function(String conversationId) _withheld;
   final ReactionLedger _ledger = ReactionLedger();
 
   /// [messages] with the reactions recorded for them.
@@ -42,7 +48,8 @@ class ReactionService {
         message.isPending ||
         message.hasFailed ||
         message.isLocalNotice ||
-        !ReactionPayload.isAcceptableEmoji(emoji)) {
+        !ReactionPayload.isAcceptableEmoji(emoji) ||
+        _withheld(conversationId)) {
       return;
     }
     final add = _ledger.emojiOf(conversationId, message.id, myUserId) != emoji;

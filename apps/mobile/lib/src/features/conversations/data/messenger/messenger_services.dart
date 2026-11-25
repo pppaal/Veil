@@ -70,14 +70,14 @@ class MessengerServices {
     required void Function() onSignedOut,
     AttachmentStoragePaths? attachmentPaths,
     MediaIndex? mediaIndex,
-    bool Function(String conversationId)? isBlockedDirect,
+    bool Function(String conversationId)? withheldByUser,
   })  : _envelopeVersions = envelopeVersions,
         _onSignedOut = onSignedOut,
         _peerBindings = peerBindings,
         _groupCrypto = groupCrypto,
         _sessionSnapshotRestorer = sessionSnapshotRestorer,
         _prekeys = prekeyMaintenance,
-        _isBlockedDirect = isBlockedDirect ?? ((_) => false) {
+        _withheldByUser = withheldByUser ?? ((_) => false) {
     final paths = attachmentPaths ?? AttachmentStoragePaths();
     blobs = MediaBlobStore(paths: paths, index: mediaIndex ?? MemoryMediaIndex());
     store = MessengerStateStore(
@@ -154,7 +154,7 @@ class MessengerServices {
       ops: ops,
       expiryClock: expiryClock,
     );
-    reactions = ReactionService(store: store, session: session, send: outbox.send);
+    reactions = ReactionService(store: store, session: session, send: outbox.send, withheld: _withheldByUser);
     identity = IdentityChangeService(
       store: store,
       session: session,
@@ -211,6 +211,7 @@ class MessengerServices {
       realtime: realtimeService,
       isConnected: () => realtime.connected,
       typingIndicatorsEnabled: typingIndicatorsEnabled,
+      withheld: receiptsWithheld,
     );
     realtime = RealtimeEventRouter(
       realtime: realtimeService,
@@ -251,7 +252,7 @@ class MessengerServices {
   final Future<void> Function()? _sessionSnapshotRestorer;
   final PrekeyMaintenance? _prekeys;
   final void Function() _onSignedOut;
-  final bool Function(String conversationId) _isBlockedDirect;
+  final bool Function(String conversationId) _withheldByUser;
   final MessengerSessionContext session = MessengerSessionContext();
   late final MessengerStateStore store;
   late final MessengerOperationRunner ops;
@@ -282,16 +283,16 @@ class MessengerServices {
   /// Whether this device can run Sender Keys groups.
   bool get canUseSenderKeys => _groupCrypto != null;
 
-  /// Whether no read receipt may go for [conversationId]: who its peer is waits
-  /// for the user (an identity change or a held account there, or for a 1:1 the
-  /// peer's change pending elsewhere), or it is a 1:1 with someone blocked.
+  /// Whether no read receipt or typing signal may go for [conversationId]: who its peer is waits for the
+  /// user (an identity change or a held account there, or for a 1:1 the peer's change pending elsewhere),
+  /// or the user withholds them (a 1:1 with someone blocked, a chat request).
   bool receiptsWithheld(String conversationId) {
     if (identity.pendingFor(conversationId) != null || identity.accountHoldFor(conversationId) != null) return true;
     final conversation = store.conversationById(conversationId);
     final peerChangePending = conversation != null &&
         conversation.type == ConversationType.direct &&
         trust.pendingChangeAbout(conversation.recipientBundle.userId) != null;
-    return peerChangePending || _isBlockedDirect(conversationId);
+    return peerChangePending || _withheldByUser(conversationId);
   }
 
   /// Whether nothing in [conversationId] may be fetched on its own: the same rule.

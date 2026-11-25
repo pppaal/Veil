@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../chat/presentation/link_confirm_sheet.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/attachment_media_service.dart';
 import '../../conversations/data/messenger_providers.dart';
@@ -28,7 +29,9 @@ import 'save_media.dart';
 /// viewer, and anything else says this version cannot open it, before any
 /// download when its name says it is no photo. Nothing is handed on when the
 /// app locked, or the chat that asked went away, while the file was being
-/// fetched or decrypted.
+/// fetched or decrypted. An Android app (.apk, .xapk, .apks), whoever sent
+/// it, opens only through the strong sheet (confirmAppFile), asked before
+/// anything is fetched.
 Future<void> openFileAttachment(
   BuildContext context,
   WidgetRef ref, {
@@ -46,6 +49,7 @@ Future<void> openFileAttachment(
     showVeilToast(context, l10n.chatAttachmentCannotOpen);
     return;
   }
+  if (isAppFileName(name) && (!await confirmAppFile(context, name: name) || !context.mounted)) return;
   // Every lock (and sign-out) bumps evictions.
   final evictions = media.evictions;
   bool locked() => media.evictions != evictions;

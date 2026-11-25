@@ -97,6 +97,44 @@ test('a test in a skipped or focused block is not evidence', () => {
   }
 });
 
+test('a Dart test marked with a skip argument is not evidence', () => {
+  // flutter_test skips a test, a testWidgets or a whole group given any
+  // skip: other than false, or a library marked @Skip, without touching
+  // the line that names the test.
+  const ledger = LEDGER.replace('tests/crypto.test.mjs', 'test/crypto_test.dart');
+  const dart = (source) =>
+    checkClaims(tree({ 'docs/claims.yaml': ledger, 'test/crypto_test.dart': source }));
+  for (const source of [
+    "test('encrypts on the device', () {}, skip: true);\n",
+    "testWidgets('encrypts on the device', (tester) async {}, skip: 'flaky');\n",
+    "group('crypto', () {\n  test('encrypts on the device', () {});\n}, skip: isCi);\n",
+    "@Skip('needs a device')\nlibrary;\n\nvoid main() {\n  test('encrypts on the device', () {});\n}\n",
+  ]) {
+    assert.deepEqual(dart(source), [
+      'e2e: test/crypto_test.dart skips or focuses tests, so "encrypts on the device" may not run',
+    ]);
+  }
+  // skip: false runs the test, and a finder's skipOffstage: is no skip.
+  assert.deepEqual(dart("test('encrypts on the device', () {}, skip: false);\n"), []);
+  assert.deepEqual(
+    dart("test('encrypts on the device', () {\n  find.byType(Text, skipOffstage: false);\n});\n"),
+    [],
+  );
+});
+
+test('a skip: in a JavaScript test is not read as a skipped test', () => {
+  // Outside Dart, skip: is an ordinary key: a query's page offset, say.
+  assert.deepEqual(
+    checkClaims(
+      tree({
+        'tests/crypto.test.mjs':
+          "test('encrypts on the device', async () => {\n  await rows.findMany({ skip: 20 });\n});\n",
+      }),
+    ),
+    [],
+  );
+});
+
 test('a gate CI never runs is not evidence', () => {
   const failures = checkClaims(tree({ 'package.json': JSON.stringify({ scripts: {} }) }));
   assert.deepEqual(failures, [
@@ -193,6 +231,56 @@ test('offering multi-device use is a claim', () => {
     'store/play/full-en.txt: unledgered claim "Use it on a multi device setup."',
     'store/play/full-en.txt: unledgered claim "다중 기기 동기화를 원하시면 기기 전송 기능을 사용해 주세요."',
   ]);
+});
+
+test('a promise about scams, phishing, impersonation, message requests or look-alikes is a claim', () => {
+  // The phone's scam and look-alike checks are rules with known gaps, and a
+  // message request holds back read receipts and downloads: store text that
+  // promises any of it has to name the test that shows it.
+  const copy = [
+    '• Warns about common scam messages and look-alike accounts, with checks on your phone.',
+    '• Blocks phishing links before you tap them.',
+    '• Stops impersonation for good.',
+    '• Message requests keep strangers out of your chats.',
+    '• A lookalike handle gets a warning.',
+    '• Scammers write in Korean too.',
+    "• Chats from accounts you haven't talked to wait as requests.",
+    '• A stranger’s group waits as a request too.',
+    '• Escaped the request queue, said no one.',
+  ].join('\n');
+  const failures = checkClaims(tree({ 'store/play/full-en.txt': `${copy}\n` }));
+  assert.deepEqual(failures, [
+    'store/play/full-en.txt: unledgered claim "Warns about common scam messages and look-alike accounts, with checks on your phone."',
+    'store/play/full-en.txt: unledgered claim "Blocks phishing links before you tap them."',
+    'store/play/full-en.txt: unledgered claim "Stops impersonation for good."',
+    'store/play/full-en.txt: unledgered claim "Message requests keep strangers out of your chats."',
+    'store/play/full-en.txt: unledgered claim "A lookalike handle gets a warning."',
+    'store/play/full-en.txt: unledgered claim "Scammers write in Korean too."',
+    'store/play/full-en.txt: unledgered claim "Chats from accounts you haven\'t talked to wait as requests."',
+    'store/play/full-en.txt: unledgered claim "A stranger’s group waits as a request too."',
+  ]);
+});
+
+test('a Flutter widget test is evidence, also when its name escapes a quote', () => {
+  const ledger = LEDGER.replace(
+    'name: "encrypts on the device"',
+    'name: "a stranger\'s chat waits as a request"',
+  );
+  const declared = (source) =>
+    checkClaims(tree({ 'docs/claims.yaml': ledger, 'tests/crypto.test.mjs': source }));
+  assert.deepEqual(
+    declared("  testWidgets('a stranger\\'s chat waits as a request', (tester) async {});\n"),
+    [],
+  );
+  assert.deepEqual(declared('  test("a stranger\'s chat waits as a request", () {});\n'), []);
+  assert.deepEqual(
+    declared("  testWidgetsLater('a stranger\\'s chat waits as a request', (tester) async {});\n"),
+    ['e2e: tests/crypto.test.mjs has no test named "a stranger\'s chat waits as a request"'],
+  );
+  assert.deepEqual(
+    declared("  testWidgets('a strangers chat waits as a request', (tester) async {});\n"),
+    ['e2e: tests/crypto.test.mjs has no test named "a stranger\'s chat waits as a request"'],
+  );
 });
 
 test('a store listing draft that advertises a backup is an unledgered claim', () => {

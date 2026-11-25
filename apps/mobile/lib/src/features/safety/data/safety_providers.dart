@@ -6,9 +6,14 @@ import '../../../app/app_session_state.dart';
 import '../../../app/session/session_providers.dart';
 import '../../../core/di/core_providers.dart';
 import '../../../core/storage/secure_storage_service.dart';
+import '../../conversations/data/messenger_providers.dart';
+import '../application/contact_trust.dart';
+import '../application/verified_accounts.dart';
 import 'abuse_reports.dart';
 import 'blocked_accounts.dart';
+import 'contact_trust_store.dart';
 import 'conversation_mutes.dart';
+import 'group_leave.dart';
 
 /// The accounts the user blocked, read from the server when the account
 /// signs in and again at each unlock (a read that failed offline, or a
@@ -56,5 +61,44 @@ final abuseReportsProvider = Provider<AbuseReports>((ref) {
   return AbuseReports(
     api: ref.read(apiClientProvider),
     accessToken: () => ref.read(appSessionProvider).accessToken,
+  );
+});
+
+/// The accounts the user verified every device of, in memory for checks
+/// that answer at once.
+final verifiedAccountsProvider = ChangeNotifierProvider<VerifiedAccounts>((ref) {
+  return VerifiedAccounts(ref.read(identityTrustProvider));
+});
+
+/// The trust layer before the messenger is attached to it: what
+/// messengerControllerProvider wires its receipts, typing, fetches, sends
+/// and notifications to, and attaches. Read [contactTrustProvider] instead.
+final unattachedContactTrustProvider = Provider<ContactTrust>((ref) {
+  final trust = ContactTrust(
+    store: ContactTrustStore(ref.read(secureStorageProvider).scoped(SecureScope.conversationPolicy)),
+    verified: ref.read(verifiedAccountsProvider),
+  );
+  // Forgotten at once on sign-out, before the wipe clears the stored document,
+  // so no write still pending puts it back.
+  ref.listen<AppSessionState>(appSessionProvider, (previous, next) {
+    if ((previous?.isAuthenticated ?? false) && !next.isAuthenticated) trust.forget();
+  });
+  ref.onDispose(trust.dispose);
+  return trust;
+});
+
+/// Who each account is to this phone and which chats are message requests
+/// (ContactTrust), with the messenger attached.
+final contactTrustProvider = ChangeNotifierProvider<ContactTrust>((ref) {
+  ref.read(messengerControllerProvider);
+  return ref.read(unattachedContactTrustProvider);
+});
+
+/// Leaving a group from its message request bar.
+final groupLeaveProvider = Provider<GroupLeave>((ref) {
+  return GroupLeave(
+    api: ref.read(apiClientProvider),
+    accessToken: () => ref.read(appSessionProvider).accessToken,
+    refreshConversations: () => ref.read(messengerControllerProvider).refreshConversations(),
   );
 });

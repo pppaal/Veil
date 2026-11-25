@@ -20,6 +20,7 @@ Messages are end-to-end encrypted on your phone, so only you and the people you 
 • One-time links for a password or a note
 • App lock with a PIN or biometrics
 • Block or report someone, and mute a chat
+• Warns about common scam messages and look-alike accounts, with checks on your phone. Chats from accounts you haven't talked to wait as requests.
 • Move your account to a new phone
 
 There is no backup and no account recovery. If you lose your phone, you lose the account and its messages.

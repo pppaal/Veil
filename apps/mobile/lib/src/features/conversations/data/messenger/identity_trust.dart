@@ -59,7 +59,12 @@ class IdentityTrust {
   final Map<String, _DeclinedIdentity> _declined = {};
   // Set when a decision changed what is pending, so it is written out.
   bool _decisionsChanged = false;
+  // How many changes were raised, and that count when the latest one was
+  // raised for each device (see [checkMark]).
+  int _raisedCount = 0;
+  final Map<String, int> _raisedAt = {};
   final StreamController<IdentityTrustEvent> _events = StreamController<IdentityTrustEvent>.broadcast(sync: true);
+  final StreamController<IdentityVerified> _verifications = StreamController<IdentityVerified>.broadcast(sync: true);
 
   /// Completes once the pin table is prepared and the pending and declined
   /// changes are read back. Every decision waits for it and fails while it
@@ -77,6 +82,10 @@ class IdentityTrust {
 
   Stream<IdentityTrustEvent> get events => _events.stream;
 
+  /// An account the user verified a device of, by [markVerified] or by a
+  /// re-verified [approve].
+  Stream<IdentityVerified> get verifications => _verifications.stream;
+
   PendingIdentityChange? pendingFor(String conversationId) => _pending[conversationId];
 
   /// The change about one of [userId]'s devices that a conversation holds
@@ -89,14 +98,24 @@ class IdentityTrust {
   /// Whether any conversation holds a change about one of [userId]'s devices.
   bool hasPendingChangeAbout(String userId) => pendingChangeAbout(userId) != null;
 
+  /// Where the changes raised so far stand. A check that reads a key some
+  /// time before it asks the pins (a directory answer, fetched or kept)
+  /// takes this when it reads and gives it to [admit] as `since`: a key read
+  /// before a change was raised for that device says nothing about it.
+  int get checkMark => _raisedCount;
+
   /// Whether [conversationId] may use [identityKey] for the device. Refusals
-  /// are recorded as the conversation's pending change.
-  Future<bool> admit(String conversationId, String userId, String deviceId, String identityKey) async {
+  /// are recorded as the conversation's pending change. [since] is the
+  /// [checkMark] taken when the key was read; by default, now.
+  Future<bool> admit(String conversationId, String userId, String deviceId, String identityKey, {int? since}) async {
+    final readAt = since ?? _raisedCount;
     await ready;
     final verdict = await resolver.evaluate(userId, deviceId, identityKey, admitNewDeviceOfUnverifiedUser: true);
     // A directory or handshake that presents the pinned key again withdrew
-    // any change pending for the device.
-    if (verdict is FirstUse || verdict is PinMatch) _resolveIfAbout(conversationId, userId, deviceId);
+    // any change pending for the device, but only one raised before that
+    // key was read: a late answer to an older question settles nothing.
+    final raisedSince = (_raisedAt[_deviceId(userId, deviceId)] ?? -1) > readAt;
+    if ((verdict is FirstUse || verdict is PinMatch) && !raisedSince) _resolveIfAbout(conversationId, userId, deviceId);
     final admitted = _decide(conversationId, userId, deviceId, identityKey, verdict);
     await _saveDecisionsIfChanged();
     return admitted;
@@ -145,8 +164,8 @@ class IdentityTrust {
   /// must not proceed: [IdentityChangedException] for a change the user can
   /// review, [StateError] for one the user declined or a device the
   /// directory misattributes.
-  Future<void> require(String conversationId, String userId, String deviceId, String identityKey) async {
-    if (await admit(conversationId, userId, deviceId, identityKey)) return;
+  Future<void> require(String conversationId, String userId, String deviceId, String identityKey, {int? since}) async {
+    if (await admit(conversationId, userId, deviceId, identityKey, since: since)) return;
     final change = _pending[conversationId];
     if (change != null) throw IdentityChangedException(change);
     if (_declined.containsKey(_declinedId(userId, deviceId, identityKey))) {
@@ -206,6 +225,7 @@ class IdentityTrust {
     }
     _forgetDecline(change.userId, change.deviceId, change.presentedKey);
     await _saveDecisionsIfChanged();
+    if (reverified) _verifications.add(IdentityVerified(change.userId));
     return accepted;
   }
 
@@ -217,6 +237,7 @@ class IdentityTrust {
     final verified = await resolver.markVerified(userId, deviceId, identityKey);
     _forgetDecline(userId, deviceId, identityKey);
     await _saveDecisionsIfChanged();
+    _verifications.add(IdentityVerified(userId));
     return verified;
   }
 
@@ -275,7 +296,10 @@ class IdentityTrust {
     return _forgetting = Future<void>.sync(() => _decisions?.delete(decisionsKey));
   }
 
-  Future<void> dispose() => _events.close();
+  Future<void> dispose() async {
+    await _verifications.close();
+    await _events.close();
+  }
 
   Future<void> _attemptPreparation(int generation) async {
     try {
@@ -383,9 +407,12 @@ class IdentityTrust {
       requiresReverification: verified,
     );
     _pending[conversationId] = change;
+    _raisedAt[_deviceId(userId, deviceId)] = ++_raisedCount;
     _decisionsChanged = true;
     _events.add(IdentityChangePending(change));
   }
+
+  static String _deviceId(String userId, String deviceId) => '$userId/$deviceId';
 
   void _forgetDecline(String userId, String deviceId, String identityKey) {
     if (_declined.remove(_declinedId(userId, deviceId, identityKey)) != null) _decisionsChanged = true;

@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 import '../layout/support/layout_seed.dart' show peerNames;
 import '../support/copy_finder.dart';
 import '../support/fake_relay.dart';
+import '../support/layout_trust.dart';
 import 'phone_app.dart';
 
 // The contacts tab on a phone: the list is the screen, adding a contact is
@@ -271,7 +272,8 @@ void main() {
   });
 
   testWidgets('a contact is removed from its sheet, and a chat with one opens from it', (tester) async {
-    await withPhoneApp(tester, identities, location: '/contacts', body: (world) async {
+    // Start chat goes through the trust layer, as on a phone.
+    await withPhoneApp(tester, identities, location: '/contacts', afterSession: attachContactTrust, body: (world) async {
       await tester.tap(find.text('Lena Fischer'));
       await pumpFrames(tester, frames: 4);
       // Five rows under the contact, led by Message, and only Block in red;

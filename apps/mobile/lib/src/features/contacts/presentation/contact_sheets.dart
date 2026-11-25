@@ -223,8 +223,9 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
     await confirmAndBlock(context, userId: userId, handle: contact.handle, name: nameOf(userId), announce: true);
   }
 
+  // Started by the user from the contact's handle: never a message request.
   Future<void> startChat() async {
-    final conversationId = await ref.read(messengerControllerProvider).startConversationByHandle(contact.handle);
+    final conversationId = await ref.read(contactTrustProvider).startDirect(contact.handle);
     if (!context.mounted) return;
     if (conversationId != null) {
       context.push('/chat/$conversationId');

@@ -16,10 +16,13 @@ import '../../../core/network/keys_api.dart';
 import '../../../core/storage/media_index.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../attachments/data/attachment_providers.dart';
+import '../../contacts/data/contact_names.dart';
 import '../../device_transfer/data/device_transfer_providers.dart';
+import '../../safety/application/contact_trust.dart';
 import '../../safety/application/silenced_notifications.dart';
 import '../../safety/data/safety_providers.dart';
 import '../../settings/data/privacy_preferences_provider.dart';
+import '../presentation/peer_names.dart';
 import 'group_sender_key_coordinator.dart';
 import 'messenger/conversation_peer_bindings.dart';
 import 'messenger/envelope_version_policy.dart';
@@ -73,6 +76,9 @@ final messengerControllerProvider =
   // message can arrive.
   final mutes = ref.read(conversationMutesProvider);
   final blocked = ref.read(blockedAccountsProvider);
+  // Message requests: a chat not accepted yet raises a notification that
+  // says only that, and gets no receipt, typing or automatic fetch.
+  final contactTrust = ref.read(unattachedContactTrustProvider);
   final notificationService = SilencedNotifications(
     ref.read(localNotificationServiceProvider),
     isSilenced: (conversationId) => conversationSilenced(
@@ -81,6 +87,7 @@ final messengerControllerProvider =
       mutes: mutes,
       blocked: blocked,
     ),
+    isRequest: contactTrust.isRequest,
   );
 
   // Double Ratchet session persistence: wire the adapter's after-mutate
@@ -179,14 +186,44 @@ final messengerControllerProvider =
             ? throw StateError('No local cache')
             : ref.read(appDatabaseFutureProvider.future))
         : MemoryMediaIndex(),
-    // A 1:1 with someone blocked: nothing goes to them and nothing is
-    // fetched on its own (MessengerServices.receiptsWithheld).
-    isBlockedDirect: (conversationId) {
+    // A 1:1 with someone blocked, or a message request: nothing goes to
+    // them and nothing is fetched on its own (MessengerServices.receiptsWithheld).
+    withheldByUser: (conversationId) {
       final conversation = controller.conversationById(conversationId);
-      return conversation != null &&
+      final blockedDirect = conversation != null &&
           conversation.type == ConversationType.direct &&
           blocked.isBlocked(conversation.recipientBundle.userId);
+      return blockedDirect || contactTrust.withholds(conversationId);
     },
+    onOwnSend: contactTrust.noteOwnSend,
+  );
+
+  // Names are read when a check asks, from what the screens show (PeerNames),
+  // built again only after the chats, the nicknames or the blocked list changed.
+  final book = ref.read(contactNameBookProvider);
+  PeerNames? names;
+  Map<String, TrustNickname>? nicknames;
+  void forgetNames() {
+    names = null;
+    nicknames = null;
+  }
+
+  controller.addListener(forgetNames);
+  book.addListener(forgetNames);
+  blocked.addListener(forgetNames);
+  ref.onDispose(() {
+    book.removeListener(forgetNames);
+    blocked.removeListener(forgetNames);
+  });
+  contactTrust.attach(
+    controller,
+    trustEvents: trust.events,
+    savedName: (userId, handle) =>
+        (names ??= peerNamesFor(controller, book.nicknames, blocked: blocked.accounts)).accountName(userId, handle),
+    nicknames: () => nicknames ??= {
+      for (final MapEntry(:key, :value) in book.nicknames.entries) key: (name: value.name, userId: value.userId),
+    },
+    nicknamesChanged: book,
   );
 
   final pushCoordinator = ref.read(pushTokenCoordinatorProvider);

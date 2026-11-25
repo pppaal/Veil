@@ -77,6 +77,18 @@ export const CLAIM_PATTERNS = [
   // "multi-device access" while a transfer signs the old device out and an
   // account is active on one device at a time.
   /multi[- ]?device/i,
+  // What the phone warns about and holds back. The scam and look-alike
+  // checks are rules on the phone with known gaps, and a message request
+  // withholds read receipts, typing and downloads: a sentence that promises
+  // any of it must name the test that shows it. The store text makes the
+  // request promise without the words "message request" ("Chats from
+  // accounts you haven't talked to wait as requests").
+  /\bscam/i,
+  /phishing/i,
+  /impersonat/i,
+  /\bmessage requests?\b/i,
+  /\bwaits? as (?:a )?requests?\b/i,
+  /\blook-?alike\b/i,
   /다중 기기/,
   /익명 식별자/,
   /기기에서 생성된/,
@@ -346,14 +358,27 @@ const isClaim = (sentence) => CLAIM_PATTERNS.some((pattern) => pattern.test(sent
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// A test is declared by Node's and Vitest's it() or test(), or by Flutter's
+// testWidgets(). Inside its quoted name a quote character may be escaped
+// with a backslash, as Dart writes 'a stranger\'s chat'.
 const declaresTest = (source, name) =>
-  new RegExp(`\\b(?:it|test)\\(\\s*(['"\`])${escapeRegExp(name)}\\1`).test(source);
+  new RegExp(
+    `\\b(?:it|test|testWidgets)\\(\\s*(['"\`])${escapeRegExp(name).replace(/['"\`]/g, '\\\\?$&')}\\1`,
+  ).test(source);
 
 // A test that does not run backs nothing. A skipped or focused block can stop
 // the named test from running without touching its line, so any such marker
-// in the file disqualifies the whole file as evidence.
+// in the file disqualifies the whole file as evidence: Node's and Vitest's
+// .skip, .only and x/f prefixes, and in a Dart file flutter_test's skip:
+// argument (any value but false, on a test, a testWidgets or a group) and
+// @Skip library mark. Only Dart files are read for skip:, which a JavaScript
+// or TypeScript test may pass for other reasons (a query's { skip: 20 }).
 const SKIPS_TESTS =
   /\b(?:describe|context|suite|it|test)\.(?:skip|only|todo)\b|\bx(?:describe|it|test)\(|\bf(?:describe|it)\(/;
+const DART_SKIPS_TESTS = /\bskip\s*:(?!\s*false\b)|@Skip\b/;
+
+const skipsTests = (path, source) =>
+  SKIPS_TESTS.test(source) || (path.endsWith('.dart') && DART_SKIPS_TESTS.test(source));
 
 function evidenceProblems(rootDir, evidence, ciScripts) {
   if (evidence.test !== undefined) {
@@ -366,7 +391,7 @@ function evidenceProblems(rootDir, evidence, ciScripts) {
     if (!declaresTest(source, evidence.name)) {
       return [`${evidence.test} has no test named "${evidence.name}"`];
     }
-    return SKIPS_TESTS.test(source)
+    return skipsTests(evidence.test, source)
       ? [`${evidence.test} skips or focuses tests, so "${evidence.name}" may not run`]
       : [];
   }

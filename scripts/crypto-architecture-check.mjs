@@ -171,6 +171,36 @@ for (const file of dartFiles(`${mobileSrc}/core`)) {
   }
 }
 
+// The scam checker reads message text, so it must not be able to send it
+// anywhere: its files import only dart:core, dart:collection, dart:math and
+// each other (test/safety/risk/risk_checker_imports_test.dart holds the same
+// rule).
+const safetyDir = `${mobileSrc}/core/safety`;
+const safetyDartLibraries = new Set(['dart:core', 'dart:collection', 'dart:math']);
+if (existsSync(safetyDir)) {
+  for (const file of dartFiles(safetyDir)) {
+    // Every quoted URI of a directive counts, the conditional ones too
+    // (import 'a.dart' if (dart.library.io) 'b.dart';).
+    for (const [, kind, body] of read(file).matchAll(
+      /^\s*(import|export|part)\s+((?:[^;'"]|'[^']*'|"[^"]*")*);/gm,
+    )) {
+      for (const [, , uri] of body.matchAll(/(['"])(.*?)\1/g)) {
+        if (safetyDartLibraries.has(uri)) continue;
+        let target = null;
+        if (uri.startsWith(packagePrefix)) {
+          target = join('apps/mobile/lib', uri.slice(packagePrefix.length));
+        } else if (!uri.includes(':')) {
+          target = normalize(join(dirname(file), uri));
+        }
+        if (target !== null && dirname(target) === safetyDir) continue;
+        failures.push(
+          `lib/src/core/safety may import only dart:core, dart:collection, dart:math and its own files (${kind} ${uri}): ${file}`,
+        );
+      }
+    }
+  }
+}
+
 if (lineCount(messengerFacade) > 400) {
   failures.push(
     `Messenger facade must stay at or under 400 lines (has ${lineCount(messengerFacade)}): ${messengerFacade}`,

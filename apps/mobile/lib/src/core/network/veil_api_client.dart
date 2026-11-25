@@ -270,6 +270,10 @@ class VeilApiClient {
     return _post('/conversations/group', body, accessToken: accessToken);
   }
 
+  /// Leaves the group [conversationId] (GroupsService.leaveGroup).
+  Future<Map<String, dynamic>> leaveGroup(String accessToken, String conversationId) =>
+      _post('/conversations/group/$conversationId/leave', const {}, accessToken: accessToken);
+
   /// A group as GroupsService.getGroup answers it: its name, description
   /// and members, which the conversation list leaves out.
   Future<Map<String, dynamic>> getGroup(

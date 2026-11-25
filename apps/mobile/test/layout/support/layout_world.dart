@@ -449,8 +449,11 @@ class LayoutWorld {
       book: container.read(contactNameBookProvider),
       blocked: () => container.exists(blockedAccountsProvider) ? container.read(blockedAccountsProvider) : null,
     );
-    // The document is read and the baseline stands before any screen opens.
-    for (var turn = 0; _hasAccount && !contactTrust.ready && turn < 200; turn++) {
+    // The document is read and the baseline stands before any screen opens,
+    // and what the first list started (reading the peers' keys, which the
+    // trust layer's listeners slow down) has run its course, as it had
+    // before the trust layer was attached here.
+    for (var turn = 0; _hasAccount && turn < 200; turn++) {
       await Future<void>.value();
     }
     if (account == LayoutAccount.signedIn && !contactTrust.ready) throw StateError('the trust document was not read');

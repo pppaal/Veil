@@ -29,8 +29,25 @@ const enPleaseVerbs = [
   'click', 'tap', 'share', 'give',
 ];
 
-/// Verbs that ask when they open a sentence ("Transfer it today").
+/// Verbs that ask when they open a sentence with their object right after
+/// them ("Transfer it today", "Send money now", "Pay \$200").
 const enImperatives = ['send', 'transfer', 'wire', 'pay', 'buy', 'install', 'download', 'click', 'tap'];
+
+/// The objects that make an opening verb an ask; an amount does too, and so
+/// does one of [enImperativeNouns].
+const enImperativeObjects = ['me', 'it', 'this', 'that', 'them', 'us'];
+
+/// What an opening verb asks for, after an optional determiner or number
+/// ("Send the verification code", "Buy 3 gift cards", "Transfer the money").
+const enImperativeNouns = [
+  'money', 'cash', 'payment', 'code', 'codes', 'pin', 'photo', 'photos', 'picture', 'details', //
+  ...enGift, ...enCode, ...enId,
+];
+const enImperativeDeterminers = ['the', 'a', 'an', 'some', 'your', 'my', 'this', 'that'];
+
+/// Card brands that may stand between the determiner and the noun ("Buy 3
+/// Apple gift cards").
+const enImperativeBrands = ['google play', 'google', 'apple', 'amazon', 'steam', 'itunes'];
 const enThanks = ['thanks for', 'thank you for'];
 
 // Pattern 3: gift cards.

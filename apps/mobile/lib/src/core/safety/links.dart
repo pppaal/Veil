@@ -35,6 +35,7 @@ class FoundLink {
     this.userInfo = '',
     this.port,
     this.nonAsciiHost = false,
+    this.hidesHost = false,
   });
 
   /// Where the link sits in the text, in UTF-16 code units, end exclusive.
@@ -60,6 +61,11 @@ class FoundLink {
   final int? port;
   final bool nonAsciiHost;
 
+  /// The address as written seems to name another host than the one it
+  /// opens: a backslash right after the host (browsers read it as '/'), or a
+  /// host written with escapes that opens as another name.
+  final bool hidesHost;
+
   @override
   String toString() => 'FoundLink($text)';
 }
@@ -72,7 +78,16 @@ final _bareDomain = RegExp(
   caseSensitive: false,
 );
 final _ipv4 = RegExp(r'^\d{1,3}(?:\.\d{1,3}){3}$');
+
+// A host browsers open as an IPv4 address although it is not written as
+// four decimal numbers: one number (3232235777), hex or octal parts
+// (0x7f.0.0.1, 0177.0.0.1) or fewer parts (127.1).
+final _numericHost = RegExp(r'^(?:0x[0-9a-f]*|\d+)(?:\.(?:0x[0-9a-f]*|\d+)){0,3}$');
+
+bool _isIpHost(String host) => _ipv4.hasMatch(host) || _numericHost.hasMatch(host) || host.startsWith('[');
 final _hostLike = RegExp(r'(?<![A-Za-z0-9\-.])[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}(?![A-Za-z0-9\-])');
+
+final _trailingDot = RegExp(r'\.$');
 
 const _trailing = '.,!?;:\'"';
 const _closers = {')': '(', ']': '[', '}': '{'};
@@ -98,6 +113,7 @@ List<FoundLink> findLinks(String text) {
     final written = text.substring(m.start, end);
     final host = domain.toLowerCase();
     final path = written.substring(domain.length);
+    if (!_takesBareDomain(domain, host, path)) continue;
     final uri = Uri.tryParse('https://$host$path');
     if (uri == null) continue;
     links.add(FoundLink(
@@ -112,6 +128,41 @@ List<FoundLink> findLinks(String text) {
   }
   links.sort((a, b) => a.start - b.start);
   return links;
+}
+
+// Endings on the bare-domain list that are also everyday words ("here.do u
+// want it", "funny.lol"). A bare domain on one is taken only when it has a
+// path, a www., more than two labels, a hyphen or digit in its name, or a
+// host the checker knows (a brand's, a short-link service's, or a
+// look-alike of a brand's).
+const _wordLikeEndings = {
+  'me', 'do', 'at', 'to', 'us', 'la', 'id', 'co', 'kim', 'lol', 'fun', 'top', 'bar', 'rest', 'work', //
+  'live', 'link', 'page', 'shop', 'site', 'store', 'club', 'app', 'info', 'online', 'click', 'dev',
+  'buzz', 'asia',
+};
+
+final _digitOrHyphen = RegExp(r'[\d\-]');
+
+// Titles written before a name with a full stop and no space (Mr.Kim).
+const _titlesBeforeName = {'mr', 'mrs', 'ms', 'mx', 'dr', 'prof', 'st', 'sr', 'jr', 'mt'};
+
+bool _isTitleCase(String word) =>
+    word.length >= 2 &&
+    word[0] != word[0].toLowerCase() &&
+    word.substring(1) == word.substring(1).toLowerCase() &&
+    word.substring(1) != word.substring(1).toUpperCase();
+
+/// Whether a bare domain [written] ([host] in lower case, [path] after it)
+/// is a link and not two sentences with no space after the full stop.
+bool _takesBareDomain(String written, String host, String path) {
+  final lower = host.split('.');
+  if (lower.length == 2 && _titlesBeforeName.contains(lower.first)) return false;
+  if (!_wordLikeEndings.contains(lower.last)) return true;
+  // Real bare domains are typed in lower case or all capitals; a Title-case
+  // word (Do, Me, At, Kim) after the full stop starts the next sentence.
+  if (_isTitleCase(written.split('.').last)) return false;
+  if (path.length > 1 || lower.length > 2 || _digitOrHyphen.hasMatch(lower.first)) return true;
+  return isBrandHost(host) || _hostIn(host, shortenerHosts) || _hostIn(host, softShortenerHosts) || isLookalikeHost(host);
 }
 
 // The length of [path] once trailing punctuation and unbalanced closing
@@ -141,12 +192,13 @@ int _trimmedLength(String path) {
 
 FoundLink? _urlAt(String text, int start, int afterScheme) {
   final runes = text.codeUnits;
-  // The authority: up to whitespace, '/', '?' or '#'.
+  // The authority: up to whitespace, '/', '?', '#' or '\\' (which browsers
+  // and Uri read as '/').
   var i = afterScheme;
   var nonAscii = false;
   while (i < runes.length) {
     final c = runes[i];
-    if (_isSpace(c) || c == 0x2F || c == 0x3F || c == 0x23) break;
+    if (_isSpace(c) || c == 0x2F || c == 0x3F || c == 0x23 || c == 0x5C) break;
     if (c >= 0x80) {
       final asciiHost = text.substring(afterScheme, i);
       // A Korean word glued after a complete domain ends the link; a host
@@ -160,6 +212,7 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     i++;
   }
   final authorityEnd = i;
+  final backslash = i < runes.length && runes[i] == 0x5C;
   // The path: ASCII URL characters only.
   while (i < runes.length && _isAsciiUrlCharacter(runes[i])) {
     i++;
@@ -182,11 +235,15 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     port = int.parse(portMatch[1]!);
     hostPort = hostPort.substring(0, portMatch.start);
   }
-  final host = hostPort.toLowerCase().replaceAll(RegExp(r'\.$'), '');
+  final host = hostPort.toLowerCase().replaceAll(_trailingDot, '');
   if (host.isEmpty) return null;
   final written = text.substring(start, end);
   final uri = Uri.tryParse(written);
   if (uri == null) return null;
+  // The host that would open must be the host found; any other reading of
+  // the address hides where it goes.
+  final opens = uri.host.toLowerCase().replaceAll(_trailingDot, '');
+  final mismatch = !nonAscii && opens != (host.startsWith('[') ? host.substring(1, host.length - 1) : host);
   return FoundLink(
     start: start,
     end: end,
@@ -198,13 +255,14 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     userInfo: userInfo,
     port: port,
     nonAsciiHost: nonAscii,
+    hidesHost: backslash || mismatch,
   );
 }
 
 /// The last two labels of [host], or the last three under a two-part
 /// ending (co.kr, go.kr, co.uk ...). An IP address is its own domain.
 String registrableDomainOf(String host) {
-  if (_ipv4.hasMatch(host) || host.startsWith('[')) return host;
+  if (_isIpHost(host)) return host;
   final labels = host.split('.');
   if (labels.length >= 3 && twoPartSuffixes.contains(labels.sublist(labels.length - 2).join('.'))) {
     return labels.sublist(labels.length - 3).join('.');
@@ -228,10 +286,10 @@ bool isAppStoreLink(FoundLink link) => appStoreHosts.contains(link.host);
 /// it, a port other than 80 or 443, punycode, or non-Latin letters.
 bool hasRiskyHost(FoundLink link) =>
     link.nonAsciiHost ||
+    link.hidesHost ||
     link.userInfo.isNotEmpty ||
     (link.port != null && link.port != 80 && link.port != 443) ||
-    _ipv4.hasMatch(link.host) ||
-    link.host.startsWith('[') ||
+    _isIpHost(link.host) ||
     link.host.split('.').any((label) => label.startsWith('xn--'));
 
 bool isAppFileLink(FoundLink link) {
@@ -256,7 +314,7 @@ String _foldHostLabel(String label) => label.replaceAll('rn', 'm').replaceAll('0
 
 final _brandTokens = {for (final b in linkBrands) ...b.tokens};
 
-/// Whether [host] imitates a brand's domain (rules L1 to L5) without being
+/// Whether [host] imitates a brand's domain (rules L1 to L6) without being
 /// one of its own.
 bool isLookalikeHost(String host) {
   if (isBrandHost(host)) return false;
@@ -289,6 +347,8 @@ bool isLookalikeHost(String host) {
       }
     }
   }
+  // L6: a brand's whole domain used as part of this one.
+  if (_holdsBrandDomain(host)) return true;
   final first = registrable.split('.').first;
   for (final brand in linkBrands) {
     for (final label in brand.labels) {
@@ -299,6 +359,34 @@ bool isLookalikeHost(String host) {
       }
       // L4: the same name once look-alike letters are folded.
       if (_foldHostLabel(first) == _foldHostLabel(label)) return true;
+    }
+  }
+  return false;
+}
+
+// L6: a brand's whole domain inside another host, with more after it
+// (kbstar.com.verify.xyz, naver.com-login.top, kbstar-com.xyz). Only for
+// domains whose name has three or more letters (not a.co or me.com, which
+// sit inside ordinary hosts), and the hyphen form only when the ending has
+// three or more too, so apple-co-op stays out.
+final _brandDomainForms = <String>[
+  for (final brand in linkBrands)
+    for (final d in brand.domains)
+      if (d.split('.').first.length >= 3) ...[
+        d,
+        if (d.split('.').last.length >= 3) d.replaceAll('.', '-'),
+      ],
+];
+
+bool _holdsBrandDomain(String host) {
+  for (final form in _brandDomainForms) {
+    var at = host.indexOf(form);
+    while (at >= 0) {
+      final after = at + form.length;
+      final startsLabel = at == 0 || host[at - 1] == '.' || host[at - 1] == '-';
+      final moreAfter = after < host.length && (host[after] == '.' || host[after] == '-');
+      if (startsLabel && moreAfter) return true;
+      at = host.indexOf(form, at + 1);
     }
   }
   return false;

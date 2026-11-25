@@ -3,6 +3,8 @@
 // read this, so a banner and a line never disagree.
 
 import 'message_risk.dart';
+import 'rule_risk_checker.dart';
+import 'signals.dart';
 
 /// At most this many of a sender's texts are checked, the newest.
 const threadRiskTexts = 50;
@@ -27,6 +29,10 @@ List<MessageRisk> assessThread(
   final texts = senderTexts.length > threadRiskTexts
       ? senderTexts.sublist(senderTexts.length - threadRiskTexts)
       : senderTexts;
+  // Each text is read once in this call, though it is context for up to
+  // four later ones; nothing is kept after it returns.
+  final read = <String, RiskSignals>{};
+  RiskSignals signalsOf(String text) => read.putIfAbsent(text, () => detectSignals(text));
   final risks = <MessageRisk>[];
   for (var i = 0; i < texts.length; i++) {
     final current = texts[i];
@@ -36,12 +42,13 @@ List<MessageRisk> assessThread(
       if (gap.isNegative || gap > threadContextWindow) continue;
       earlier.insert(0, texts[j].text);
     }
-    risks.add(checker.assess(MessageRiskInput(
+    final input = MessageRiskInput(
       text: current.text,
       earlierTexts: earlier,
       relationship: current.relationship,
       startedByMe: startedByMe,
-    )));
+    );
+    risks.add(checker is RuleRiskChecker ? checker.assessWith(input, signalsOf) : checker.assess(input));
   }
   return risks;
 }

@@ -50,7 +50,7 @@ const _affixTokens = {
   'phone', 'mobile', 'app', 'mr', 'ms', 'me',
 };
 final _shortDigits = RegExp(r'^\d{1,4}$');
-final _trailingDigits = RegExp(r'\d{1,4}$');
+final _trailingDigits = RegExp(r'(?<!\d)\d{1,4}$');
 const _gluedSuffixes = ['new', 'official', 'real'];
 const _letterFolds = {
   '0': 'o', '1': 'l', 'i': 'l', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '9': 'g', //

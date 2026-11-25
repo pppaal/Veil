@@ -21,6 +21,11 @@ void main() {
     // 이체 also as a verb.
     expect(has('이체해줘', '이체'), isTrue);
     expect(has('이체하세요', '이체'), isTrue);
+    // A two-syllable word split by a space, a dot or an emoji is still the word.
+    expect(has('엄 마 나야', '엄마'), isTrue);
+    expect(has('엄.마 나야', '엄마'), isTrue);
+    expect(has('엄💕마 나야', '엄마'), isTrue);
+    expect(has('이💰체해줘', '이체'), isTrue);
 
     // Inside another word: nothing.
     for (final (text, word) in [
@@ -36,6 +41,9 @@ void main() {
       ('이 체크카드로 결제해', '이체'),
       ('검사비 5만원', '검사'),
       ('경찰서 앞이야', '경찰'),
+      ('이 모자 예쁘다', '이모'),
+      ('아 들어왔어', '아들'),
+      ('오 빠르다', '오빠'),
     ]) {
       expect(has(text, word), isFalse, reason: '$word in $text');
     }

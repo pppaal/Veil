@@ -179,20 +179,24 @@ const safetyDir = `${mobileSrc}/core/safety`;
 const safetyDartLibraries = new Set(['dart:core', 'dart:collection', 'dart:math']);
 if (existsSync(safetyDir)) {
   for (const file of dartFiles(safetyDir)) {
-    for (const [, kind, , uri] of read(file).matchAll(
-      /^\s*(import|export|part)\s+(['"])(.+?)\2/gm,
+    // Every quoted URI of a directive counts, the conditional ones too
+    // (import 'a.dart' if (dart.library.io) 'b.dart';).
+    for (const [, kind, body] of read(file).matchAll(
+      /^\s*(import|export|part)\s+((?:[^;'"]|'[^']*'|"[^"]*")*);/gm,
     )) {
-      if (safetyDartLibraries.has(uri)) continue;
-      let target = null;
-      if (uri.startsWith(packagePrefix)) {
-        target = join('apps/mobile/lib', uri.slice(packagePrefix.length));
-      } else if (!uri.includes(':')) {
-        target = normalize(join(dirname(file), uri));
+      for (const [, , uri] of body.matchAll(/(['"])(.*?)\1/g)) {
+        if (safetyDartLibraries.has(uri)) continue;
+        let target = null;
+        if (uri.startsWith(packagePrefix)) {
+          target = join('apps/mobile/lib', uri.slice(packagePrefix.length));
+        } else if (!uri.includes(':')) {
+          target = normalize(join(dirname(file), uri));
+        }
+        if (target !== null && dirname(target) === safetyDir) continue;
+        failures.push(
+          `lib/src/core/safety may import only dart:core, dart:collection, dart:math and its own files (${kind} ${uri}): ${file}`,
+        );
       }
-      if (target !== null && dirname(target) === safetyDir) continue;
-      failures.push(
-        `lib/src/core/safety may import only dart:core, dart:collection, dart:math and its own files (${kind} ${uri}): ${file}`,
-      );
     }
   }
 }

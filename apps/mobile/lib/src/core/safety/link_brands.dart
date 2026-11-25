@@ -41,11 +41,27 @@ const linkBrands = <LinkBrand>[
   LinkBrand(tokens: ['royalmail'], labels: ['royalmail'], domains: ['royalmail.com', 'royalmail.co.uk']),
   LinkBrand(tokens: ['fedex'], labels: ['fedex'], domains: ['fedex.com']),
   LinkBrand(tokens: ['ups'], labels: ['ups'], domains: ['ups.com']),
-  LinkBrand(tokens: ['dhl'], labels: ['dhl'], domains: ['dhl.com', 'dhl.de', 'dhl.co.kr']),
+  LinkBrand(
+    tokens: ['dhl'],
+    labels: ['dhl'],
+    domains: [
+      'dhl.com', 'dhl.de', 'dhl.co.kr', 'dhl.fr', 'dhl.co.uk', 'dhl.it', 'dhl.es', 'dhl.nl', 'dhl.be', //
+      'dhl.ch', 'dhl.at', 'dhl.pl', 'dhl.se', 'dhl.dk', 'dhl.fi', 'dhl.no', 'dhl.ie', 'dhl.pt', 'dhl.cz',
+      'dhl.hu', 'dhl.ca', 'dhl.com.au', 'dhl.co.jp', 'dhl.co.in', 'dhl.com.mx', 'dhl.com.br',
+      'dhl.com.tr', 'dhl.com.sg', 'dhl.com.hk', 'dhl.com.cn', 'dhl.com.tw', 'dhl.co.nz', 'dhl.co.za',
+    ],
+  ),
+  // Amazon's stores, one per country, and its own services.
   LinkBrand(
     tokens: ['amazon'],
     labels: ['amazon'],
-    domains: ['amazon.com', 'amazon.co.uk', 'amazon.co.jp', 'amazon.de', 'amazonaws.com', 'primevideo.com'],
+    domains: [
+      'amazon.com', 'amazon.ca', 'amazon.com.mx', 'amazon.com.br', 'amazon.co.uk', 'amazon.ie', //
+      'amazon.de', 'amazon.fr', 'amazon.it', 'amazon.es', 'amazon.nl', 'amazon.se', 'amazon.pl',
+      'amazon.com.be', 'amazon.com.tr', 'amazon.ae', 'amazon.sa', 'amazon.eg', 'amazon.in',
+      'amazon.co.jp', 'amazon.sg', 'amazon.com.au', 'amazon.cn', 'amazon.co.za', 'amazonaws.com',
+      'primevideo.com', 'amzn.to', 'amzn.com', 'amzn.eu', 'a.co',
+    ],
   ),
   // Banks and payments.
   LinkBrand(tokens: ['kb', 'kbstar'], labels: ['kbstar'], domains: ['kbstar.com', 'kbcard.com']),
@@ -91,8 +107,24 @@ const linkBrands = <LinkBrand>[
     labels: ['naver'],
     domains: ['naver.com', 'naver.me', 'navercorp.com', 'naver.net', 'pstatic.net', 'me2.do'],
   ),
-  LinkBrand(tokens: ['paypal'], labels: ['paypal'], domains: ['paypal.com', 'paypal.me']),
-  LinkBrand(tokens: ['apple'], labels: ['apple'], domains: ['apple.com', 'icloud.com', 'apple.co']),
+  LinkBrand(
+    tokens: ['paypal'],
+    labels: ['paypal'],
+    domains: [
+      'paypal.com', 'paypal.me', 'paypalobjects.com', 'paypal.co.uk', 'paypal.de', 'paypal.fr', //
+      'paypal.it', 'paypal.es', 'paypal.nl', 'paypal.be', 'paypal.at', 'paypal.ch', 'paypal.pl',
+      'paypal.se', 'paypal.dk', 'paypal.no', 'paypal.ie', 'paypal.pt', 'paypal.ca', 'paypal.com.au',
+      'paypal.com.mx', 'paypal.com.br', 'paypal.com.sg', 'paypal.com.hk', 'paypal.jp', 'paypal.cn',
+    ],
+  ),
+  LinkBrand(
+    tokens: ['apple'],
+    labels: ['apple'],
+    domains: [
+      'apple.com', 'icloud.com', 'apple.co', 'apple.news', 'apple.com.cn', 'me.com', 'mac.com', //
+      'itunes.com', 'mzstatic.com', 'cdn-apple.com', 'icloud-content.com',
+    ],
+  ),
   // Agencies. Every host under go.kr or gov.uk is the government's own.
   LinkBrand(tokens: ['nhis'], labels: ['nhis'], domains: ['nhis.or.kr']),
   LinkBrand(tokens: ['hometax'], labels: ['hometax'], domains: ['hometax.go.kr']),
@@ -135,5 +167,8 @@ const bareDomainEndings = <String>[
 /// Endings of two labels, under which the registrable domain has three.
 const twoPartSuffixes = <String>{
   'co.kr', 'go.kr', 'or.kr', 'ne.kr', 're.kr', 'ac.kr', 'pe.kr', 'co.uk', 'org.uk', 'gov.uk', //
-  'ac.uk', 'co.jp', 'com.au',
+  'ac.uk', 'co.jp', 'ne.jp', 'or.jp', 'ac.jp', 'go.jp', 'com.au', 'net.au', 'org.au', 'gov.au',
+  'edu.au', 'co.nz', 'co.za', 'co.in', 'net.in', 'org.in', 'gov.in', 'ac.in', 'co.id', 'co.th',
+  'co.il', 'com.mx', 'com.br', 'com.ar', 'com.tr', 'com.be', 'com.sg', 'com.my', 'com.ph',
+  'com.vn', 'com.hk', 'com.tw', 'com.cn', 'com.sa', 'com.eg',
 };

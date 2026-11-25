@@ -54,17 +54,25 @@ NormalizedText normalizeText(String text) {
   return NormalizedText._(folded, _spacedView(joined), _spacedView(folded), _compactView(joined));
 }
 
-// Step 1: characters that show nothing.
-const _invisibleSingles = <int>{
-  0x00AD, 0x034F, 0x061C, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x180E, 0x3164, 0xFEFF, 0xFFA0, //
-};
+// Step 1: characters that show nothing: every default-ignorable code point
+// (soft hyphen, zero-width and direction marks, fillers, variation and
+// Mongolian selectors, tag characters and the rest), so one placed inside a
+// word cannot split it.
+const _invisibleSingles = <int>{0x00AD, 0x034F, 0x061C, 0x3164, 0xFEFF, 0xFFA0};
+const _invisibleRanges = <(int, int)>[
+  (0x115F, 0x1160), (0x17B4, 0x17B5), (0x180B, 0x180F), (0x200B, 0x200F), (0x202A, 0x202E), //
+  (0x2060, 0x206F), (0xFE00, 0xFE0F), (0xFFF0, 0xFFF8), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A),
+  (0xE0000, 0xE0FFF),
+];
 
-bool isInvisibleCharacter(int c) =>
-    _invisibleSingles.contains(c) ||
-    (c >= 0x200B && c <= 0x200F) ||
-    (c >= 0x202A && c <= 0x202E) ||
-    (c >= 0x2060 && c <= 0x2064) ||
-    (c >= 0x2066 && c <= 0x2069);
+bool isInvisibleCharacter(int c) {
+  if (c < 0xAD) return false;
+  if (_invisibleSingles.contains(c)) return true;
+  for (final (from, to) in _invisibleRanges) {
+    if (c >= from && c <= to) return true;
+  }
+  return false;
+}
 
 /// Steps 1 and 2: invisible characters removed; full-width ASCII, the
 /// ideographic space and circled or parenthesised numbers folded; curly
@@ -111,16 +119,51 @@ const _lookalikes = <int, String>{
   0x03A4: 't', 0x03A5: 'y', 0x03A7: 'x',
 };
 
-/// Step 3: look-alike letters folded to Latin, then lower case.
+// Letterlike symbols that fill the gaps of the mathematical alphabets
+// (script, fraktur and double-struck capitals, italic h ...).
+const _letterlike = <int, String>{
+  0x210A: 'g', 0x210B: 'h', 0x210C: 'h', 0x210D: 'h', 0x210E: 'h', 0x2110: 'i', 0x2111: 'i', //
+  0x2112: 'l', 0x2115: 'n', 0x2119: 'p', 0x211A: 'q', 0x211B: 'r', 0x211C: 'r', 0x211D: 'r',
+  0x2124: 'z', 0x2128: 'z', 0x212C: 'b', 0x212D: 'c', 0x212F: 'e', 0x2130: 'e', 0x2131: 'f',
+  0x2133: 'm', 0x2134: 'o', 0x2102: 'c',
+};
+
+/// The plain letter or digit behind a styled one: mathematical bold, italic,
+/// script, sans-serif and monospace letters and digits, and circled,
+/// parenthesised and squared letters. -1 when [c] is none of these.
+int _plainOfStyled(int c) {
+  if (c < 0x2102) return -1;
+  if (c >= 0x1D400 && c <= 0x1D6A3) {
+    final i = (c - 0x1D400) % 52;
+    return i < 26 ? 0x61 + i : 0x61 + i - 26;
+  }
+  if (c == 0x1D6A4) return 0x69;
+  if (c == 0x1D6A5) return 0x6A;
+  if (c >= 0x1D7CE && c <= 0x1D7FF) return 0x30 + (c - 0x1D7CE) % 10;
+  if (c >= 0x249C && c <= 0x24B5) return 0x61 + c - 0x249C;
+  if (c >= 0x24B6 && c <= 0x24CF) return 0x61 + c - 0x24B6;
+  if (c >= 0x24D0 && c <= 0x24E9) return 0x61 + c - 0x24D0;
+  if (c == 0x24EA || c == 0x24FF) return 0x30;
+  for (final start in const [0x1F110, 0x1F130, 0x1F150, 0x1F170]) {
+    if (c >= start && c < start + 26) return 0x61 + c - start;
+  }
+  final letter = _letterlike[c];
+  return letter == null ? -1 : letter.codeUnitAt(0);
+}
+
+/// Step 3: look-alike letters folded to Latin (Cyrillic and Greek ones, and
+/// styled letters such as mathematical bold or circled ones), then lower
+/// case.
 String foldLookalikes(String text) {
   final out = StringBuffer();
   for (final c in text.runes) {
     final folded = _lookalikes[c];
     if (folded != null) {
       out.write(folded);
-    } else {
-      out.writeCharCode(c);
+      continue;
     }
+    final plain = _plainOfStyled(c);
+    out.writeCharCode(plain < 0 ? c : plain);
   }
   return out.toString().toLowerCase();
 }

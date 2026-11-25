@@ -27,6 +27,10 @@ void main() {
       expect(check(anchor, peer), isNotNull, reason: '$peer vs $anchor');
     }
     expect(check('sam', 'sam_new')!.rule, LookalikeRule.skeleton);
+    // Only a whole trailing run of one to four digits is a number suffix; a
+    // longer run stays part of the handle.
+    expect(handleSkeleton('sam1234'), 'sam');
+    expect(handleSkeleton('sam12345'), 'saml2eas');
     expect(check('jiwoo', 'jiwoo.lee')!.rule, LookalikeRule.affix);
     expect(check('minjun', 'mnijun')!.rule, LookalikeRule.oneEdit);
 

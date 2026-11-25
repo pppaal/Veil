@@ -275,11 +275,16 @@ class RuleRiskChecker implements MessageRiskChecker {
   RiskSignals signalsOf(String text) => detectSignals(text);
 
   @override
-  MessageRisk assess(MessageRiskInput input) {
-    final current = detectSignals(input.text).present;
+  MessageRisk assess(MessageRiskInput input) => assessWith(input, detectSignals);
+
+  /// [assess], with the signals of each text read through [signalsOf]: a
+  /// caller that checks many texts of one chat (assessThread) reads each
+  /// text once.
+  MessageRisk assessWith(MessageRiskInput input, RiskSignals Function(String text) signalsOf) {
+    final current = signalsOf(input.text).present;
     final story = <Signal>{};
     for (final earlier in input.earlierTexts.take(4)) {
-      story.addAll(detectSignals(earlier).story);
+      story.addAll(signalsOf(earlier).story);
     }
     final withStory = story.isEmpty ? current : {...current, ...story};
     final who = (relationship: input.relationship, startedByMe: input.startedByMe);

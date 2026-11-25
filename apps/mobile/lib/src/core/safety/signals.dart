@@ -134,7 +134,28 @@ bool matchesShortWord(String token, String word) {
 /// optional particle.
 bool hasShortWord(NormalizedText text, String word) =>
     text.tokens.any((t) => matchesShortWord(t.text, word)) ||
-    text.looseTokens.any((t) => matchesShortWord(t.text, word));
+    text.looseTokens.any((t) => matchesShortWord(t.text, word)) ||
+    (word.length == 2 && splitShortWords(text).any((t) => matchesShortWord(t, word)));
+
+final _innerMarks = RegExp(r'[.\-]');
+
+/// A two-syllable word split by a space, a dot, a hyphen or an emoji
+/// ("엄 마", "엄.마", "이💰체해줘"), read whole: two loose words joined when
+/// the first is one Hangul syllable, and words with an inner dot or hyphen
+/// taken out.
+Iterable<String> splitShortWords(NormalizedText text) sync* {
+  final tokens = text.looseTokens;
+  for (var i = 0; i + 1 < tokens.length; i++) {
+    final a = tokens[i].text;
+    final b = tokens[i + 1].text;
+    if (a.length == 1 && !tokens[i].sentenceEnd && isHangulSyllable(a.codeUnitAt(0)) && b.isNotEmpty) {
+      if (isHangulSyllable(b.codeUnitAt(0))) yield '$a$b';
+    }
+  }
+  for (final t in tokens) {
+    if (t.text.contains('.') || t.text.contains('-')) yield t.text.replaceAll(_innerMarks, '');
+  }
+}
 
 /// Whether [text] holds a Korean word of [words]: a short word as a whole
 /// word, any other in the compact view.
@@ -162,7 +183,18 @@ final _enSecrecy = englishPattern(enSecrecy);
 final _enThirdParty = englishPattern(enThirdParty);
 final _enAsk = englishPattern(enAsk);
 final _enPlease = RegExp('(?<![a-z])please,?(?: [^ ]+){0,2} (?:${enPleaseVerbs.join('|')})(?![a-z])');
-final _enImperative = RegExp('^(?:${enImperatives.join('|')})(?![a-z])');
+// An opening verb asks only with its object right after it: "send me",
+// "transfer the money", "buy 3 gift cards", "pay \$200"; "Pay day is
+// Friday" and "Buy 2 get 1 free" do not.
+final _enImperative = RegExp(
+  '^(?:${enImperatives.join('|')}) '
+  '(?:(?:${enImperativeObjects.map(_phrase).join('|')})(?![a-z])'
+  '|(?:(?:${enImperativeDeterminers.join('|')}|\\d+|${enNumberWords.join('|')}) )?'
+  '(?:(?:${enImperativeBrands.join('|')}) )?(?:${enImperativeNouns.map(_phrase).join('|')})(?![a-z])'
+  '|[\$£₩] ?\\d'
+  '|\\d[\\d,.]* ?k? ?(?:${enCurrencyWords.join('|')}|\\\$|£|₩|원|만|천)'
+  '|(?:${enNumberWords.join('|')})(?:[ -](?:${enNumberWords.join('|')}|and))* (?:${enCurrencyWords.join('|')})(?![a-z]))',
+);
 final _enThanksBefore = RegExp('(?:${enThanks.map(_phrase).join('|')})(?: [^ ]+){0,2} ?\$');
 final _enGift = englishPattern(enGift);
 final _enPinBack = englishPattern(enPinBack);
@@ -206,7 +238,10 @@ final _enAmount = RegExp(
 );
 
 // Account numbers and phone numbers.
-final _digitGroups = RegExp(r'(?<![\d\-])\d{2,8}(?:[\- ]\d{1,8}){0,4}(?!\d)');
+// Digit runs that may be an account number: groups joined by hyphens or
+// spaces (110-123-456789), or one unbroken run of 10 to 14 digits
+// (110123456789), as people often type them.
+final _digitGroups = RegExp(r'(?<![\d\-])(?:\d{10,14}|\d{2,8}(?:[\- ]\d{1,8}){0,4})(?!\d)');
 final _koPhoneShape = RegExp(r'^(?:01[016789][\- ]?\d{3,4}[\- ]?\d{4}|0\d{1,2}[\- ]\d{3,4}[\- ]\d{4})$');
 final _dateShape = RegExp(r'\d{4}-\d{1,2}-\d{1,2}');
 final _iban = RegExp(r'(?<![a-z0-9])[a-z]{2}\d{2}(?: ?[a-z0-9]{4}){2,7}(?: ?[a-z0-9]{1,3})?(?![a-z0-9])');
@@ -302,7 +337,11 @@ bool _startsWithKin(List<TextToken> tokens) {
   var i = 0;
   if (tokens.isNotEmpty && (koGreetings.contains(tokens[0].text) || enGreetings.contains(tokens[0].text))) i = 1;
   if (i >= tokens.length) return false;
-  final first = tokens[i].text;
+  var first = tokens[i].text.replaceAll(_innerMarks, '');
+  // A two-syllable kin word split in two ("엄 마 나야").
+  if (first.length == 1 && i + 1 < tokens.length && isHangulSyllable(first.codeUnitAt(0)) && !koKin.contains(first)) {
+    first = '$first${tokens[i + 1].text}';
+  }
   // Called by name: the word alone or with the calling particle 아 or 야
   // (아들아); 아빠한테 is about someone, not to them.
   return koKin.any((k) => first == k || first == '$k아' || first == '$k야') || enKin.contains(first);
@@ -378,7 +417,9 @@ RiskSignals detectSignals(String text) {
   mark(Signal.kinVocative, _startsWithKin(t.tokens) || _startsWithKin(t.looseTokens));
   mark(
     Signal.meClaim,
-    [...t.tokens, ...t.looseTokens].any((w) => koMeClaim.contains(w.text)) || en(_enMeClaim),
+    [...t.tokens, ...t.looseTokens].any((w) => koMeClaim.contains(w.text)) ||
+        splitShortWords(t).any(koMeClaim.contains) ||
+        en(_enMeClaim),
   );
   mark(Signal.deviceStory, _hasDeviceStory(t));
   mark(Signal.newAccountClaim, ko(koNewAccountClaim) || en(_enNewAccountClaim));

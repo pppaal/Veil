@@ -115,6 +115,106 @@ void main() {
     for (final text in ['lotto.com', 'never.com', 'ample.com', 'polite.co.kr']) {
       expect(risk(text), LinkRisk.none, reason: text);
     }
+    // The global brands' country and sister domains are their own.
+    for (final text in [
+      'https://amazon.ca/dp/B0abc',
+      'https://www.amazon.in/x',
+      'https://www.amazon.com.au/gp/x',
+      'https://amazon.fr',
+      'https://www.amazon.com.mx/x',
+      'https://www.amazon.com.br/x',
+      'https://apple.news/AbCdEf',
+      'https://www.dhl.fr/fr.html',
+      'https://www.dhl.co.uk/x',
+      'https://www.paypal.co.uk/x',
+      'https://www.paypal.de',
+    ]) {
+      expect(risk(text), LinkRisk.none, reason: text);
+    }
+    expect(only('https://www.amazon.com.mx/x').registrableDomain, 'amazon.com.mx');
+    expect(only('https://shop.example.com.br/a').registrableDomain, 'example.com.br');
+    expect(only('https://www.example.co.in/a').registrableDomain, 'example.co.in');
+
+    // A brand's whole domain used as part of another host (L6).
+    for (final text in [
+      'https://kbstar.com.verify.xyz/login',
+      'https://www.naver.com.login.top',
+      'https://naver.com-login.top/a',
+      'https://kakao.com.secure-login.xyz',
+      'kbstar-com.xyz/login',
+    ]) {
+      expect(risk(text), LinkRisk.lookalike, reason: text);
+    }
+
+    // An IP address written as one number, in hex or in short form.
+    for (final text in ['http://3232235777/', 'http://0x7f.0.0.1/', 'http://127.1/x', 'http://0177.0.0.1/']) {
+      expect(risk(text), LinkRisk.hidden, reason: text);
+    }
+
+    // A backslash ends the host, as browsers read it: the host found is the
+    // one that would open, and the trick itself hides the host.
+    for (final text in ['https://evil.com\\.naver.com/login', 'https://evil.com\\@naver.com/login']) {
+      final link = only(text);
+      expect(link.host, 'evil.com', reason: text);
+      expect(link.registrableDomain, 'evil.com', reason: text);
+      expect(link.uri.host, link.host, reason: text);
+      expect(isBrandHost(link.host), isFalse, reason: text);
+      expect(linkRiskOf(link), LinkRisk.hidden, reason: text);
+    }
+    // For every link here, the host found is the host the link opens.
+    for (final text in [
+      'https://naver.com/a?b=1',
+      'https://user@login.example.com/',
+      'https://kakao.com:8443/event',
+      'https://naver.com\\@evil.com/login',
+      'HTTPS://WWW.NAVER.COM/A',
+      'https://www.naver.com./x',
+      'https://nav%65r.com/x',
+    ]) {
+      final link = only(text);
+      if (link.host != link.uri.host.replaceAll(RegExp(r'\.$'), '')) {
+        expect(linkRiskOf(link), LinkRisk.hidden, reason: '$text opens ${link.uri.host}, not ${link.host}');
+      }
+    }
+    expect(linkRiskOf(only('https://nav%65r.com/x')), LinkRisk.hidden);
+
+    // Two sentences with no space after the full stop are no link: a
+    // Title-case ending, a title before a name, or a word-like ending with
+    // no path.
+    for (final text in [
+      'Your package is at the door.Do you want me to bring it in?',
+      'The parcel arrived today.At least it is not broken',
+      'crypto is down again.Do not buy now lol',
+      'got a traffic violation ticket.To be fair I was speeding',
+      'package came.Me and dad opened it',
+      'your package is here.do u want it',
+      'it arrived today.at least',
+      '택배 왔어 Mr.Kim이 받아놨대',
+      'Mr.Kim sent the package',
+      'mr.kim sent it',
+      'ask dr.lee',
+      'that was so funny.lol',
+    ]) {
+      expect(findLinks(text), isEmpty, reason: text);
+    }
+    // Real bare domains on those endings still are links.
+    for (final text in [
+      'naver.me',
+      'kko.to',
+      'me2.do/Fa3',
+      'example.me/path',
+      'www.example.do',
+      'kakao-secure.site',
+      'NAVER.COM',
+      'kakao.co',
+      'naver-login.Com',
+    ]) {
+      expect(findLinks(text), hasLength(1), reason: text);
+    }
+    // A short brand domain inside an ordinary host is no look-alike.
+    for (final text in ['https://www.a.co.kr/', 'https://shop.me.com.ar/']) {
+      expect(risk(text), LinkRisk.none, reason: text);
+    }
 
     // Where links are and what they are.
     final links = findLinks('봐 https://naver.com/a?b=1에서, then (see bit.ly/x). mail kim@naver.com');

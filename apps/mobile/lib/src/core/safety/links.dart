@@ -111,15 +111,26 @@ bool _isHangul(int c) => (c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x3131 && c <= 0x
 /// Every http(s) URL and bare domain in [text], in order.
 List<FoundLink> findLinks(String text) {
   final links = <FoundLink>[];
+  // A scheme inside a link found, or inside an address read to the end of
+  // its path that opens nothing, starts no link: reading each such scheme
+  // again to the end of the text would make a run of them quadratic.
+  var readTo = 0;
   for (final m in _scheme.allMatches(text)) {
-    if (links.isNotEmpty && m.start < links.last.end) continue;
+    if (m.start < readTo) continue;
     if (m.start > 0 && RegExp(r'[A-Za-z0-9]').hasMatch(text[m.start - 1])) continue;
-    final link = _urlAt(text, m.start, m.end);
+    final (link, read) = _urlAt(text, m.start, m.end);
     if (link != null) links.add(link);
+    readTo = link?.end ?? read;
   }
+  // The links found so far are in order and never overlap, so one index
+  // that only moves forward finds the one a bare domain may overlap.
   final taken = [...links];
+  var next = 0;
   for (final m in _bareDomain.allMatches(text)) {
-    if (taken.any((l) => m.start < l.end && m.end > l.start)) continue;
+    while (next < taken.length && taken[next].end <= m.start) {
+      next++;
+    }
+    if (next < taken.length && m.end > taken[next].start) continue;
     final domain = m[1]!;
     var end = m.start + domain.length + _trimmedLength(m[2]!);
     final written = text.substring(m.start, end);
@@ -298,12 +309,16 @@ bool _endsInDotLetters(String text, int start, int end) {
 
 bool _isAsciiLetter(int c) => (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A);
 
-FoundLink? _urlAt(String text, int start, int afterScheme) {
+// The link at [start], or null; and how far the text was read for it (the
+// end of its path once that was read, else [afterScheme]).
+(FoundLink?, int) _urlAt(String text, int start, int afterScheme) {
   final runes = text.codeUnits;
   // The authority: up to whitespace, '/', '?', '#' or '\\' (which browsers
   // and Uri read as '/').
   var i = afterScheme;
   var nonAscii = false;
+  // The last character read when it is outside ASCII, else 0.
+  var lastNonAscii = 0;
   final rest = _HostRest(text);
   while (i < runes.length) {
     final c = runes[i];
@@ -321,21 +336,47 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     }
     if (c >= 0x80) {
       // A Korean word glued after a complete domain ends the link; a host
-      // that holds non-Latin letters itself is the trick.
-      if (_isHangul(c) && _endsInDotLetters(text, afterScheme, i)) break;
-      if (i > afterScheme && !_letterOrNumber.hasMatch(String.fromCharCode(c))) break;
+      // that holds non-Latin letters itself is the trick. A character
+      // outside the Basic Multilingual Plane (an emoji) is read whole, so a
+      // link never ends between the two halves of its surrogate pair, nor
+      // inside one emoji made of several (a family joined by U+200D, a flag
+      // of two regional letters, a skin tone, a variation selector).
+      final pair = _isHighSurrogate(c) && i + 1 < runes.length && _isLowSurrogate(runes[i + 1]);
+      final code = pair ? 0x10000 + ((c - 0xD800) << 10) + (runes[i + 1] - 0xDC00) : c;
+      if (_isHangul(code) && _endsInDotLetters(text, afterScheme, i)) break;
+      if (i > afterScheme &&
+          !_continuesGlyph(lastNonAscii, code) &&
+          !_letterOrNumber.hasMatch(String.fromCharCode(code))) {
+        break;
+      }
       nonAscii = true;
+      lastNonAscii = code;
+      i += pair ? 2 : 1;
+      continue;
     } else if (!_isAsciiUrlCharacter(c)) {
       break;
     }
+    lastNonAscii = 0;
     i++;
   }
   final authorityEnd = i;
+  // An address whose authority names no host is no link. That is decided
+  // here, before the path is read: a text of thousands of such addresses
+  // ("https:///" over and over) would otherwise read each path to the end
+  // of the text, in quadratic time.
+  // The authority is the one written, or that less what ends a sentence
+  // when no path follows; neither naming a host means no link.
+  final writtenAuthority = text.substring(afterScheme, authorityEnd);
+  if (!_authorityNamesHost(writtenAuthority) &&
+      !_authorityNamesHost(writtenAuthority.substring(0, _trimmedLength(writtenAuthority)))) {
+    return (null, afterScheme);
+  }
   final backslash = i < runes.length && runes[i] == 0x5C;
   // The path: ASCII URL characters only.
   while (i < runes.length && _isAsciiUrlCharacter(runes[i])) {
     i++;
   }
+  final pathEnd = i;
   final rawPath = text.substring(authorityEnd, i);
   var authority = text.substring(afterScheme, authorityEnd);
   var path = rawPath.substring(0, _trimmedLength(rawPath));
@@ -343,34 +384,38 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     final trimmed = _trimmedLength(authority);
     authority = authority.substring(0, trimmed);
   }
-  if (authority.isEmpty) return null;
+  if (authority.isEmpty) return (null, pathEnd);
   final end = afterScheme + authority.length + path.length;
   final at = authority.lastIndexOf('@');
   final userInfo = at < 0 ? '' : authority.substring(0, at);
   var hostPort = authority.substring(at + 1);
   int? port;
   final portMatch = RegExp(r':(\d+)$').firstMatch(hostPort);
+  var portOverflows = false;
   if (portMatch != null) {
-    port = int.parse(portMatch[1]!);
+    // A port too long for an int names no real port: the address hides
+    // where it goes.
+    port = int.tryParse(portMatch[1]!);
+    portOverflows = port == null;
     hostPort = hostPort.substring(0, portMatch.start);
   }
   final writtenHost = hostPort.toLowerCase().replaceAll(_trailingDot, '');
-  if (writtenHost.isEmpty) return null;
+  if (writtenHost.isEmpty) return (null, pathEnd);
   final escaped = writtenHost.contains('%');
   final written = text.substring(start, end);
   final uri = Uri.tryParse(written);
-  if (uri == null) return null;
+  if (uri == null) return (null, pathEnd);
   // A host a browser refuses is named as the address escapes it, never as
   // it decodes (evil.xyz%2F.naver.com is not naver.com).
   final opened = writtenHost.startsWith('[') ? writtenHost : browserHost(writtenHost);
   final host = opened ?? uri.host;
-  if (host.isEmpty) return null;
+  if (host.isEmpty) return (null, pathEnd);
   // The host that would open must be the host found; any other reading of
   // the address hides where it goes.
   final opens = uri.host.toLowerCase().replaceAll(_trailingDot, '');
   final mismatch =
       !nonAscii && !escaped && opens != (host.startsWith('[') ? host.substring(1, host.length - 1) : host);
-  return FoundLink(
+  final link = FoundLink(
     start: start,
     end: end,
     text: written,
@@ -381,9 +426,44 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     userInfo: userInfo,
     port: port,
     nonAsciiHost: nonAscii,
-    hidesHost: backslash || escaped || opened == null || mismatch,
+    hidesHost: backslash || escaped || opened == null || mismatch || portOverflows,
   );
+  return (link, link.end);
 }
+
+bool _isRegionalLetter(int c) => c >= 0x1F1E6 && c <= 0x1F1FF;
+
+// Whether [code] right after [last], a character outside ASCII (0 when the
+// last was ASCII), is part of the same emoji: a joiner or what follows one,
+// a variation selector, a skin tone, or a flag's second regional letter.
+bool _continuesGlyph(int last, int code) =>
+    last != 0 &&
+    (code == 0x200D ||
+        last == 0x200D ||
+        code == 0xFE0F ||
+        code == 0xFE0E ||
+        (code >= 0x1F3FB && code <= 0x1F3FF) ||
+        (_isRegionalLetter(code) && _isRegionalLetter(last)));
+
+bool _isHighSurrogate(int c) => c >= 0xD800 && c <= 0xDBFF;
+bool _isLowSurrogate(int c) => c >= 0xDC00 && c <= 0xDFFF;
+
+// Whether an authority (login, host and port as written) names a host: not
+// a bare login or port ("@", ":"), and, for a host a browser refuses, one
+// that Uri reads. [_urlAt] returns null for every authority this refuses,
+// whatever path follows it.
+bool _authorityNamesHost(String authority) {
+  final hostPort = authority.substring(authority.lastIndexOf('@') + 1).replaceFirst(_portAtEnd, '');
+  final written = hostPort.toLowerCase().replaceAll(_trailingDot, '');
+  if (written.isEmpty) return false;
+  // A bracketed host is an IPv6 address only if Uri reads one ("[" and
+  // "[1]" open nothing).
+  if (!written.startsWith('[') && browserHost(written) != null) return true;
+  final uri = Uri.tryParse('https://$authority');
+  return uri != null && uri.host.isNotEmpty;
+}
+
+final _portAtEnd = RegExp(r':\d+$');
 
 /// The last two labels of [host], or the last three under a two-part
 /// ending (co.kr, go.kr, co.uk ...). An IP address is its own domain.
@@ -402,6 +482,15 @@ bool isBrandHost(String host) => linkBrands.any(
       (brand) => brand.domains.any((d) => host == d || host.endsWith('.$d')),
     );
 
+/// The shared hosting ending [host] is under (anyone may put a site at
+/// name.s3.amazonaws.com), or null.
+String? sharedHostingSuffixOf(String host) {
+  for (final suffix in sharedHostingSuffixes) {
+    if (host.endsWith('.$suffix')) return suffix;
+  }
+  return null;
+}
+
 bool _hostIn(String host, Set<String> hosts) =>
     hosts.contains(host) || hosts.any((h) => host.endsWith('.$h'));
 
@@ -419,9 +508,24 @@ bool hasRiskyHost(FoundLink link) =>
     _isIpHost(link.host) ||
     link.host.split('.').any((label) => label.startsWith('xn--'));
 
+/// Whether the link opens an Android app file: its path as written, or as
+/// it decodes (update.ap%6B is update.apk), ends in .apk, .xapk or .apks.
 bool isAppFileLink(FoundLink link) {
-  final path = link.path.split(RegExp(r'[?#]')).first.toLowerCase();
-  return path.endsWith('.apk') || path.endsWith('.xapk') || path.endsWith('.apks');
+  bool isApp(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.apk') || lower.endsWith('.xapk') || lower.endsWith('.apks');
+  }
+
+  if (isApp(link.path.split(RegExp(r'[?#]')).first)) return true;
+  final path = link.uri.path;
+  if (isApp(path)) return true;
+  try {
+    return isApp(Uri.decodeFull(path));
+  } on ArgumentError {
+    return false;
+  } on FormatException {
+    return false;
+  }
 }
 
 bool isShortLink(FoundLink link) => _hostIn(link.host, shortenerHosts);
@@ -456,7 +560,10 @@ bool isLookalikeHost(String host) {
     return true;
   }
   final registrable = registrableDomainOf(host);
-  final suffixLabels = registrable.split('.').length - 1;
+  // Under a shared hosting ending every label before it is a name the site
+  // chose (kakaobank-login.s3.amazonaws.com), each read as a domain name.
+  final shared = sharedHostingSuffixOf(host);
+  final suffixLabels = shared != null ? shared.split('.').length : registrable.split('.').length - 1;
   final labels = host.split('.');
   final nameLabels = labels.sublist(0, labels.length - suffixLabels);
   for (final label in nameLabels) {
@@ -481,16 +588,22 @@ bool isLookalikeHost(String host) {
   }
   // L6: a brand's whole domain used as part of this one.
   if (_holdsBrandDomain(host)) return true;
-  final first = registrable.split('.').first;
-  for (final brand in linkBrands) {
-    for (final label in brand.labels) {
-      // L3: one or two edits from a long brand name, of a similar length.
-      if (label.length >= 6 && (first.length - label.length).abs() <= 2) {
-        final allowed = label.length >= 9 ? 2 : 1;
-        if (editDistance(first, label, limit: allowed) <= allowed) return true;
+  final names = shared != null ? nameLabels : [registrable.split('.').first];
+  for (final first in names) {
+    for (final brand in linkBrands) {
+      for (final label in brand.labels) {
+        // Under shared hosting a label that is exactly a brand's name is as
+        // often the brand's own page (naver.github.io) as not: only an
+        // affix (L1, L2) or a changed spelling flags it there.
+        if (shared != null && first == label) continue;
+        // L3: one or two edits from a long brand name, of a similar length.
+        if (label.length >= 6 && (first.length - label.length).abs() <= 2) {
+          final allowed = label.length >= 9 ? 2 : 1;
+          if (editDistance(first, label, limit: allowed) <= allowed) return true;
+        }
+        // L4: the same name once look-alike letters are folded.
+        if (_foldHostLabel(first) == _foldHostLabel(label)) return true;
       }
-      // L4: the same name once look-alike letters are folded.
-      if (_foldHostLabel(first) == _foldHostLabel(label)) return true;
     }
   }
   return false;

@@ -94,4 +94,39 @@ void main() {
     expect(checker.signalsOf('the passport office').has(Signal.id), isTrue);
     expect(checker.signalsOf('I wire my house').has(Signal.money), isFalse);
   });
+
+  test('words of a Korean list in ASCII letters and words that sit across a space match only whole', () {
+    Set<Signal> signals(String text) => detectSignals(text).present;
+
+    // The compact view joins English words: "got pizza" holds otp, a video
+    // id may too. Only the whole word is a code.
+    for (final text in ['I got pizza, can you grab drinks?', 'Can you check the hotspot password?', 'https://www.youtube.com/watch?v=xOtPq12abcd 봐줘']) {
+      expect(signals(text), isNot(contains(Signal.code)), reason: text);
+    }
+    expect(signals('OTP 번호 알려주세요'), contains(Signal.codeAsk));
+    expect(containsWord('spin번호', 'pin번호'), isFalse);
+    expect(containsWord('핀pin번호', 'pin번호'), isTrue);
+
+    // 지검 and 검찰 inside one word only, never across a space, and not the
+    // exam track or the job.
+    for (final text in ['금액 맞는지 검토해 주세요', '이미지 검색해봐', '검찰직 인강 들어', '검찰공무원 시험 준비해', '수사 관련 기사 봤어']) {
+      expect(signals(text), isNot(contains(Signal.authorityStrong)), reason: text);
+    }
+    for (final text in ['서울중앙지검 수사관입니다', '수원지검에서 연락드립니다', '검찰청입니다', '검 찰 입니다']) {
+      expect(signals(text), contains(Signal.authorityStrong), reason: text);
+    }
+
+    // 모르게 after the speaker, 당장 inside 식당 장소, 번호 바꿨 after 비밀.
+    expect(signals('나도 모르게 잠들었네'), isNot(contains(Signal.secrecy)));
+    expect(signals('아빠 모르게 보내줘'), contains(Signal.secrecy));
+    expect(signals('식당 장소 정했어'), isNot(contains(Signal.urgency)));
+    expect(signals('지금당장 보내'), contains(Signal.urgency));
+    expect(signals('비밀번호 바꿨어'), isNot(contains(Signal.newAccountClaim)));
+    expect(signals('나 번호 바꿨어'), contains(Signal.newAccountClaim));
+
+    // A loss is no high return.
+    expect(signals('코인 수익률 -20%'), isNot(contains(Signal.highReturn)));
+    expect(signals('코인 수익률 마이너스 20%'), isNot(contains(Signal.highReturn)));
+    expect(signals('코인 수익률 20%'), contains(Signal.highReturn));
+  });
 }

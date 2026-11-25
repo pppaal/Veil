@@ -368,4 +368,134 @@ void main() {
       expect(watch.elapsed, lessThan(const Duration(seconds: 2)), reason: text.substring(0, 12));
     }
   });
+
+  test('a port too long for an int hides the host instead of throwing', () {
+    // Ports above 2^63 made int.parse throw, which broke the bubble and
+    // every risk line in the chat.
+    for (final text in [
+      'https://a.co:99999999999999999999',
+      'Mom my phone broke, pay here https://pay.kr:99999999999999999999',
+      'https://a.co:9223372036854775808/path',
+    ]) {
+      final link = findLinks(text).single;
+      expect(link.port, isNull, reason: text);
+      expect(link.hidesHost, isTrue, reason: text);
+      expect(hasRiskyHost(link), isTrue, reason: text);
+      expect(linkRiskOf(link), LinkRisk.hidden, reason: text);
+    }
+    expect(findLinks('https://a.co:9223372036854775807').single.port, 9223372036854775807);
+  });
+
+  test('a long run of addresses that open nothing is read in linear time', () {
+    // Some name no host and are dropped before their path is read; others
+    // fail only once their path is read (a bracket that holds no IPv6
+    // address, a port too long for an int before a path with a colon), and
+    // the schemes inside a path read that way start no link.
+    for (final unit in [
+      'https:///',
+      'https://@/',
+      'https://:/',
+      'https://a@/',
+      'https://[/',
+      'https://[]/',
+      'https://[::/',
+      'https://[1]/',
+      'https://a.co:99999999999999999999/',
+    ]) {
+      final text = unit * (100000 ~/ unit.length);
+      final watch = Stopwatch()..start();
+      expect(findLinks(text), isEmpty, reason: unit);
+      expect(watch.elapsed, lessThan(const Duration(seconds: 2)), reason: '$unit ${watch.elapsedMilliseconds} ms');
+    }
+    // A real address right after one is still found.
+    expect(findLinks('https:///https://naver.com/a').single.host, 'naver.com');
+    expect(findLinks('https://@/ https://evil.xyz/x.apk').single.host, 'evil.xyz');
+    expect(findLinks('https://[/ https://naver.com/a').single.host, 'naver.com');
+    expect(findLinks('https://[::1]/a').single.host, '[::1]');
+    // Thousands of links beside thousands of bare domains stay fast too.
+    final mixed = 'https://a.co/x b.com ' * 5000;
+    final watch = Stopwatch()..start();
+    expect(findLinks(mixed), hasLength(10000));
+    expect(watch.elapsed, lessThan(const Duration(seconds: 2)), reason: '${watch.elapsedMilliseconds} ms');
+  });
+
+  test('a link never ends between the two halves of an emoji', () {
+    bool splitsPair(String text, int at) =>
+        at > 0 &&
+        at < text.length &&
+        (text.codeUnitAt(at - 1) & 0xFC00) == 0xD800 &&
+        (text.codeUnitAt(at) & 0xFC00) == 0xDC00;
+    for (final text in [
+      'https://\u{1F600} hi',
+      'look https://\u{1F600}\u{1F600}.com now',
+      'https://\u{1F4B0}naver.com',
+      'https://a\u{1F600}.com',
+    ]) {
+      for (final link in findLinks(text)) {
+        expect(splitsPair(text, link.start), isFalse, reason: text);
+        expect(splitsPair(text, link.end), isFalse, reason: text);
+      }
+    }
+    // Nor inside one emoji made of several code points: a family joined by
+    // U+200D, a flag, a skin tone.
+    for (final emoji in ['\u{1F468}\u200D\u{1F469}\u200D\u{1F467}', '\u{1F1F0}\u{1F1F7}', '\u{1F44D}\u{1F3FD}', '\u2764\uFE0F']) {
+      final text = 'https://$emoji.kr hi';
+      final link = findLinks(text).single;
+      expect(link.text, 'https://$emoji.kr', reason: text);
+      expect(linkRiskOf(link), LinkRisk.hidden, reason: text);
+    }
+    // An emoji glued after a complete domain still ends the link.
+    expect(findLinks('https://naver.com\u{1F44D}\u{1F3FD}').single.text, 'https://naver.com');
+  });
+
+  test('an app file with an escaped path is an app file', () {
+    for (final text in ['https://evil.com/update.ap%6B', 'https://evil.com/update%2Eapk?x=1', 'https://evil.com/a.APK%73']) {
+      final link = findLinks(text).single;
+      expect(isAppFileLink(link), isTrue, reason: text);
+      expect(linkRiskOf(link), LinkRisk.appFile, reason: text);
+    }
+    expect(isAppFileLink(findLinks('https://evil.com/update.ap%zz').single), isFalse);
+  });
+
+  test('a host on shared hosting is never a brand own, and its labels are read for look-alikes', () {
+    for (final host in [
+      'kakaobank-login.s3.amazonaws.com',
+      'nhis-refund.s3.ap-northeast-2.amazonaws.com',
+      'kakaobamk.s3.amazonaws.com',
+      'naver-login.github.io',
+      'paypa1.web.app',
+    ]) {
+      expect(isBrandHost(host), isFalse, reason: host);
+      expect(isLookalikeHost(host), isTrue, reason: host);
+      final text = 'https://$host/index.html';
+      final links = findLinks(text);
+      expect(linkRiskOf(links.single), LinkRisk.lookalike, reason: host);
+      expect(allLinksOfficial(text, links), isFalse, reason: host);
+    }
+    for (final host in [
+      'mybucket.s3.amazonaws.com',
+      'cjparcel.s3.amazonaws.com',
+      'd111111abcdef8.cloudfront.net',
+      'family-photos.github.io',
+    ]) {
+      // Not a look-alike by its name, and not a brand's own either.
+      expect(isLookalikeHost(host), isFalse, reason: host);
+      expect(isBrandHost(host), isFalse, reason: host);
+      expect(allLinksOfficial('https://$host/a', findLinks('https://$host/a')), isFalse, reason: host);
+      expect(linkRiskOf(findLinks('https://$host/a').single), LinkRisk.none, reason: host);
+    }
+    // A label that is exactly a brand's name is the brand's own page there
+    // as often as not (NAVER's and Kakao's GitHub pages): no look-alike,
+    // and still not the brand's own domain.
+    for (final host in ['naver.github.io', 'kakao.github.io', 'toss.github.io', 'apple.github.io', 'paypal.github.io']) {
+      expect(isLookalikeHost(host), isFalse, reason: host);
+      expect(isBrandHost(host), isFalse, reason: host);
+      expect(linkRiskOf(findLinks('https://$host/a').single), LinkRisk.none, reason: host);
+    }
+    // Amazon's own other domains are its own.
+    for (final host in ['www.amazon.jobs', 'amazon.science']) {
+      expect(isBrandHost(host), isTrue, reason: host);
+      expect(isLookalikeHost(host), isFalse, reason: host);
+    }
+  });
 }

@@ -19,6 +19,12 @@ enum Signal {
   gift,
   pinBack,
   code,
+
+  /// The sender's own code did not arrive, asked about with how or why, and
+  /// neither the reader's side nor where the code went instead is named
+  /// ("my verification code isn't coming, how do I fix it?"): no ask for the
+  /// reader's.
+  codeTrouble,
   mistake,
   id,
   cardSecret,
@@ -26,6 +32,9 @@ enum Signal {
   remoteName,
   remoteWord,
   install,
+
+  /// A bank named (P6 beside a named remote app).
+  bankWord,
   link,
 
   /// A link that is not an app store page (the authority rule's LINK).
@@ -52,6 +61,16 @@ enum Signal {
   guarantee,
   highReturn,
   feeFirst,
+
+  /// An invitation or an offer of returns (P14).
+  invite,
+
+  /// A word that is a pitch itself (리딩방, trading platform): with a high
+  /// return it hooks a stranger (P14).
+  investPitch,
+
+  /// A present or a birthday: secrecy about it is a surprise (P2).
+  surprise,
   authorityStrong,
   authorityWeak,
 
@@ -158,9 +177,39 @@ Iterable<String> splitShortWords(NormalizedText text) sync* {
 }
 
 /// Whether [text] holds a Korean word of [words]: a short word as a whole
-/// word, any other in the compact view.
-bool hasKoreanWord(NormalizedText text, Iterable<String> words) =>
-    words.any((w) => koShortTokens.contains(w) ? hasShortWord(text, w) : text.compact.contains(w));
+/// word, a word in ASCII letters as a whole word of the spaced view, any
+/// other in the compact view ([containsWord]).
+bool hasKoreanWord(NormalizedText text, Iterable<String> words) => words.any((w) {
+      if (koShortTokens.contains(w)) return hasShortWord(text, w);
+      if (_asciiOnly.hasMatch(w)) return _english(text, _asciiWords.putIfAbsent(w, () => englishPattern([w])));
+      return containsWord(text.compact, w);
+    });
+
+final _asciiOnly = RegExp(r'^[a-z0-9]+$');
+final _asciiWords = <String, RegExp>{};
+
+bool _isAsciiLetter(int c) => (c >= 0x61 && c <= 0x7A) || (c >= 0x41 && c <= 0x5A);
+
+/// Where [word] next sits in [compact] from [from], an ASCII letter at its
+/// edge not glued to another ASCII letter (pin번호 is not in "spin 번호"), or
+/// -1.
+int indexOfWord(String compact, String word, [int from = 0]) {
+  final letterStart = _isAsciiLetter(word.codeUnitAt(0));
+  final letterEnd = _isAsciiLetter(word.codeUnitAt(word.length - 1));
+  var at = compact.indexOf(word, from);
+  while (at >= 0) {
+    final end = at + word.length;
+    if ((!letterStart || at == 0 || !_isAsciiLetter(compact.codeUnitAt(at - 1))) &&
+        (!letterEnd || end == compact.length || !_isAsciiLetter(compact.codeUnitAt(end)))) {
+      return at;
+    }
+    at = compact.indexOf(word, at + 1);
+  }
+  return -1;
+}
+
+/// Whether [compact] holds [word] as [indexOfWord] finds it.
+bool containsWord(String compact, String word) => indexOfWord(compact, word) >= 0;
 
 String _phrase(String p) => RegExp.escape(p).replaceAll("'", "'?").replaceAll(' ', ' ?');
 
@@ -205,6 +254,7 @@ final _enPhoto = englishPattern(enPhoto);
 final _enRemoteName = englishPattern(enRemoteName);
 final _enRemoteWord = englishPattern(enRemoteWord);
 final _enInstall = englishPattern(enInstall);
+final _enBankWord = englishPattern(enBankWord);
 final _enDelivery = englishPattern(enDelivery);
 final _enAddressProblem = englishPattern(enAddressProblem);
 final _enFee = englishPattern(enFee);
@@ -216,10 +266,22 @@ final _enGov = englishPattern(enGov);
 final _enInvest = englishPattern(enInvest);
 final _enGuarantee = englishPattern(enGuarantee);
 final _enFeeFirst = englishPattern(enFeeFirst);
+final _enInvite = englishPattern(enInvite);
+final _enSurprise = englishPattern(enSurprise);
+final _enCodeTrouble = englishPattern(enCodeTrouble);
+final _enCodeReaderSide = englishPattern(enCodeReaderSide);
+final _enCodeHelp = englishPattern(enCodeHelp);
+final _enInvestPitch = englishPattern(enInvestPitch);
 final _enNotAccountNear = englishPattern(enNotAccountNear);
 final _enAccountWord = englishPattern(['account']);
 final _returnWords = '(?:${[...koReturnWords, ...enReturnWords].join('|')})';
-final _highReturn = RegExp('$_returnWords\\D{0,6}\\d+(?:\\.\\d+)?\\s?%|(?<![\\d.])\\d+(?:\\.\\d+)?\\s?%\\s?(?:의\\s?)?$_returnWords');
+// A loss (-20%, 마이너스 20%) is no high return.
+// "25% monthly returns": a period word may stand between.
+final _highReturn = RegExp(
+  '$_returnWords\\D{0,6}(?<![\\d.\\-−]|마이너스 ?|minus )\\d+(?:\\.\\d+)?\\s?%'
+  '|(?<![\\d.\\-−]|마이너스 ?|minus )\\d+(?:\\.\\d+)?\\s?%\\s?(?:의\\s?)?'
+  '(?:(?:daily|weekly|monthly|yearly|annual|a week|a month|per week|per month) )?$_returnWords',
+);
 
 // Amounts.
 const _numerals = '일이삼사오육칠팔구십백천만억';
@@ -271,7 +333,7 @@ bool _hasAccountNumber(NormalizedText text) {
     final window = spaced.substring(m.start < 20 ? 0 : m.start - 20, m.end + 20 > spaced.length ? spaced.length : m.end + 20);
     final windowCompact = _compactOf(window);
     if (koNotAccountNear.any(windowCompact.contains) || _enNotAccountNear.hasMatch(window)) continue;
-    final bank = koDistinctiveBanks.any(windowCompact.contains) ||
+    final bank = koDistinctiveBanks.any((b) => containsWord(windowCompact, b)) ||
         koPlainBanks.any((b) => koBankJoins.any((j) => windowCompact.contains('$b$j'))) ||
         koAccountWords.any(windowCompact.contains) ||
         _enAccountWord.hasMatch(window);
@@ -356,17 +418,44 @@ bool _hasDeviceStory(NormalizedText text) {
 
 bool _hasCardSecret(String compact) {
   for (final word in koCardSecretWord) {
-    var at = compact.indexOf(word);
+    var at = indexOfWord(compact, word);
     while (at >= 0) {
       final from = at < 10 ? 0 : at - 10;
       final to = at + word.length + 10 > compact.length ? compact.length : at + word.length + 10;
       final window = compact.substring(from, to);
       if (koCardSecretNear.any(window.contains)) return true;
-      at = compact.indexOf(word, at + 1);
+      at = indexOfWord(compact, word, at + 1);
     }
   }
   return false;
 }
+
+// 모르게 with someone before it (아빠 모르게), not the speaker (나도 모르게).
+bool _hasKoSecrecyMoreuge(List<TextToken> tokens) {
+  for (var i = 0; i < tokens.length; i++) {
+    final w = tokens[i].text;
+    final at = w.indexOf('모르게');
+    if (at < 0) continue;
+    final before = at > 0 ? w.substring(0, at) : (i > 0 ? tokens[i - 1].text : '');
+    if (!koSecrecyNotAfter.contains(before)) return true;
+  }
+  return false;
+}
+
+// 6자리 or 여섯자리 beside a code word and with no booking, seat or lock word
+// near it.
+bool _hasSixDigitCode(String compact) {
+  for (final m in koSixDigits.allMatches(compact)) {
+    final window = compact.substring(m.start < 6 ? 0 : m.start - 6, m.end + 6 > compact.length ? compact.length : m.end + 6);
+    if (!koSixDigitsNot.any(window.contains)) return true;
+  }
+  return false;
+}
+
+bool _hasAuthorityInWord(NormalizedText t) =>
+    t.tokens.any((w) => koAuthorityInWord.hasMatch(w.text)) ||
+    t.looseTokens.any((w) => koAuthorityInWord.hasMatch(w.text)) ||
+    splitShortWords(t).any(koAuthorityInWord.hasMatch);
 
 /// Every signal in [text]. Links are read from the text before look-alike
 /// letters are folded, so a host written in Cyrillic stays odd.
@@ -389,19 +478,32 @@ RiskSignals detectSignals(String text) {
   mark(Signal.amount, _hasAmount(t));
   mark(Signal.account, _hasAccountNumber(t));
   mark(Signal.thirdParty, ko(koThirdParty) || en(_enThirdParty));
-  mark(Signal.secrecy, ko(koSecrecy) || en(_enSecrecy));
+  mark(
+    Signal.secrecy,
+    ko(koSecrecy) || _hasKoSecrecyMoreuge(t.tokens) || _hasKoSecrecyMoreuge(t.looseTokens) || en(_enSecrecy),
+  );
+  mark(Signal.surprise, ko(koSurprise) || en(_enSurprise));
   mark(Signal.callAvoid, ko(koCallAvoid) || en(_enCallAvoid));
   mark(Signal.urgency, ko(koUrgency) || en(_enUrgency));
   mark(Signal.gift, ko(koGift) || en(_enGift));
   mark(Signal.pinBack, ko(koPinBack) || en(_enPinBack));
-  mark(Signal.code, ko(koCode) || en(_enCode));
+  mark(Signal.code, ko(koCode) || _hasSixDigitCode(compact) || en(_enCode));
   mark(Signal.mistake, ko(koMistake) || en(_enMistake));
+  mark(
+    Signal.codeTrouble,
+    (ko(koCodeTrouble) || en(_enCodeTrouble)) &&
+        (ko(koCodeHelp) || en(_enCodeHelp)) &&
+        !ko(koCodeReaderSide) &&
+        !en(_enCodeReaderSide) &&
+        !s.contains(Signal.mistake),
+  );
   mark(Signal.id, ko(koId) || en(_enId));
   mark(Signal.cardSecret, _hasCardSecret(compact));
   mark(Signal.photo, ko(koPhoto) || en(_enPhoto));
   mark(Signal.remoteName, ko(koRemoteName) || en(_enRemoteName));
   mark(Signal.remoteWord, ko(koRemoteWord) || en(_enRemoteWord));
   mark(Signal.install, ko(koInstall) || en(_enInstall));
+  mark(Signal.bankWord, ko(koBankWord) || en(_enBankWord));
 
   mark(Signal.link, links.isNotEmpty);
   mark(Signal.linkOutsideStores, links.any((l) => !isAppStoreLink(l)));
@@ -422,11 +524,14 @@ RiskSignals detectSignals(String text) {
         en(_enMeClaim),
   );
   mark(Signal.deviceStory, _hasDeviceStory(t));
-  mark(Signal.newAccountClaim, ko(koNewAccountClaim) || en(_enNewAccountClaim));
+  mark(
+    Signal.newAccountClaim,
+    ko(koNewAccountClaim) || koNumberChanged.hasMatch(compact) || en(_enNewAccountClaim),
+  );
 
   mark(Signal.delivery, ko(koDelivery) || en(_enDelivery));
   mark(Signal.addressProblem, ko(koAddressProblem) || en(_enAddressProblem));
-  mark(Signal.fee, ko(koFee) || en(_enFee));
+  mark(Signal.fee, ko(koFee) || (s.contains(Signal.ask) && ko(koFeeWithAsk)) || en(_enFee));
   mark(Signal.bankPretext, ko(koBankPretext) || en(_enBankPretext));
   mark(Signal.phoneToCall, _phoneToCall.hasMatch(t.spaced));
   mark(Signal.gov, ko(koGov) || en(_enGov));
@@ -434,8 +539,10 @@ RiskSignals detectSignals(String text) {
   mark(Signal.guarantee, ko(koGuarantee) || en(_enGuarantee));
   mark(Signal.highReturn, _highReturn.hasMatch(t.spaced));
   mark(Signal.feeFirst, ko(koFeeFirst) || en(_enFeeFirst));
+  mark(Signal.invite, koInvite.hasMatch(compact) || en(_enInvite));
+  mark(Signal.investPitch, ko(koInvestPitch) || en(_enInvestPitch));
 
-  final strong = ko(koAuthorityStrong) || en(_enAuthorityStrong);
+  final strong = ko(koAuthorityStrong) || _hasAuthorityInWord(t) || en(_enAuthorityStrong);
   mark(Signal.authorityStrong, strong);
   mark(Signal.authorityWeak, strong && (ko(koAuthorityWeak) || en(_enAuthorityWeak)));
   mark(Signal.safeAccount, ko(koSafeAccount) || en(_enSafeAccount));

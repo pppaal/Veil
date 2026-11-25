@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/platform/link_opener.dart';
 import '../../../core/safety/links.dart';
+import '../../../core/safety/text_normalizer.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../conversations/presentation/conversation_list_logic.dart';
 
@@ -16,7 +17,9 @@ import '../../conversations/presentation/conversation_list_logic.dart';
 ///
 /// While a chat search runs ([searchQuery]) its hits are drawn in bold and
 /// the links as plain text: the search wins. The phone never fetches,
-/// previews or expands a link; it is found in the text alone.
+/// previews or expands a link; it is found in the text alone, and only in
+/// the first [maxCheckedLength] code units, the part the scam checker reads:
+/// a link after that is plain text, so no link opens unchecked.
 class MessageText extends StatefulWidget {
   const MessageText({
     super.key,
@@ -61,9 +64,12 @@ class _MessageTextState extends State<MessageText> {
 
   void _findLinks() {
     _disposeRecognizers();
+    final text = widget.text;
+    final cut = text.length > maxCheckedLength;
     _links = [
-      for (final link in findLinks(widget.text))
-        if (isOpenableLink(link.uri)) link,
+      for (final link in findLinks(cut ? text.substring(0, maxCheckedLength) : text))
+        // A link the cut runs through is not the link written.
+        if (isOpenableLink(link.uri) && !(cut && link.end == maxCheckedLength)) link,
     ];
     _recognizers = [
       // Read when tapped, so a new callback needs no new recognizer.

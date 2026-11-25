@@ -492,6 +492,8 @@ claims:
         name: "starting a chat, creating a group, verifying or sending a message accepts it for good"
       - test: apps/mobile/test/safety/contact_trust_test.dart
         name: "a screenshot notice, a reaction or a nickname saved later does not accept a request"
+      - test: apps/mobile/test/safety/trust_anchors_test.dart
+        name: "a group whose only other member is verified, or known through my own 1:1, is not a request"
       - test: apps/mobile/test/safety/message_request_relay_test.dart
         name: "a stranger's first message waits as a request: no read receipt, no typing, no photo fetch until accepted"
       - test: apps/mobile/test/safety/message_request_relay_test.dart
@@ -569,6 +571,10 @@ claims:
     evidence:
       - test: apps/mobile/test/safety/risk/handle_lookalike_test.dart
         name: "flags handles one edit, a swapped look-alike character or a suffix away from a contact's"
+      - test: apps/mobile/test/safety/trust_anchors_test.dart
+        name: "a contact saved under a nickname is compared with look-alikes only once the nickname is a week old"
+      - test: apps/mobile/test/safety/trust_anchors_test.dart
+        name: "a contact verified only from a group's member page is compared with a look-alike stranger"
       - test: apps/mobile/test/phone/trust_banners_phone_test.dart
         name: "a lookalike of a verified contact shows the warning and keeps it after Accept"
       - test: apps/mobile/test/phone/trust_banners_phone_test.dart

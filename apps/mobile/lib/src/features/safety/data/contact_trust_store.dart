@@ -115,12 +115,22 @@ class ContactTrustDocument {
 
 /// Keeps the trust document in the keystore (SecureScope.conversationPolicy),
 /// so it survives a cache wipe and is wiped with the scope at sign-out.
+/// [wipesBegun] counts the wipes of this device's state that have begun
+/// (SecureStorageService.wipesBegun): a write made once one began since the
+/// document was read is dropped.
 class ContactTrustStore {
-  ContactTrustStore(this._store);
+  ContactTrustStore(this._store, {int Function()? wipesBegun}) : _wipesBegun = wipesBegun ?? _noWipes;
 
   static const documentKey = 'contact_trust.v1';
 
+  static int _noWipes() => 0;
+
   final IdentityKeyValueBackend _store;
+  final int Function() _wipesBegun;
+
+  /// How many wipes have begun: taken before the document is read, and
+  /// given back to [write].
+  int get wipesBegun => _wipesBegun();
 
   /// The stored document; null when there is none or it does not parse (a
   /// corrupt document counts as missing, so the baseline runs again). A
@@ -137,5 +147,18 @@ class ContactTrustStore {
     }
   }
 
-  Future<void> write(ContactTrustDocument document) => _store.write(documentKey, json.encode(document.toJson()));
+  /// Writes [document], unless a wipe began after [wipesSeen] (the count
+  /// taken when the document was read): the keystore is being wiped, and
+  /// the next account signed in on this phone would read it back. False
+  /// when it was dropped. The check and the write's place in the scope's
+  /// queue happen in one step, so a wipe that begins later clears it.
+  Future<bool> write(ContactTrustDocument document, {int? wipesSeen}) async {
+    if (wipesSeen != null && _wipesBegun() != wipesSeen) return false;
+    await _store.write(documentKey, json.encode(document.toJson()));
+    return true;
+  }
+
+  /// Deletes the stored document, behind any write already queued for the
+  /// scope.
+  Future<void> forget() => _store.delete(documentKey);
 }

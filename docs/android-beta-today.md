@@ -154,9 +154,11 @@ the server and keeps its handle, so signing up again needs a new handle.
 4. Your friend signs up too. Tell each other your handles in person or on a
    call. Then go to **Contacts > Add contact**, type the handle, tap **Add**,
    then **Message**. (Or **Chats > New chat** and type the handle.)
-5. If your friend writes to you before you add them as a contact, their chat
-   arrives as a message request: open it and tap **Accept** (see
-   [What to try](#what-to-try)).
+5. If your friend's chat appears before you save their name (the
+   **Nickname** field in **Add contact**) or tap **Message** on their
+   contact, it waits as a message request: open it and tap **Accept** (see
+   [What to try](#what-to-try)). **Add** then **Message**, as in step 4,
+   accepts it too.
 6. In the chat, tap the **Safety number** icon at the top. Compare the numbers
    with your friend's phone, side by side or on a call, then tap **Mark as
    verified**.

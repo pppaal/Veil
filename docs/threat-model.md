@@ -79,14 +79,19 @@ privacy policy needed no change. The code is in
   verified, saved, known or new from facts a stranger cannot create in
   minutes: a verified safety number, a nickname at least a week old, or a
   chat accepted at least a week ago in which this phone sent a text or file.
+  In a 1:1 chat, an identity key check that read the directory before a
+  newer "safety number changed" event can no longer clear that event
+  (`identity_trust.dart`, `peer_session_resolver.dart`).
 - **Warnings.** Fixed rules (not a model) put one line under a message that
   looks like a common scam, more readily from a new or changed account. A
   banner warns, until the account is verified, when a handle looks like a
   saved or verified contact's or when a new account says it is family.
-- **Links and app files.** A link asks before it opens unless it is the
-  user's own or from a verified contact; app-file, hidden and look-alike
-  links ask from anyone. An `.apk`, `.xapk` or `.apks` file asks before it
-  opens or saves. The phone never fetches or expands a link.
+- **Links and app files.** A tap opens a link at once only for the user's
+  own message or a verified contact's, in an accepted chat, and only when
+  the link looks ordinary; otherwise a sheet asks first, and app-file,
+  hidden and look-alike links get the stronger sheet from anyone. An
+  `.apk`, `.xapk` or `.apks` file asks before it opens or saves. The phone
+  never fetches or expands a link.
 
 Limits that stay in this version:
 

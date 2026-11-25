@@ -184,9 +184,11 @@ builds the APK, so you need no Flutter install.
 - Text messages, photos and files in 1:1 and group conversations,
   reactions, disappearing timers, unread counts, on-device message search,
   safety numbers, device transfer
-- Block, report and mute: from a chat's menu, a message's long-press sheet
-  and a contact's sheet, with Settings > Privacy > Blocked accounts; a muted
-  chat raises no notification on the phone
+- Block, report and mute: block or report from a 1:1's menu, a contact's
+  sheet or a 1:1 request's bar, report from a message's long-press sheet,
+  mute from a chat's menu or a long press on its Chats row, and unblock in
+  Settings > Privacy > Blocked accounts; a muted chat raises no notification
+  on the phone
 - Message requests and scam warnings, worked out on the phone by fixed rules
   that send nothing: not the text they read, their result or a link. A chat
   from an account you haven't talked to waits as a message request: until

@@ -58,12 +58,12 @@ IARC rating questionnaire should be answered honestly:
 
 - User-generated content: YES (we ship a messenger)
 - Encrypted UGC not visible to the developer: YES
-- In-app reporting: YES. A chat's menu, a message's long-press sheet and a
-  contact's sheet file a report (`POST /safety/reports`): the account, the
-  reason and which chat or message, never its text. The same chat menu and
-  contact sheet block an account, and Settings > Privacy > Blocked accounts
-  lists them. Google Play expects both in an app with user-generated
-  content.
+- In-app reporting: YES. A 1:1's menu, a message's long-press sheet, a
+  contact's sheet and the bar of a 1:1 message request file a report
+  (`POST /safety/reports`): the account, the reason and which chat or
+  message, never its text. The same 1:1 menu, contact sheet and request bar
+  block an account, and Settings > Privacy > Blocked accounts lists them.
+  Google Play expects both in an app with user-generated content.
 - Interactive features: chat only; no live video to strangers, no
   unmoderated public rooms
 
@@ -116,10 +116,11 @@ and a disabled Photo Picker backport service, `url_launcher_android` one
 activity that is not exported (`WebViewActivity`, which the app does not
 use), and the rest none. The app's own manifest adds one file provider,
 limited to the one cache folder a file is opened from, and a `<queries>`
-entry for https links, so a link in a message can open in the browser. `test/platform/native_permissions_test.dart` reads every
-plugin's manifest and fails on any other permission. Libraries the plugins
-depend on add two more, which the merged manifest of a debug build shows
-(CI's `android-build` job prints the list on every run):
+entry for https links, so a link in a message can open in the browser.
+`test/platform/native_permissions_test.dart` reads every plugin's manifest
+and fails on any other permission. Libraries the plugins depend on add two
+more, which the merged manifest of a debug build shows (CI's
+`android-build` job prints the list on every run):
 
 - `USE_FINGERPRINT`, from `androidx.biometric` (which `local_auth_android`
   uses): a normal permission for the fingerprint API of Android 9 and older,

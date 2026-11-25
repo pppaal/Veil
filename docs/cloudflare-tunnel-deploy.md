@@ -18,6 +18,11 @@
 > 사실을 알리고 그들에게만 씁니다. 공개 대상 운영은 감사 후
 > [`vps-deploy-runbook.md`](vps-deploy-runbook.md) 로.
 
+> **Android app (English):** to install the phone app from a CI build and use
+> it with invited friends over this tunnel, follow
+> [`android-beta-today.md`](android-beta-today.md). It also makes photos and
+> files work over the tunnel, which this page leaves out (see section 5).
+
 ---
 
 ## 1. 사전 준비
@@ -133,6 +138,7 @@ https://veil-beta.example.com/demo/
 - **첨부 업로드가 401/403/CORS 에러** → 알려진 한계. MinIO (`:9000`)
   가 별도 호스트로 안 노출되어 있어 polution presigned PUT 이
   `localhost:9000` 으로 가다 막힙니다. 다음 단계 (B: VPS) 에서 함께.
+  Fixed in [`android-beta-today.md`](android-beta-today.md) (English).
 
 - DB 직접 조회 → 메시지 본문이 ciphertext 로만 저장된 것 확인 (핸들·연락처·
   대화 멤버·통화 기록·그룹 이름은 읽을 수 있는 형태입니다,
@@ -158,6 +164,14 @@ DB 덤프는 삭제된 계정, 이미 열린 일회성 링크, 만료된 암호�
    presigned PUT 못 닿음. 두 번째 터널 호스트 (`s3.veil-beta.example.com →
    http://minio:9000`) 를 추가하거나, 단일 터널에서 path-routed nginx
    sidecar 를 두면 해결. **다음 단계 (B: VPS) 에서 함께**.
+
+   In English: [`android-beta-today.md`](android-beta-today.md) does this
+   today with `.env.beta`. It adds a second public hostname on the same
+   tunnel, one level under the domain so Cloudflare's free certificate
+   covers it (`veil-files.example.com` → `http://minio:9000`, not
+   `s3.veil-beta.example.com`), sets `VEIL_S3_PUBLIC_ENDPOINT` to it, and
+   replaces MinIO's default `minioadmin` keys, which must never be reachable
+   through a public hostname.
 2. **푸시 없음** — `VEIL_PUSH_ENABLE_DELIVERY=false` 고정. 백그라운드면
    알림 안 뜸. 별도 APNs/FCM 자격증명 + privacy review 필요.
 3. **노트북이 꺼지면 사이트도 꺼짐** — Cloudflare Tunnel 은 우리 PC 의

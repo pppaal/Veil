@@ -93,6 +93,11 @@ those checks fails the build:
 └─────────────────────┴─────────────────────────────────────────────┘
 ```
 
+To use the Android app on your own phone and your friends' phones today,
+against a server on your PC behind a Cloudflare Tunnel, follow
+[`docs/android-beta-today.md`](docs/android-beta-today.md). GitHub Actions
+builds the APK, so you need no Flutter install.
+
 ---
 
 ## Current implementation status
@@ -286,7 +291,11 @@ A release build refuses to run with a local server URL or without
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `pnpm ci:api`
 and `pnpm ci:mobile` on every push and PR. The runtime smoke job runs
 deploy preflight against the CI beta fixture and uploads release
-evidence as workflow artifacts.
+evidence as workflow artifacts. The android-build job keeps the APK it
+builds for 7 days: a debug build for `localhost`, or a profile build for
+your beta server when the repository variables `VEIL_BETA_API_BASE_URL`
+and `VEIL_BETA_REALTIME_URL` are set
+([`docs/android-beta-today.md`](docs/android-beta-today.md)).
 
 ---
 
@@ -337,6 +346,7 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 ### Deploy runbooks
 - [MVP demo runbook](docs/mvp-demo-runbook.md)
 - [Cloudflare tunnel deploy](docs/cloudflare-tunnel-deploy.md): laptop and Cloudflare, invited testers only before the audit
+- [Android beta today](docs/android-beta-today.md): the Android app from a CI build, used with invited friends through a Cloudflare Tunnel to your PC
 - [VPS deploy runbook](docs/vps-deploy-runbook.md): production VPS; refuses to boot until the external audit is attested
 - [Production deployment checklist](docs/production-deployment.md)
 - [Internal alpha deployment, runbook, test checklist and desktop QA](docs/internal-alpha-runbook.md)

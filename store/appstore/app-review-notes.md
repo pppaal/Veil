@@ -59,13 +59,22 @@ No demo credentials are needed because **there are no credentials.** The flow:
    - On Device A, tap **New chat** and enter Device B's handle. The chat offers
      a safety number the two devices can compare to confirm each other's keys.
    - Send a 1:1 message from A to B and confirm it is received and decrypted on B.
-   - Optionally create a group (**New group**) and send a message in it to
-     confirm the group path.
+   - On B, the chat from A waits as a message request: Chats shows "Message
+     request" in place of the text, and the chat shows Block, Report and
+     Accept where the text field would be. Until B taps **Accept** (or marks
+     A's safety number as verified), B's phone sends A no read receipt and no
+     typing indicator, and it downloads A's photos and files only when B taps
+     them. Tap **Accept** on B before the steps below. A chat the user starts,
+     like A's here, is never a request.
+   - Optionally create a group (**New group**) on A with B in it and send a
+     message in it to confirm the group path. On B the group waits as a
+     request too, with Leave and Accept, unless B has verified A; tap
+     **Accept**.
    - On Device A, tap **+** in the chat with B, choose **Photos** and send a
      photo, then choose **File** and send a PDF (save any PDF to Files first,
      for example from Safari, since a new simulator's Files app is empty); on
-     B the photo shows in the chat (tap it to open it full screen) and the PDF
-     opens with a tap.
+     B, once the chat is accepted, the photo shows in the chat (tap it to open
+     it full screen) and the PDF opens with a tap.
      Picking uses the system photo and file pickers, so the app asks for no
      photo access. This build has no voice messages or calls.
    - To report or block (guideline 1.2): on Device A, open the menu at the top

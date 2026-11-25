@@ -195,6 +195,53 @@ test('offering multi-device use is a claim', () => {
   ]);
 });
 
+test('a promise about scams, phishing, impersonation, message requests or look-alikes is a claim', () => {
+  // The phone's scam and look-alike checks are rules with known gaps, and a
+  // message request holds back read receipts and downloads: store text that
+  // promises any of it has to name the test that shows it.
+  const copy = [
+    '• Warns about common scam messages and look-alike accounts, with checks on your phone.',
+    '• Blocks phishing links before you tap them.',
+    '• Stops impersonation for good.',
+    '• Message requests keep strangers out of your chats.',
+    '• A lookalike handle gets a warning.',
+    '• Scammers write in Korean too.',
+    "• Chats from accounts you haven't talked to wait as requests.",
+    '• Escaped the request queue, said no one.',
+  ].join('\n');
+  const failures = checkClaims(tree({ 'store/play/full-en.txt': `${copy}\n` }));
+  assert.deepEqual(failures, [
+    'store/play/full-en.txt: unledgered claim "Warns about common scam messages and look-alike accounts, with checks on your phone."',
+    'store/play/full-en.txt: unledgered claim "Blocks phishing links before you tap them."',
+    'store/play/full-en.txt: unledgered claim "Stops impersonation for good."',
+    'store/play/full-en.txt: unledgered claim "Message requests keep strangers out of your chats."',
+    'store/play/full-en.txt: unledgered claim "A lookalike handle gets a warning."',
+    'store/play/full-en.txt: unledgered claim "Scammers write in Korean too."',
+  ]);
+});
+
+test('a Flutter widget test is evidence, also when its name escapes a quote', () => {
+  const ledger = LEDGER.replace(
+    'name: "encrypts on the device"',
+    'name: "a stranger\'s chat waits as a request"',
+  );
+  const declared = (source) =>
+    checkClaims(tree({ 'docs/claims.yaml': ledger, 'tests/crypto.test.mjs': source }));
+  assert.deepEqual(
+    declared("  testWidgets('a stranger\\'s chat waits as a request', (tester) async {});\n"),
+    [],
+  );
+  assert.deepEqual(declared('  test("a stranger\'s chat waits as a request", () {});\n'), []);
+  assert.deepEqual(
+    declared("  testWidgetsLater('a stranger\\'s chat waits as a request', (tester) async {});\n"),
+    ['e2e: tests/crypto.test.mjs has no test named "a stranger\'s chat waits as a request"'],
+  );
+  assert.deepEqual(
+    declared("  testWidgets('a strangers chat waits as a request', (tester) async {});\n"),
+    ['e2e: tests/crypto.test.mjs has no test named "a stranger\'s chat waits as a request"'],
+  );
+});
+
 test('a store listing draft that advertises a backup is an unledgered claim', () => {
   // The App Store listing draft once offered "Signed backups" while VEIL has
   // none; the drafts in docs/launch are pasted into the stores.

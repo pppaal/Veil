@@ -224,6 +224,26 @@ export const STALE_STATEMENTS = [
       /\bopen_filex\b/,
     ],
   },
+  {
+    // The scam and look-alike warnings come from fixed rules on the phone.
+    // The owner ruled that nothing calls them AI: a document or store text
+    // that did would promise a model the app does not have. Only a sentence
+    // about the checks counts, so a review note that names an AI-assisted
+    // code review is left alone. "AI" is matched as a capitalised word, so
+    // "email" and "again" are not.
+    id: 'scam-checks-called-ai',
+    fact: 'the scam and look-alike checks are fixed rules on the phone (RuleRiskChecker), not a model',
+    code: [
+      {
+        file: 'apps/mobile/lib/src/core/safety/rule_risk_checker.dart',
+        pattern: /\bclass RuleRiskChecker implements MessageRiskChecker\b/,
+      },
+    ],
+    statements: [
+      /\b(?:[Ss]cam|[Pp]hishing|[Ff]raud|[Ll]ook-?alike|[Ii]mpersonat|[Ww]arn)\w*\b.*\bA\.?I\b|\bA\.?I\b.*\b(?:[Ss]cam|[Pp]hishing|[Ff]raud|[Ll]ook-?alike|[Ii]mpersonat|[Ww]arn)/,
+      /\b(?:scam|phishing|fraud|look-?alike|impersonat|warn)\w*\b.*\b(?:artificial intelligence|machine learning|smart detection)\b|\b(?:artificial intelligence|machine learning|smart detection)\b.*\b(?:scam|phishing|fraud|look-?alike|impersonat|warn)/i,
+    ],
+  },
 ];
 
 // --- no-stale-counts

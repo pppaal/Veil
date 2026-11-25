@@ -27,6 +27,7 @@ import '../support/async_wait.dart';
 import '../support/fake_relay.dart';
 import '../support/injected_device.dart';
 import '../support/messenger_party.dart';
+import '../safety/trust_support.dart' show storedTrust, trustReady;
 
 // A relay that lies: it plants sessions, relabels conversations, invents
 // devices, flips a group's mode and forges key changes. Two real
@@ -1378,5 +1379,59 @@ void main() {
       await waitFor(() async => (await memberNotices(alice)).isNotEmpty, reason: 'the change was not announced');
       expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded]);
     });
+  });
+  // Message requests: what the relay says is mine, or lists meanwhile,
+  // accepts nothing (ContactTrust takes only sends this phone made and the
+  // group id createGroup returned). Ann keeps message requests, as the app
+  // does; carol is a stranger to her.
+  Future<(MessengerParty, MessengerParty)> requestParties() async {
+    final ann = await MessengerParty.join(relay, handle: 'ann', userId: 'user-ann', deviceId: 'dev-ann', requests: true);
+    final carol = await MessengerParty.join(relay, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
+    addTearDown(ann.dispose);
+    addTearDown(carol.dispose);
+    await ann.signIn();
+    await carol.signIn();
+    await trustReady(ann);
+    return (ann, carol);
+  }
+
+  test('a frame the relay labels as mine does not accept a stranger\'s chat', () async {
+    final (ann, carol) = await requestParties();
+    const strangers = 'conv-carol-ann';
+    relay.addDirect(strangers, 'carol', 'ann');
+    await carol.controller.refreshConversations();
+    await carol.controller.sendText(conversationId: strangers, body: 'hello ann');
+    await waitFor(() => carol.controller.pendingCountFor(strangers) == 0, reason: 'carol did not send');
+    await waitFor(() => ann.controller.conversationById(strangers) != null, reason: 'the chat was not listed');
+    expect(ann.contactTrust.isRequest(strangers), isTrue);
+
+    // The relay plants a frame under ann's own device id: listed as hers.
+    final forger = await InjectedDevice.mint(ann.device.deviceId, owner: carol);
+    await forger.handshake(relay, ann, 'yes, send it to me', conversationId: strangers);
+    await ann.controller.loadConversationMessages(strangers);
+    await settle();
+    expect(ann.controller.messagesFor(strangers).where((message) => message.isMine), isNotEmpty,
+        reason: 'the relay\'s label did not reach the list');
+    expect(ann.contactTrust.isRequest(strangers), isTrue, reason: 'a frame labelled mine accepted the chat');
+    expect((await storedTrust(ann))!.chats[strangers]!.sent, isNull);
+
+    await ann.restart();
+    await trustReady(ann);
+    expect(ann.contactTrust.isRequest(strangers), isTrue, reason: 'a restart accepted the chat');
+  });
+
+  test('a stranger\'s group listed while I create mine stays a request', () async {
+    final (ann, _) = await requestParties();
+    final dave = await MessengerParty.join(relay, handle: 'dave', userId: 'user-dave', deviceId: 'dev-dave');
+    addTearDown(dave.dispose);
+    ann.api.beforeGroupCreated = () => relay.addGroup('grp-stranger', ['dave', 'ann'], useSenderKeys: false, name: 'Prize');
+
+    final mine = await ann.controller.createGroup(name: 'Book club', memberHandles: ['bob']);
+    expect(mine, isNotNull);
+    expect(mine, isNot('grp-stranger'));
+    await ann.contactTrust.acceptCreated(mine!);
+    expect(ann.controller.conversationById('grp-stranger'), isNotNull, reason: 'the stranger\'s group was not listed');
+    expect(ann.contactTrust.isRequest(mine), isFalse);
+    expect(ann.contactTrust.isRequest('grp-stranger'), isTrue, reason: 'a group listed meanwhile was accepted');
   });
 }

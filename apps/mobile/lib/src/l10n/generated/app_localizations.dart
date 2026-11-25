@@ -2287,7 +2287,7 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersDetailBody.
   ///
   /// In en, this message translates to:
-  /// **'Check these numbers match {name}\'s phone, in person or on a call.'**
+  /// **'Check these numbers match {name}\'s phone, in person or on a call. Once verified, you\'ll see a warning if an account with a similar handle writes to you.'**
   String safetyNumbersDetailBody(String name);
 
   /// No description provided for @safetyNumbersKeyChangedTitle.
@@ -3153,6 +3153,306 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The server didn\'t accept that.'**
   String get errorRequestRejected;
+
+  /// Title of the bar that takes the composer's place in a chat not accepted yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Message request'**
+  String get chatRequestTitle;
+
+  /// Body of the message request bar in a 1:1; name is the person's name or @handle.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} won\'t know you\'ve read their messages until you accept.'**
+  String chatRequestDirectBody(String name);
+
+  /// Body of the message request bar in a group.
+  ///
+  /// In en, this message translates to:
+  /// **'You were added to this group. No one will know you\'ve read it until you accept.'**
+  String get chatRequestGroupBody;
+
+  /// Button in the message request bar that accepts the chat.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept'**
+  String get chatRequestAccept;
+
+  /// Button in a group's message request bar that leaves the group.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get chatRequestLeave;
+
+  /// Title of the dialog that confirms leaving a group; name is the group's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave {name}?'**
+  String chatLeaveGroupTitle(String name);
+
+  /// Body of the dialog that confirms leaving a group.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ll stop getting its messages.'**
+  String get chatLeaveGroupBody;
+
+  /// Confirm button of the leave group dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get chatLeaveGroupConfirm;
+
+  /// Toast when leaving a group failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t leave the group. Try again.'**
+  String get chatLeaveGroupFailed;
+
+  /// Chats list snippet for a chat not accepted yet, shown instead of its last message.
+  ///
+  /// In en, this message translates to:
+  /// **'Message request'**
+  String get conversationsRequestPreview;
+
+  /// Lock-screen notification body for a message in a chat not accepted yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Message request'**
+  String get notificationMessageRequest;
+
+  /// Warning title when the account's handle looks like a contact's; name is the contact's name or @handle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not the {name} you know'**
+  String chatLookalikeTitle(String name);
+
+  /// Warning body under the look-alike title; handle is this account's handle, name the contact it looks like.
+  ///
+  /// In en, this message translates to:
+  /// **'@{handle} is a different account. Check with {name} another way, like a call.'**
+  String chatLookalikeBody(String handle, String name);
+
+  /// Warning title when a new or changed account says it is family or has a new phone.
+  ///
+  /// In en, this message translates to:
+  /// **'Make sure it\'s really them'**
+  String get chatClaimTitle;
+
+  /// Warning body under the claim title.
+  ///
+  /// In en, this message translates to:
+  /// **'Call the number you already have before you reply or send anything.'**
+  String get chatClaimBody;
+
+  /// One-line notice in a busy chat with a saved contact who is not verified; name is the contact's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Check {name}\'s safety number'**
+  String chatVerifyNudge(String name);
+
+  /// Action that opens the safety number page.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get chatVerifyAction;
+
+  /// Line under a message that says it is from family.
+  ///
+  /// In en, this message translates to:
+  /// **'Says it\'s family. Call the number you already have.'**
+  String get riskLineFamilyClaim;
+
+  /// Line under a message that says the sender has a new phone or account.
+  ///
+  /// In en, this message translates to:
+  /// **'Says it\'s a new phone or account. Call the number you already have.'**
+  String get riskLineNewPhoneClaim;
+
+  /// Line under a message that asks for money.
+  ///
+  /// In en, this message translates to:
+  /// **'Asks for money. Call them before you send anything.'**
+  String get riskLineMoney;
+
+  /// Line under a message that asks for gift card codes.
+  ///
+  /// In en, this message translates to:
+  /// **'Asks for gift card codes. Don\'t send them.'**
+  String get riskLineGiftCard;
+
+  /// Line under a message that asks for a verification code.
+  ///
+  /// In en, this message translates to:
+  /// **'Asks for a verification code. Don\'t share it.'**
+  String get riskLineCode;
+
+  /// Line under a message that asks for ID or card details.
+  ///
+  /// In en, this message translates to:
+  /// **'Asks for ID or card details. Don\'t send them.'**
+  String get riskLineId;
+
+  /// Line under a message that asks to install a remote-control app.
+  ///
+  /// In en, this message translates to:
+  /// **'Asks you to install a remote-control app. Don\'t install it.'**
+  String get riskLineRemoteApp;
+
+  /// Line under a message with a link to an app file.
+  ///
+  /// In en, this message translates to:
+  /// **'Links to an app file. Don\'t install apps from a chat.'**
+  String get riskLineAppFile;
+
+  /// Line under a file message whose file is an app.
+  ///
+  /// In en, this message translates to:
+  /// **'This is an app file. Don\'t install apps from a chat.'**
+  String get riskLineAppFileAttached;
+
+  /// Line under a message whose link looks like a known site but is not.
+  ///
+  /// In en, this message translates to:
+  /// **'The link only looks like a known site.'**
+  String get riskLineLookalikeLink;
+
+  /// Line under a message with a short or unusual link.
+  ///
+  /// In en, this message translates to:
+  /// **'The link hides where it goes.'**
+  String get riskLineHiddenLink;
+
+  /// Line under a delivery message with a link.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivery message with a link. Check in the courier\'s own app.'**
+  String get riskLineDelivery;
+
+  /// Line under a message that says it is from a bank or card company.
+  ///
+  /// In en, this message translates to:
+  /// **'Says it\'s a bank or card company. Call the number on your card.'**
+  String get riskLineBank;
+
+  /// Line under a message that says it is from the police or a prosecutor.
+  ///
+  /// In en, this message translates to:
+  /// **'Police and prosecutors never ask for money or apps in a chat.'**
+  String get riskLineAuthority;
+
+  /// Line under a message about a refund or fine with a link.
+  ///
+  /// In en, this message translates to:
+  /// **'Check refunds and fines on the agency\'s own site or app.'**
+  String get riskLineGovernment;
+
+  /// Line under a message that promises investment profit.
+  ///
+  /// In en, this message translates to:
+  /// **'Promises sure profit. That\'s a common scam.'**
+  String get riskLineInvestment;
+
+  /// Title of the sheet shown before a link opens.
+  ///
+  /// In en, this message translates to:
+  /// **'Open this link?'**
+  String get linkConfirmTitle;
+
+  /// Row in the link sheet that opens the link.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get linkConfirmOpen;
+
+  /// Row in the link sheet that copies the link.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get linkConfirmCopy;
+
+  /// Toast after a link was copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied'**
+  String get linkCopied;
+
+  /// Toast when no app opened the link.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open the link'**
+  String get linkOpenFailed;
+
+  /// Title of the strong link sheet for a link to an app file.
+  ///
+  /// In en, this message translates to:
+  /// **'This link downloads an app'**
+  String get linkRiskAppTitle;
+
+  /// Body of the strong sheet for an app link or app file.
+  ///
+  /// In en, this message translates to:
+  /// **'An app from a chat can take over your phone.'**
+  String get linkRiskAppBody;
+
+  /// Title of the strong link sheet for a short or unusual link.
+  ///
+  /// In en, this message translates to:
+  /// **'You can\'t see where this link goes'**
+  String get linkRiskHiddenTitle;
+
+  /// Body of the strong link sheet for a short or unusual link.
+  ///
+  /// In en, this message translates to:
+  /// **'Short links and unusual addresses can hide a fake site.'**
+  String get linkRiskHiddenBody;
+
+  /// Title of the strong link sheet for a look-alike address.
+  ///
+  /// In en, this message translates to:
+  /// **'This isn\'t the site it looks like'**
+  String get linkRiskLookalikeTitle;
+
+  /// Body of the strong link sheet for a look-alike address.
+  ///
+  /// In en, this message translates to:
+  /// **'The address is close to a known site\'s, but different.'**
+  String get linkRiskLookalikeBody;
+
+  /// Filled button in the strong sheet that closes it without opening.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t open'**
+  String get linkRiskKeepClosed;
+
+  /// Row in the strong sheet that opens the link or file.
+  ///
+  /// In en, this message translates to:
+  /// **'Open anyway'**
+  String get linkRiskOpenAnyway;
+
+  /// Title of the strong sheet before an app file opens or is saved.
+  ///
+  /// In en, this message translates to:
+  /// **'This file is an app'**
+  String get fileRiskAppTitle;
+
+  /// Filled button in the strong file sheet that closes it without saving.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t save'**
+  String get fileRiskDontSave;
+
+  /// Row in the strong file sheet that saves the file.
+  ///
+  /// In en, this message translates to:
+  /// **'Save anyway'**
+  String get fileRiskSaveAnyway;
+
+  /// Screen reader label of a link in a message; domain is the link's site.
+  ///
+  /// In en, this message translates to:
+  /// **'Link, {domain}'**
+  String linkSemanticsLabel(String domain);
 }
 
 class _AppLocalizationsDelegate

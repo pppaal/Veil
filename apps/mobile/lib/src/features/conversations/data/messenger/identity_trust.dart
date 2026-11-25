@@ -60,6 +60,7 @@ class IdentityTrust {
   // Set when a decision changed what is pending, so it is written out.
   bool _decisionsChanged = false;
   final StreamController<IdentityTrustEvent> _events = StreamController<IdentityTrustEvent>.broadcast(sync: true);
+  final StreamController<IdentityVerified> _verifications = StreamController<IdentityVerified>.broadcast(sync: true);
 
   /// Completes once the pin table is prepared and the pending and declined
   /// changes are read back. Every decision waits for it and fails while it
@@ -76,6 +77,10 @@ class IdentityTrust {
   }
 
   Stream<IdentityTrustEvent> get events => _events.stream;
+
+  /// An account the user verified a device of, by [markVerified] or by a
+  /// re-verified [approve].
+  Stream<IdentityVerified> get verifications => _verifications.stream;
 
   PendingIdentityChange? pendingFor(String conversationId) => _pending[conversationId];
 
@@ -206,6 +211,7 @@ class IdentityTrust {
     }
     _forgetDecline(change.userId, change.deviceId, change.presentedKey);
     await _saveDecisionsIfChanged();
+    if (reverified) _verifications.add(IdentityVerified(change.userId));
     return accepted;
   }
 
@@ -217,6 +223,7 @@ class IdentityTrust {
     final verified = await resolver.markVerified(userId, deviceId, identityKey);
     _forgetDecline(userId, deviceId, identityKey);
     await _saveDecisionsIfChanged();
+    _verifications.add(IdentityVerified(userId));
     return verified;
   }
 
@@ -275,7 +282,10 @@ class IdentityTrust {
     return _forgetting = Future<void>.sync(() => _decisions?.delete(decisionsKey));
   }
 
-  Future<void> dispose() => _events.close();
+  Future<void> dispose() async {
+    await _verifications.close();
+    await _events.close();
+  }
 
   Future<void> _attemptPreparation(int generation) async {
     try {

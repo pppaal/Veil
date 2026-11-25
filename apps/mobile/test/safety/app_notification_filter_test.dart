@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_storage_paths.dart';
 import 'package:veil_mobile/src/features/safety/data/conversation_mutes.dart';
 import 'package:veil_mobile/src/features/safety/data/safety_providers.dart';
+import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
 
 import '../support/async_wait.dart';
 import '../support/fake_relay.dart';
@@ -20,7 +21,8 @@ import '../support/messenger_party.dart';
 
 // The notifications the app's own messenger raises, as messengerControllerProvider
 // builds it: no notification for a muted chat, nor for a 1:1 with someone the
-// user blocked; every other chat notifies as before.
+// user blocked; one for a message request says only that; every other chat
+// notifies as before.
 
 /// The app's session controller, signed in as alice.
 class _Session extends AppSessionController {
@@ -47,7 +49,7 @@ void main() {
   setUp(() async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     relay = FakeRelay();
-    for (final handle in ['alice', 'bob', 'carol', 'dave']) {
+    for (final handle in ['alice', 'bob', 'carol', 'dave', 'erin']) {
       relay.addParty(RelayParty(
         handle: handle,
         userId: 'user-$handle',
@@ -136,5 +138,32 @@ void main() {
     expect(await mutes.unmute('conv-bob'), isTrue);
     await arrive(await take('bob', 'conv-bob', 'unmuted'));
     expect(notifications.shownForConversations, ['conv-dave', 'conv-bob']);
+  });
+
+  test('a notification for a request says Message request and quotes nothing', () async {
+    final messenger = container.read(messengerControllerProvider);
+    final trust = container.read(contactTrustProvider);
+    await waitFor(() => messenger.conversations.length == 4, reason: 'the chats were not listed');
+    await waitFor(() => trust.ready, reason: 'the trust document was not read or the baseline did not run');
+
+    // A chat listed at the baseline notifies as before.
+    await arrive(await take('dave', 'conv-dave', 'see you at 8'));
+    // A stranger writes after the baseline: the notification fires before
+    // the chat is even listed, and says only that it is a request.
+    relay.addDirect('conv-erin', 'alice', 'erin');
+    const scam = 'Mum, it is me, new phone. Send 500 to this account now';
+    await arrive(await take('erin', 'conv-erin', scam));
+
+    final english = AppLocalizationsEn();
+    expect(notifications.shown, [
+      (conversationId: 'conv-dave', title: 'Veil', body: english.notificationNewMessage),
+      (conversationId: 'conv-erin', title: 'Veil', body: english.notificationMessageRequest),
+    ]);
+    expect(english.notificationMessageRequest, 'Message request');
+    for (final shown in notifications.shown) {
+      expect(shown.body, isNot(contains('500')));
+      expect(shown.body, isNot(contains('see you')));
+    }
+    expect(trust.isRequest('conv-erin'), isTrue);
   });
 }

@@ -92,13 +92,11 @@ class ConversationSyncService {
   final AttachmentTempFileStore? _tempStore;
   final MessengerOperationRunner _ops;
   final Set<String> _historyLoading = {};
-  // How far each conversation's history is held without a gap: the newest
-  // relayed order a history page brought in, or that the cache held opened
-  // at start. A refresh pages back to it. A frame that arrived any other way
-  // (live, or the ack of this device's own send) says nothing about the
-  // frames before it, so a refresh never stops at one: a live frame or a
-  // reply sent before the resync would otherwise leave an older backlog
-  // unfetched, its frames too far ahead of their chain to open.
+  // How far each conversation's history is held without a gap: the newest relayed order a history page
+  // brought in, or that the cache held opened at start. A refresh pages back to it. A frame that arrived
+  // any other way (live, or the ack of this device's own send) says nothing about the frames before it, so
+  // a refresh never stops at one: a live frame or a reply sent before the resync would otherwise leave an
+  // older backlog unfetched, its frames too far ahead of their chain to open.
   final Map<String, int> _heldThrough = {};
   final Set<String> _queuedConversationIds = {};
   bool _conversationRefreshQueued = false;
@@ -163,8 +161,8 @@ class ConversationSyncService {
     _store.changed();
   }
 
-  /// Opens the 1:1 with [handle] (the relay returns an existing one) and
-  /// returns its id; null when that failed, which is shown as usual.
+  /// Opens the 1:1 with [handle] (the relay returns an existing one) and returns its id; null when that
+  /// failed, which is shown as usual. [createGroup] answers the same way.
   Future<String?> startDirectConversation(String handle) async {
     String? conversationId;
     await _ops.run(() async {
@@ -176,24 +174,28 @@ class ConversationSyncService {
     return conversationId;
   }
 
-  Future<void> createGroup({
+  Future<String?> createGroup({
     required String name,
     required String? description,
     required List<String> memberHandles,
     required bool isPublic,
     required bool useSenderKeys,
-  }) =>
-      _ops.run(() async {
-        final session = _session.requireAuthed();
-        await _apiClient.createGroup(session.accessToken, {
-          'name': name,
-          if (description != null && description.isNotEmpty) 'description': description,
-          if (memberHandles.isNotEmpty) 'memberHandles': memberHandles,
-          'isPublic': isPublic,
-          'useSenderKeys': useSenderKeys,
-        });
-        await refreshConversations();
+  }) async {
+    String? id;
+    await _ops.run(() async {
+      final session = _session.requireAuthed();
+      final created = await _apiClient.createGroup(session.accessToken, {
+        'name': name,
+        if (description != null && description.isNotEmpty) 'description': description,
+        if (memberHandles.isNotEmpty) 'memberHandles': memberHandles,
+        'isPublic': isPublic,
+        'useSenderKeys': useSenderKeys,
       });
+      if (created['id'] case final String created) id = created;
+      await refreshConversations();
+    });
+    return id;
+  }
 
   Future<void> refreshConversations() async {
     final session = _session.authed;

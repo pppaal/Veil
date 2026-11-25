@@ -53,7 +53,7 @@ void main() {
       notificationService: notifications,
       readReceiptsEnabled: () => receipts,
       identityTrust: trust,
-      isBlockedDirect: blocked.contains,
+      withheldByUser: blocked.contains,
     );
     disposeLater.add(controller);
     return controller;

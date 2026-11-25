@@ -88,7 +88,7 @@ class _Phone {
       identityTrust: trust,
       attachmentPaths: paths,
       mediaIndex: index,
-      isBlockedDirect: blocked.contains,
+      withheldByUser: blocked.contains,
     );
     await controller.applySession(mockPartySession('atlas'));
     if (inUse) controller.media.setInUse(true);

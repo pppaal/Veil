@@ -34,6 +34,7 @@ import 'layout_world.dart';
 import 'phone_layout_probe.dart';
 import 'screen_cases_media_receive.dart';
 import 'screen_cases_media_send.dart';
+import 'screen_cases_trust.dart';
 import 'screen_cases_unread.dart';
 
 // Every screen of the app as the phone layout gate opens it: where it lives
@@ -187,6 +188,7 @@ const List<ScreenCase> screenCases = [
   ...unreadScreenCases,
   ...mediaReceiveScreenCases,
   ...mediaSendScreenCases,
+  ...trustScreenCases,
 ];
 
 const List<ScreenCase> _coreCases = [

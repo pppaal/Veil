@@ -154,7 +154,7 @@ class MessengerServices {
       ops: ops,
       expiryClock: expiryClock,
     );
-    reactions = ReactionService(store: store, session: session, send: outbox.send);
+    reactions = ReactionService(store: store, session: session, send: outbox.send, withheld: _withheldByUser);
     identity = IdentityChangeService(
       store: store,
       session: session,

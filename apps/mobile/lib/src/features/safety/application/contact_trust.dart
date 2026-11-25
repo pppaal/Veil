@@ -94,6 +94,8 @@ class ContactTrust extends ChangeNotifier {
     Map<String, TrustNickname> Function()? nicknames,
     Listenable? nicknamesChanged,
   }) {
+    // A second attach would listen to everything twice.
+    assert(_facade == null, 'the trust layer is attached to one messenger, once');
     _facade = facade;
     if (savedName != null) _savedName = savedName;
     if (nicknames != null) _nicknames = nicknames;

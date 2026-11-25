@@ -11,13 +11,13 @@ import 'fake_relay.dart';
 // builds its own messenger: the trust layer attached to it as the app's
 // messenger provider attaches it, and strangers who write first.
 
-/// Attaches [world]'s trust layer to its messenger and waits for the
-/// baseline, which accepts every chat of the first list (the seeded ones).
-/// Call from withPhoneApp's afterSession, once that list is in. A trust
-/// layer the world already attached and read is left as it is.
+/// [world]'s trust layer, which LayoutWorld.create attached to its
+/// messenger as the app attaches it (once), once it has read its document
+/// and the baseline accepted every chat of the first list (the seeded
+/// ones). Call from withPhoneApp's afterSession, once that list is in.
 Future<ContactTrust> attachContactTrust(LayoutWorld world) async {
   final trust = world.container.read(unattachedContactTrustProvider);
-  if (!trust.ready && !trust.degraded) trust.attach(world.messenger, trustEvents: world.trust.events);
+  expect(trust, same(world.contactTrust), reason: 'the app reads the trust layer the world attached');
   for (var i = 0; i < 200 && !trust.ready; i++) {
     await Future<void>.value();
   }

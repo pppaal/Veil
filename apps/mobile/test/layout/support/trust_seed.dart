@@ -43,6 +43,10 @@ enum TrustCase {
 
   /// Sam's own chat, his safety number never compared: the verify nudge.
   nudge,
+
+  /// dana_m, whom alex never talked to, wrote an everyday line, then asked
+  /// for money (a warn line) and for a code (a strong line): a 1:1 request.
+  riskLines,
 }
 
 /// The stranger of the request cases and the group request.
@@ -55,6 +59,16 @@ const strangerGroupId = 'conv-run-club';
 const strangerGroupName = 'Saturday run club';
 const strangerGroupMember = 'ines.v';
 const strangerGroupLines = ['Welcome! We meet at 8 by the lake', 'bring water, it gets hot'];
+
+/// The stranger of the risk-line case and what she wrote: an everyday
+/// line with no risk line, a money ask (warn) and a code ask (strong).
+const riskStrangerHandle = 'dana_m';
+const riskStrangerConversationId = 'conv-$riskStrangerHandle';
+const riskStrangerLines = [
+  "Hi Alex, it's Dana from the school run",
+  'could you lend me 200 pounds until Friday?',
+  'Can you tell me the verification code you just got?',
+];
 
 /// The account whose handle reads as Sam's.
 const lookalikeHandle = 'sam.official';
@@ -73,6 +87,7 @@ String trustChatOf(TrustCase trustCase) => switch (trustCase) {
       TrustCase.lookalike || TrustCase.lookalikeRequest => lookalikeConversationId,
       TrustCase.claim => claimConversationId,
       TrustCase.nudge => chatConversationId,
+      TrustCase.riskLines => riskStrangerConversationId,
     };
 
 /// The other party of the chat each case opens (for a group, the stranger
@@ -82,6 +97,7 @@ String trustPeerHandleOf(TrustCase trustCase) => switch (trustCase) {
       TrustCase.lookalike || TrustCase.lookalikeRequest => lookalikeHandle,
       TrustCase.claim => claimHandle,
       TrustCase.nudge => peerHandle,
+      TrustCase.riskLines => riskStrangerHandle,
     };
 
 /// A party the relay knows, as user-[handle] on dev-[handle].
@@ -151,6 +167,10 @@ Future<void> seedTrustChat(FakeRelay relay, LayoutIdentities identities, TrustCa
       trustParty(relay, identities, claimHandle);
       relay.addDirect(claimConversationId, selfHandle, claimHandle);
       await sealLines(relay, claimConversationId, claimHandle, claimLines, firstAt: at);
+    case TrustCase.riskLines:
+      trustParty(relay, identities, riskStrangerHandle);
+      relay.addDirect(riskStrangerConversationId, selfHandle, riskStrangerHandle);
+      await sealLines(relay, riskStrangerConversationId, riskStrangerHandle, riskStrangerLines, firstAt: at);
     case TrustCase.nudge:
       break;
   }
@@ -207,6 +227,7 @@ Future<void> writeTrustDocument(
   final accepted = layoutNow.subtract(const Duration(minutes: 10));
   return switch (trustCase) {
     TrustCase.request => (requests: {strangerConversationId}, acceptedAt: const {}),
+    TrustCase.riskLines => (requests: {riskStrangerConversationId}, acceptedAt: const {}),
     TrustCase.groupRequest => (requests: {strangerGroupId}, acceptedAt: const {}),
     TrustCase.lookalike => (requests: const {}, acceptedAt: {lookalikeConversationId: accepted}),
     TrustCase.lookalikeRequest => (requests: {lookalikeConversationId}, acceptedAt: const {}),

@@ -77,6 +77,15 @@ export const CLAIM_PATTERNS = [
   // "multi-device access" while a transfer signs the old device out and an
   // account is active on one device at a time.
   /multi[- ]?device/i,
+  // What the phone warns about and holds back. The scam and look-alike
+  // checks are rules on the phone with known gaps, and a message request
+  // withholds read receipts, typing and downloads: a sentence that promises
+  // any of it must name the test that shows it.
+  /\bscam/i,
+  /phishing/i,
+  /impersonat/i,
+  /\bmessage requests?\b/i,
+  /\blook-?alike\b/i,
   /다중 기기/,
   /익명 식별자/,
   /기기에서 생성된/,
@@ -346,8 +355,13 @@ const isClaim = (sentence) => CLAIM_PATTERNS.some((pattern) => pattern.test(sent
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// A test is declared by Node's and Vitest's it() or test(), or by Flutter's
+// testWidgets(). Inside its quoted name a quote character may be escaped
+// with a backslash, as Dart writes 'a stranger\'s chat'.
 const declaresTest = (source, name) =>
-  new RegExp(`\\b(?:it|test)\\(\\s*(['"\`])${escapeRegExp(name)}\\1`).test(source);
+  new RegExp(
+    `\\b(?:it|test|testWidgets)\\(\\s*(['"\`])${escapeRegExp(name).replace(/['"\`]/g, '\\\\?$&')}\\1`,
+  ).test(source);
 
 // A test that does not run backs nothing. A skipped or focused block can stop
 // the named test from running without touching its line, so any such marker

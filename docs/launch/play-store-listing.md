@@ -32,6 +32,7 @@ Messages are end-to-end encrypted on your phone, so only you and the people you 
 - One-time links for a password or a note
 - App lock with a PIN or biometrics
 - Block or report someone, and mute a chat
+- Warns about common scam messages and look-alike accounts, with checks on your phone. Chats from accounts you haven't talked to wait as requests.
 - Move your account to a new phone
 
 There is no backup and no account recovery. If you lose your phone, you lose the account and its messages.
@@ -111,9 +112,11 @@ Declared in the app's `AndroidManifest.xml` and surfaced in Play Console:
 The plugins' own manifests add nothing to this list:
 `flutter_local_notifications` declares `VIBRATE` and `POST_NOTIFICATIONS`,
 `local_auth_android` `USE_BIOMETRIC`, `image_picker_android` a file provider
-and a disabled Photo Picker backport service, and the rest none. The app's
-own manifest adds one file provider, limited to the one cache folder a file
-is opened from. `test/platform/native_permissions_test.dart` reads every
+and a disabled Photo Picker backport service, `url_launcher_android` one
+activity that is not exported (`WebViewActivity`, which the app does not
+use), and the rest none. The app's own manifest adds one file provider,
+limited to the one cache folder a file is opened from, and a `<queries>`
+entry for https links, so a link in a message can open in the browser. `test/platform/native_permissions_test.dart` reads every
 plugin's manifest and fails on any other permission. Libraries the plugins
 depend on add two more, which the merged manifest of a debug build shows
 (CI's `android-build` job prints the list on every run):

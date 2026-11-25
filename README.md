@@ -187,6 +187,21 @@ builds the APK, so you need no Flutter install.
 - Block, report and mute: from a chat's menu, a message's long-press sheet
   and a contact's sheet, with Settings > Privacy > Blocked accounts; a muted
   chat raises no notification on the phone
+- Message requests and scam warnings, worked out on the phone by fixed rules
+  that send nothing: not the text they read, their result or a link. A chat
+  from an account you haven't talked to waits as a message request: until
+  you accept it, the phone sends no read receipt or typing indicator and
+  downloads no photo or file by itself. A line under a message flags what
+  common scams look like: someone saying they are family or on a new phone,
+  asks for money, gift cards, codes or ID, remote-control apps and app
+  files, hidden or look-alike links, and fake delivery, bank, police,
+  government and investment messages. In a 1:1 or a group of two, a banner
+  warns when the other handle looks like a saved or verified contact's, or
+  when a new account says it is family. A link asks before it opens unless
+  it is your own or from a verified contact, and an app-file, hidden or
+  look-alike link always asks. A message with no warning can still be a
+  scam. The rules and their limits:
+  [apps/mobile/README.md](apps/mobile/README.md#message-requests-and-scam-warnings).
 - Photos come from the system photo picker and are re-encoded on the
   phone at up to 1600 px, which drops their location and camera details;
   files up to 25 MB come from the system file picker and go as they are.

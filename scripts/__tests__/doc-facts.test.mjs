@@ -20,6 +20,7 @@ const CURRENT = 'lib-x3dh-x25519-aes256gcm-v4';
 const READ_STATE_SOURCE =
   'apps/mobile/lib/src/features/conversations/data/messenger/read_state_service.dart';
 const RETIRED = 'lib-x25519-aes256gcm-v3';
+const RULE_CHECKER_SOURCE = 'apps/mobile/lib/src/core/safety/rule_risk_checker.dart';
 
 // A tree every rule accepts: the code each STALE_STATEMENTS entry relies on,
 // two API modules, and documents that state only what the code does.
@@ -38,6 +39,7 @@ const CLEAN = {
   'apps/mobile/ios/Runner.xcodeproj/project.pbxproj': '\t\t\t\tTARGETED_DEVICE_FAMILY = "1,2";\n',
   'apps/mobile/pubspec.yaml': 'dependencies:\n  image_picker: 1.2.4\n',
   [READ_STATE_SOURCE]: 'class ReadStateService extends ChangeNotifier {}\n',
+  [RULE_CHECKER_SOURCE]: 'class RuleRiskChecker implements MessageRiskChecker {}\n',
   'apps/api/src/modules/auth/auth.module.ts': '',
   'apps/api/src/modules/users/users.module.ts': '',
   'README.md': [
@@ -195,6 +197,7 @@ test('each stale statement fails while its code stands', () => {
       'Six shots, iPhone only (there is no iPad build), captured on the Simulator.',
     'mobile-text-only':
       '- Sending attachments is switched off: `kAttachmentsEnabled` is false because the app has no file picker.',
+    'scam-checks-called-ai': '• AI scam detection warns you before you reply.',
   };
   assert.deepEqual(Object.keys(statements).sort(), STALE_STATEMENTS.map(({ id }) => id).sort());
   for (const [id, statement] of Object.entries(statements)) {
@@ -323,6 +326,47 @@ test('while the phone sends photos and files and keeps unread counts, no documen
       /mobile-text-only: .* no longer shows that the phone sends and opens photos/,
     );
   }
+});
+
+test('while the scam checks are rules on the phone, no document calls them AI', () => {
+  const said = [
+    '• AI scam detection warns you before you reply.',
+    'Look-alike accounts are caught by A.I. on your phone.',
+    'Our machine learning model spots phishing links.',
+    'Smart detection flags fraud as it arrives.',
+    'Warnings come from artificial intelligence that runs on the device.',
+  ];
+  for (const sentence of said) {
+    const failures = failuresOf(RULES.staleStatement, {
+      'store/play/full-en.txt': `${sentence}\n`,
+    });
+    assert.ok(
+      failures.some((failure) =>
+        failure.startsWith(`[${RULES.staleStatement}] scam-checks-called-ai:`),
+      ),
+      sentence,
+    );
+  }
+  // What the store text says instead passes, and so does an AI that is not
+  // about the checks, or "email" and "again" beside a warning.
+  assert.deepEqual(
+    failuresOf(RULES.staleStatement, {
+      'store/play/full-en.txt': [
+        '• Warns about common scam messages and look-alike accounts, with checks on your phone.',
+        'Defects were found by an internal, AI-assisted code review in 2026.',
+        'A warning goes again by email.',
+        '',
+      ].join('\n'),
+    }),
+    [],
+  );
+  // Without the rule checker the entry guards nothing, and fails.
+  const failures = failuresOf(RULES.staleStatement, { [RULE_CHECKER_SOURCE]: null });
+  assert.equal(failures.length, 1, failures.join('\n'));
+  assert.match(
+    failures[0],
+    /scam-checks-called-ai: .* no longer shows that the scam and look-alike checks/,
+  );
 });
 
 test('hard-coded test and migration counts fail, and a module count must match the tree', () => {

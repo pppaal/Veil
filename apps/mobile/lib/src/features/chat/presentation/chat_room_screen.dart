@@ -20,11 +20,13 @@ import 'chat_composer_bar.dart';
 import 'chat_message_list.dart';
 import 'chat_message_search.dart';
 import 'chat_phone_layout.dart';
+import 'chat_request_actions.dart';
 import 'chat_room_dialogs.dart';
 import 'chat_room_labels.dart';
 import 'chat_safety_menu.dart';
 import 'chat_search_bar.dart';
 import 'chat_status_banners.dart';
+import 'chat_trust_notice.dart';
 import 'disappearing_timer_sheet.dart';
 import 'group_sender_names.dart';
 import 'message_expiration.dart';
@@ -62,7 +64,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         ChatMessageSearch,
         NavigationTargetJump,
         GroupSenderNames,
-        ChatSafetyMenu {
+        ChatSafetyMenu,
+        ChatRequestActions,
+        ChatTrustNotices {
   final _composerFocusNode = FocusNode();
   final _scrollController = ScrollController();
   StreamSubscription<PlatformSecurityEvent>? _securityEventSub;
@@ -104,13 +108,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
 
   // A screenshot of the chat is a line in it on both sides, as Telegram and
   // Session do it: "@sam took a screenshot" for the others, "You took a
-  // screenshot" here. The haptic is the only other sign.
+  // screenshot" here. The haptic is the only other sign; in a request, the only one.
   void _handlePlatformSecurityEvent(PlatformSecurityEvent event) {
     if (!mounted) return;
     if (event == PlatformSecurityEvent.screenshotDetected) {
       final l10n = AppLocalizations.of(context);
       final handle = ref.read(appSessionProvider).handle ?? '';
       VeilHaptics.heavy();
+      if (inRequest) return;
       unawaited(
         ref.read(messengerControllerProvider).sendSystemNotice(
               conversationId: widget.conversationId,
@@ -131,6 +136,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       resetNavigationTarget();
       resetSearch();
       _loadFailed = false;
+      resetTrustNotices();
       scheduleMicrotask(() => _loadConversationState());
     }
     if (oldWidget.navigationTarget?.requestId != widget.navigationTarget?.requestId ||
@@ -218,12 +224,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       showVeilToast(context, veilErrorText(AppLocalizations.of(context), next));
     });
 
+    final otherNotices = ChatStatusBanners.showsIdentityNotice(controller, widget.conversationId, conversation);
+    final trustNotice = trustNoticeFor(conversation, messages, otherNotices: otherNotices);
     final banners = ChatStatusBanners(
       controller: controller,
       conversationId: widget.conversationId,
       conversation: conversation,
       onReviewIdentity: _openSafetyNumbers,
       onAcknowledgeHold: _acknowledgePeerAccount,
+      trustNotice: trustNotice,
+      onVerify: () => unawaited(verifyFromTrustNotice(conversation, then: _loadPeerVerified)),
     );
     ChatMessageList messageList(double sideRoom) => ChatMessageList(
       conversationId: widget.conversationId,
@@ -286,6 +296,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         messages: messageList(sideRoom),
         typing: typing,
         composer: blockedComposer(conversation) ??
+            requestComposer(conversation, plainAccept: trustNotice?.warns ?? false) ??
             ChatComposerBar(
               conversationId: widget.conversationId,
               focusNode: _composerFocusNode,
@@ -360,8 +371,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     }
     final conversation = controller.conversationById(widget.conversationId);
     // A message that did not open can still be reported, by who sent it;
-    // only one that opened takes a reaction, and not from someone blocked.
-    final canReact = decrypted.isOk && !peerBlocked(conversation);
+    // only one that opened takes a reaction: not from someone blocked, nor in a request.
+    final canReact = decrypted.isOk && !peerBlocked(conversation) && !inRequest;
     final report = messageReport(message, conversation,
         groupSenderUserId: groupSenderUserId,
         groupSenderHandle: groupSenderHandle,

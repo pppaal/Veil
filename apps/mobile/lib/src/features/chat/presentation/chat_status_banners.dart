@@ -7,13 +7,16 @@ import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
+import 'chat_trust_notice.dart';
 
 /// What sits between a chat's bar and its messages: a banner only while the
 /// user has to decide something (an identity change or held account that
 /// pauses the 1:1, a key change of the peer's that waits in another chat),
 /// each with its action inside it. A send that failed says so on its
 /// bubble, the connection is the bar's subtitle and an error is a toast, as
-/// in Signal: a quiet chat shows nothing here.
+/// in Signal: a quiet chat shows nothing here. Under them, at most one
+/// trust banner ([trustNotice]: a look-alike account, a family or new-phone
+/// claim, or the nudge to verify a busy saved chat).
 ///
 /// Given less height than its notices need, it shows each warning as one
 /// full-bleed row (title and action), and only when even those do not fit
@@ -26,6 +29,8 @@ class ChatStatusBanners extends StatelessWidget {
     required this.conversation,
     required this.onReviewIdentity,
     required this.onAcknowledgeHold,
+    this.trustNotice,
+    this.onVerify,
   });
 
   final VeilMessengerController controller;
@@ -33,6 +38,43 @@ class ChatStatusBanners extends StatelessWidget {
   final ConversationPreview? conversation;
   final VoidCallback onReviewIdentity;
   final void Function(PeerAccountHold hold, String handle) onAcknowledgeHold;
+
+  /// The trust banner, drawn after the identity notices (pickTrustNotice).
+  final ChatTrustNotice? trustNotice;
+
+  /// The trust banner's Verify: the safety number page.
+  final VoidCallback? onVerify;
+
+  /// Whether [conversationId] shows an identity notice: each has an action,
+  /// so the trust banner then shows no action of its own, and no nudge.
+  static bool showsIdentityNotice(
+    VeilMessengerController controller,
+    String conversationId,
+    ConversationPreview? conversation,
+  ) {
+    final (:changeHere, :changeElsewhere, :accountHold) = _identityState(controller, conversationId, conversation);
+    return changeHere || changeElsewhere || accountHold != null;
+  }
+
+  static ({bool changeHere, bool changeElsewhere, PeerAccountHold? accountHold}) _identityState(
+    VeilMessengerController controller,
+    String conversationId,
+    ConversationPreview? conversation,
+  ) {
+    final isDirect = conversation?.type == ConversationType.direct;
+    final changeHere = isDirect && controller.pendingIdentityChangeFor(conversationId) != null;
+    return (
+      changeHere: changeHere,
+      // The peer presented another key in a conversation they share with
+      // the user (a group), which holds it for review. This 1:1 still talks
+      // to the key it pinned, and says where the question is open.
+      changeElsewhere: conversation != null &&
+          isDirect &&
+          !changeHere &&
+          controller.pendingIdentityChangeAbout(conversation.recipientBundle.userId) != null,
+      accountHold: isDirect ? controller.peerAccountHoldFor(conversationId) : null,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -106,16 +148,8 @@ class ChatStatusBanners extends StatelessWidget {
   /// The warnings, most pressing first.
   List<_Notice> _notices(AppLocalizations l10n) {
     final conversation = this.conversation;
-    final isDirect = conversation?.type == ConversationType.direct;
-    final accountHold = isDirect ? controller.peerAccountHoldFor(conversationId) : null;
-    final changeHere = isDirect && controller.pendingIdentityChangeFor(conversationId) != null;
-    // The peer presented another key in a conversation they share with the
-    // user (a group), which holds it for review. This 1:1 still talks to
-    // the key it pinned, and says where the question is open.
-    final changeElsewhere = conversation != null &&
-        isDirect &&
-        !changeHere &&
-        controller.pendingIdentityChangeAbout(conversation.recipientBundle.userId) != null;
+    final (:changeHere, :changeElsewhere, :accountHold) = _identityState(controller, conversationId, conversation);
+    final trust = trustNotice;
 
     return [
       // Only a 1:1 conversation pauses; a group just leaves the device out.
@@ -158,8 +192,34 @@ class ChatStatusBanners extends StatelessWidget {
           actionLabel: l10n.chatAccountHoldAcknowledge,
           onAction: () => onAcknowledgeHold(accountHold, conversation?.peerHandle ?? ''),
         ),
+      if (trust != null) _trustNotice(l10n, trust),
     ];
   }
+
+  // A look-alike or a claim is a warning that cannot be dismissed; only
+  // verifying the peer ends it. The nudge is one line of information.
+  _Notice _trustNotice(AppLocalizations l10n, ChatTrustNotice notice) => switch (notice.kind) {
+        ChatTrustNoticeKind.lookalike => _Notice(
+            title: l10n.chatLookalikeTitle(notice.name!),
+            message: l10n.chatLookalikeBody(notice.handle!, notice.name!),
+            tone: VeilTone.danger,
+          ),
+        ChatTrustNoticeKind.claim => _Notice(
+            title: l10n.chatClaimTitle,
+            message: l10n.chatClaimBody,
+            tone: VeilTone.danger,
+            actionLabel: notice.withAction ? l10n.chatVerifyAction : null,
+            onAction: notice.withAction ? onVerify : null,
+          ),
+        ChatTrustNoticeKind.nudge => _Notice(
+            title: null,
+            message: l10n.chatVerifyNudge(notice.name!),
+            tone: VeilTone.info,
+            oneLine: true,
+            actionLabel: l10n.chatVerifyAction,
+            onAction: onVerify,
+          ),
+      };
 }
 
 /// The one-row warnings in the height they are given: they scroll, under a

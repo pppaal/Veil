@@ -18,19 +18,25 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/data/lock_request_provider.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_storage_paths.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_names.dart';
 import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_providers.dart';
+import 'package:veil_mobile/src/features/safety/application/contact_trust.dart';
+import 'package:veil_mobile/src/features/safety/application/verified_accounts.dart';
+import 'package:veil_mobile/src/features/safety/data/contact_trust_store.dart';
 import 'package:veil_mobile/src/features/safety/data/conversation_mutes.dart';
+import 'package:veil_mobile/src/features/safety/data/safety_providers.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../../support/fake_relay.dart';
 import '../../support/memory_secure_store.dart';
 import 'layout_seed.dart';
 import 'phone_layout_probe.dart';
+import 'trust_seed.dart';
 
 // The app as one layout case sees it: the real route table, theme and
 // localizations over the test fakes (FakeRelay, a mock-keyed messenger,
@@ -106,6 +112,7 @@ class ChatAttention {
     this.peerBlocked = false,
     this.muted = false,
     this.reportRefused = false,
+    this.trust,
   });
 
   /// The peer's identity key changed and the user has not reviewed it.
@@ -161,12 +168,20 @@ class ChatAttention {
   /// so in a toast with Retry.
   final bool reportRefused;
 
+  /// A chat of the trust cases (trust_seed.dart): a stranger's request, a
+  /// look-alike account, a family claim, or Sam unverified for the nudge.
+  final TrustCase? trust;
+
   /// How many of the chat's warnings come with an action: reviewing the
   /// identity change (in this chat, or the one that waits in the group),
-  /// releasing the held account. Failed sends are retried from their own
-  /// bubbles, with no banner.
+  /// releasing the held account, verifying a new account that says it is
+  /// family, or the nudge to verify Sam. Failed sends are retried from
+  /// their own bubbles, with no banner; the look-alike warning has none.
   int get warningActionCount =>
-      (identityChanged ? 1 : 0) + (identityChangedInGroup ? 1 : 0) + (accountHeld ? 1 : 0);
+      (identityChanged ? 1 : 0) +
+      (identityChangedInGroup ? 1 : 0) +
+      (accountHeld ? 1 : 0) +
+      (trust == TrustCase.claim || trust == TrustCase.nudge ? 1 : 0);
 }
 
 class LayoutWorld {
@@ -191,6 +206,11 @@ class LayoutWorld {
   DateTime now = layoutNow;
   late final LayoutRelayClient api;
   late final IdentityTrust trust;
+
+  /// The trust layer, attached to [messenger] as the app attaches it, from
+  /// the document trust_seed.dart writes.
+  late final VerifiedAccounts verifiedAccounts;
+  late final ContactTrust contactTrust;
   late final VeilMessengerController messenger;
   late final ProviderContainer container;
   GoRouter? _router;
@@ -285,6 +305,12 @@ class LayoutWorld {
     // A caller that shows less than the seed changes the relay here, before
     // this device's session loads anything from it.
     beforeSession?.call(relay);
+    final trustCase = attention.trust;
+    if (_hasAccount) {
+      if (trustCase != null) await seedTrustChat(relay, identities, trustCase);
+      final (:requests, :acceptedAt) = trustDocumentOf(trustCase);
+      await writeTrustDocument(storage, relay, requests: requests, acceptedAt: acceptedAt);
+    }
     api = LayoutRelayClient(relay, relay.partiesByHandle[selfHandle]!);
     if (attention.peerBlocked) {
       relay.blocks['user-$selfHandle'] = {
@@ -318,10 +344,20 @@ class LayoutWorld {
     trust = IdentityTrust(
       TrustedIdentityResolver(store: TrustedIdentityStore(InMemoryIdentityKeyValueBackend()), clock: () => now),
     );
-    // The chat's peer was compared out of band, so the chat shows its mark.
+    // The chat's peer was compared out of band, so the chat shows its mark;
+    // in the nudge's case never.
     final peer = relay.partiesByHandle[peerHandle]!;
     await trust.resolver.evaluate(peer.userId, peer.deviceId, peer.identity.identityPublicKey);
-    await trust.markVerified(peer.userId, peer.deviceId, peer.identity.identityPublicKey);
+    if (trustCase != TrustCase.nudge) {
+      await trust.markVerified(peer.userId, peer.deviceId, peer.identity.identityPublicKey);
+    }
+    if (trustCase != null) await pinTrustParties(trust, relay, trustCase);
+    verifiedAccounts = VerifiedAccounts(trust);
+    contactTrust = ContactTrust(
+      store: ContactTrustStore(storage.scoped(SecureScope.conversationPolicy)),
+      verified: verifiedAccounts,
+      clock: () => now,
+    );
     // A group's frames open only for members whose devices this device has
     // pinned, which is also how it knows who of the group wrote each one.
     if (withGroup) {
@@ -345,6 +381,8 @@ class LayoutWorld {
       changedKey: identities.self.identityPublicKey,
       attachmentPaths: attachmentPaths,
       mediaIndex: mediaIndex,
+      withheldByUser: contactTrust.withholds,
+      onOwnSend: contactTrust.noteOwnSend,
     );
     if (_hasAccount) await messenger.applySession(_session);
     // After the session is applied, which forgets what was pending before it.
@@ -382,6 +420,7 @@ class LayoutWorld {
       appSessionProvider.overrideWith((ref) => session),
       messengerControllerProvider.overrideWith((ref) => messenger),
       identityTrustProvider.overrideWithValue(trust),
+      unattachedContactTrustProvider.overrideWithValue(contactTrust),
       conversationCacheProvider.overrideWith((ref) async => null),
       appLockServiceProvider.overrideWithValue(AppLockService(const _Biometrics(), storage)),
       // The seed's Tuesday morning, whatever day the case runs.
@@ -403,6 +442,18 @@ class LayoutWorld {
       ...overrides,
     ]);
     if (transferStarted) await container.read(deviceTransferControllerProvider).initTransfer();
+    attachLayoutTrust(
+      contactTrust,
+      messenger,
+      identityTrust: trust,
+      book: container.read(contactNameBookProvider),
+      blocked: () => container.exists(blockedAccountsProvider) ? container.read(blockedAccountsProvider) : null,
+    );
+    // The document is read and the baseline stands before any screen opens.
+    for (var turn = 0; _hasAccount && !contactTrust.ready && turn < 200; turn++) {
+      await Future<void>.value();
+    }
+    if (account == LayoutAccount.signedIn && !contactTrust.ready) throw StateError('the trust document was not read');
   }
 
   /// What only happens while a chat is open: the peer starts typing. Call
@@ -449,6 +500,8 @@ class LayoutWorld {
     // for the messenger leaves it, and its timers, to this world.
     final messengerHandedOut = container.exists(messengerControllerProvider);
     container.dispose();
+    contactTrust.dispose();
+    verifiedAccounts.dispose();
     if (!messengerHandedOut) messenger.dispose();
     if (attachmentRoot.existsSync()) attachmentRoot.deleteSync(recursive: true);
   }
@@ -520,6 +573,8 @@ class _LayoutMessenger extends VeilMessengerController {
     required this.changedKey,
     required AttachmentStoragePaths attachmentPaths,
     required MediaIndex mediaIndex,
+    required bool Function(String conversationId) withheldByUser,
+    required void Function(String conversationId) onOwnSend,
   }) : super(
           apiClient: apiClient,
           cryptoEngine: adapter.messaging,
@@ -531,6 +586,8 @@ class _LayoutMessenger extends VeilMessengerController {
           identityTrust: trust,
           attachmentPaths: attachmentPaths,
           mediaIndex: mediaIndex,
+          withheldByUser: withheldByUser,
+          onOwnSend: onOwnSend,
         );
 
   final ChatAttention attention;

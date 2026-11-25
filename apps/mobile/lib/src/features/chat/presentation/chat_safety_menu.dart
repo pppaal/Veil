@@ -13,8 +13,8 @@ import '../../safety/presentation/report_sheet.dart';
 import 'chat_bar.dart';
 
 /// What a chat offers to keep someone out of it: its menu (the timer unless
-/// the peer is blocked, muting, and in a 1:1 reporting and blocking the
-/// peer), the line that
+/// the peer is blocked or the chat is a message request, muting, and in a
+/// 1:1 reporting and blocking the peer), the line that
 /// takes the composer's place while the peer is blocked, and reporting a
 /// message from its long-press sheet. Each calls the person what the chat
 /// does: a 1:1's peer as its bar does, a group's member as their bubbles do.
@@ -28,6 +28,8 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final muted = ref.watch(conversationMutesProvider).isMuted(conversationId);
     final peer = _directPeer(conversation);
     final blocked = peer != null && ref.watch(blockedAccountsProvider).isBlocked(peer.userId);
+    // A timer change in a request would tell the other side it was seen.
+    final request = ref.watch(contactTrustProvider).isRequest(conversationId);
     final report = peer == null
         ? null
         : ChatMenuEntry(
@@ -67,7 +69,7 @@ mixin ChatSafetyMenu<W extends ConsumerStatefulWidget> on ConsumerState<W> {
             name: _peerTitle(conversation!, ref.read(peerNamesProvider)),
           ),
         )
-      else
+      else if (!request)
         ChatMenuEntry(key: 'timer', label: l10n.chatTtlSheetTitle, onSelected: onPickTimer),
       if (report != null) report,
       if (peer != null && !blocked)

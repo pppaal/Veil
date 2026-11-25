@@ -283,6 +283,27 @@ void main() {
     });
   });
 
+  // An escape that decodes to a character no host may hold (/ or @) makes
+  // a host a browser refuses. The bold line names it as the address escapes
+  // it, never by the part after the decoded character (naver.com), and the
+  // address line is still exactly the link that opens.
+  testWidgets('a host a browser would refuse is named as escaped under the strong sheet', (tester) async {
+    const slash = 'https://evil.xyz%2F.naver.com/';
+    const at = 'https://naver.com%40evil.xyz/';
+    await withLinks(tester, from: 'sam', texts: ['see $slash', 'or $at'], body: (world, trust) async {
+      for (final (part, link) in [('xyz%2F.naver.com/', slash), ('com%40evil.xyz/', at)]) {
+        await tapLink(tester, part);
+        expect(inSheet(find.text(en.linkRiskHiddenTitle)), findsOneWidget, reason: part);
+        expect(tester.widget<Text>(find.byKey(const ValueKey('link-sheet-domain'))).data, link.substring(8, link.length - 1),
+            reason: part);
+        expect(tester.widget<Text>(find.byKey(const ValueKey('link-sheet-address'))).data, link, reason: part);
+        await tester.tap(find.byKey(const ValueKey('link-sheet-open')));
+        await pumpFrames(tester, frames: 4);
+        expect(browser.opened.last.toString(), link, reason: 'the address shown is the link that opened');
+      }
+    });
+  });
+
   testWidgets('coming back from an opened link locks the app when app lock is on', (tester) async {
     usePhoneView(tester, phoneSmall);
     final platform = RecordingPlatformSecurity();

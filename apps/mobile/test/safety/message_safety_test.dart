@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/domain/chat_message.dart';
+import 'package:veil_mobile/src/core/domain/conversation_preview.dart';
 import 'package:veil_mobile/src/core/safety/message_risk.dart';
 import 'package:veil_mobile/src/core/safety/rule_risk_checker.dart';
 import 'package:veil_mobile/src/features/chat/application/message_safety.dart';
+import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
 import '../support/async_wait.dart';
 import '../support/fake_relay.dart';
@@ -14,6 +17,46 @@ import 'trust_support.dart';
 // the fake relay: alice's phone keeps message requests and reads what bob,
 // a stranger, sends. The relay stamps messages on its own clock; the trust
 // layer's clock is moved by hand around those stamps.
+
+// Alice's messenger, whose read of the members' pinned devices fails while
+// [failing], as a keystore that cannot be reached does.
+class _PinsFailing implements VeilMessengerController {
+  _PinsFailing(this._inner);
+
+  final VeilMessengerController _inner;
+  bool failing = true;
+  int failed = 0;
+
+  @override
+  Future<Map<String, String>> pinnedDeviceOwners(Iterable<String> userIds) async {
+    if (failing) {
+      failed++;
+      throw StateError('keystore unavailable');
+    }
+    return _inner.pinnedDeviceOwners(userIds);
+  }
+
+  @override
+  void addListener(VoidCallback listener) => _inner.addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) => _inner.removeListener(listener);
+
+  @override
+  ConversationPreview? conversationById(String conversationId) => _inner.conversationById(conversationId);
+
+  @override
+  List<ChatMessage> messagesFor(String conversationId) => _inner.messagesFor(conversationId);
+
+  @override
+  Future<DecryptedMessage> decryptMessage(ChatMessage message) => _inner.decryptMessage(message);
+
+  @override
+  String? get localUserId => _inner.localUserId;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 void main() {
   late FakeRelay relay;
@@ -164,5 +207,46 @@ void main() {
     await safety.settled;
     expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.warn, reason: RiskReason.asksForCode),
         reason: 'read as a stranger\'s');
+  });
+
+  // The read of the members' pinned devices can fail. A failed read is not
+  // a read: the next run, on any change, asks again, so a known member's
+  // text is not left read as a stranger's for as long as the chat is open.
+  test('a failed read of a group\'s pinned devices is tried again on the next change', () async {
+    const group = 'grp-family';
+    final carol = await phone(relay, 'carol');
+    addTearDown(carol.dispose);
+    await carol.signIn();
+    relay.addGroup(group, ['bob', 'alice', 'carol'], name: 'Family');
+    await alice.controller.refreshConversations();
+    await bob.controller.refreshConversations();
+    final latest = now;
+    now = DateTime.utc(2026, 3, 1);
+    await alice.contactTrust.accept(group);
+    now = latest;
+    await bob.controller.sendText(conversationId: group, body: '인증번호 알려줘');
+    await waitFor(() => bob.controller.pendingCountFor(group) == 0, reason: 'bob\'s text was not acked');
+    await alice.controller.loadConversationMessages(group);
+    await waitFor(() => alice.controller.messagesFor(group).any((message) => !message.isMine),
+        reason: 'bob\'s text did not arrive');
+    final code = alice.controller.messagesFor(group).firstWhere((message) => !message.isMine);
+    await waitFor(() async => (await alice.controller.decryptMessage(code)).status == DecryptStatus.ok,
+        reason: 'bob\'s text did not open');
+    expect(await alice.controller.pinnedDeviceOwners(['user-bob']), {'dev-bob': 'user-bob'});
+
+    final messenger = _PinsFailing(alice.controller);
+    safety = MessageSafety(conversationId: group, messenger: messenger, trust: alice.contactTrust, checker: const RuleRiskChecker());
+    await safety.settled;
+    expect(messenger.failed, greaterThanOrEqualTo(1));
+    expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.strong, reason: RiskReason.asksForCode),
+        reason: 'no member is known for bob\'s device while the pins cannot be read');
+
+    // The pins can be read again; alice writes in the group, and the run
+    // that follows reads them.
+    messenger.failing = false;
+    await alice.controller.sendText(conversationId: group, body: 'which code?');
+    await waitFor(() => safety.riskOf(code).level == RiskLevel.warn, reason: 'the pins were not read again');
+    await safety.settled;
+    expect(safety.riskOf(code), const MessageRisk(level: RiskLevel.warn, reason: RiskReason.asksForCode));
   });
 }

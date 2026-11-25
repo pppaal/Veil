@@ -52,10 +52,14 @@ class FoundLink {
 
   /// The host a browser opens (browserHost): %-escapes decoded, other
   /// full stops read as dots, lower case, and any label that is not plain
-  /// ASCII in its xn-- form, as an address bar shows it.
+  /// ASCII in its xn-- form, as an address bar shows it. A host a browser
+  /// refuses (an escape that does not decode, or a character no host may
+  /// hold once decoded) is the host of [uri], escaped as there.
   final String host;
 
-  /// The last two labels of [host], or three under an ending such as co.kr.
+  /// The last two labels of [host], or three under an ending such as co.kr;
+  /// all of [host] when a browser refuses it, so no decoded part of it reads
+  /// as the domain.
   final String registrableDomain;
 
   /// Everything after the host, query included.
@@ -69,7 +73,8 @@ class FoundLink {
 
   /// The address as written seems to name another host than the one it
   /// opens: a backslash right after the host (browsers read it as '/'), any
-  /// %-escape in the host, or a host that opens as another name.
+  /// %-escape in the host, a host a browser refuses, or a host that opens
+  /// as another name.
   final bool hidesHost;
 
   @override
@@ -96,7 +101,7 @@ final _hostLike = RegExp(r'(?<![A-Za-z0-9\-.])[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)
 final _trailingDot = RegExp(r'\.$');
 
 const _trailing = '.,!?;:\'"';
-const _closers = {')': '(', ']': '[', '}': '{'};
+const _openerOf = {0x29: 0x28, 0x5D: 0x5B, 0x7D: 0x7B}; // ) ] } after ( [ {
 
 bool _isAsciiLetterOrDigit(int c) => (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A);
 bool _isAsciiUrlCharacter(int c) => c > 0x20 && c < 0x7F && c != 0x3C && c != 0x3E;
@@ -172,30 +177,126 @@ bool _takesBareDomain(String written, String host, String path) {
   return isBrandHost(host) || _hostIn(host, shortenerHosts) || _hostIn(host, softShortenerHosts) || isLookalikeHost(host);
 }
 
+// What follows an ideographic or full-width full stop in one address's
+// authority: more of the host, or the next sentence. The rest of the
+// authority is read once, not once per full stop, so each full stop costs
+// only its own label and an address with thousands of them is still read
+// in linear time.
+class _HostRest {
+  _HostRest(this.text);
+
+  final String text;
+
+  // The rest read last: where it stops (at '/', '?', '#', '\\' or a
+  // character no host holds), where it ends less what ends the sentence and
+  // any port, its last '.' or full stop, and whether its last label is a
+  // known ending.
+  var _stop = -1;
+  var _end = 0;
+  var _lastDot = -1;
+  var _lastIsEnding = false;
+
+  /// Whether the authority from [from], just after a full stop, is more of
+  /// the host: '.'-separated labels whose last is a known ending, up to the
+  /// end (login-check.xyz) or up to the next full stop
+  /// (login-check.xyz。Thanks), not the next sentence's first word or
+  /// number (Thanks, OK, 1234). A lone Title-case word that is also an
+  /// ending (Do, Me, At) starts a sentence, as after a bare domain.
+  bool goesOnAfter(int from) {
+    if (from > _stop) _read(from);
+    if (from > _lastDot) return from < _end && _endsInEnding(text.substring(from, _end));
+    if (_lastIsEnding) return true;
+    var next = from;
+    while (next < _end && !isHostFullStop(text.codeUnitAt(next))) {
+      next++;
+    }
+    return next < _end && _endsInEnding(text.substring(from, _trimmedEnd(text, from, next)));
+  }
+
+  void _read(int from) {
+    var stop = from;
+    while (stop < text.length) {
+      final c = text.codeUnitAt(stop);
+      if (c == 0x2F || c == 0x3F || c == 0x23 || c == 0x5C) break;
+      if (!isHostFullStop(c) && !_isAsciiUrlCharacter(c)) break;
+      stop++;
+    }
+    _stop = stop;
+    // Less what ends the sentence (punctuation, closing brackets, full
+    // stops), then less a port.
+    var end = _trimmedEnd(text, from, stop, fullStops: true);
+    var digits = end;
+    while (digits > from && _isAsciiDigit(text.codeUnitAt(digits - 1))) {
+      digits--;
+    }
+    if (digits > from && text.codeUnitAt(digits - 1) == 0x3A) end = digits - 1;
+    _end = end;
+    var dot = end - 1;
+    while (dot >= from && !_isDot(text.codeUnitAt(dot))) {
+      dot--;
+    }
+    _lastDot = dot < from ? -1 : dot;
+    _lastIsEnding = bareDomainEndings.contains(text.substring(dot + 1, end).toLowerCase());
+  }
+}
+
+// Whether [rest], '.'-separated labels, ends in a known ending; a lone
+// Title-case word that is also an ending (Do, Me, At) does not.
+bool _endsInEnding(String rest) {
+  final labels = rest.split(_anyFullStop);
+  final ending = labels.last.toLowerCase();
+  if (labels.length == 1 && _wordLikeEndings.contains(ending) && _isTitleCase(labels.last)) return false;
+  return bareDomainEndings.contains(ending);
+}
+
+final _anyFullStop = RegExp('[.\u3002\uFF0E\uFF61]');
+bool _isDot(int c) => c == 0x2E || isHostFullStop(c);
+bool _isAsciiDigit(int c) => c >= 0x30 && c <= 0x39;
+
 // The length of [path] once trailing punctuation and unbalanced closing
 // brackets are trimmed.
-int _trimmedLength(String path) {
-  var end = path.length;
-  while (end > 0) {
-    final last = path[end - 1];
-    if (_trailing.contains(last)) {
+int _trimmedLength(String path) => _trimmedEnd(path, 0, path.length);
+
+// The end of [text] from [start] to [end] once trailing punctuation and
+// unbalanced closing brackets are trimmed, and with [fullStops] trailing
+// ideographic and full-width full stops too. Brackets are counted once, so
+// this takes linear time however many close the text.
+int _trimmedEnd(String text, int start, int end, {bool fullStops = false}) {
+  final counts = <int, int>{};
+  for (var j = start; j < end; j++) {
+    final c = text.codeUnitAt(j);
+    if (_openerOf.containsKey(c) || _openerOf.containsValue(c)) counts[c] = (counts[c] ?? 0) + 1;
+  }
+  while (end > start) {
+    final c = text.codeUnitAt(end - 1);
+    final opener = _openerOf[c];
+    if (_trailing.codeUnits.contains(c) || (fullStops && isHostFullStop(c))) {
       end--;
-      continue;
+    } else if (opener != null && (counts[opener] ?? 0) <= counts[c]! - 1) {
+      // As many of its opening bracket before it as of itself: it closes
+      // nothing in the link.
+      counts[c] = counts[c]! - 1;
+      end--;
+    } else {
+      break;
     }
-    final opener = _closers[last];
-    if (opener != null) {
-      final body = path.substring(0, end - 1);
-      final opens = opener.allMatches(body).length;
-      final closes = last.allMatches(body).length;
-      if (opens <= closes) {
-        end--;
-        continue;
-      }
-    }
-    break;
   }
   return end;
 }
+
+final _letterOrNumber = RegExp(r'[\p{L}\p{N}]', unicode: true);
+
+// Whether the text from [start] to [end] ends in a '.' and two or more
+// ASCII letters (a complete domain such as naver.com).
+bool _endsInDotLetters(String text, int start, int end) {
+  var letters = end;
+  while (letters > start && _isAsciiLetter(text.codeUnitAt(letters - 1))) {
+    letters--;
+  }
+  return end - letters >= 2 && letters > start && text.codeUnitAt(letters - 1) == 0x2E;
+}
+
+bool _isAsciiLetter(int c) => (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A);
 
 FoundLink? _urlAt(String text, int start, int afterScheme) {
   final runes = text.codeUnits;
@@ -203,25 +304,26 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
   // and Uri read as '/').
   var i = afterScheme;
   var nonAscii = false;
+  final rest = _HostRest(text);
   while (i < runes.length) {
     final c = runes[i];
     if (_isSpace(c) || c == 0x2F || c == 0x3F || c == 0x23 || c == 0x5C) break;
     // An ideographic or full-width full stop between two parts of a host
     // is a dot to a browser (naver.com。login-check.xyz opens
-    // naver.com.login-check.xyz); one that ends a sentence ends the link.
+    // naver.com.login-check.xyz); one that ends a sentence ends the link
+    // (naver.com。Thanks, example.org。OK, google.com。1234).
     if (isHostFullStop(c)) {
       final next = i + 1 < runes.length ? runes[i + 1] : 0;
-      if (!_isAsciiLetterOrDigit(next)) break;
+      if (!_isAsciiLetterOrDigit(next) || !rest.goesOnAfter(i + 1)) break;
       nonAscii = true;
       i++;
       continue;
     }
     if (c >= 0x80) {
-      final asciiHost = text.substring(afterScheme, i);
       // A Korean word glued after a complete domain ends the link; a host
       // that holds non-Latin letters itself is the trick.
-      if (_isHangul(c) && RegExp(r'\.[A-Za-z]{2,}$').hasMatch(asciiHost)) break;
-      if (!RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(String.fromCharCode(c)) && asciiHost.isNotEmpty) break;
+      if (_isHangul(c) && _endsInDotLetters(text, afterScheme, i)) break;
+      if (i > afterScheme && !_letterOrNumber.hasMatch(String.fromCharCode(c))) break;
       nonAscii = true;
     } else if (!_isAsciiUrlCharacter(c)) {
       break;
@@ -255,11 +357,14 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
   final writtenHost = hostPort.toLowerCase().replaceAll(_trailingDot, '');
   if (writtenHost.isEmpty) return null;
   final escaped = writtenHost.contains('%');
-  final host = writtenHost.startsWith('[') ? writtenHost : browserHost(writtenHost);
-  if (host.isEmpty) return null;
   final written = text.substring(start, end);
   final uri = Uri.tryParse(written);
   if (uri == null) return null;
+  // A host a browser refuses is named as the address escapes it, never as
+  // it decodes (evil.xyz%2F.naver.com is not naver.com).
+  final opened = writtenHost.startsWith('[') ? writtenHost : browserHost(writtenHost);
+  final host = opened ?? uri.host;
+  if (host.isEmpty) return null;
   // The host that would open must be the host found; any other reading of
   // the address hides where it goes.
   final opens = uri.host.toLowerCase().replaceAll(_trailingDot, '');
@@ -271,12 +376,12 @@ FoundLink? _urlAt(String text, int start, int afterScheme) {
     text: written,
     uri: uri,
     host: host,
-    registrableDomain: registrableDomainOf(host),
+    registrableDomain: opened == null ? host : registrableDomainOf(host),
     path: path,
     userInfo: userInfo,
     port: port,
     nonAsciiHost: nonAscii,
-    hidesHost: backslash || escaped || mismatch,
+    hidesHost: backslash || escaped || opened == null || mismatch,
   );
 }
 

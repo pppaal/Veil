@@ -4,26 +4,41 @@
 // turns every label that is not plain ASCII into its punycode (xn--) form,
 // which is how its address bar shows such a host. The link sheet names
 // that host, so a host written to look like another one is shown as what
-// it opens.
+// it opens. A browser refuses a host with an escape that does not decode,
+// or with a character no host may hold once decoded; such a host opens
+// nothing, and browserHost gives it no name.
 
 /// Full stops a browser reads as '.' in a host: ideographic (U+3002), full
 /// width (U+FF0E) and half-width ideographic (U+FF61).
 bool isHostFullStop(int c) => c == 0x3002 || c == 0xFF0E || c == 0xFF61;
 
+/// Characters a browser refuses in a host (the URL Standard's forbidden
+/// domain code points): controls, space, # % / : < > ? @ [ \ ] ^ | and
+/// delete.
+final _nonAscii = RegExp(r'[^\x00-\x7F]+');
+
+bool _isForbiddenInHost(int c) => c <= 0x20 || c == 0x7F || r'#%/:<>?@[\]^|'.codeUnits.contains(c);
+
 /// [written] (no login, no port) as a browser opens it: %-escapes decoded,
 /// [isHostFullStop] dots and full-width forms read as ASCII, lower case,
 /// no trailing dot, and every label that is still not ASCII in its xn--
-/// form. An escape that does not decode is left as written.
-String browserHost(String written) {
+/// form. Null for a host a browser refuses: an escape that does not decode,
+/// a host that then holds a character no host may hold
+/// (evil.xyz%2F.naver.com, naver.com%40evil.xyz), or a label outside ASCII
+/// longer than 63 letters.
+String? browserHost(String written) {
   var host = written;
   if (host.contains('%')) {
     try {
-      host = Uri.decodeComponent(host);
+      // Letters outside ASCII written as they are stay as they are; only
+      // the escapes are decoded (naver%2Ecom。evil.xyz opens
+      // naver.com.evil.xyz). Uri.decodeComponent refuses any such letter,
+      // so each run of them is escaped first and comes back unchanged.
+      host = Uri.decodeComponent(host.replaceAllMapped(_nonAscii, (m) => Uri.encodeComponent(m[0]!)));
     } on ArgumentError {
-      // Not a valid escape, or not UTF-8: a browser refuses such a host;
-      // it is shown as written.
+      return null; // Not a valid escape.
     } on FormatException {
-      // As above.
+      return null; // Not UTF-8.
     }
   }
   final plain = StringBuffer();
@@ -37,9 +52,17 @@ String browserHost(String written) {
     }
   }
   final lower = plain.toString().toLowerCase();
+  if (lower.codeUnits.any(_isForbiddenInHost)) return null;
   final trimmed = lower.endsWith('.') ? lower.substring(0, lower.length - 1) : lower;
-  return trimmed.split('.').map(_asciiLabel).join('.');
+  final labels = trimmed.split('.');
+  // A label outside ASCII longer than a DNS label can be (63) names no
+  // host; refusing it before punycode also keeps one message from
+  // spending seconds on a label of thousands of different letters.
+  if (labels.any((l) => l.length > _maxLabel && l.runes.any((c) => c >= 0x80))) return null;
+  return labels.map(_asciiLabel).join('.');
 }
+
+const _maxLabel = 63;
 
 String _asciiLabel(String label) => label.runes.every((c) => c < 0x80) ? label : 'xn--${punycode(label)}';
 

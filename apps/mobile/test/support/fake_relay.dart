@@ -676,7 +676,9 @@ class FakeRelayClient extends VeilApiClient {
       if (party != null && relay.blockedEitherWay(me.userId, party.userId)) {
         throw VeilApiException('User not found', statusCode: 404, code: 'handle_not_found');
       }
-      return relay._lookup(me, handle, query?['claim'] ?? 'active');
+      final answer = relay._lookup(me, handle, query?['claim'] ?? 'active');
+      if (directoryGate case final gate?) await gate.future;
+      return answer;
     }
     if (path == '/prekeys/count') {
       return {'available': relay.oneTimePrekeys[me.deviceId]?.length ?? 0};

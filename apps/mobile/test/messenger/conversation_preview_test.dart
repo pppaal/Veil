@@ -117,9 +117,12 @@ void main() {
       reason: 'the row says the message disappears',
     );
 
-    await waitFor(() => !row(alice).contains('4471'),
-        timeout: const Duration(seconds: 12), reason: 'still previewed after it expired: ${row(alice)}');
-    expect(row(alice), 'see you there', reason: 'the row falls back to the message before it');
+    // From its expiry until the sweep timer drops it, the row reads "Message
+    // expired"; on a busy machine the poll can run in that turn, before the
+    // sweep that is already due, so wait for the fallback itself.
+    await waitFor(() => row(alice) == 'see you there',
+        timeout: const Duration(seconds: 12),
+        reason: 'the row did not fall back to the message before it: ${row(alice)}');
 
     // The relay of this test never sweeps, and still lists the expired
     // message as the conversation's last.

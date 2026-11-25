@@ -6,6 +6,7 @@ import 'package:veil_mobile/src/app/app_session_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/group_sender_keys.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
+import 'package:veil_mobile/src/core/identity/identity_key_value_backend.dart';
 import 'package:veil_mobile/src/core/identity/trusted_identity_resolver.dart';
 import 'package:veil_mobile/src/core/identity/trusted_identity_store.dart';
 import 'package:veil_mobile/src/core/network/keys_api.dart';
@@ -17,12 +18,19 @@ import 'package:veil_mobile/src/core/storage/media_index.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_storage_paths.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_store.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_names.dart';
+import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/conversations/data/group_sender_key_coordinator.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/envelope_version_policy.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/prekey_maintenance.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/peer_names.dart';
+import 'package:veil_mobile/src/features/safety/application/contact_trust.dart';
+import 'package:veil_mobile/src/features/safety/application/silenced_notifications.dart';
+import 'package:veil_mobile/src/features/safety/application/verified_accounts.dart';
+import 'package:veil_mobile/src/features/safety/data/contact_trust_store.dart';
 
 import 'counting_crypto_adapter.dart';
 import 'fake_relay.dart';
@@ -35,6 +43,10 @@ class RecordingNotifications implements LocalNotificationService {
   final List<String> shownForConversations = [];
   final List<String> cancelledForConversations = [];
 
+  /// Every notification raised, with the title and body the lock screen
+  /// would show.
+  final List<({String conversationId, String title, String body})> shown = [];
+
   @override
   Future<void> showMessageNotification({
     required String conversationId,
@@ -42,6 +54,7 @@ class RecordingNotifications implements LocalNotificationService {
     required String body,
   }) async {
     shownForConversations.add(conversationId);
+    shown.add((conversationId: conversationId, title: title, body: body));
   }
 
   @override
@@ -110,18 +123,24 @@ class MessengerParty {
     required this.database,
     required this.attachmentDirectory,
     required this.maintainPrekeys,
+    required this.requests,
     required LocalNotificationService Function(RecordingNotifications recorder)? notificationsFor,
   }) : _notificationsFor = notificationsFor;
 
   /// With [maintainPrekeys] the device publishes one-time prekeys and
   /// rotates its signed prekey whenever it signs in, as the app does. It is
   /// opt-in because generating a pool costs every test that does not need it.
+  ///
+  /// With [requests] the device keeps message requests as the app does
+  /// ([contactTrust], wired to receipts, typing, fetches, sends and
+  /// notifications); off by default, so older tests keep their meaning.
   static Future<MessengerParty> join(
     FakeRelay relay, {
     required String handle,
     required String userId,
     required String deviceId,
     bool maintainPrekeys = false,
+    bool requests = false,
     LocalNotificationService Function(RecordingNotifications recorder)? notificationsFor,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -144,6 +163,7 @@ class MessengerParty {
       database: AppDatabase(NativeDatabase.memory()),
       attachmentDirectory: Directory.systemTemp.createTempSync('veil-party-$handle-'),
       maintainPrekeys: maintainPrekeys,
+      requests: requests,
       notificationsFor: notificationsFor,
     );
     party._boot(adapter);
@@ -155,6 +175,7 @@ class MessengerParty {
   final AppDatabase database;
   final Directory attachmentDirectory;
   final bool maintainPrekeys;
+  final bool requests;
 
   /// The device's attachment folders, every root under [attachmentDirectory]
   /// (the iOS system temporary folder too, swept as on iOS), so purges and
@@ -193,6 +214,24 @@ class MessengerParty {
   late GroupSenderKeyCoordinator groupCrypto;
   late IdentityTrust trust;
   late VeilMessengerController controller;
+
+  /// With [requests]: who each account is and which chats are requests.
+  late ContactTrust contactTrust;
+  late VerifiedAccounts verifiedAccounts;
+
+  /// The nicknames on this device, kept in its keystore across restarts.
+  late final ContactNameBook names = ContactNameBook(ContactNicknames(keystore.scoped(SecureScope.contacts)));
+
+  /// The trust layer's clock; a test moves it to play days passing.
+  DateTime Function() clock = DateTime.now;
+
+  /// How many reads of the trust document to refuse next, as a keystore
+  /// that cannot be reached does; and the waits before each retry.
+  int failTrustReads = 0;
+  List<Duration> trustRetryDelays = const [Duration(seconds: 1), Duration(seconds: 5), Duration(seconds: 30)];
+
+  /// The lines the trust layer logged.
+  final List<String> trustLog = [];
   int _tokenGeneration = 0;
 
   /// What the next boot's trust layer runs before it reads anything back,
@@ -228,6 +267,10 @@ class MessengerParty {
   /// one starts: what happens on the relay while the app is not running.
   Future<void> restart({Future<void> Function()? whileClosed}) async {
     await lib.flushPendingSnapshotWrites();
+    if (requests) {
+      await contactTrust.flush();
+      contactTrust.dispose();
+    }
     controller.dispose();
     await whileClosed?.call();
     _boot(LibCryptoAdapter());
@@ -239,6 +282,7 @@ class MessengerParty {
   // and closing the database under it would turn that write into an
   // unhandled error attributed to whichever test runs next.
   Future<void> dispose() async {
+    if (requests) contactTrust.dispose();
     controller.dispose();
     if (attachmentDirectory.existsSync()) {
       attachmentDirectory.deleteSync(recursive: true);
@@ -276,6 +320,16 @@ class MessengerParty {
     final api = this.api;
     final keys = KeysApi(api, crypto.keyBundles);
     trust = IdentityTrust(pins, decisions: keystore.scoped(SecureScope.identity), prepare: trustPreparation);
+    if (requests) {
+      verifiedAccounts = VerifiedAccounts(trust);
+      contactTrust = ContactTrust(
+        store: ContactTrustStore(_RefusingReads(keystore.scoped(SecureScope.conversationPolicy), this)),
+        verified: verifiedAccounts,
+        clock: () => clock(),
+        retryDelays: trustRetryDelays,
+        log: trustLog.add,
+      );
+    }
     groupCrypto = GroupSenderKeyCoordinator(
       engine: GroupSenderKeyEngine(),
       sealer: GroupSenderKeySealer(resolveRecipientPrekey: LibIdentityKeys.resolveRemoteX25519),
@@ -299,7 +353,10 @@ class MessengerParty {
       attachmentTempFileStore: DefaultAttachmentTempFileStore(paths: attachmentPaths),
       attachmentPaths: attachmentPaths,
       mediaIndex: mediaIndex,
-      notificationService: _notificationsFor?.call(notifications) ?? notifications,
+      notificationService: _notificationsFor?.call(notifications) ??
+          (requests
+              ? SilencedNotifications(notifications, isSilenced: (_) => false, isRequest: contactTrust.isRequest)
+              : notifications),
       readReceiptsEnabled: () => readReceipts,
       sessionSnapshotRestorer: () => lib.restoreSessionsFromSnapshots(
         Map<String, Map<String, dynamic>>.of(_ratchetSnapshots),
@@ -312,6 +369,49 @@ class MessengerParty {
       prekeyMaintenance: maintainPrekeys
           ? PrekeyMaintenance(prekeys: lib, keys: keys, persistIdentityRef: (_) async {})
           : null,
+      withheldByUser: requests ? contactTrust.withholds : null,
+      onOwnSend: requests ? contactTrust.noteOwnSend : null,
     );
+    if (requests) {
+      final controller = this.controller;
+      contactTrust.attach(
+        controller,
+        trustEvents: trust.events,
+        savedName: (userId, handle) => peerNamesFor(controller, names.nicknames).accountName(userId, handle),
+        nicknames: () => {
+          for (final MapEntry(:key, :value) in names.nicknames.entries) key: (name: value.name, userId: value.userId),
+        },
+        nicknamesChanged: names,
+      );
+    }
   }
+
+  /// Saves [nickname] for [handle] on this device, naming [userId].
+  Future<void> saveNickname(String handle, String nickname, {required String userId}) async {
+    await names.write(handle, nickname, anew: true);
+    await names.claim({handle.toLowerCase(): userId});
+  }
+}
+
+// The trust document's keystore scope, refusing reads while the party says.
+class _RefusingReads implements IdentityKeyValueBackend {
+  _RefusingReads(this._inner, this._party);
+
+  final IdentityKeyValueBackend _inner;
+  final MessengerParty _party;
+
+  @override
+  Future<String?> read(String key) {
+    if (_party.failTrustReads > 0) {
+      _party.failTrustReads -= 1;
+      throw StateError('keystore unavailable');
+    }
+    return _inner.read(key);
+  }
+
+  @override
+  Future<void> write(String key, String value) => _inner.write(key, value);
+
+  @override
+  Future<void> delete(String key) => _inner.delete(key);
 }

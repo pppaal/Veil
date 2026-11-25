@@ -1,5 +1,8 @@
+import 'dart:ui' show Locale;
+
 import '../../../core/domain/conversation_preview.dart';
 import '../../../core/notifications/local_notification_service.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../data/blocked_accounts.dart';
 import '../data/conversation_mutes.dart';
 
@@ -21,13 +24,20 @@ bool conversationSilenced(
 }
 
 /// The notifications the messenger raises, less those of the chats
-/// [isSilenced] names. Everything else goes to [inner] as it is.
+/// [isSilenced] names. One for a chat [isRequest] names (a message request,
+/// ContactTrust.isRequest) says only "Message request", under the same
+/// title. Everything else goes to [inner] as it is.
 class SilencedNotifications implements LocalNotificationService {
-  SilencedNotifications(this._inner, {required bool Function(String conversationId) isSilenced})
-      : _isSilenced = isSilenced;
+  SilencedNotifications(
+    this._inner, {
+    required bool Function(String conversationId) isSilenced,
+    bool Function(String conversationId)? isRequest,
+  })  : _isSilenced = isSilenced,
+        _isRequest = isRequest ?? ((_) => false);
 
   final LocalNotificationService _inner;
   final bool Function(String conversationId) _isSilenced;
+  final bool Function(String conversationId) _isRequest;
 
   @override
   void Function(String? conversationId)? get onNotificationTapped => _inner.onNotificationTapped;
@@ -48,7 +58,9 @@ class SilencedNotifications implements LocalNotificationService {
     required String body,
   }) async {
     if (_isSilenced(conversationId)) return;
-    await _inner.showMessageNotification(conversationId: conversationId, title: title, body: body);
+    // English, as the router's own text: the app has no other language.
+    final shown = _isRequest(conversationId) ? lookupAppLocalizations(const Locale('en')).notificationMessageRequest : body;
+    await _inner.showMessageNotification(conversationId: conversationId, title: title, body: shown);
   }
 
   // Muted or not: one raised before the mute still goes when it is read.

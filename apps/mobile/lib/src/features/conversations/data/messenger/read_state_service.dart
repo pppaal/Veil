@@ -72,7 +72,7 @@ class _View {
 /// the newest message of someone else it covered whose content opened, of
 /// a kind that counts. No receipt goes while [receiptsWithheld] says so,
 /// though the mark still moves, and none is sent later for what was read
-/// then. Older history never moves the mark.
+/// then, except through [resendFor]. Older history never moves the mark.
 class ReadStateService implements MessengerStateObserver, ReadMarkObserver {
   ReadStateService({
     required MessengerStateStore store,
@@ -171,6 +171,26 @@ class ReadStateService implements MessengerStateObserver, ReadMarkObserver {
     final view = views?.remove(viewer);
     if (views != null && views.isEmpty) _views.remove(conversationId);
     if (keep && view != null) _parked[conversationId] = view;
+  }
+
+  /// Sends the receipt [receiptsWithheld] held back while [conversationId]
+  /// was read: for the newest message of someone else at or below the read
+  /// mark, the way a move of the mark sends one (a chat request accepted,
+  /// ContactTrust.accept). Nothing when receipts are off or still withheld.
+  Future<void> resendFor(String conversationId) async {
+    final readThrough = _store.readMarkOf(conversationId)?.readThrough;
+    if (readThrough == null || !_receipts.enabled || receiptsWithheld(conversationId)) return;
+    final now = _now();
+    final covered = [
+      for (final message in _store.messagesOf(conversationId))
+        if (!message.isMine &&
+            !message.isLocalNotice &&
+            message.conversationOrder != null &&
+            message.conversationOrder! <= readThrough &&
+            !(message.expiresAt != null && !message.expiresAt!.isAfter(now)))
+          message,
+    ];
+    if (covered.isNotEmpty) await _sendReceipt(conversationId, covered);
   }
 
   /// Forgets everything held for the identity that left.

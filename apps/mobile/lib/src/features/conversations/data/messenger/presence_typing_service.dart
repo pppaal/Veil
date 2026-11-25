@@ -15,11 +15,13 @@ class PresenceTypingService extends ChangeNotifier {
     required RealtimeService realtime,
     required bool Function() isConnected,
     required bool Function() typingIndicatorsEnabled,
+    bool Function(String conversationId)? withheld,
     Duration remoteTypingTimeout = const Duration(seconds: 5),
     Duration localTypingIdle = const Duration(seconds: 3),
   })  : _realtime = realtime,
         _isConnected = isConnected,
         _typingIndicatorsEnabled = typingIndicatorsEnabled,
+        _withheld = withheld ?? ((_) => false),
         _remoteTypingTimeout = remoteTypingTimeout,
         _localTypingIdle = localTypingIdle;
 
@@ -27,6 +29,9 @@ class PresenceTypingService extends ChangeNotifier {
   final bool Function() _isConnected;
   // Read on every keystroke so a settings change applies at once.
   final bool Function() _typingIndicatorsEnabled;
+  // Chats no typing signal goes to: the same rule as read receipts
+  // (MessengerServices.receiptsWithheld), a chat request among them.
+  final bool Function(String conversationId) _withheld;
   final Duration _remoteTypingTimeout;
   final Duration _localTypingIdle;
 
@@ -82,7 +87,7 @@ class PresenceTypingService extends ChangeNotifier {
   /// The user typed in [conversationId]: tells peers once, and that it
   /// stopped after a pause.
   void localTyping(String conversationId) {
-    if (!_isConnected() || !_typingIndicatorsEnabled()) return;
+    if (!_isConnected() || !_typingIndicatorsEnabled() || _withheld(conversationId)) return;
     if (!_localTypingActive) {
       _localTypingActive = true;
       _realtime.emit('typing.start', {'conversationId': conversationId});

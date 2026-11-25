@@ -60,7 +60,7 @@ void main() {
       identityTrust: trust,
       attachmentPaths: paths,
       mediaIndex: MemoryMediaIndex(),
-      isBlockedDirect: blockedConversations.contains,
+      withheldByUser: blockedConversations.contains,
     );
     await controller.applySession(mockPartySession('atlas'));
   });

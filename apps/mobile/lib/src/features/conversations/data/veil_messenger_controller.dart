@@ -60,8 +60,10 @@ class VeilMessengerController extends ChangeNotifier {
     DeviceTransferController? deviceTransfer,
     AttachmentStoragePaths? attachmentPaths,
     MediaIndex? mediaIndex,
-    bool Function(String conversationId)? isBlockedDirect,
-  }) : _ownsDeviceTransfer = deviceTransfer == null {
+    bool Function(String conversationId)? withheldByUser,
+    void Function(String conversationId)? onOwnSend,
+  })  : _ownsDeviceTransfer = deviceTransfer == null,
+        _onOwnSend = onOwnSend {
     _services = MessengerServices(
       apiClient: apiClient,
       cryptoEngine: cryptoEngine,
@@ -87,7 +89,7 @@ class VeilMessengerController extends ChangeNotifier {
       onSignedOut: () => _deviceTransfer.clearTransferState(),
       attachmentPaths: attachmentPaths,
       mediaIndex: mediaIndex,
-      isBlockedDirect: isBlockedDirect,
+      withheldByUser: withheldByUser,
     );
     _deviceTransfer = deviceTransfer ??
         DeviceTransferController(
@@ -102,6 +104,8 @@ class VeilMessengerController extends ChangeNotifier {
   late final MessengerServices _services;
   late final DeviceTransferController _deviceTransfer;
   final bool _ownsDeviceTransfer;
+  // A text or file this phone sends, at the start of the send (ContactTrust).
+  final void Function(String conversationId)? _onOwnSend;
   late final StreamSubscription<IdentityTrustEvent> _trustEvents;
   bool _disposed = false;
 
@@ -121,6 +125,7 @@ class VeilMessengerController extends ChangeNotifier {
   bool get errorIsRelayInterruption => _services.ops.showsRelayInterruption;
   bool get hasPendingWork => _services.outbox.hasPendingWork;
   String? get activeConversationId => _services.store.activeConversationId;
+  bool get listedByRelay => _services.store.listedByRelay;
 
   /// The signed-in user, who is one of the members a group lists.
   String? get localUserId => _services.session.userId;
@@ -190,7 +195,7 @@ class VeilMessengerController extends ChangeNotifier {
   /// New groups opt into Sender Keys (per-sender chains and authorship)
   /// when this client can run them; the legacy shared-key path stays for
   /// groups created by older clients.
-  Future<void> createGroup({
+  Future<String?> createGroup({
     required String name,
     String? description,
     List<String> memberHandles = const [],
@@ -208,6 +213,7 @@ class VeilMessengerController extends ChangeNotifier {
   void notifyTyping(String conversationId) => _services.presence.localTyping(conversationId);
 
   Future<void> sendText({required String conversationId, required String body, Duration? disappearAfter}) async {
+    _onOwnSend?.call(conversationId);
     _services.presence.localTypingEnded(conversationId);
     await _services.outbox.send(
       conversationId: conversationId,
@@ -337,10 +343,13 @@ class VeilMessengerController extends ChangeNotifier {
 
   /// Seals [attachment] here and queues it as a photo or file message; false when that failed.
   Future<bool> sendAttachment(
-          {required String conversationId, required OutgoingAttachment attachment, Duration? disappearAfter}) =>
-      _services.outbox.sendAttachment(conversationId: conversationId, attachment: attachment, disappearAfter: disappearAfter);
+      {required String conversationId, required OutgoingAttachment attachment, Duration? disappearAfter}) {
+    _onOwnSend?.call(conversationId);
+    return _services.outbox.sendAttachment(conversationId: conversationId, attachment: attachment, disappearAfter: disappearAfter);
+  }
 
   Future<void> markRead(String messageId) => _services.receipts.markRead(messageId);
+  Future<void> resendReadReceipt(String conversationId) => _services.reads.resendFor(conversationId);
 
   Future<void> setDisappearingTimer(String conversationId, int? seconds) =>
       _services.disappearing.setTimer(conversationId, seconds);

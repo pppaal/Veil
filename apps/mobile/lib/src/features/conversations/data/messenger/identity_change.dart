@@ -88,3 +88,12 @@ final class NewDeviceAdmitted extends IdentityTrustEvent {
 final class IdentityChangeResolved extends IdentityTrustEvent {
   const IdentityChangeResolved(super.conversationId);
 }
+
+/// The user verified one of [userId]'s devices (IdentityTrust.verifications).
+/// Not an [IdentityTrustEvent]: it is about an account, not a conversation,
+/// and it calls for no notice.
+final class IdentityVerified {
+  const IdentityVerified(this.userId);
+
+  final String userId;
+}

@@ -570,9 +570,8 @@ class LayoutRelayClient extends FakeRelayClient {
     createdGroups.add(Map<String, dynamic>.of(body));
     final group = relay.addGroup('conv-new-group-${createdGroups.length}', [me.handle, ...handles],
         useSenderKeys: false, name: body['name'] as String);
-    return {
-      'conversation': {'id': group.id},
-    };
+    // GroupsService.createGroup's answer: the new group's id at the top.
+    return {'id': group.id, 'type': 'group', 'name': body['name']};
   }
 
   @override

@@ -10,6 +10,7 @@ import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../contacts/data/contact_index.dart';
 import '../../contacts/data/contacts_providers.dart';
+import '../../safety/data/safety_providers.dart';
 import 'conversation_list_logic.dart';
 
 /// The compose screen: a search field, then "New group" and "One-time link",
@@ -42,7 +43,9 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
     if (handle.isEmpty || _opening) return;
     setState(() => _opening = true);
     final messenger = ref.read(messengerControllerProvider);
-    final conversationId = await messenger.startConversationByHandle(handle);
+    // A chat opened from a handle the user typed is theirs: accepted, and
+    // started by them, so it is never a message request.
+    final conversationId = await ref.read(contactTrustProvider).startDirect(handle);
     if (!mounted) return;
     if (conversationId == null) {
       setState(() => _opening = false);

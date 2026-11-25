@@ -947,7 +947,13 @@ Future<void> _scrollToHistoryTop(WidgetTester tester) async {
   }
   expect(position.pixels, greaterThanOrEqualTo(position.maxScrollExtent - 0.5), reason: 'the chat did not reach its top');
   expect(find.textContaining('the landlord wants'), findsOneWidget, reason: 'the long message is not built');
-  expect(find.textContaining(longLinkHost), findsOneWidget, reason: 'the long link is not built');
+  // A link is read out as "Link, " and its domain: the drawn text holds it.
+  expect(
+    find.byWidgetPredicate(
+        (widget) => widget is RichText && widget.text.toPlainText(includeSemanticsLabels: false).contains(longLinkHost)),
+    findsOneWidget,
+    reason: 'the long link is not built',
+  );
 }
 
 Future<void> _expectScreenshotNotice(WidgetTester tester) async {

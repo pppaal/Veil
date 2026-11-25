@@ -8,6 +8,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../safety/application/safety_accounts.dart';
+import '../../safety/data/safety_providers.dart';
 
 /// Creates a group: its name, an optional description, its members (each
 /// handle a chip once a space, a comma or Return ends it) with the one rule
@@ -91,11 +92,15 @@ class _StartGroupScreenState extends ConsumerState<StartGroupScreen> {
       _notFound = null;
     });
     final messenger = ref.read(messengerControllerProvider);
-    await messenger.createGroup(
+    final trust = ref.read(contactTrustProvider);
+    final created = await messenger.createGroup(
       name: name,
       description: _descriptionController.text.trim(),
       memberHandles: handles,
     );
+    // Only the id the relay answered with is the user's own group: never a
+    // message request. A stranger's group listed meanwhile stays one.
+    if (created != null) await trust.acceptCreated(created);
     if (!mounted) return;
     if (messenger.errorMessage != null) {
       // The server names no handle it could not find: each is looked up

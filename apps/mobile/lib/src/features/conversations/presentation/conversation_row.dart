@@ -11,7 +11,8 @@ import '../../../shared/presentation/veil_ui.dart';
 /// last message in the text colour and its time in the text colour at 600,
 /// as Signal draws it. A chat marked unread with nothing counted shows the
 /// badge as an empty disc. A [muted] chat shows the muted glyph there, and
-/// its unread count in grey ([greyBadge] greys it without the glyph). The
+/// its unread count in grey ([greyBadge] greys it without the glyph, and so
+/// does a message [request], which the Chats tab does not count). The
 /// list puts the rows in a VeilGroup, whose hairlines start at the text edge
 /// ([textInset], 76).
 ///
@@ -36,6 +37,7 @@ class ConversationRow extends StatelessWidget {
     this.muted = false,
     this.mutedLabel,
     this.greyBadge = false,
+    this.request = false,
     this.group = false,
     this.selected = false,
     this.dense = false,
@@ -84,6 +86,10 @@ class ConversationRow extends StatelessWidget {
   /// The unread count is grey without the muted glyph: a 1:1 whose peer is
   /// blocked.
   final bool greyBadge;
+
+  /// A chat not accepted yet: its count is grey, as a muted chat's, and its
+  /// snippet quotes nothing (conversationPreview's request).
+  final bool request;
 
   /// A group chat: the neutral group avatar.
   final bool group;
@@ -208,7 +214,7 @@ class ConversationRow extends StatelessWidget {
                               const SizedBox(width: VeilSpace.xs),
                               // The row's label says it in words.
                               ExcludeSemantics(
-                                child: UnreadBadge(count: counted ? unreadCount : null, muted: this.muted || greyBadge),
+                                child: UnreadBadge(count: counted ? unreadCount : null, muted: this.muted || greyBadge || request),
                               ),
                             ],
                           ],

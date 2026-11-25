@@ -3,17 +3,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_group_screen.dart';
+import 'package:veil_mobile/src/features/safety/application/contact_trust.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../support/copy_finder.dart';
+import '../support/layout_trust.dart';
 import 'phone_app.dart';
 
 // Starting a 1:1 chat or a group on a phone. New chat is a search field,
 // then "New group" and "One-time link", then the contacts; a typed handle
 // that is no contact's becomes "Chat with @…". New group is its fields, the
-// members as chips with the one rule under them, and the button.
+// members as chips with the one rule under them, and the button. A chat
+// the user starts is theirs, never a message request; one a stranger
+// starts is one. Opening a chat goes through the trust layer, attached to
+// the world's messenger as on a phone.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -54,7 +60,7 @@ void main() {
     });
 
     testWidgets('opens the chat with the handle that was typed, in the screen\'s place', (tester) async {
-      await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
+      await withPhoneApp(tester, identities, location: '/conversations', afterSession: attachContactTrust, body: (world) async {
         await openNewChat(tester);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
 
@@ -80,7 +86,7 @@ void main() {
     // "rivera" is Sam Rivera's name, and also a handle a stranger could
     // hold: Go must not open a chat with the wrong person.
     testWidgets('Go opens the contact the text matches before a stranger with that handle', (tester) async {
-      await withPhoneApp(tester, identities, location: '/start-chat', body: (world) async {
+      await withPhoneApp(tester, identities, location: '/start-chat', afterSession: attachContactTrust, body: (world) async {
         await tester.enterText(find.byType(TextField), 'rivera');
         await tester.pump();
         final contact = find.byKey(const ValueKey('start-contact-$peerHandle'));
@@ -97,7 +103,7 @@ void main() {
     });
 
     testWidgets('says when the handle opens nothing, and only then', (tester) async {
-      await withPhoneApp(tester, identities, location: '/start-chat', prepare: (world) async {
+      await withPhoneApp(tester, identities, location: '/start-chat', afterSession: attachContactTrust, prepare: (world) async {
         // The messenger failed at something else before the screen opened.
         await world.messenger.startConversationByHandle('nobody');
         expect(world.messenger.errorMessage, isNotNull);
@@ -238,5 +244,90 @@ void main() {
         expect(find.text('Moving day'), findsOneWidget);
       });
     });
+  });
+
+  // Typed, from a contact, or a group of one's own: never a request. A chat
+  // a stranger opens, or a group they put the user in, is one: its row in
+  // Chats quotes nothing.
+  testWidgets('a chat you start is never a request, and a stranger\'s chat is one', (tester) async {
+    late ContactTrust trust;
+    Finder rowOf(String title) => find.ancestor(of: find.text(title), matching: find.byType(ConversationRow));
+
+    // A handle typed in New chat.
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/conversations',
+      beforeSession: (relay) {
+        addStranger(relay, identities, 'kim_new');
+        addStranger(relay, identities, 'mallory');
+      },
+      afterSession: (world) async => trust = await attachContactTrust(world),
+      body: (world) async {
+        await openNewChat(tester);
+        await tester.enterText(on(StartDirectChatScreen, TextField), 'kim_new');
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('start-chat-with-handle')));
+        await pumpFrames(tester, frames: 10);
+        final typed = tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId;
+        expect(trust.isRequest(typed), isFalse, reason: 'a chat opened from a typed handle is the user\'s');
+        expect(trust.startedByMe(typed), isTrue);
+        await tester.tap(find.byTooltip('Back'));
+        await pumpFrames(tester, frames: 6);
+
+        // A stranger writes first: a request, and its row says only that.
+        final stranger = await strangerWrites(world, 'mallory', ['hi, it\'s me. are you free later?']);
+        await pumpFrames(tester, frames: 6);
+        expect(trust.isRequest(stranger), isTrue);
+        expect(find.descendant(of: rowOf('mallory'), matching: find.text(en.conversationsRequestPreview)), findsOneWidget);
+        expect(find.textContaining('are you free'), findsNothing);
+        expect(find.descendant(of: rowOf('kim_new'), matching: find.text(en.conversationsRequestPreview)), findsNothing);
+      },
+    );
+
+    // Start chat in a contact's sheet, with a contact alex has no chat with
+    // yet: the chat is made then, and accepted.
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/contacts',
+      beforeSession: (relay) => relay.conversations.remove(emptyChatConversationId),
+      afterSession: (world) async => trust = await attachContactTrust(world),
+      body: (world) async {
+        expect(world.messenger.conversationById(emptyChatConversationId), isNull);
+        await tester.tap(find.text('Lena Fischer'));
+        await pumpFrames(tester, frames: 4);
+        await tester.tap(find.text(en.contactsStartChat));
+        await pumpFrames(tester, frames: 8);
+        expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, emptyChatConversationId);
+        expect(trust.isRequest(emptyChatConversationId), isFalse, reason: 'a chat started from a contact is the user\'s');
+        expect(trust.startedByMe(emptyChatConversationId), isTrue);
+      },
+    );
+
+    // A group alex creates; then a stranger puts alex in a group of theirs.
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/start-group',
+      beforeSession: (relay) => addStranger(relay, identities, 'mallory'),
+      afterSession: (world) async => trust = await attachContactTrust(world),
+      body: (world) async {
+        await tester.enterText(find.byType(TextField).at(0), 'Movers');
+        await tester.enterText(find.byType(TextField).at(2), 'lena_berlin, mallory');
+        await tester.pump();
+        await tester.tap(find.byType(FilledButton));
+        await pumpFrames(tester, frames: 10);
+        final created = world.relay.conversations.keys.singleWhere((id) => id.startsWith('conv-new-group-'));
+        expect(world.messenger.conversationById(created), isNotNull);
+        expect(trust.isRequest(created), isFalse, reason: 'the group createGroup answered with is the user\'s');
+
+        world.relay.addGroup('conv-their-group', [selfHandle, 'mallory'], useSenderKeys: false, name: 'Prizes');
+        await world.messenger.refreshConversations();
+        await pumpFrames(tester, frames: 4);
+        expect(world.messenger.conversationById('conv-their-group'), isNotNull);
+        expect(trust.isRequest('conv-their-group'), isTrue, reason: 'a group a stranger made is a request');
+      },
+    );
   });
 }

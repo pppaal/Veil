@@ -15,9 +15,12 @@
 # See docs/phone-access.md for the phone-side setup.
 #
 # This stack uses dev-mode defaults (placeholder JWT secret, dev MinIO admin,
-# Postgres on localhost). Do NOT expose it to the public internet — for a
-# private beta with invited testers use infra/docker/docker-compose.alpha.yml
-# plus a real env file (apps/api/.env.alpha.example).
+# Postgres on localhost). Do NOT expose it to the public internet with those
+# defaults. The Android beta in docs/android-beta-today.md runs it behind a
+# Cloudflare Tunnel with .env.beta (template: .env.beta.example), which
+# replaces every default that would be reachable from outside. For a private
+# beta on a server, use infra/docker/docker-compose.alpha.yml plus a real env
+# file (apps/api/.env.alpha.example).
 
 services:
   postgres:
@@ -28,7 +31,12 @@ services:
       POSTGRES_USER: veil
       POSTGRES_PASSWORD: veil
     ports:
-      - "5432:5432"
+      # Every IPv4 interface by default, as the API port below, so the LAN
+      # flow keeps working. Behind a tunnel nothing outside this machine needs
+      # Postgres, Redis or MinIO's host ports (cloudflared reaches MinIO over
+      # the compose network): .env.beta sets VEIL_DATA_BIND_ADDRESS=127.0.0.1
+      # so the home network cannot reach them.
+      - "${VEIL_DATA_BIND_ADDRESS:-0.0.0.0}:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U veil -d veil"]
       interval: 5s
@@ -41,7 +49,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${VEIL_DATA_BIND_ADDRESS:-0.0.0.0}:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -60,11 +68,14 @@ services:
     restart: unless-stopped
     command: /opt/bitnami/minio/bin/minio server /bitnami/minio/data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      # minioadmin is fine on a laptop. A tunnel that publishes the object
+      # store (the files hostname in docs/android-beta-today.md) makes these
+      # the keys to the bucket from anywhere, so .env.beta replaces them.
+      MINIO_ROOT_USER: ${VEIL_MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${VEIL_MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${VEIL_DATA_BIND_ADDRESS:-0.0.0.0}:9000:9000"
+      - "${VEIL_DATA_BIND_ADDRESS:-0.0.0.0}:9001:9001"
     volumes:
       - veil_demo_minio:/bitnami/minio/data
 
@@ -75,7 +86,7 @@ services:
         condition: service_started
     entrypoint: >
       /bin/sh -c "
-      until (/opt/bitnami/minio-client/bin/mc --config-dir /tmp/.mc alias set veil http://minio:9000 minioadmin minioadmin) do sleep 1; done;
+      until (/opt/bitnami/minio-client/bin/mc --config-dir /tmp/.mc alias set veil http://minio:9000 ${VEIL_MINIO_ROOT_USER:-minioadmin} ${VEIL_MINIO_ROOT_PASSWORD:-minioadmin}) do sleep 1; done;
       /opt/bitnami/minio-client/bin/mc --config-dir /tmp/.mc mb --ignore-existing veil/veil-encrypted;
       /opt/bitnami/minio-client/bin/mc --config-dir /tmp/.mc anonymous set none veil/veil-encrypted;
       exit 0;
@@ -116,12 +127,15 @@ services:
       # public deploy with a separate s3 hostname, https://s3.veil.example.com.
       VEIL_S3_PUBLIC_ENDPOINT: ${VEIL_S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       VEIL_S3_REGION: us-east-1
-      VEIL_S3_ACCESS_KEY: minioadmin
-      VEIL_S3_SECRET_KEY: minioadmin
+      VEIL_S3_ACCESS_KEY: ${VEIL_MINIO_ROOT_USER:-minioadmin}
+      VEIL_S3_SECRET_KEY: ${VEIL_MINIO_ROOT_PASSWORD:-minioadmin}
       VEIL_S3_BUCKET: veil-encrypted
       # Generate a fresh secret for any deploy beyond local: openssl rand -base64 32.
       # The placeholder default is rejected by beta-deploy-preflight.
       VEIL_JWT_SECRET: ${VEIL_JWT_SECRET:-demo-jwt-secret-replace-with-32-byte-openssl-rand-output}
+      # Empty uses the API's development pepper, which is published in the
+      # source; any deploy other people use should set its own (.env.beta does).
+      VEIL_RETIRED_HANDLE_PEPPER: ${VEIL_RETIRED_HANDLE_PEPPER:-}
       VEIL_JWT_AUDIENCE: veil-mobile
       VEIL_JWT_ISSUER: veil-api
       VEIL_PUSH_PROVIDER: none
@@ -151,6 +165,9 @@ services:
   # over the compose network, so the loopback-only host port does not affect it.
   # In the Cloudflare Zero Trust dashboard set the public hostname's
   # `Service` to `http://api:3000`. See docs/cloudflare-tunnel-deploy.md.
+  # Photos and files need a second public hostname with `Service`
+  # `http://minio:9000`, VEIL_S3_PUBLIC_ENDPOINT set to it and MinIO's
+  # default keys replaced: docs/android-beta-today.md does all three.
   cloudflared:
     # Pinned to a tagged release rather than :latest so a 03:00 image rebuild
     # can't break a live tunnel. Bump deliberately when verifying a new
